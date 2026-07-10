@@ -1,0 +1,579 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Миниатюра Сизиф</title>
+    <style>
+      @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&display=swap");
+
+      :root {
+        color-scheme: dark;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        background: #111311;
+        color: #f5f1e8;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      html,
+      body {
+        width: 100%;
+        height: 100%;
+        margin: 0;
+        overflow: hidden;
+        user-select: none;
+      }
+
+      body {
+        min-height: 100svh;
+        background:
+          radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.08), transparent 34rem),
+          linear-gradient(145deg, #171915 0%, #0b0d0c 58%, #17120f 100%);
+      }
+
+      .stage {
+        position: fixed;
+        inset: 0;
+        overflow: hidden;
+        touch-action: none;
+      }
+
+      .title {
+        position: fixed;
+        left: 50%;
+        top: 105px;
+        z-index: 1;
+        width: min(92vw, 76rem);
+        margin: 0;
+        color: rgba(245, 241, 232, 0.92);
+        font-family:
+          "Cormorant Garamond", Georgia, "Times New Roman", serif;
+        font-size: clamp(4rem, 8vw, 10.5rem);
+        font-weight: 700;
+        letter-spacing: 0;
+        line-height: 0.84;
+        text-align: center;
+        text-transform: uppercase;
+        text-shadow:
+          0 0.08em 0.14em rgba(0, 0, 0, 0.46),
+          0 0 2.5rem rgba(245, 241, 232, 0.09);
+        transform: translateX(-50%);
+        pointer-events: none;
+      }
+          .title2 {
+        position: fixed;
+        left: 50%;
+        top: clamp(2rem, 7vh, 4.8rem);
+        z-index: 1;
+        width: min(92vw, 76rem);
+        margin: 0;
+        color: rgba(245, 241, 232, 0.92);
+        font-family:
+          "Cormorant Garamond", Georgia, "Times New Roman", serif;
+        font-size: clamp(4rem, 2vw, 10.5rem);
+        font-weight: 700;
+        letter-spacing: 0;
+        line-height: 0.84;
+        text-align: center;
+        text-transform: uppercase;
+        text-shadow:
+          0 0.08em 0.14em rgba(0, 0, 0, 0.46),
+          0 0 2.5rem rgba(245, 241, 232, 0.09);
+        transform: translateX(-50%);
+        pointer-events: none;
+      }
+
+      .hint {
+        position: fixed;
+        left: clamp(1rem, 3vw, 2rem);
+        bottom: clamp(1rem, 3vw, 2rem);
+        z-index: 3;
+        max-width: 22rem;
+        margin: 0;
+        color: rgba(245, 241, 232, 0.72);
+        font-size: 0.95rem;
+        line-height: 1.45;
+        pointer-events: none;
+      }
+
+      .rock {
+        position: absolute;
+        left: 0;
+        top: 0;
+        z-index: 2;
+        width: clamp(220px, 42vmin, 520px);
+        height: auto;
+        cursor: grab;
+        touch-action: none;
+        -webkit-user-drag: none;
+        user-drag: none;
+        filter: drop-shadow(0 2.1rem 2.2rem rgba(0, 0, 0, 0.5));
+        transform: translate3d(var(--x, 0px), var(--y, 0px), 0) scale(1);
+        transform-origin: center;
+        transition: filter 160ms ease;
+        will-change: transform;
+      }
+
+      .rock.is-dragging {
+        cursor: grabbing;
+        filter: drop-shadow(0 2.7rem 2.6rem rgba(0, 0, 0, 0.62));
+        transform: translate3d(var(--x, 0px), var(--y, 0px), 0) scale(1.025);
+      }
+
+      .rock.is-falling {
+        filter: drop-shadow(0 3rem 2.8rem rgba(0, 0, 0, 0.7));
+        transform: translate3d(var(--x, 0px), var(--y, 0px), 0) scale(0.985);
+      }
+
+      .hand-cursor {
+        --cursor-x: -999px;
+        --cursor-y: -999px;
+        --cursor-width: 552px;
+        --cursor-height: 732px;
+        --hotspot-x: 276px;
+        --hotspot-y: 252px;
+
+        position: fixed;
+        left: 0;
+        top: 0;
+        z-index: 10;
+        display: none;
+        width: var(--cursor-width);
+        height: var(--cursor-height);
+        background-image: url("assets/cursor-grab.png");
+        background-position: center top;
+        background-repeat: no-repeat;
+        background-size: contain;
+        filter: drop-shadow(0 1rem 1.2rem rgba(0, 0, 0, 0.52));
+        opacity: 0;
+        pointer-events: none;
+        transform: translate3d(
+            calc(var(--cursor-x) - var(--hotspot-x)),
+            calc(var(--cursor-y) - var(--hotspot-y)),
+            0
+          )
+          scale(0.96);
+        transform-origin: var(--hotspot-x) var(--hotspot-y);
+        transition:
+          opacity 90ms ease,
+          filter 130ms ease;
+        will-change: transform, opacity;
+      }
+
+      .hand-cursor.is-visible {
+        opacity: 1;
+        transform: translate3d(
+            calc(var(--cursor-x) - var(--hotspot-x)),
+            calc(var(--cursor-y) - var(--hotspot-y)),
+            0
+          )
+          scale(1);
+      }
+
+      .hand-cursor.is-grabbing {
+        --hotspot-y: 216px;
+
+        background-image: url("assets/cursor-grabbing.png");
+        filter: drop-shadow(0 1.25rem 1.35rem rgba(0, 0, 0, 0.66));
+        transform: translate3d(
+            calc(var(--cursor-x) - var(--hotspot-x)),
+            calc(var(--cursor-y) - var(--hotspot-y)),
+            0
+          )
+          scale(1.04);
+      }
+
+      @media (pointer: fine) {
+        .rock {
+          cursor: none;
+        }
+
+        .rock.is-dragging {
+          cursor: none;
+        }
+
+        .hand-cursor {
+          display: block;
+        }
+      }
+
+      @media (max-width: 640px) {
+        .title {
+          top: clamp(1.25rem, 8vh, 3rem);
+          width: min(94vw, 28rem);
+          font-size: clamp(3.1rem, 19vw, 5.5rem);
+          line-height: 0.88;
+        }
+
+        .hint {
+          max-width: calc(100vw - 2rem);
+          font-size: 0.88rem;
+        }
+
+        .rock {
+          width: clamp(190px, 68vw, 360px);
+        }
+
+        .hand-cursor {
+          --cursor-width: 432px;
+          --cursor-height: 570px;
+          --hotspot-x: 216px;
+          --hotspot-y: 198px;
+        }
+
+        .hand-cursor.is-grabbing {
+          --hotspot-y: 168px;
+        }
+      }
+    </style>
+  </head>
+  <body>
+    <main class="stage" aria-label="Рабочая область для перетаскивания камня">
+      <h2 class="title2">Миниатюра</h1>
+      <h1 class="title">Сизиф</h1>
+      <p class="hint">Зажмите ЛКМ на камне и перетащите его.</p>
+      <img
+        class="rock"
+        src="assets/rock.png"
+        alt="Камень"
+        draggable="false"
+      />
+      <div class="hand-cursor" aria-hidden="true"></div>
+    </main>
+
+    <script>
+      const rock = document.querySelector(".rock");
+      const handCursor = document.querySelector(".hand-cursor");
+      const finePointer = window.matchMedia("(pointer: fine)");
+      const DROP_MIN_MS = 200;
+      const DROP_MAX_MS = 1500;
+      const FALL_DURATION_MS = 850;
+      const ROCK_VISIBLE_BOTTOM_INSET_RATIO = 392 / 2400;
+
+      const position = {
+        x: 0,
+        y: 0,
+        grabX: 0,
+        grabY: 0,
+        dragging: false,
+        dropTimerId: null,
+        activePointerId: null,
+        falling: false,
+        fallAnimationId: null,
+      };
+
+      const cursorState = {
+        overRock: false,
+        clientX: null,
+        clientY: null,
+      };
+
+      function clamp(value, min, max) {
+        return Math.min(Math.max(value, min), max);
+      }
+
+      function canShowPhotoCursor(event) {
+        return finePointer.matches && (!event.pointerType || event.pointerType === "mouse");
+      }
+
+      function moveHandCursor(event) {
+        if (!canShowPhotoCursor(event)) {
+          return;
+        }
+
+        cursorState.clientX = event.clientX;
+        cursorState.clientY = event.clientY;
+        handCursor.style.setProperty("--cursor-x", `${event.clientX}px`);
+        handCursor.style.setProperty("--cursor-y", `${event.clientY}px`);
+      }
+
+      function showHandCursor(event) {
+        if (!canShowPhotoCursor(event)) {
+          return;
+        }
+
+        moveHandCursor(event);
+        handCursor.classList.add("is-visible");
+      }
+
+      function hideHandCursor() {
+        handCursor.classList.remove("is-visible", "is-grabbing");
+      }
+
+      function setGrabbingCursor(isGrabbing) {
+        handCursor.classList.toggle("is-grabbing", isGrabbing);
+      }
+
+      function randomDropDelay() {
+        return DROP_MIN_MS + Math.random() * (DROP_MAX_MS - DROP_MIN_MS);
+      }
+
+      function clearDropTimer() {
+        if (position.dropTimerId === null) {
+          return;
+        }
+
+        window.clearTimeout(position.dropTimerId);
+        position.dropTimerId = null;
+      }
+
+      function scheduleDropTimer() {
+        clearDropTimer();
+        position.dropTimerId = window.setTimeout(forceDropRock, randomDropDelay());
+      }
+
+      function cancelFallAnimation() {
+        if (position.fallAnimationId === null) {
+          return;
+        }
+
+        window.cancelAnimationFrame(position.fallAnimationId);
+        position.fallAnimationId = null;
+      }
+
+      function isPointOnRock(clientX, clientY) {
+        const rect = rock.getBoundingClientRect();
+        return (
+          clientX >= rect.left &&
+          clientX <= rect.right &&
+          clientY >= rect.top &&
+          clientY <= rect.bottom
+        );
+      }
+
+      function maxPosition() {
+        const rect = rock.getBoundingClientRect();
+        const visibleBottomInset = rect.height * ROCK_VISIBLE_BOTTOM_INSET_RATIO;
+        return {
+          x: Math.max(0, window.innerWidth - rect.width),
+          y: Math.max(0, window.innerHeight - rect.height + visibleBottomInset),
+        };
+      }
+
+      function setPosition(x, y) {
+        const max = maxPosition();
+        position.x = clamp(x, 0, max.x);
+        position.y = clamp(y, 0, max.y);
+        rock.style.setProperty("--x", `${position.x}px`);
+        rock.style.setProperty("--y", `${position.y}px`);
+      }
+
+      function centerRock() {
+        const rect = rock.getBoundingClientRect();
+        setPosition(
+          (window.innerWidth - rect.width) / 2,
+          (window.innerHeight - rect.height) / 2
+        );
+      }
+
+      function updateCursorAfterForcedRelease() {
+        setGrabbingCursor(false);
+
+        if (
+          cursorState.clientX === null ||
+          cursorState.clientY === null ||
+          !finePointer.matches
+        ) {
+          hideHandCursor();
+          cursorState.overRock = false;
+          return;
+        }
+
+        cursorState.overRock = isPointOnRock(cursorState.clientX, cursorState.clientY);
+
+        if (cursorState.overRock) {
+          handCursor.classList.add("is-visible");
+        } else {
+          hideHandCursor();
+        }
+      }
+
+      function startRockFall() {
+        const startY = position.y;
+        const endY = maxPosition().y;
+
+        if (Math.abs(endY - startY) < 1) {
+          position.falling = false;
+          rock.classList.remove("is-falling");
+          return;
+        }
+
+        position.falling = true;
+        rock.classList.add("is-falling");
+
+        const startedAt = performance.now();
+
+        function step(now) {
+          const progress = clamp((now - startedAt) / FALL_DURATION_MS, 0, 1);
+          const eased = progress * progress * progress;
+
+          setPosition(position.x, startY + (endY - startY) * eased);
+
+          if (progress < 1) {
+            position.fallAnimationId = window.requestAnimationFrame(step);
+            return;
+          }
+
+          position.fallAnimationId = null;
+          position.falling = false;
+          rock.classList.remove("is-falling");
+          setPosition(position.x, endY);
+        }
+
+        cancelFallAnimation();
+        position.fallAnimationId = window.requestAnimationFrame(step);
+      }
+
+      function forceDropRock() {
+        position.dropTimerId = null;
+
+        if (!position.dragging) {
+          return;
+        }
+
+        const pointerId = position.activePointerId;
+
+        position.dragging = false;
+        position.activePointerId = null;
+        rock.classList.remove("is-dragging");
+
+        if (pointerId !== null && rock.hasPointerCapture(pointerId)) {
+          rock.releasePointerCapture(pointerId);
+        }
+
+        updateCursorAfterForcedRelease();
+        startRockFall();
+      }
+
+      function startDrag(event) {
+        if (position.falling) {
+          return;
+        }
+
+        if (event.pointerType === "mouse" && event.button !== 0) {
+          return;
+        }
+
+        event.preventDefault();
+        cancelFallAnimation();
+        rock.classList.remove("is-falling");
+        const rect = rock.getBoundingClientRect();
+        position.dragging = true;
+        position.activePointerId = event.pointerId;
+        cursorState.overRock = true;
+        cursorState.clientX = event.clientX;
+        cursorState.clientY = event.clientY;
+        position.grabX = event.clientX - rect.left;
+        position.grabY = event.clientY - rect.top;
+        showHandCursor(event);
+        setGrabbingCursor(true);
+        rock.classList.add("is-dragging");
+        rock.setPointerCapture(event.pointerId);
+        scheduleDropTimer();
+      }
+
+      function moveDrag(event) {
+        if (cursorState.overRock || position.dragging) {
+          moveHandCursor(event);
+        }
+
+        if (!position.dragging || position.falling) {
+          return;
+        }
+
+        event.preventDefault();
+        setPosition(event.clientX - position.grabX, event.clientY - position.grabY);
+      }
+
+      function stopDrag(event) {
+        if (!position.dragging) {
+          return;
+        }
+
+        clearDropTimer();
+        position.dragging = false;
+        position.activePointerId = null;
+        rock.classList.remove("is-dragging");
+        setGrabbingCursor(false);
+
+        if (rock.hasPointerCapture(event.pointerId)) {
+          rock.releasePointerCapture(event.pointerId);
+        }
+
+        cursorState.overRock = canShowPhotoCursor(event)
+          ? isPointOnRock(event.clientX, event.clientY)
+          : false;
+
+        if (cursorState.overRock) {
+          showHandCursor(event);
+        } else {
+          hideHandCursor();
+        }
+      }
+
+      function enterRock(event) {
+        if (!canShowPhotoCursor(event)) {
+          return;
+        }
+
+        cursorState.overRock = true;
+        showHandCursor(event);
+        setGrabbingCursor(position.dragging);
+      }
+
+      function leaveRock(event) {
+        if (!canShowPhotoCursor(event)) {
+          return;
+        }
+
+        cursorState.overRock = false;
+
+        if (!position.dragging) {
+          hideHandCursor();
+        }
+      }
+
+      function cancelDragAndCursor() {
+        clearDropTimer();
+        cancelFallAnimation();
+        position.dragging = false;
+        position.activePointerId = null;
+        position.falling = false;
+        cursorState.overRock = false;
+        rock.classList.remove("is-dragging", "is-falling");
+        hideHandCursor();
+      }
+
+      rock.addEventListener("pointerenter", enterRock);
+      rock.addEventListener("pointerleave", leaveRock);
+      rock.addEventListener("pointerdown", startDrag);
+      rock.addEventListener("pointermove", moveDrag);
+      rock.addEventListener("pointerup", stopDrag);
+      rock.addEventListener("pointercancel", stopDrag);
+      rock.addEventListener("lostpointercapture", () => {
+        if (!position.dragging) {
+          return;
+        }
+
+        cancelDragAndCursor();
+      });
+      rock.addEventListener("dragstart", (event) => event.preventDefault());
+      window.addEventListener("blur", cancelDragAndCursor);
+
+      window.addEventListener("resize", () => {
+        setPosition(position.x, position.y);
+      });
+
+      if (rock.complete) {
+        centerRock();
+      } else {
+        rock.addEventListener("load", centerRock, { once: true });
+      }
+    </script>
+  </body>
+</html>
