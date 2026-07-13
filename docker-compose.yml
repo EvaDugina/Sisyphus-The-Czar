@@ -1,0 +1,7 @@
+services:
+  sisyphus-the-czar:
+    build: .
+    container_name: sisyphus-the-czar
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:18082:80"
