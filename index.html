@@ -8,126 +8,212 @@
       @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&display=swap");
 
       :root {
-        color-scheme: dark;
+        color-scheme: light;
         font-family:
           Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
           "Segoe UI", sans-serif;
-        background: #111311;
-        color: #f5f1e8;
+        background: #f8f8f5;
+        color: #161616;
       }
 
       * {
         box-sizing: border-box;
       }
 
-      html,
-      body {
-        width: 100%;
-        height: 100%;
+      html {
+        min-height: 100%;
         margin: 0;
-        overflow: hidden;
-        user-select: none;
+        scroll-behavior: auto;
       }
 
       body {
-        min-height: 100svh;
-        background:
-          radial-gradient(circle at 50% 42%, rgba(255, 255, 255, 0.08), transparent 34rem),
-          linear-gradient(145deg, #171915 0%, #0b0d0c 58%, #17120f 100%);
+        --surface: #f8f8f5;
+        --surface-deep: #e9e8e2;
+        --surface-low: #d9d8d1;
+        --ink: #161616;
+        --muted: rgba(22, 22, 22, 0.62);
+        --line: rgba(22, 22, 22, 0.2);
+        --panel: rgba(248, 248, 245, 0.88);
+        --accent: #8a6b31;
+        --accent-strong: #3c2b11;
+        --target: rgba(138, 107, 49, 0.18);
+        --target-line: rgba(138, 107, 49, 0.56);
+        --shadow: rgba(23, 20, 17, 0.18);
+
+        min-height: 300svh;
+        margin: 0;
+        overflow-x: hidden;
+        background: var(--surface);
+        color: var(--ink);
+        user-select: none;
+        transition:
+          background-color 420ms ease,
+          color 420ms ease;
       }
 
-      .stage {
-        position: fixed;
-        inset: 0;
+      body.theme-dark {
+        color-scheme: dark;
+        --surface: #101211;
+        --surface-deep: #191a16;
+        --surface-low: #070807;
+        --ink: #f4f1ea;
+        --muted: rgba(244, 241, 234, 0.64);
+        --line: rgba(244, 241, 234, 0.18);
+        --panel: rgba(16, 18, 17, 0.86);
+        --accent: #b7a06b;
+        --accent-strong: #f0dfaa;
+        --target: rgba(183, 160, 107, 0.2);
+        --target-line: rgba(183, 160, 107, 0.58);
+        --shadow: rgba(0, 0, 0, 0.58);
+      }
+
+      button,
+      input {
+        font: inherit;
+      }
+
+      .world {
+        position: relative;
+        min-height: 300svh;
         overflow: hidden;
-        touch-action: none;
+        background:
+          linear-gradient(180deg, var(--surface) 0%, var(--surface-deep) 48%, var(--surface-low) 100%),
+          var(--surface);
+        transition: background 420ms ease;
+      }
+
+      .summit {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        min-height: 100svh;
+        pointer-events: none;
+      }
+
+      .target-zone {
+        position: absolute;
+        left: 50%;
+        top: 1.25rem;
+        z-index: 4;
+        display: grid;
+        width: min(58rem, calc(100vw - 2rem));
+        height: clamp(14rem, 28svh, 17rem);
+        place-items: center;
+        border: 1px solid var(--target-line);
+        background:
+          linear-gradient(90deg, transparent, var(--target), transparent),
+          color-mix(in srgb, var(--surface) 72%, transparent);
+        color: var(--accent-strong);
+        font-family:
+          "Cormorant Garamond", Georgia, "Times New Roman", serif;
+        font-size: 2.1rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        text-transform: uppercase;
+        transform: translateX(-50%);
+        transition:
+          background 320ms ease,
+          border-color 320ms ease,
+          color 320ms ease,
+          opacity 320ms ease;
+      }
+
+      body.state-won .target-zone {
+        background:
+          linear-gradient(90deg, transparent, rgba(138, 107, 49, 0.32), transparent),
+          rgba(255, 255, 255, 0.76);
+        border-color: rgba(138, 107, 49, 0.74);
+      }
+
+      .title,
+      .title2 {
+        position: absolute;
+        left: 50%;
+        z-index: 1;
+        width: min(92vw, 76rem);
+        margin: 0;
+        color: color-mix(in srgb, var(--ink) 88%, transparent);
+        font-family:
+          "Cormorant Garamond", Georgia, "Times New Roman", serif;
+        font-weight: 700;
+        letter-spacing: 0;
+        line-height: 0.84;
+        text-align: center;
+        text-transform: uppercase;
+        text-shadow: 0 0.08em 0.16em var(--shadow);
+        transform: translateX(-50%);
+        transition: color 420ms ease;
       }
 
       .title {
-        position: fixed;
-        left: 50%;
-        top: 105px;
-        z-index: 1;
-        width: min(92vw, 76rem);
-        margin: 0;
-        color: rgba(245, 241, 232, 0.92);
-        font-family:
-          "Cormorant Garamond", Georgia, "Times New Roman", serif;
-        font-size: clamp(4rem, 8vw, 10.5rem);
-        font-weight: 700;
-        letter-spacing: 0;
-        line-height: 0.84;
-        text-align: center;
-        text-transform: uppercase;
-        text-shadow:
-          0 0.08em 0.14em rgba(0, 0, 0, 0.46),
-          0 0 2.5rem rgba(245, 241, 232, 0.09);
-        transform: translateX(-50%);
-        pointer-events: none;
-      }
-          .title2 {
-        position: fixed;
-        left: 50%;
-        top: clamp(2rem, 7vh, 4.8rem);
-        z-index: 1;
-        width: min(92vw, 76rem);
-        margin: 0;
-        color: rgba(245, 241, 232, 0.92);
-        font-family:
-          "Cormorant Garamond", Georgia, "Times New Roman", serif;
-        font-size: clamp(4rem, 2vw, 10.5rem);
-        font-weight: 700;
-        letter-spacing: 0;
-        line-height: 0.84;
-        text-align: center;
-        text-transform: uppercase;
-        text-shadow:
-          0 0.08em 0.14em rgba(0, 0, 0, 0.46),
-          0 0 2.5rem rgba(245, 241, 232, 0.09);
-        transform: translateX(-50%);
-        pointer-events: none;
+        top: 22.1rem;
+        font-size: 8.4rem;
       }
 
-      .hint {
-        position: fixed;
-        left: clamp(1rem, 3vw, 2rem);
-        bottom: clamp(1rem, 3vw, 2rem);
-        z-index: 3;
-        max-width: 22rem;
-        margin: 0;
-        color: rgba(245, 241, 232, 0.72);
-        font-size: 0.95rem;
-        line-height: 1.45;
+      .title2 {
+        top: 18.6rem;
+        font-size: 3.2rem;
+      }
+
+      .bottom-mark {
+        position: absolute;
+        left: 50%;
+        bottom: 4rem;
+        z-index: 1;
+        width: min(86vw, 42rem);
+        color: color-mix(in srgb, var(--ink) 58%, transparent);
+        font-family:
+          "Cormorant Garamond", Georgia, "Times New Roman", serif;
+        font-size: 3.6rem;
+        font-weight: 700;
+        letter-spacing: 0;
+        line-height: 0.9;
+        text-align: center;
+        text-transform: uppercase;
+        transform: translateX(-50%);
         pointer-events: none;
       }
 
       .rock {
+        --rock-x: 0px;
+        --rock-y: 0px;
+        --rock-scale: 1;
+
         position: absolute;
         left: 0;
         top: 0;
-        z-index: 2;
+        z-index: 6;
         width: clamp(220px, 42vmin, 520px);
         height: auto;
         cursor: grab;
         touch-action: none;
         -webkit-user-drag: none;
         user-drag: none;
-        filter: drop-shadow(0 2.1rem 2.2rem rgba(0, 0, 0, 0.5));
-        transform: translate3d(var(--x, 0px), var(--y, 0px), 0) scale(1);
+        filter: drop-shadow(0 2.1rem 2.2rem var(--shadow));
+        transform: translate3d(var(--rock-x), var(--rock-y), 0) scale(var(--rock-scale));
         transform-origin: center;
-        transition: filter 160ms ease;
+        transition:
+          filter 160ms ease,
+          opacity 240ms ease;
         will-change: transform;
       }
 
       .rock.is-dragging {
+        --rock-scale: 1.025;
         cursor: grabbing;
-        filter: drop-shadow(0 2.7rem 2.6rem rgba(0, 0, 0, 0.62));
-        transform: translate3d(var(--x, 0px), var(--y, 0px), 0) scale(1.025);
+        filter: drop-shadow(0 2.7rem 2.6rem var(--shadow));
       }
 
       .rock.is-falling {
-        filter: drop-shadow(0 3rem 2.8rem rgba(0, 0, 0, 0.7));
-        transform: translate3d(var(--x, 0px), var(--y, 0px), 0) scale(0.985);
+        --rock-scale: 0.985;
+        filter: drop-shadow(0 3rem 2.8rem var(--shadow));
+      }
+
+      body.state-won .rock {
+        --rock-scale: 1;
+        cursor: default;
+        filter: drop-shadow(0 1.6rem 1.8rem rgba(43, 34, 17, 0.24));
       }
 
       .hand-cursor {
@@ -141,7 +227,7 @@
         position: fixed;
         left: 0;
         top: 0;
-        z-index: 10;
+        z-index: 20;
         display: none;
         width: var(--cursor-width);
         height: var(--cursor-height);
@@ -149,7 +235,7 @@
         background-position: center top;
         background-repeat: no-repeat;
         background-size: contain;
-        filter: drop-shadow(0 1rem 1.2rem rgba(0, 0, 0, 0.52));
+        filter: drop-shadow(0 1rem 1.2rem rgba(0, 0, 0, 0.48));
         opacity: 0;
         pointer-events: none;
         transform: translate3d(
@@ -179,13 +265,116 @@
         --hotspot-y: 216px;
 
         background-image: url("assets/cursor-grabbing.png");
-        filter: drop-shadow(0 1.25rem 1.35rem rgba(0, 0, 0, 0.66));
+        filter: drop-shadow(0 1.25rem 1.35rem rgba(0, 0, 0, 0.62));
         transform: translate3d(
             calc(var(--cursor-x) - var(--hotspot-x)),
             calc(var(--cursor-y) - var(--hotspot-y)),
             0
           )
           scale(1.04);
+      }
+
+      .settings-toggle {
+        position: fixed;
+        right: 1rem;
+        top: 1rem;
+        z-index: 30;
+        display: grid;
+        width: 2.75rem;
+        height: 2.75rem;
+        place-items: center;
+        border: 1px solid var(--line);
+        border-radius: 50%;
+        background: var(--panel);
+        color: var(--ink);
+        cursor: pointer;
+        box-shadow: 0 0.8rem 1.4rem color-mix(in srgb, var(--shadow) 38%, transparent);
+        backdrop-filter: blur(12px);
+        transition:
+          background 220ms ease,
+          border-color 220ms ease,
+          transform 180ms ease;
+      }
+
+      .settings-toggle:hover {
+        transform: translateY(-1px);
+      }
+
+      .settings-toggle[aria-expanded="true"] {
+        border-color: var(--target-line);
+      }
+
+      .settings-panel {
+        position: fixed;
+        right: 1rem;
+        top: 4.25rem;
+        z-index: 29;
+        width: min(19rem, calc(100vw - 2rem));
+        padding: 1rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--ink);
+        box-shadow: 0 1rem 2rem color-mix(in srgb, var(--shadow) 38%, transparent);
+        opacity: 0;
+        pointer-events: none;
+        transform: translateY(-0.6rem);
+        transition:
+          opacity 180ms ease,
+          transform 180ms ease;
+        backdrop-filter: blur(14px);
+      }
+
+      .settings-panel.is-open {
+        opacity: 1;
+        pointer-events: auto;
+        transform: translateY(0);
+      }
+
+      .control {
+        display: grid;
+        gap: 0.45rem;
+      }
+
+      .control + .control {
+        margin-top: 0.9rem;
+      }
+
+      .control-label {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        color: var(--ink);
+        font-size: 0.92rem;
+      }
+
+      .control-value {
+        color: var(--muted);
+        font-variant-numeric: tabular-nums;
+      }
+
+      input[type="range"] {
+        width: 100%;
+        accent-color: var(--accent);
+      }
+
+      .status {
+        position: fixed;
+        left: 1rem;
+        bottom: 1rem;
+        z-index: 30;
+        min-width: 7.5rem;
+        padding: 0.65rem 0.85rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--ink);
+        font-size: 0.88rem;
+        font-weight: 600;
+        letter-spacing: 0;
+        box-shadow: 0 0.8rem 1.4rem color-mix(in srgb, var(--shadow) 32%, transparent);
+        backdrop-filter: blur(12px);
       }
 
       @media (pointer: fine) {
@@ -202,17 +391,27 @@
         }
       }
 
-      @media (max-width: 640px) {
+      @media (max-width: 760px) {
+        .target-zone {
+          top: 1rem;
+          height: 12.5rem;
+          font-size: 1.5rem;
+        }
+
         .title {
-          top: clamp(1.25rem, 8vh, 3rem);
+          top: 16rem;
           width: min(94vw, 28rem);
-          font-size: clamp(3.1rem, 19vw, 5.5rem);
+          font-size: 4.4rem;
           line-height: 0.88;
         }
 
-        .hint {
-          max-width: calc(100vw - 2rem);
-          font-size: 0.88rem;
+        .title2 {
+          top: 13.8rem;
+          font-size: 2.1rem;
+        }
+
+        .bottom-mark {
+          font-size: 2.8rem;
         }
 
         .rock {
@@ -232,11 +431,53 @@
       }
     </style>
   </head>
-  <body>
-    <main class="stage" aria-label="Рабочая область для перетаскивания камня">
-      <h2 class="title2">Миниатюра</h2>
-      <h1 class="title">Сизиф</h1>
-      <p class="hint">Зажмите ЛКМ на камне и перетащите его.</p>
+  <body class="state-intro theme-light">
+    <button
+      class="settings-toggle"
+      type="button"
+      aria-controls="settings-panel"
+      aria-expanded="false"
+      aria-label="Параметры"
+      title="Параметры"
+    >
+      ⚙
+    </button>
+
+    <aside class="settings-panel" id="settings-panel" aria-hidden="true">
+      <label class="control">
+        <span class="control-label">
+          <span>Масса</span>
+          <output class="control-value" data-output="mass">4</output>
+        </span>
+        <input name="mass" type="range" min="1" max="10" step="1" value="4" />
+      </label>
+
+      <label class="control">
+        <span class="control-label">
+          <span>Тяготение</span>
+          <output class="control-value" data-output="gravity">1.0</output>
+        </span>
+        <input name="gravity" type="range" min="0.4" max="2" step="0.1" value="1" />
+      </label>
+
+      <label class="control">
+        <span class="control-label">
+          <span>Сила</span>
+          <output class="control-value" data-output="handForce">5</output>
+        </span>
+        <input name="handForce" type="range" min="1" max="10" step="1" value="5" />
+      </label>
+    </aside>
+
+    <main class="world" aria-label="Сцена Сизифа">
+      <section class="summit" aria-hidden="true">
+        <div class="target-zone">Вершина</div>
+        <h2 class="title2">Миниатюра</h2>
+        <h1 class="title">Сизиф</h1>
+      </section>
+
+      <div class="bottom-mark" aria-hidden="true">Низ</div>
+
       <img
         class="rock"
         src="assets/rock.png"
@@ -246,35 +487,116 @@
       <div class="hand-cursor" aria-hidden="true"></div>
     </main>
 
+    <div class="status" aria-live="polite">Свет</div>
+
     <script>
+      const body = document.body;
+      const world = document.querySelector(".world");
       const rock = document.querySelector(".rock");
       const handCursor = document.querySelector(".hand-cursor");
+      const targetZone = document.querySelector(".target-zone");
+      const settingsToggle = document.querySelector(".settings-toggle");
+      const settingsPanel = document.querySelector(".settings-panel");
+      const statusText = document.querySelector(".status");
       const finePointer = window.matchMedia("(pointer: fine)");
-      const DROP_MIN_MS = 200;
-      const DROP_MAX_MS = 1500;
-      const FALL_DURATION_MS = 850;
-      const ROCK_VISIBLE_BOTTOM_INSET_RATIO = 392 / 2400;
 
-      const position = {
+      const PHASES = {
+        INTRO: "intro",
+        FALLING: "fallingToBottom",
+        PLAY: "play",
+        WON: "won",
+      };
+
+      const GRAVITY_PX = 1260;
+      const FLOOR_INSET = 28;
+      const LIFT_SCALE = 0.42;
+      const FRICTION_PER_SECOND = 0.92;
+      const MAX_FRAME_SECONDS = 0.032;
+
+      const params = {
+        mass: 4,
+        gravity: 1,
+        handForce: 5,
+      };
+
+      const bounds = {
+        worldWidth: 0,
+        worldHeight: 0,
+        rockWidth: 0,
+        rockHeight: 0,
+        maxX: 0,
+        maxY: 0,
+      };
+
+      const motion = {
+        phase: PHASES.INTRO,
         x: 0,
         y: 0,
+        vx: 0,
+        vy: 0,
         grabX: 0,
         grabY: 0,
         dragging: false,
-        dropTimerId: null,
         activePointerId: null,
-        falling: false,
-        fallAnimationId: null,
-      };
-
-      const cursorState = {
-        overRock: false,
-        clientX: null,
-        clientY: null,
+        holdTimerId: null,
+        animationId: null,
+        lastFrameAt: null,
+        lastPointerX: 0,
+        lastPointerY: 0,
+        lastPointerAt: 0,
+        pointerVx: 0,
+        pointerVy: 0,
       };
 
       function clamp(value, min, max) {
         return Math.min(Math.max(value, min), max);
+      }
+
+      function setStatus(text) {
+        statusText.textContent = text;
+      }
+
+      function setTheme(theme) {
+        body.classList.toggle("theme-light", theme === "light");
+        body.classList.toggle("theme-dark", theme === "dark");
+      }
+
+      function setPhase(phase) {
+        motion.phase = phase;
+        body.classList.remove(
+          "state-intro",
+          "state-fallingToBottom",
+          "state-play",
+          "state-won"
+        );
+        body.classList.add(`state-${phase}`);
+      }
+
+      function maxHoldMs() {
+        return clamp(
+          (3000 * params.handForce) / (params.mass * params.gravity * 5),
+          500,
+          3000
+        );
+      }
+
+      function updateControlOutputs() {
+        document.querySelector('[data-output="mass"]').textContent = params.mass.toFixed(0);
+        document.querySelector('[data-output="gravity"]').textContent =
+          params.gravity.toFixed(1);
+        document.querySelector('[data-output="handForce"]').textContent =
+          params.handForce.toFixed(0);
+      }
+
+      function readControls() {
+        const mass = document.querySelector('input[name="mass"]');
+        const gravity = document.querySelector('input[name="gravity"]');
+        const handForce = document.querySelector('input[name="handForce"]');
+
+        params.mass = Number(mass.value);
+        params.gravity = Number(gravity.value);
+        params.handForce = Number(handForce.value);
+        updateControlOutputs();
       }
 
       function canShowPhotoCursor(event) {
@@ -286,8 +608,6 @@
           return;
         }
 
-        cursorState.clientX = event.clientX;
-        cursorState.clientY = event.clientY;
         handCursor.style.setProperty("--cursor-x", `${event.clientX}px`);
         handCursor.style.setProperty("--cursor-y", `${event.clientY}px`);
       }
@@ -309,246 +629,372 @@
         handCursor.classList.toggle("is-grabbing", isGrabbing);
       }
 
-      function randomDropDelay() {
-        return DROP_MIN_MS + Math.random() * (DROP_MAX_MS - DROP_MIN_MS);
-      }
-
-      function clearDropTimer() {
-        if (position.dropTimerId === null) {
-          return;
-        }
-
-        window.clearTimeout(position.dropTimerId);
-        position.dropTimerId = null;
-      }
-
-      function scheduleDropTimer() {
-        clearDropTimer();
-        position.dropTimerId = window.setTimeout(forceDropRock, randomDropDelay());
-      }
-
-      function cancelFallAnimation() {
-        if (position.fallAnimationId === null) {
-          return;
-        }
-
-        window.cancelAnimationFrame(position.fallAnimationId);
-        position.fallAnimationId = null;
-      }
-
-      function isPointOnRock(clientX, clientY) {
-        const rect = rock.getBoundingClientRect();
-        return (
-          clientX >= rect.left &&
-          clientX <= rect.right &&
-          clientY >= rect.top &&
-          clientY <= rect.bottom
-        );
-      }
-
-      function maxPosition() {
-        const rect = rock.getBoundingClientRect();
-        const visibleBottomInset = rect.height * ROCK_VISIBLE_BOTTOM_INSET_RATIO;
-        return {
-          x: Math.max(0, window.innerWidth - rect.width),
-          y: Math.max(0, window.innerHeight - rect.height + visibleBottomInset),
-        };
+      function updateBounds() {
+        const rockRect = rock.getBoundingClientRect();
+        bounds.worldWidth = window.innerWidth;
+        bounds.worldHeight = world.offsetHeight;
+        bounds.rockWidth = rockRect.width;
+        bounds.rockHeight = rockRect.height;
+        bounds.maxX = Math.max(0, bounds.worldWidth - bounds.rockWidth);
+        bounds.maxY = Math.max(0, bounds.worldHeight - bounds.rockHeight - FLOOR_INSET);
       }
 
       function setPosition(x, y) {
-        const max = maxPosition();
-        position.x = clamp(x, 0, max.x);
-        position.y = clamp(y, 0, max.y);
-        rock.style.setProperty("--x", `${position.x}px`);
-        rock.style.setProperty("--y", `${position.y}px`);
+        updateBounds();
+        motion.x = clamp(x, 0, bounds.maxX);
+        motion.y = clamp(y, 0, bounds.maxY);
+        rock.style.setProperty("--rock-x", `${motion.x}px`);
+        rock.style.setProperty("--rock-y", `${motion.y}px`);
       }
 
-      function centerRock() {
-        const rect = rock.getBoundingClientRect();
+      function centerIntroRock() {
+        updateBounds();
         setPosition(
-          (window.innerWidth - rect.width) / 2,
-          (window.innerHeight - rect.height) / 2
+          (bounds.worldWidth - bounds.rockWidth) / 2,
+          Math.max(0, window.innerHeight * 0.55 - bounds.rockHeight / 2)
+        );
+        window.scrollTo(0, 0);
+      }
+
+      function followRock(instant = false) {
+        const maxScroll = Math.max(0, bounds.worldHeight - window.innerHeight);
+        const targetScroll = clamp(
+          motion.y + bounds.rockHeight * 0.5 - window.innerHeight * 0.55,
+          0,
+          maxScroll
+        );
+
+        if (instant) {
+          window.scrollTo(0, targetScroll);
+          return;
+        }
+
+        const current = window.scrollY;
+        window.scrollTo(0, current + (targetScroll - current) * 0.34);
+      }
+
+      function startLoop() {
+        if (motion.animationId !== null) {
+          return;
+        }
+
+        motion.lastFrameAt = performance.now();
+        motion.animationId = window.requestAnimationFrame(tick);
+      }
+
+      function stopLoop() {
+        if (motion.animationId === null) {
+          return;
+        }
+
+        window.cancelAnimationFrame(motion.animationId);
+        motion.animationId = null;
+        motion.lastFrameAt = null;
+      }
+
+      function clearHoldTimer() {
+        if (motion.holdTimerId === null) {
+          return;
+        }
+
+        window.clearTimeout(motion.holdTimerId);
+        motion.holdTimerId = null;
+      }
+
+      function scheduleHoldLimit() {
+        clearHoldTimer();
+        motion.holdTimerId = window.setTimeout(forceReleaseRock, maxHoldMs());
+      }
+
+      function targetDocumentRect() {
+        const rect = targetZone.getBoundingClientRect();
+        return {
+          left: rect.left + window.scrollX,
+          top: rect.top + window.scrollY,
+          right: rect.right + window.scrollX,
+          bottom: rect.bottom + window.scrollY,
+        };
+      }
+
+      function rockCenterInTarget() {
+        const target = targetDocumentRect();
+        const centerX = motion.x + bounds.rockWidth / 2;
+        const centerY = motion.y + bounds.rockHeight / 2;
+
+        return (
+          centerX >= target.left &&
+          centerX <= target.right &&
+          centerY >= target.top &&
+          centerY <= target.bottom
         );
       }
 
-      function updateCursorAfterForcedRelease() {
+      function finishIfInTarget() {
+        if (motion.phase !== PHASES.PLAY || !rockCenterInTarget()) {
+          return false;
+        }
+
+        const target = targetDocumentRect();
+        setPhase(PHASES.WON);
+        setTheme("light");
+        setStatus("Вершина");
+        clearHoldTimer();
+        stopLoop();
+        motion.dragging = false;
+        motion.activePointerId = null;
+        motion.vx = 0;
+        motion.vy = 0;
+        rock.classList.remove("is-dragging", "is-falling");
         setGrabbingCursor(false);
-
-        if (
-          cursorState.clientX === null ||
-          cursorState.clientY === null ||
-          !finePointer.matches
-        ) {
-          hideHandCursor();
-          cursorState.overRock = false;
-          return;
-        }
-
-        cursorState.overRock = isPointOnRock(cursorState.clientX, cursorState.clientY);
-
-        if (cursorState.overRock) {
-          handCursor.classList.add("is-visible");
-        } else {
-          hideHandCursor();
-        }
+        setPosition(
+          target.left + (target.right - target.left - bounds.rockWidth) / 2,
+          target.top + (target.bottom - target.top - bounds.rockHeight) / 2
+        );
+        followRock(true);
+        return true;
       }
 
-      function startRockFall() {
-        const startY = position.y;
-        const endY = maxPosition().y;
+      function enterPlayPhase() {
+        setPhase(PHASES.PLAY);
+        setTheme("dark");
+        setStatus("Подъём");
+        motion.vx = 0;
+        motion.vy = 0;
+        setPosition(motion.x, bounds.maxY);
+        rock.classList.remove("is-falling");
+        followRock(true);
+      }
 
-        if (Math.abs(endY - startY) < 1) {
-          position.falling = false;
-          rock.classList.remove("is-falling");
+      function startFirstFall() {
+        if (motion.phase !== PHASES.INTRO) {
           return;
         }
 
-        position.falling = true;
+        setPhase(PHASES.FALLING);
+        setTheme("light");
+        setStatus("Падение");
+        motion.vx = 0;
+        motion.vy = 120;
         rock.classList.add("is-falling");
+        startLoop();
+      }
 
-        const startedAt = performance.now();
+      function applyPhysics(deltaSeconds) {
+        if (motion.dragging || motion.phase === PHASES.WON) {
+          return;
+        }
 
-        function step(now) {
-          const progress = clamp((now - startedAt) / FALL_DURATION_MS, 0, 1);
-          const eased = progress * progress * progress;
+        motion.vy += GRAVITY_PX * params.gravity * deltaSeconds;
+        motion.x += motion.vx * deltaSeconds;
+        motion.y += motion.vy * deltaSeconds;
 
-          setPosition(position.x, startY + (endY - startY) * eased);
+        const friction = Math.pow(FRICTION_PER_SECOND, deltaSeconds);
+        motion.vx *= friction;
 
-          if (progress < 1) {
-            position.fallAnimationId = window.requestAnimationFrame(step);
+        if (motion.x <= 0 || motion.x >= bounds.maxX) {
+          motion.vx *= -0.24;
+        }
+
+        if (motion.y >= bounds.maxY) {
+          motion.y = bounds.maxY;
+          motion.vy = 0;
+
+          if (motion.phase === PHASES.FALLING) {
+            enterPlayPhase();
             return;
           }
-
-          position.fallAnimationId = null;
-          position.falling = false;
-          rock.classList.remove("is-falling");
-          setPosition(position.x, endY);
         }
 
-        cancelFallAnimation();
-        position.fallAnimationId = window.requestAnimationFrame(step);
+        if (motion.y <= 0) {
+          motion.y = 0;
+          motion.vy = Math.max(0, motion.vy * -0.18);
+        }
+
+        setPosition(motion.x, motion.y);
       }
 
-      function forceDropRock() {
-        position.dropTimerId = null;
+      function tick(now) {
+        const deltaSeconds = clamp(
+          (now - (motion.lastFrameAt || now)) / 1000,
+          0,
+          MAX_FRAME_SECONDS
+        );
+        motion.lastFrameAt = now;
 
-        if (!position.dragging) {
-          return;
+        updateBounds();
+
+        if (motion.phase === PHASES.FALLING || motion.phase === PHASES.PLAY) {
+          applyPhysics(deltaSeconds);
+          followRock();
         }
 
-        const pointerId = position.activePointerId;
+        if (motion.phase !== PHASES.WON) {
+          motion.animationId = window.requestAnimationFrame(tick);
+        } else {
+          motion.animationId = null;
+        }
+      }
 
-        position.dragging = false;
-        position.activePointerId = null;
-        rock.classList.remove("is-dragging");
+      function recordPointerVelocity(event) {
+        const now = performance.now();
 
+        if (motion.lastPointerAt > 0) {
+          const deltaSeconds = Math.max((now - motion.lastPointerAt) / 1000, 0.001);
+          motion.pointerVx = (event.clientX - motion.lastPointerX) / deltaSeconds;
+          motion.pointerVy = (event.clientY - motion.lastPointerY) / deltaSeconds;
+        }
+
+        motion.lastPointerX = event.clientX;
+        motion.lastPointerY = event.clientY;
+        motion.lastPointerAt = now;
+      }
+
+      function releasePointerCapture(pointerId) {
         if (pointerId !== null && rock.hasPointerCapture(pointerId)) {
           rock.releasePointerCapture(pointerId);
         }
-
-        updateCursorAfterForcedRelease();
-        startRockFall();
       }
 
-      function startDrag(event) {
-        if (position.falling) {
+      function applyReleaseImpulse() {
+        const strength = params.handForce / params.mass;
+        const liftBoost = Math.max(0, -motion.pointerVy) * strength * LIFT_SCALE;
+        const horizontalBoost = motion.pointerVx * strength * 0.18;
+
+        motion.vx = clamp(horizontalBoost, -900, 900);
+        motion.vy = clamp(motion.pointerVy * 0.18 - liftBoost, -1800, 900);
+      }
+
+      function forceReleaseRock() {
+        if (!motion.dragging) {
           return;
         }
 
+        const pointerId = motion.activePointerId;
+        motion.dragging = false;
+        motion.activePointerId = null;
+        motion.holdTimerId = null;
+        rock.classList.remove("is-dragging");
+        setGrabbingCursor(false);
+        releasePointerCapture(pointerId);
+
+        if (finishIfInTarget()) {
+          return;
+        }
+
+        applyReleaseImpulse();
+        rock.classList.add("is-falling");
+        startLoop();
+      }
+
+      function startDrag(event) {
         if (event.pointerType === "mouse" && event.button !== 0) {
           return;
         }
 
+        if (motion.phase === PHASES.INTRO) {
+          event.preventDefault();
+          showHandCursor(event);
+          startFirstFall();
+          return;
+        }
+
+        if (motion.phase !== PHASES.PLAY) {
+          return;
+        }
+
         event.preventDefault();
-        cancelFallAnimation();
-        rock.classList.remove("is-falling");
+        updateBounds();
         const rect = rock.getBoundingClientRect();
-        position.dragging = true;
-        position.activePointerId = event.pointerId;
-        cursorState.overRock = true;
-        cursorState.clientX = event.clientX;
-        cursorState.clientY = event.clientY;
-        position.grabX = event.clientX - rect.left;
-        position.grabY = event.clientY - rect.top;
+        motion.dragging = true;
+        motion.activePointerId = event.pointerId;
+        motion.grabX = event.clientX - rect.left;
+        motion.grabY = event.clientY - rect.top;
+        motion.pointerVx = 0;
+        motion.pointerVy = 0;
+        motion.lastPointerAt = 0;
+        recordPointerVelocity(event);
         showHandCursor(event);
         setGrabbingCursor(true);
+        rock.classList.remove("is-falling");
         rock.classList.add("is-dragging");
         rock.setPointerCapture(event.pointerId);
-        scheduleDropTimer();
+        scheduleHoldLimit();
+        startLoop();
       }
 
       function moveDrag(event) {
-        if (cursorState.overRock || position.dragging) {
-          moveHandCursor(event);
-        }
+        moveHandCursor(event);
 
-        if (!position.dragging || position.falling) {
+        if (!motion.dragging || motion.phase !== PHASES.PLAY) {
           return;
         }
 
         event.preventDefault();
-        setPosition(event.clientX - position.grabX, event.clientY - position.grabY);
+        recordPointerVelocity(event);
+        setPosition(
+          event.clientX + window.scrollX - motion.grabX,
+          event.clientY + window.scrollY - motion.grabY
+        );
+        followRock();
       }
 
       function stopDrag(event) {
-        if (!position.dragging) {
+        if (!motion.dragging) {
           return;
         }
 
-        clearDropTimer();
-        position.dragging = false;
-        position.activePointerId = null;
+        clearHoldTimer();
+        motion.dragging = false;
+        motion.activePointerId = null;
         rock.classList.remove("is-dragging");
         setGrabbingCursor(false);
+        releasePointerCapture(event.pointerId);
+        recordPointerVelocity(event);
 
-        if (rock.hasPointerCapture(event.pointerId)) {
-          rock.releasePointerCapture(event.pointerId);
+        if (finishIfInTarget()) {
+          return;
         }
 
-        cursorState.overRock = canShowPhotoCursor(event)
-          ? isPointOnRock(event.clientX, event.clientY)
-          : false;
-
-        if (cursorState.overRock) {
-          showHandCursor(event);
-        } else {
-          hideHandCursor();
-        }
+        applyReleaseImpulse();
+        rock.classList.add("is-falling");
+        startLoop();
       }
 
       function enterRock(event) {
-        if (!canShowPhotoCursor(event)) {
+        if (motion.phase === PHASES.WON) {
           return;
         }
 
-        cursorState.overRock = true;
         showHandCursor(event);
-        setGrabbingCursor(position.dragging);
       }
 
-      function leaveRock(event) {
-        if (!canShowPhotoCursor(event)) {
-          return;
-        }
-
-        cursorState.overRock = false;
-
-        if (!position.dragging) {
+      function leaveRock() {
+        if (!motion.dragging) {
           hideHandCursor();
         }
       }
 
       function cancelDragAndCursor() {
-        clearDropTimer();
-        cancelFallAnimation();
-        position.dragging = false;
-        position.activePointerId = null;
-        position.falling = false;
-        cursorState.overRock = false;
-        rock.classList.remove("is-dragging", "is-falling");
+        clearHoldTimer();
+        motion.dragging = false;
+        motion.activePointerId = null;
+        rock.classList.remove("is-dragging");
+        setGrabbingCursor(false);
         hideHandCursor();
       }
 
+      function toggleSettings() {
+        const isOpen = !settingsPanel.classList.contains("is-open");
+        settingsPanel.classList.toggle("is-open", isOpen);
+        settingsPanel.setAttribute("aria-hidden", String(!isOpen));
+        settingsToggle.setAttribute("aria-expanded", String(isOpen));
+      }
+
+      document.querySelectorAll('input[type="range"]').forEach((input) => {
+        input.addEventListener("input", readControls);
+      });
+
+      settingsToggle.addEventListener("click", toggleSettings);
       rock.addEventListener("pointerenter", enterRock);
       rock.addEventListener("pointerleave", leaveRock);
       rock.addEventListener("pointerdown", startDrag);
@@ -556,23 +1002,28 @@
       rock.addEventListener("pointerup", stopDrag);
       rock.addEventListener("pointercancel", stopDrag);
       rock.addEventListener("lostpointercapture", () => {
-        if (!position.dragging) {
-          return;
+        if (motion.dragging) {
+          forceReleaseRock();
         }
-
-        cancelDragAndCursor();
       });
       rock.addEventListener("dragstart", (event) => event.preventDefault());
       window.addEventListener("blur", cancelDragAndCursor);
-
       window.addEventListener("resize", () => {
-        setPosition(position.x, position.y);
+        updateBounds();
+        if (motion.phase === PHASES.INTRO) {
+          centerIntroRock();
+        } else {
+          setPosition(motion.x, motion.y);
+          followRock(true);
+        }
       });
 
+      readControls();
+
       if (rock.complete) {
-        centerRock();
+        centerIntroRock();
       } else {
-        rock.addEventListener("load", centerRock, { once: true });
+        rock.addEventListener("load", centerIntroRock, { once: true });
       }
     </script>
   </body>
