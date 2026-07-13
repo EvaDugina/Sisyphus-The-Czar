@@ -94,17 +94,15 @@
       .target-zone {
         position: absolute;
         left: 50%;
-        top: 1.25rem;
-        z-index: 4;
+        top: 13.5rem;
+        z-index: 0;
         display: grid;
         width: min(58rem, calc(100vw - 2rem));
-        height: clamp(14rem, 28svh, 17rem);
+        height: clamp(11rem, 21svh, 13.75rem);
         place-items: center;
-        border: 1px solid var(--target-line);
-        background:
-          linear-gradient(90deg, transparent, var(--target), transparent),
-          color-mix(in srgb, var(--surface) 72%, transparent);
-        color: var(--accent-strong);
+        border: 0;
+        background: transparent;
+        color: transparent;
         font-family:
           "Cormorant Garamond", Georgia, "Times New Roman", serif;
         font-size: 2.1rem;
@@ -112,25 +110,15 @@
         letter-spacing: 0;
         text-transform: uppercase;
         transform: translateX(-50%);
-        transition:
-          background 320ms ease,
-          border-color 320ms ease,
-          color 320ms ease,
-          opacity 320ms ease;
-      }
-
-      body.state-won .target-zone {
-        background:
-          linear-gradient(90deg, transparent, rgba(138, 107, 49, 0.32), transparent),
-          rgba(255, 255, 255, 0.76);
-        border-color: rgba(138, 107, 49, 0.74);
+        opacity: 0;
+        pointer-events: none;
       }
 
       .title,
       .title2 {
         position: absolute;
         left: 50%;
-        z-index: 1;
+        z-index: 2;
         width: min(92vw, 76rem);
         margin: 0;
         color: color-mix(in srgb, var(--ink) 88%, transparent);
@@ -147,32 +135,13 @@
       }
 
       .title {
-        top: 22.1rem;
+        top: 19rem;
         font-size: 8.4rem;
       }
 
       .title2 {
-        top: 18.6rem;
+        top: 15.5rem;
         font-size: 3.2rem;
-      }
-
-      .bottom-mark {
-        position: absolute;
-        left: 50%;
-        bottom: 4rem;
-        z-index: 1;
-        width: min(86vw, 42rem);
-        color: color-mix(in srgb, var(--ink) 58%, transparent);
-        font-family:
-          "Cormorant Garamond", Georgia, "Times New Roman", serif;
-        font-size: 3.6rem;
-        font-weight: 700;
-        letter-spacing: 0;
-        line-height: 0.9;
-        text-align: center;
-        text-transform: uppercase;
-        transform: translateX(-50%);
-        pointer-events: none;
       }
 
       .rock {
@@ -259,6 +228,12 @@
             0
           )
           scale(1);
+      }
+
+      .hand-cursor.is-alternate {
+        --hotspot-y: 216px;
+
+        background-image: url("assets/cursor-grabbing.png");
       }
 
       .hand-cursor.is-grabbing {
@@ -359,24 +334,6 @@
         accent-color: var(--accent);
       }
 
-      .status {
-        position: fixed;
-        left: 1rem;
-        bottom: 1rem;
-        z-index: 30;
-        min-width: 7.5rem;
-        padding: 0.65rem 0.85rem;
-        border: 1px solid var(--line);
-        border-radius: 8px;
-        background: var(--panel);
-        color: var(--ink);
-        font-size: 0.88rem;
-        font-weight: 600;
-        letter-spacing: 0;
-        box-shadow: 0 0.8rem 1.4rem color-mix(in srgb, var(--shadow) 32%, transparent);
-        backdrop-filter: blur(12px);
-      }
-
       @media (pointer: fine) {
         .rock {
           cursor: none;
@@ -393,25 +350,21 @@
 
       @media (max-width: 760px) {
         .target-zone {
-          top: 1rem;
-          height: 12.5rem;
+          top: 9.8rem;
+          height: 9.8rem;
           font-size: 1.5rem;
         }
 
         .title {
-          top: 16rem;
+          top: 13.2rem;
           width: min(94vw, 28rem);
           font-size: 4.4rem;
           line-height: 0.88;
         }
 
         .title2 {
-          top: 13.8rem;
+          top: 11.1rem;
           font-size: 2.1rem;
-        }
-
-        .bottom-mark {
-          font-size: 2.8rem;
         }
 
         .rock {
@@ -426,6 +379,10 @@
         }
 
         .hand-cursor.is-grabbing {
+          --hotspot-y: 168px;
+        }
+
+        .hand-cursor.is-alternate {
           --hotspot-y: 168px;
         }
       }
@@ -471,12 +428,10 @@
 
     <main class="world" aria-label="Сцена Сизифа">
       <section class="summit" aria-hidden="true">
-        <div class="target-zone">Вершина</div>
+        <div class="target-zone"></div>
         <h2 class="title2">Миниатюра</h2>
         <h1 class="title">Сизиф</h1>
       </section>
-
-      <div class="bottom-mark" aria-hidden="true">Низ</div>
 
       <img
         class="rock"
@@ -487,8 +442,6 @@
       <div class="hand-cursor" aria-hidden="true"></div>
     </main>
 
-    <div class="status" aria-live="polite">Свет</div>
-
     <script>
       const body = document.body;
       const world = document.querySelector(".world");
@@ -497,7 +450,6 @@
       const targetZone = document.querySelector(".target-zone");
       const settingsToggle = document.querySelector(".settings-toggle");
       const settingsPanel = document.querySelector(".settings-panel");
-      const statusText = document.querySelector(".status");
       const finePointer = window.matchMedia("(pointer: fine)");
 
       const PHASES = {
@@ -509,6 +461,7 @@
 
       const GRAVITY_PX = 1260;
       const FLOOR_INSET = 28;
+      const FIRST_FALL_DELAY_MS = 400;
       const LIFT_SCALE = 0.42;
       const FRICTION_PER_SECOND = 0.92;
       const MAX_FRAME_SECONDS = 0.032;
@@ -539,6 +492,7 @@
         dragging: false,
         activePointerId: null,
         holdTimerId: null,
+        firstFallTimerId: null,
         animationId: null,
         lastFrameAt: null,
         lastPointerX: 0,
@@ -546,14 +500,11 @@
         lastPointerAt: 0,
         pointerVx: 0,
         pointerVy: 0,
+        alternateHand: false,
       };
 
       function clamp(value, min, max) {
         return Math.min(Math.max(value, min), max);
-      }
-
-      function setStatus(text) {
-        statusText.textContent = text;
       }
 
       function setTheme(theme) {
@@ -629,6 +580,16 @@
         handCursor.classList.toggle("is-grabbing", isGrabbing);
       }
 
+      function toggleHandVariant() {
+        motion.alternateHand = !motion.alternateHand;
+        handCursor.classList.toggle("is-alternate", motion.alternateHand);
+      }
+
+      function setHandToGrab() {
+        motion.alternateHand = false;
+        handCursor.classList.remove("is-alternate", "is-grabbing");
+      }
+
       function updateBounds() {
         const rockRect = rock.getBoundingClientRect();
         bounds.worldWidth = window.innerWidth;
@@ -701,6 +662,15 @@
         motion.holdTimerId = null;
       }
 
+      function clearFirstFallTimer() {
+        if (motion.firstFallTimerId === null) {
+          return;
+        }
+
+        window.clearTimeout(motion.firstFallTimerId);
+        motion.firstFallTimerId = null;
+      }
+
       function scheduleHoldLimit() {
         clearHoldTimer();
         motion.holdTimerId = window.setTimeout(forceReleaseRock, maxHoldMs());
@@ -737,7 +707,6 @@
         const target = targetDocumentRect();
         setPhase(PHASES.WON);
         setTheme("light");
-        setStatus("Вершина");
         clearHoldTimer();
         stopLoop();
         motion.dragging = false;
@@ -757,7 +726,6 @@
       function enterPlayPhase() {
         setPhase(PHASES.PLAY);
         setTheme("dark");
-        setStatus("Подъём");
         motion.vx = 0;
         motion.vy = 0;
         setPosition(motion.x, bounds.maxY);
@@ -765,18 +733,28 @@
         followRock(true);
       }
 
-      function startFirstFall() {
+      function beginFirstFall() {
+        motion.firstFallTimerId = null;
         if (motion.phase !== PHASES.INTRO) {
           return;
         }
 
         setPhase(PHASES.FALLING);
         setTheme("light");
-        setStatus("Падение");
         motion.vx = 0;
         motion.vy = 120;
+        setHandToGrab();
         rock.classList.add("is-falling");
         startLoop();
+      }
+
+      function startFirstFall() {
+        if (motion.phase !== PHASES.INTRO || motion.firstFallTimerId !== null) {
+          return false;
+        }
+
+        motion.firstFallTimerId = window.setTimeout(beginFirstFall, FIRST_FALL_DELAY_MS);
+        return true;
       }
 
       function applyPhysics(deltaSeconds) {
@@ -882,6 +860,7 @@
         }
 
         applyReleaseImpulse();
+        setHandToGrab();
         rock.classList.add("is-falling");
         startLoop();
       }
@@ -893,6 +872,11 @@
 
         if (motion.phase === PHASES.INTRO) {
           event.preventDefault();
+          if (motion.firstFallTimerId !== null) {
+            return;
+          }
+
+          toggleHandVariant();
           showHandCursor(event);
           startFirstFall();
           return;
@@ -903,6 +887,7 @@
         }
 
         event.preventDefault();
+        toggleHandVariant();
         updateBounds();
         const rect = rock.getBoundingClientRect();
         motion.dragging = true;
@@ -956,6 +941,7 @@
         }
 
         applyReleaseImpulse();
+        setHandToGrab();
         rock.classList.add("is-falling");
         startLoop();
       }
@@ -976,10 +962,11 @@
 
       function cancelDragAndCursor() {
         clearHoldTimer();
+        clearFirstFallTimer();
         motion.dragging = false;
         motion.activePointerId = null;
         rock.classList.remove("is-dragging");
-        setGrabbingCursor(false);
+        setHandToGrab();
         hideHandCursor();
       }
 
