@@ -36,16 +36,16 @@ test("два браузера работают 10 минут без зависш
 
   const healthBefore = await (await request.get("/healthz")).json();
   await first.goto("/");
-  await first.locator(".settings-toggle").click();
-  await setRange(first, "gravity", 2);
-  await setRange(first, "bounce", 0);
-  await first.getByTestId("share-session").click();
   await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await first.locator(".settings-toggle").click();
+  await setRange(first, "gravity", 10);
+  await setRange(first, "bounce", 0);
 
   await second.goto(first.url());
   await second.locator(".settings-toggle").click();
   await expect(first.getByTestId("session-status")).toContainText("2");
   await first.locator(".settings-toggle").click();
+  await second.locator(".settings-toggle").click();
   await first.locator(".rock").click({ position: { x: 100, y: 100 } });
   await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
 

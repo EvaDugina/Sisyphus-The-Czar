@@ -26,6 +26,7 @@ COPY --chown=node:node index.html ./
 COPY --chown=node:node assets/ ./assets/
 COPY --chown=node:node server/ ./server/
 COPY --chown=node:node shared/ ./shared/
+RUN mkdir -p /app/data && chown node:node /app/data
 
 USER node
 EXPOSE 8080

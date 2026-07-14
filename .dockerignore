@@ -16,5 +16,6 @@ build/
 .cache/
 test-results/
 playwright-report/
+data/
 tests/
 npm-debug.log*

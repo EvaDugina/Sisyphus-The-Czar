@@ -7,6 +7,7 @@ const path = require("node:path");
 const express = require("express");
 const { WebSocketServer } = require("ws");
 const { SessionManager } = require("./session-manager");
+const { SessionStore } = require("./session-store");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 const MAX_WS_MESSAGE_BYTES = 64 * 1024;
@@ -198,6 +199,20 @@ function createService(options = {}) {
     ttlMs:
       options.ttlMs ??
       Number(process.env.SESSION_TTL_SECONDS || 86_400) * 1000,
+    emptyGraceMs:
+      options.emptyGraceMs ??
+      Number(process.env.EMPTY_SESSION_GRACE_SECONDS || 10) * 1000,
+    sessionStorePath: String(
+      options.sessionStorePath ?? process.env.SESSION_STORE_PATH ?? ""
+    ).trim(),
+    persistIntervalMs: Math.max(
+      100,
+      Number(
+        options.persistIntervalMs ??
+          process.env.SESSION_PERSIST_INTERVAL_MS ??
+          250
+      ) || 250
+    ),
     allowedOrigins: new Set(
       String(options.allowedOrigin ?? process.env.ALLOWED_ORIGIN ?? "")
         .split(",")
@@ -209,7 +224,17 @@ function createService(options = {}) {
   const log = options.logger || createLogger();
   const manager =
     options.manager ||
-    new SessionManager({ ttlMs: config.ttlMs, logger: log });
+    new SessionManager({
+      ttlMs: config.ttlMs,
+      emptyGraceMs: config.emptyGraceMs,
+      logger: log,
+    });
+  const sessionStore =
+    options.sessionStore ||
+    new SessionStore(config.sessionStorePath, { logger: log });
+  manager.restoreSessions(sessionStore.load());
+  const persistSessions = (force = false) =>
+    sessionStore.save(manager.serializeSessions(), { force });
   const createLimiter = new WindowRateLimiter(10, 60_000);
   const connectLimiter = new WindowRateLimiter(30, 60_000);
   const app = express();
@@ -225,6 +250,7 @@ function createService(options = {}) {
     response.json({
       status: "ok",
       sessions: manager.sessions.size,
+      sessionPersistence: sessionStore.enabled,
       memoryRssBytes: process.memoryUsage().rss,
     });
   });
@@ -247,6 +273,7 @@ function createService(options = {}) {
     }
 
     const session = manager.createSession(request.body || {});
+    persistSessions();
     response.status(201).json({
       sessionId: session.id,
       expiresAt: session.expiresAt,
@@ -280,6 +307,7 @@ function createService(options = {}) {
       response.status(403).json({ error: "invalid_leave_token" });
       return;
     }
+    persistSessions();
     response.status(204).end();
   });
 
@@ -437,6 +465,9 @@ function createService(options = {}) {
       websocket.ping();
     });
   }, HEARTBEAT_INTERVAL_MS);
+  const persistenceTimer = sessionStore.enabled
+    ? setInterval(() => persistSessions(), config.persistIntervalMs)
+    : null;
   const devAssetTimer = config.debug
     ? setInterval(() => {
         const nextFingerprint = devAssetFingerprint();
@@ -448,6 +479,7 @@ function createService(options = {}) {
     : null;
   tickTimer.unref();
   heartbeatTimer.unref();
+  persistenceTimer?.unref();
   devAssetTimer?.unref();
 
   async function start() {
@@ -463,21 +495,42 @@ function createService(options = {}) {
       host: config.host,
       port: typeof address === "object" && address ? address.port : config.port,
       debug: config.debug,
+      sessionPersistence: sessionStore.enabled,
     });
     return address;
   }
 
+  let closingPromise = null;
   async function close() {
-    clearInterval(tickTimer);
-    clearInterval(heartbeatTimer);
-    if (devAssetTimer) {
-      clearInterval(devAssetTimer);
+    if (closingPromise) {
+      return closingPromise;
     }
-    manager.close();
-    await new Promise((resolve) => server.close(resolve));
+    closingPromise = (async () => {
+      clearInterval(tickTimer);
+      clearInterval(heartbeatTimer);
+      if (persistenceTimer) {
+        clearInterval(persistenceTimer);
+      }
+      if (devAssetTimer) {
+        clearInterval(devAssetTimer);
+      }
+      persistSessions(true);
+      manager.close();
+      await new Promise((resolve) => server.close(resolve));
+    })();
+    return closingPromise;
   }
 
-  return { app, server, websocketServer, manager, config, start, close };
+  return {
+    app,
+    server,
+    websocketServer,
+    manager,
+    sessionStore,
+    config,
+    start,
+    close,
+  };
 }
 
 if (require.main === module) {

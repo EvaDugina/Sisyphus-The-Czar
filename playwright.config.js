@@ -20,6 +20,9 @@ module.exports = defineConfig({
       HOST: "127.0.0.1",
       DEBUG: "true",
       SESSION_TTL_SECONDS: "86400",
+      EMPTY_SESSION_GRACE_SECONDS: "2",
+      SESSION_STORE_PATH: "/tmp/sisyphus-smoke-sessions.json",
+      SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },
 });

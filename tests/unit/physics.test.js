@@ -9,6 +9,12 @@ test("масса поддерживает значения до 100", () => {
   assert.equal(Physics.sanitizePhysics({ mass: 101 }).mass, 100);
 });
 
+test("тяготение ограничивается диапазоном от 1 до 10", () => {
+  assert.equal(Physics.sanitizePhysics({ gravity: 0.4 }).gravity, 1);
+  assert.equal(Physics.sanitizePhysics({ gravity: 10 }).gravity, 10);
+  assert.equal(Physics.sanitizePhysics({ gravity: 11 }).gravity, 10);
+});
+
 test("первое падение получает серверный случайный импульс", () => {
   const state = Physics.sanitizeState({ phase: Physics.PHASES.INTRO, x: 500, y: 500 });
   const values = [0.9, 0.5];

@@ -2,6 +2,9 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
 const WebSocket = require("ws");
 const { createService } = require("../../server");
 const Physics = require("../../shared/physics");
@@ -55,6 +58,7 @@ test("два WebSocket-клиента делят состояние и пере�
     port: 0,
     host: "127.0.0.1",
     debug: true,
+    emptyGraceMs: 50,
     logger: () => {},
   });
   const address = await service.start();
@@ -160,12 +164,12 @@ test("два WebSocket-клиента делят состояние и пере�
       v: 1,
       type: "physics.update",
       seq: 3,
-      payload: { gravity: 1.7 },
+      payload: { gravity: 10 },
     })
   );
   const synced = await first.waitFor(
     "session.snapshot",
-    (payload) => payload.physics && payload.physics.gravity === 1.7
+    (payload) => payload.physics && payload.physics.gravity === 10
   );
   assert.equal(synced.payload.controllerId, "integration-client-b");
 
@@ -204,5 +208,82 @@ test("два WebSocket-клиента делят состояние и пере�
     }),
   });
   assert.equal(secondLeave.status, 204);
+  assert.equal(service.manager.sessions.has(sessionId), true);
+
+  await new Promise((resolve) => setTimeout(resolve, 60));
+  service.manager.tick();
   assert.equal(service.manager.sessions.has(sessionId), false);
+});
+
+test("сессия переживает restart сервиса с тем же хранилищем", async (context) => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sisyphus-restart-"));
+  const storePath = path.join(directory, "sessions.json");
+  const activeServices = new Set();
+  context.after(async () => {
+    for (const service of activeServices) {
+      await service.close();
+    }
+    fs.rmSync(directory, { recursive: true, force: true });
+  });
+
+  const firstService = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    sessionStorePath: storePath,
+    persistIntervalMs: 10,
+    logger: () => {},
+  });
+  activeServices.add(firstService);
+  const firstAddress = await firstService.start();
+  const created = await fetch(
+    `http://127.0.0.1:${firstAddress.port}/api/sessions`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        state: {
+          phase: Physics.PHASES.PLAY,
+          x: 321,
+          y: Physics.WORLD_HEIGHT,
+          vx: 0,
+          vy: 0,
+        },
+        physics: { mass: 77, gravity: 8, turbulence: 0 },
+        imprint: { x: 300, y: 700, toleranceX: 40, toleranceY: 30 },
+        trail: [[10, 20], [30, 40]],
+      }),
+    }
+  );
+  const { sessionId } = await created.json();
+  assert.equal(created.status, 201);
+
+  await firstService.close();
+  activeServices.delete(firstService);
+
+  const secondService = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    sessionStorePath: storePath,
+    logger: () => {},
+  });
+  activeServices.add(secondService);
+  const secondAddress = await secondService.start();
+  assert.equal(secondService.manager.sessions.has(sessionId), true);
+
+  const restored = connect(
+    `ws://127.0.0.1:${secondAddress.port}/realtime?session=${sessionId}&client=restart-client-001`
+  );
+  await restored.opened;
+  const snapshot = await restored.waitFor("session.snapshot");
+
+  assert.equal(snapshot.payload.phase, Physics.PHASES.PLAY);
+  assert.equal(snapshot.payload.x, 321);
+  assert.equal(snapshot.payload.y, Physics.WORLD_HEIGHT);
+  assert.equal(snapshot.payload.physics.mass, 77);
+  assert.equal(snapshot.payload.physics.gravity, 8);
+  assert.equal(snapshot.payload.imprint.x, 300);
+  assert.deepEqual(snapshot.payload.trail, [[10, 20], [30, 40]]);
+  restored.socket.close();
 });

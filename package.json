@@ -7,8 +7,8 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "nodemon --legacy-watch --watch server --watch shared --ext js --exec node server/index.js",
-    "lint": "node --check server/index.js && node --check server/session-manager.js && node --check shared/physics.js",
-    "test": "node --test tests/unit/physics.test.js tests/unit/session-manager.test.js tests/unit/server.test.js tests/integration/realtime.test.js",
+    "lint": "node --check server/index.js && node --check server/session-manager.js && node --check server/session-store.js && node --check shared/physics.js",
+    "test": "node --test tests/unit/physics.test.js tests/unit/session-manager.test.js tests/unit/session-store.test.js tests/unit/server.test.js tests/integration/realtime.test.js",
     "test:smoke": "playwright test tests/smoke",
     "test:soak": "playwright test --config=playwright.soak.config.js",
     "test:all": "npm run lint && npm test && npm run test:smoke",

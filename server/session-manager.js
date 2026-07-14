@@ -6,8 +6,10 @@ const Physics = require("../shared/physics");
 const SNAPSHOT_INTERVAL_MS = 1000 / 20;
 const DISCONNECT_GRACE_MS = 500;
 const DISCONNECTED_CLIENT_TTL_MS = 60_000;
+const DEFAULT_EMPTY_SESSION_GRACE_MS = 10_000;
 const MAX_TRAIL_POINTS = 1000;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
+const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -56,6 +58,8 @@ function sanitizeTrail(input) {
 class SessionManager {
   constructor(options = {}) {
     this.ttlMs = options.ttlMs || 24 * 60 * 60 * 1000;
+    this.emptyGraceMs =
+      options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS;
     this.now = options.now || Date.now;
     this.random = options.random || Math.random;
     this.logger = options.logger || (() => {});
@@ -84,6 +88,7 @@ class SessionManager {
       createdAt: now,
       lastActivityAt: now,
       expiresAt: now + this.ttlMs,
+      emptyDeleteAt: null,
       lastTickAt: now,
       accumulator: 0,
       nextSnapshotAt: now,
@@ -99,15 +104,133 @@ class SessionManager {
     return session;
   }
 
+  serializeSessions() {
+    return [...this.sessions.values()].map((session) => ({
+      id: session.id,
+      state: { ...session.state },
+      physics: { ...session.physics },
+      trail: session.trail.map((point) => [...point]),
+      imprint: session.imprint ? { ...session.imprint } : null,
+      revision: session.revision,
+      createdAt: session.createdAt,
+      lastActivityAt: session.lastActivityAt,
+      expiresAt: session.expiresAt,
+      emptyDeleteAt: session.emptyDeleteAt,
+      lastPointer: { ...session.lastPointer },
+    }));
+  }
+
+  restoreSessions(records) {
+    if (!Array.isArray(records)) {
+      return 0;
+    }
+
+    const now = this.now();
+    let restored = 0;
+    records.forEach((record) => {
+      if (
+        !record ||
+        typeof record !== "object" ||
+        !SESSION_ID_PATTERN.test(String(record.id || "")) ||
+        this.sessions.has(record.id)
+      ) {
+        return;
+      }
+
+      const expiresAt = finite(record.expiresAt, now + this.ttlMs);
+      const emptyDeleteAt = record.emptyDeleteAt === null
+        ? null
+        : finite(record.emptyDeleteAt, null);
+      if (
+        expiresAt <= now ||
+        (emptyDeleteAt !== null && emptyDeleteAt <= now)
+      ) {
+        return;
+      }
+
+      const state = Physics.sanitizeState(record.state);
+      const physics = Physics.sanitizePhysics(record.physics);
+      const lastPointer = {
+        vx: finite(record.lastPointer?.vx, 0),
+        vy: finite(record.lastPointer?.vy, 0),
+      };
+
+      if (record.state?.dragging) {
+        if (state.phase === Physics.PHASES.INTRO) {
+          Physics.beginFirstFall(state, this.random);
+        } else if (state.phase === Physics.PHASES.PLAY) {
+          Physics.applyReleaseImpulse(
+            state,
+            physics,
+            lastPointer.vx,
+            lastPointer.vy
+          );
+        }
+      }
+      if (state.phase === Physics.PHASES.WON) {
+        state.vx = 0;
+        state.vy = 0;
+      }
+
+      const session = {
+        id: record.id,
+        state,
+        physics,
+        trail: sanitizeTrail(record.trail),
+        imprint: Physics.sanitizeImprint(record.imprint),
+        clients: new Map(),
+        revision: Number.isSafeInteger(record.revision)
+          ? Math.max(1, record.revision)
+          : 1,
+        createdAt: Math.min(finite(record.createdAt, now), now),
+        lastActivityAt: Math.min(finite(record.lastActivityAt, now), now),
+        expiresAt,
+        emptyDeleteAt,
+        lastTickAt: now,
+        accumulator: 0,
+        nextSnapshotAt: now,
+        lastTrailAt: now,
+        firstFallAt: null,
+        holdReleaseAt: null,
+        lastPointer,
+        dirty: true,
+      };
+
+      this.sessions.set(session.id, session);
+      restored += 1;
+    });
+
+    if (restored > 0) {
+      this.logger("sessions_restored", { sessions: restored });
+    }
+    return restored;
+  }
+
   getSession(id) {
     const session = this.sessions.get(id);
     if (!session) {
       return null;
     }
 
-    if (this.now() >= session.expiresAt) {
+    if (
+      session.emptyDeleteAt !== null &&
+      this.now() >= session.emptyDeleteAt &&
+      this.connectedCount(session) === 0
+    ) {
+      this.destroySession(session, 1000, "session_empty");
+      return null;
+    }
+
+    if (
+      this.now() >= session.expiresAt &&
+      this.connectedCount(session) === 0
+    ) {
       this.destroySession(session, 4004, "session_expired");
       return null;
+    }
+
+    if (this.now() >= session.expiresAt) {
+      this.touch(session);
     }
 
     return session;
@@ -117,6 +240,22 @@ class SessionManager {
     const now = this.now();
     session.lastActivityAt = now;
     session.expiresAt = now + this.ttlMs;
+  }
+
+  cancelEmptyCleanup(session) {
+    session.emptyDeleteAt = null;
+  }
+
+  scheduleEmptyCleanup(session) {
+    if (this.connectedCount(session) > 0) {
+      this.cancelEmptyCleanup(session);
+      return;
+    }
+    session.emptyDeleteAt = this.now() + this.emptyGraceMs;
+    this.logger("session_empty_grace_started", {
+      session: session.id.slice(0, 8),
+      graceMs: this.emptyGraceMs,
+    });
   }
 
   connectClient(session, clientId, socket) {
@@ -147,6 +286,7 @@ class SessionManager {
       updatedAt: now,
     };
     session.clients.set(clientId, client);
+    this.cancelEmptyCleanup(session);
     this.touch(session);
 
     this.sendTo(client, "session.snapshot", {
@@ -173,6 +313,9 @@ class SessionManager {
     client.pointer.mode = "grab";
     client.pointer.updatedAt = this.now();
     this.touch(session);
+    if (this.connectedCount(session) === 0) {
+      this.scheduleEmptyCleanup(session);
+    }
     this.broadcastPresence(session);
     this.logger("client_disconnected", {
       session: session.id.slice(0, 8),
@@ -212,7 +355,8 @@ class SessionManager {
     });
 
     if (this.connectedCount(session) === 0) {
-      this.destroySession(session, 1000, "session_empty");
+      this.touch(session);
+      this.scheduleEmptyCleanup(session);
       return true;
     }
 
@@ -498,7 +642,20 @@ class SessionManager {
   tick(now = this.now()) {
     for (const session of [...this.sessions.values()]) {
       if (now >= session.expiresAt) {
-        this.destroySession(session, 4004, "session_expired");
+        if (this.connectedCount(session) > 0) {
+          this.touch(session);
+        } else {
+          this.destroySession(session, 4004, "session_expired");
+          continue;
+        }
+      }
+
+      if (
+        session.emptyDeleteAt !== null &&
+        now >= session.emptyDeleteAt &&
+        this.connectedCount(session) === 0
+      ) {
+        this.destroySession(session, 1000, "session_empty");
         continue;
       }
 
@@ -687,4 +844,5 @@ module.exports = {
   SNAPSHOT_INTERVAL_MS,
   MAX_TRAIL_POINTS,
   DISCONNECTED_CLIENT_TTL_MS,
+  DEFAULT_EMPTY_SESSION_GRACE_MS,
 };

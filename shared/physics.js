@@ -38,7 +38,7 @@
 
   const PHYSICS_LIMITS = Object.freeze({
     mass: [1, 100],
-    gravity: [0.4, 2],
+    gravity: [1, 10],
     handForce: [1, 10],
     pointerInfluence: [0, 2],
     bounce: [0, 1],

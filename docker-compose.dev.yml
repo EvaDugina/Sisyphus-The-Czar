@@ -9,6 +9,9 @@ services:
       PORT: "8080"
       DEBUG: "true"
       SESSION_TTL_SECONDS: "86400"
+      EMPTY_SESSION_GRACE_SECONDS: "10"
+      SESSION_STORE_PATH: "/app/data/sessions.json"
+      SESSION_PERSIST_INTERVAL_MS: "250"
     ports:
       - "127.0.0.1:18082:8080"
     volumes:
@@ -16,3 +19,7 @@ services:
       - ./assets:/app/assets:ro
       - ./server:/app/server:ro
       - ./shared:/app/shared:ro
+      - sisyphus-session-data-dev:/app/data
+
+volumes:
+  sisyphus-session-data-dev:

@@ -7,6 +7,7 @@ const {
   SessionManager,
   DISCONNECT_GRACE_MS,
   DISCONNECTED_CLIENT_TTL_MS,
+  DEFAULT_EMPTY_SESSION_GRACE_MS,
 } = require("../../server/session-manager");
 
 class FakeSocket {
@@ -28,6 +29,7 @@ function setup(options = {}) {
   const clock = { value: 0 };
   const manager = new SessionManager({
     ttlMs: options.ttlMs || 10_000,
+    emptyGraceMs: options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS,
     now: () => clock.value,
     random: options.random || (() => 0.75),
   });
@@ -129,8 +131,8 @@ test("указатель участника синхронизируется и 
   assert.deepEqual(presence.payload.pointers, []);
 });
 
-test("явный выход последнего участника сразу удаляет сессию", () => {
-  const { manager } = setup();
+test("явный выход последнего участника удаляет сессию после grace-периода", () => {
+  const { clock, manager } = setup({ emptyGraceMs: 1000 });
   const session = manager.createSession();
   const first = connect(manager, session, "client-leave-a001");
   const second = connect(manager, session, "client-leave-b001");
@@ -149,6 +151,52 @@ test("явный выход последнего участника сразу �
     manager.leaveClient(session, second.client.id, second.client.leaveToken),
     true
   );
+  assert.equal(manager.sessions.has(session.id), true);
+  assert.equal(session.emptyDeleteAt, 1000);
+
+  clock.value = 999;
+  manager.tick();
+  assert.equal(manager.sessions.has(session.id), true);
+
+  clock.value = 1001;
+  manager.tick();
+  assert.equal(manager.sessions.has(session.id), false);
+});
+
+test("reconnect в grace-период сохраняет состояние и отменяет удаление", () => {
+  const { clock, manager } = setup({ emptyGraceMs: 1000 });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 420, y: 800, vx: 25, vy: -30 },
+    physics: { gravity: 7 },
+    imprint: { x: 400, y: 700 },
+  });
+  const first = connect(manager, session, "client-reload-001");
+  manager.leaveClient(session, first.client.id, first.client.leaveToken);
+
+  clock.value = 500;
+  const reconnected = connect(manager, session, "client-reload-001");
+
+  assert.equal(session.emptyDeleteAt, null);
+  assert.equal(session.state.phase, Physics.PHASES.PLAY);
+  assert.equal(session.state.x, 420);
+  assert.equal(session.physics.gravity, 7);
+  assert.equal(session.imprint.x, 400);
+  assert.equal(reconnected.client.id, "client-reload-001");
+
+  clock.value = 1001;
+  manager.tick();
+  assert.equal(manager.sessions.has(session.id), true);
+});
+
+test("подключение после grace не воскрешает удалённую сессию", () => {
+  const { clock, manager } = setup({ emptyGraceMs: 1000 });
+  const session = manager.createSession();
+  const first = connect(manager, session, "client-too-late-01");
+  manager.leaveClient(session, first.client.id, first.client.leaveToken);
+
+  clock.value = 1001;
+
+  assert.equal(manager.getSession(session.id), null);
   assert.equal(manager.sessions.has(session.id), false);
 });
 
@@ -179,10 +227,23 @@ test("неактивная сессия удаляется по TTL", () => {
   assert.equal(manager.sessions.has(session.id), false);
 });
 
+test("активная сессия продлевается при достижении TTL", () => {
+  const { clock, manager } = setup({ ttlMs: 1000 });
+  const session = manager.createSession();
+  connect(manager, session, "client-active-0001");
+
+  clock.value = 1001;
+  manager.tick();
+
+  assert.equal(manager.sessions.has(session.id), true);
+  assert.equal(session.expiresAt, 2001);
+});
+
 test("давно отключённый клиент удаляется из комнаты", () => {
   const { clock, manager } = setup({ ttlMs: 120_000 });
   const session = manager.createSession();
   const connected = connect(manager, session, "client-stale-0001");
+  connect(manager, session, "client-still-0001");
   manager.disconnectClient(session, connected.client.id, connected.socket);
 
   clock.value = DISCONNECTED_CLIENT_TTL_MS + 1;
@@ -229,7 +290,7 @@ test("брошенный камень останавливается при по
   const { clock, manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
-    physics: { mass: 1, handForce: 10, gravity: 0.4, turbulence: 0 },
+    physics: { mass: 1, handForce: 10, gravity: 1, turbulence: 0 },
     imprint: { x: 500, y: 800, toleranceX: 40, toleranceY: 20 },
   });
   const { client } = connect(manager, session, "client-throw-win-01");
