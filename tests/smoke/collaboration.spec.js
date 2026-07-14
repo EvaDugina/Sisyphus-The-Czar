@@ -142,6 +142,54 @@ test("вход на корень перенаправляет в рабочую 
   await context.close();
 });
 
+test("каноническое падение не зависит от высоты viewport", async ({ browser }) => {
+  async function profileForHeight(height) {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height },
+    });
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+    await expect(page.getByTestId("session-status")).toContainText("В сессии");
+    const profile = await page.evaluate(() => {
+      const initial = initialSharedState();
+      const state = SharedPhysics.sanitizeState(initial);
+      const randomValues = [0.25, 0.5];
+      SharedPhysics.beginFirstFall(state, () => randomValues.shift() ?? 0.5);
+      const physics = SharedPhysics.sanitizePhysics({
+        gravity: 1,
+        bounce: 0,
+        turbulence: 0,
+      });
+      for (let index = 0; index < 90; index += 1) {
+        SharedPhysics.stepState(state, physics, SharedPhysics.FIXED_STEP_SECONDS);
+      }
+      updateBounds();
+      return {
+        sceneMaxY: bounds.maxY,
+        initial,
+        after: {
+          phase: state.phase,
+          x: state.x,
+          y: state.y,
+          vx: state.vx,
+          vy: state.vy,
+        },
+      };
+    });
+    await context.close();
+    return profile;
+  }
+
+  const low = await profileForHeight(600);
+  const high = await profileForHeight(900);
+  expect(low.sceneMaxY).not.toBeCloseTo(high.sceneMaxY, 0);
+  expect(low.initial.y).toBeCloseTo(high.initial.y, 6);
+  expect(low.after.y).toBeCloseTo(high.after.y, 6);
+  expect(low.after.vy).toBeCloseTo(high.after.vy, 6);
+  expect(low.after.phase).toBe(high.after.phase);
+});
+
 test("два браузера видят один камень и по очереди управляют им", async ({ browser }) => {
   test.setTimeout(45_000);
   const firstContext = await browser.newContext({
@@ -154,10 +202,37 @@ test("два браузера видят один камень и по очер�
   await first.goto("/");
   await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
   await expect(first.getByTestId("session-status")).toContainText("В сессии");
-  const sceneHeightInViewports = await first.locator(".world").evaluate(
-    (world) => world.offsetHeight / window.innerHeight
+  const sceneProjection = await first.evaluate(() => {
+    updateBounds();
+    const bottom = canonicalToLocal(SharedPhysics.WORLD_WIDTH / 2, SharedPhysics.WORLD_HEIGHT);
+    const world = document.querySelector(".world");
+    const originalHeight = world.style.height;
+    const originalMinHeight = world.style.minHeight;
+    const originalMaxY = bounds.maxY;
+    world.style.height = "10000vh";
+    world.style.minHeight = "10000vh";
+    updateBounds();
+    const changedDomHeightMaxY = bounds.maxY;
+    world.style.height = originalHeight;
+    world.style.minHeight = originalMinHeight;
+    updateBounds();
+    return {
+      maxY: originalMaxY,
+      bottomY: bottom.y,
+      worldHeight: SharedPhysics.WORLD_HEIGHT,
+      renderedHeight: document.querySelector(".world").offsetHeight,
+      viewportHeight: window.innerHeight,
+      rockHeight: document.querySelector(".rock").offsetHeight,
+      changedDomHeightMaxY,
+    };
+  });
+  expect(sceneProjection.renderedHeight / sceneProjection.viewportHeight).toBeCloseTo(2, 1);
+  expect(sceneProjection.maxY).toBeCloseTo(
+    sceneProjection.viewportHeight * 2 - sceneProjection.rockHeight,
+    1
   );
-  expect(sceneHeightInViewports).toBeCloseTo(100, 1);
+  expect(sceneProjection.bottomY).toBeCloseTo(sceneProjection.maxY, 1);
+  expect(sceneProjection.changedDomHeightMaxY).toBeCloseTo(sceneProjection.maxY, 1);
   const sharedUrl = first.url();
 
   const shareToggle = first.getByTestId("share-session-top");

@@ -2,7 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
-const { WindowRateLimiter } = require("../../server");
+const { injectDevReload, WindowRateLimiter } = require("../../server");
 
 test("rate limiter очищает истёкшие ключи при достижении лимита памяти", () => {
   let now = 1000;
@@ -23,4 +23,12 @@ test("rate limiter не принимает новый ключ при 10 000 а�
 
   assert.equal(limiter.consume("extra"), false);
   assert.equal(limiter.entries.size, 10_000);
+});
+
+test("dev html получает укороченную сцену 200vh", () => {
+  const html = injectDevReload("<html><head></head><body><main class=\"world\"></main></body></html>");
+
+  assert.match(html, /data-sisyphus-dev-scene-height/);
+  assert.match(html, /min-height:\s*200vh/);
+  assert.match(html, /data-sisyphus-dev-reload/);
 });

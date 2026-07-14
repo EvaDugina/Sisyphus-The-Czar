@@ -50,6 +50,12 @@ function devAssetFingerprint() {
 }
 
 function injectDevReload(html) {
+  const style = `<style data-sisyphus-dev-scene-height>
+body,
+.world {
+  min-height: 200vh;
+}
+</style>`;
   const script = `<script data-sisyphus-dev-reload>
 (() => {
   let currentVersion = null;
@@ -72,9 +78,13 @@ function injectDevReload(html) {
 })();
 </script>`;
 
-  return html.includes("</body>")
-    ? html.replace("</body>", `${script}\n</body>`)
-    : `${html}\n${script}`;
+  const withStyle = html.includes("</head>")
+    ? html.replace("</head>", `${style}\n</head>`)
+    : `${style}\n${html}`;
+
+  return withStyle.includes("</body>")
+    ? withStyle.replace("</body>", `${script}\n</body>`)
+    : `${withStyle}\n${script}`;
 }
 
 function parseBoolean(value, fallback = false) {
@@ -556,6 +566,7 @@ if (require.main === module) {
 
 module.exports = {
   createService,
+  injectDevReload,
   WindowRateLimiter,
   originAllowed,
 };
