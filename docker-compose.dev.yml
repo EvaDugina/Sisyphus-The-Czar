@@ -1,0 +1,20 @@
+# Dev-режим: nginx отдаёт файлы напрямую с диска через bind-mount.
+# Правки в index.html / assets видны после обновления страницы в браузере —
+# контейнер НЕ нужно пересобирать или перезапускать.
+#
+#   Запуск:  docker compose -f docker-compose.dev.yml up -d
+#   Логи:    docker compose -f docker-compose.dev.yml logs -f
+#   Стоп:    docker compose -f docker-compose.dev.yml down
+#
+# Порт тот же, что у prod (18082). Если параллельно запущен prod-контейнер
+# (docker compose up), сначала остановите его — иначе будет конфликт порта.
+services:
+  sisyphus-the-czar-dev:
+    image: nginx:stable-alpine
+    container_name: sisyphus-the-czar-dev
+    ports:
+      - "127.0.0.1:18082:80"
+    volumes:
+      - ./index.html:/usr/share/nginx/html/index.html:ro
+      - ./assets:/usr/share/nginx/html/assets:ro
+      - ./nginx-dev.conf:/etc/nginx/conf.d/default.conf:ro
