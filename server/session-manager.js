@@ -406,6 +406,9 @@ class SessionManager {
       case "physics.update":
         this.updatePhysics(session, payload);
         break;
+      case "session.restart":
+        this.restartSession(session, payload);
+        break;
       case "pointer.update":
         this.updatePointer(session, client, payload);
         break;
@@ -508,6 +511,16 @@ class SessionManager {
 
     const vx = finite(payload.vx, session.lastPointer.vx);
     const vy = finite(payload.vy, session.lastPointer.vy);
+    session.state.x = Physics.clamp(
+      finite(payload.x, session.state.x),
+      0,
+      Physics.WORLD_WIDTH
+    );
+    session.state.y = Physics.clamp(
+      finite(payload.y, session.state.y),
+      0,
+      Physics.WORLD_HEIGHT
+    );
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
@@ -584,6 +597,45 @@ class SessionManager {
     }
     this.markChanged(session);
     this.broadcastSnapshot(session);
+  }
+
+  restartSession(session, payload = {}) {
+    const state = Physics.sanitizeState({
+      phase: Physics.PHASES.INTRO,
+      x: payload.x,
+      y: payload.y,
+      vx: 0,
+      vy: 0,
+      turbTime: 0,
+    });
+    state.phase = Physics.PHASES.INTRO;
+    state.vx = 0;
+    state.vy = 0;
+    state.dragging = false;
+    state.controllerId = null;
+    state.turbTime = 0;
+
+    session.state = state;
+    session.trail = [];
+    session.imprint = null;
+    session.firstFallAt = null;
+    session.holdReleaseAt = null;
+    session.lastPointer = { vx: 0, vy: 0 };
+    session.accumulator = 0;
+    session.lastTickAt = this.now();
+    session.nextSnapshotAt = this.now();
+    session.lastTrailAt = this.now();
+    session.clients.forEach((client) => {
+      if (client.pointer?.mode === "grabbing") {
+        client.pointer.mode = "grab";
+        client.pointer.updatedAt = this.now();
+      }
+    });
+
+    this.markChanged(session);
+    this.broadcastSnapshot(session, true);
+    this.broadcastPresence(session);
+    return true;
   }
 
   updatePointer(session, client, payload = {}) {
@@ -767,8 +819,8 @@ class SessionManager {
     return payload;
   }
 
-  broadcastSnapshot(session) {
-    const payload = this.snapshot(session, false);
+  broadcastSnapshot(session, includeTrail = false) {
+    const payload = this.snapshot(session, includeTrail);
     session.clients.forEach((client) => {
       this.sendTo(client, "session.snapshot", payload);
     });

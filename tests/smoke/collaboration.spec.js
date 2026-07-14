@@ -262,6 +262,7 @@ test("два браузера видят один камень и по очер�
   const remoteCursor = second.getByTestId("remote-cursor");
   await expect(remoteCursor).toHaveClass(/is-visible/);
   await expect(remoteCursor).not.toHaveClass(/is-grabbing/);
+  await expect(remoteCursor).toHaveCSS("opacity", "1");
   await expect(remoteCursor).toHaveCSS("background-image", /cursor-grab\.png/);
   const positionBeforeFirstTouch = await first.evaluate(() => ({
     x: Number.parseFloat(
@@ -272,10 +273,38 @@ test("два браузера видят один камень и по очер�
     ),
   }));
 
+  const releaseProfilePromise = first.evaluate(() => {
+    const readRockPosition = () => {
+      const style = getComputedStyle(document.querySelector(".rock"));
+      return {
+        x: Number.parseFloat(style.getPropertyValue("--rock-x")),
+        y: Number.parseFloat(style.getPropertyValue("--rock-y")),
+      };
+    };
+    return new Promise((resolve) => {
+      const startedAt = performance.now();
+      const samples = [];
+      const sample = () => {
+        const position = readRockPosition();
+        samples.push({
+          elapsed: performance.now() - startedAt,
+          handoff: Boolean(collab.releaseHandoff?.active),
+          ...position,
+        });
+        if (performance.now() - startedAt >= 760) {
+          resolve(samples);
+          return;
+        }
+        requestAnimationFrame(sample);
+      };
+      sample();
+    });
+  });
   await first.mouse.down();
   await expect(first.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(second.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(remoteCursor).toHaveClass(/is-grabbing/);
+  await expect(remoteCursor).toHaveCSS("opacity", "1");
   await expect(remoteCursor).toHaveCSS("background-image", /cursor-grabbing\.png/);
   const firstImprint = first.getByTestId("rock-imprint");
   const secondImprint = second.getByTestId("rock-imprint");
@@ -295,6 +324,25 @@ test("два браузера видят один камень и по очер�
   }));
   expect(initialAlignment.imprintX).toBeCloseTo(positionBeforeFirstTouch.x, 0);
   expect(initialAlignment.imprintY).toBeCloseTo(positionBeforeFirstTouch.y, 0);
+  const releaseProfile = await releaseProfilePromise;
+  expect(releaseProfile.some((sample) => sample.handoff)).toBe(true);
+  const releaseWindow = releaseProfile.filter((sample) => sample.elapsed >= 360);
+  const handoffSteps = releaseWindow
+    .slice(1)
+    .map((sample, index) => {
+      const previous = releaseWindow[index];
+      return {
+        step: Math.hypot(sample.x - previous.x, sample.y - previous.y),
+        previous,
+        sample,
+      };
+    })
+    .filter(({ previous, sample }) => previous.handoff || sample.handoff);
+  const maxHandoffStep = handoffSteps.reduce(
+    (largest, current) => (current.step > largest.step ? current : largest),
+    { step: 0, previous: null, sample: null }
+  );
+  expect(maxHandoffStep.step).toBeLessThan(180);
   await first.mouse.up();
   await expect(first.locator("body")).toHaveClass(/state-fallingToBottom/);
   await expect(second.locator("body")).toHaveClass(/state-fallingToBottom/);
@@ -368,6 +416,22 @@ test("два браузера видят один камень и по очер�
   Object.values(stoppedAlignment).forEach((difference) => {
     expect(difference).toBeLessThanOrEqual(1);
   });
+
+  await first.locator(".settings-toggle").click();
+  await first.getByTestId("restart-session").click();
+  await expect(first.locator("body")).toHaveClass(/state-intro/);
+  await expect(second.locator("body")).toHaveClass(/state-intro/);
+  await expect(first.locator("body")).toHaveClass(/theme-light/);
+  await expect(second.locator("body")).toHaveClass(/theme-light/);
+  await expect(first.locator("html")).toHaveClass(/is-scroll-locked/);
+  await expect(second.locator("html")).toHaveClass(/is-scroll-locked/);
+  await expect(firstImprint).not.toHaveClass(/is-visible/);
+  await expect(secondImprint).not.toHaveClass(/is-visible/);
+  await expect(first.locator('[name="gravity"]')).toHaveValue("9");
+  await expect(second.locator('[name="gravity"]')).toHaveValue("9");
+  await expect
+    .poll(() => first.evaluate(() => trail.points.length))
+    .toBe(0);
 
   await first.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false }));

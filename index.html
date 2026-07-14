@@ -208,7 +208,7 @@
       }
 
       .rock.is-dragging {
-        --rock-scale: 1.025;
+        --rock-scale: 1;
         cursor: grabbing;
         filter: drop-shadow(0 2.7rem 2.6rem var(--shadow));
       }
@@ -298,7 +298,7 @@
       }
 
       .hand-cursor.is-remote.is-visible {
-        opacity: 0.82;
+        opacity: 1;
       }
 
       .settings-toggle,
@@ -473,7 +473,8 @@
         opacity: 0.5;
       }
 
-      .trail-clear {
+      .trail-clear,
+      .session-restart {
         width: 100%;
         margin-top: 0.7rem;
         padding: 0.45rem 0.6rem;
@@ -487,7 +488,8 @@
           border-color 180ms ease;
       }
 
-      .trail-clear:hover {
+      .trail-clear:hover,
+      .session-restart:hover {
         border-color: var(--target-line);
         background: color-mix(in srgb, var(--surface) 80%, transparent);
       }
@@ -718,6 +720,14 @@
         >
           Локальная сессия
         </div>
+        <button
+          class="session-restart"
+          type="button"
+          data-testid="restart-session"
+          data-hint="Возвращает камень, отпечаток и след в начало текущей комнаты."
+        >
+          Начать сначала
+        </button>
       </section>
 
       <details class="control-group" open>
@@ -1073,6 +1083,7 @@
       const hintEl = document.querySelector(".hint");
       const sessionStatus = document.querySelector("[data-session-status]");
       const sessionShareToggle = document.querySelector(".session-share-toggle");
+      const sessionRestartButton = document.querySelector(".session-restart");
       const finePointer = window.matchMedia("(pointer: fine)");
       const SharedPhysics = window.SisyphusPhysics;
 
@@ -1195,6 +1206,7 @@
       const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
       const SNAPSHOT_DELAY_MS = 90;
       const POINTER_SEND_INTERVAL_MS = 1000 / 30;
+      const RELEASE_HANDOFF_MS = 150;
 
       function getClientId() {
         try {
@@ -1231,6 +1243,7 @@
         clockOffsetReady: false,
         hasControl: false,
         pendingControl: false,
+        releasePending: false,
         remoteControllerId: null,
         participants: 1,
         applyingRemotePhysics: false,
@@ -1243,6 +1256,12 @@
         lastPointerSentAt: 0,
         lastRenderAt: 0,
         imprint: null,
+        releaseHandoff: {
+          active: false,
+          fromX: 0,
+          fromY: 0,
+          startedAt: 0,
+        },
         localPointer: {
           x: SharedPhysics.WORLD_WIDTH / 2,
           y: 0,
@@ -1585,12 +1604,17 @@
         setPosition(motion.dragTargetX, nextY);
       }
 
-      function centerIntroRock() {
+      function initialLocalPosition() {
         updateBounds();
-        setPosition(
-          (bounds.worldWidth - bounds.rockWidth) / 2,
-          Math.max(0, window.innerHeight * 0.55 - bounds.rockHeight / 2)
-        );
+        return {
+          x: (bounds.worldWidth - bounds.rockWidth) / 2,
+          y: Math.max(0, window.innerHeight * 0.55 - bounds.rockHeight / 2),
+        };
+      }
+
+      function centerIntroRock() {
+        const position = initialLocalPosition();
+        setPosition(position.x, position.y);
       }
 
       function setSessionStatus(text, state = "local") {
@@ -1838,6 +1862,19 @@
         };
       }
 
+      function initialSharedState() {
+        const position = initialLocalPosition();
+        const canonical = localToCanonical(position.x, position.y);
+        return {
+          phase: PHASES.INTRO,
+          x: canonical.x,
+          y: canonical.y,
+          vx: 0,
+          vy: 0,
+          turbTime: 0,
+        };
+      }
+
       function currentSharedTrail() {
         updateBounds();
         const xScale =
@@ -2064,6 +2101,103 @@
         return true;
       }
 
+      function startSharedReleaseHandoff() {
+        if (!collab.enabled) {
+          return;
+        }
+        collab.releaseHandoff.active = true;
+        collab.releaseHandoff.fromX = motion.x;
+        collab.releaseHandoff.fromY = motion.y;
+        collab.releaseHandoff.startedAt = 0;
+      }
+
+      function clearSharedReleaseHandoff() {
+        collab.releaseHandoff.active = false;
+        collab.releaseHandoff.startedAt = 0;
+      }
+
+      function applySharedReleaseHandoff(local, phase) {
+        if (!collab.releaseHandoff.active) {
+          return local;
+        }
+        if (phase === PHASES.INTRO || phase === PHASES.WON) {
+          clearSharedReleaseHandoff();
+          return local;
+        }
+
+        const now = performance.now();
+        if (collab.releaseHandoff.startedAt === 0) {
+          collab.releaseHandoff.startedAt = now;
+        }
+        const progress = clamp(
+          (now - collab.releaseHandoff.startedAt) / RELEASE_HANDOFF_MS,
+          0,
+          1
+        );
+        const eased = progress * progress * (3 - 2 * progress);
+        const position = {
+          x:
+            collab.releaseHandoff.fromX +
+            (local.x - collab.releaseHandoff.fromX) * eased,
+          y:
+            collab.releaseHandoff.fromY +
+            (local.y - collab.releaseHandoff.fromY) * eased,
+        };
+        if (progress >= 1) {
+          clearSharedReleaseHandoff();
+        }
+        return position;
+      }
+
+      function resetLocalExperience() {
+        const pointerId = motion.activePointerId;
+        window.clearTimeout(collab.firstReleaseTimerId);
+        collab.firstReleaseTimerId = null;
+        clearHoldTimer();
+        clearFirstFallTimer();
+        stopLoop();
+        motion.dragging = false;
+        motion.activePointerId = null;
+        motion.vx = 0;
+        motion.vy = 0;
+        motion.pointerVx = 0;
+        motion.pointerVy = 0;
+        motion.turbTime = 0;
+        motion.imprint = null;
+        collab.imprint = null;
+        collab.snapshots = [];
+        clearSharedReleaseHandoff();
+        collab.hasControl = false;
+        collab.pendingControl = false;
+        collab.releasePending = false;
+        collab.remoteControllerId = null;
+        rock.classList.remove("is-dragging", "is-falling");
+        releasePointerCapture(pointerId);
+        setGrabbingCursor(false);
+        setHandToGrab();
+        hideHandCursor();
+        updateLocalSharedPointer(null, "grab", false);
+        setPhase(PHASES.INTRO);
+        setTheme("light");
+        syncScrollLock(false);
+        resetTrail();
+        renderImprint();
+        centerIntroRock();
+        updateSessionStatus();
+      }
+
+      function restartExperience() {
+        if (collab.enabled) {
+          if (sendShared("session.restart", initialSharedState())) {
+            resetLocalExperience();
+          } else {
+            updateSessionStatus();
+          }
+          return;
+        }
+        resetLocalExperience();
+      }
+
       function clearSharedConnectionTimers() {
         window.clearTimeout(collab.reconnectTimerId);
         window.clearInterval(collab.pingTimerId);
@@ -2148,6 +2282,7 @@
           collab.connected = false;
           collab.hasControl = false;
           collab.pendingControl = false;
+          collab.releasePending = false;
           cancelSharedLocalDrag();
           updateLocalSharedPointer(null, "grab", false);
           hideHandCursor();
@@ -2237,6 +2372,13 @@
         if (Array.isArray(payload.trail)) {
           loadSharedTrail(payload.trail);
         }
+        if (
+          payload.phase === PHASES.INTRO &&
+          !collab.imprint &&
+          Array.isArray(payload.trail)
+        ) {
+          collab.snapshots = [];
+        }
 
         const snapshot = {
           phase: payload.phase,
@@ -2249,6 +2391,28 @@
           revision,
           serverTime: Number(payload.serverTime) || Date.now(),
         };
+        if (
+          collab.releasePending &&
+          snapshot.dragging &&
+          snapshot.controllerId === collab.clientId
+        ) {
+          return;
+        }
+        if (
+          collab.releasePending &&
+          (!snapshot.dragging || snapshot.controllerId !== collab.clientId)
+        ) {
+          collab.releasePending = false;
+        }
+        const localControlWasEnding =
+          (collab.hasControl || collab.pendingControl || motion.dragging) &&
+          (!snapshot.dragging || snapshot.controllerId !== collab.clientId) &&
+          snapshot.phase !== PHASES.INTRO &&
+          snapshot.phase !== PHASES.WON;
+        if (localControlWasEnding) {
+          startSharedReleaseHandoff();
+          collab.snapshots = [];
+        }
         collab.snapshots.push(snapshot);
         collab.snapshots.sort((left, right) => left.serverTime - right.serverTime);
         if (collab.snapshots.length > 12) {
@@ -2261,8 +2425,11 @@
         if (ownsControl) {
           collab.hasControl = true;
           collab.pendingControl = false;
+          collab.releasePending = false;
+          clearSharedReleaseHandoff();
         } else if (
           collab.hasControl ||
+          collab.pendingControl ||
           (snapshot.controllerId && snapshot.controllerId !== collab.clientId)
         ) {
           collab.hasControl = false;
@@ -2337,7 +2504,8 @@
         }
         const local = canonicalToLocal(snapshot.x, snapshot.y);
         const velocity = canonicalVelocityToLocal(snapshot.vx, snapshot.vy);
-        setPosition(local.x, local.y);
+        const position = applySharedReleaseHandoff(local, snapshot.phase);
+        setPosition(position.x, position.y);
         motion.vx = velocity.vx;
         motion.vy = velocity.vy;
         motion.turbTime = 0;
@@ -2451,6 +2619,8 @@
         if (params.trailReset && motion.phase === PHASES.PLAY) {
           resetTrail();
         }
+        clearSharedReleaseHandoff();
+        collab.releasePending = false;
         toggleHandVariant();
         updateBounds();
         const position = localToCanonical(motion.x, motion.y);
@@ -2487,9 +2657,9 @@
         if (motion.phase === PHASES.INTRO) {
           collab.firstReleaseTimerId = window.setTimeout(() => {
             if (motion.dragging && collab.enabled) {
-              cancelSharedLocalDrag();
+              forceReleaseSharedDrag(false);
             }
-          }, FIRST_FALL_DELAY_MS + 80);
+          }, FIRST_FALL_DELAY_MS);
         }
         updateSessionStatus();
       }
@@ -2541,10 +2711,15 @@
           motion.pointerVx,
           motion.pointerVy
         );
+        const position = localToCanonical(motion.x, motion.y);
         const pointerVisible =
           event.type !== "pointercancel" && pointerIsOverRock(event);
         const pointer = updateLocalSharedPointer(event, "grab", pointerVisible);
+        startSharedReleaseHandoff();
+        collab.releasePending = true;
+        collab.snapshots = [];
         sendShared("control.release", {
+          ...position,
           ...velocity,
           pointer,
         });
@@ -2565,12 +2740,17 @@
           motion.pointerVx,
           motion.pointerVy
         );
+        const position = localToCanonical(motion.x, motion.y);
         const pointer = updateLocalSharedPointer(
           null,
           "grab",
           hidePointer ? false : collab.localPointer.visible
         );
+        startSharedReleaseHandoff();
+        collab.releasePending = true;
+        collab.snapshots = [];
         sendShared("control.release", {
+          ...position,
           ...velocity,
           pointer,
         });
@@ -3259,6 +3439,7 @@
       });
 
       settingsPanel.querySelector(".trail-clear").addEventListener("click", resetTrail);
+      sessionRestartButton.addEventListener("click", restartExperience);
 
       settingsPanel.addEventListener("pointerover", (event) => {
         const target = event.target.closest("[data-hint]");

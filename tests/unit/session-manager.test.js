@@ -71,6 +71,26 @@ test("ранний pointerup запускает первое падение ра
   assert.equal(session.firstFallAt, null);
 });
 
+test("control.release применяет финальную позицию контроллера", () => {
+  const { manager } = setup();
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 200, y: 900 },
+  });
+  const { client } = connect(manager, session, "client-release-pos1");
+
+  manager.acquireControl(session, client, { x: 200, y: 900 });
+  manager.releaseControl(session, client, {
+    x: 640,
+    y: 780,
+    vx: 0,
+    vy: 0,
+  });
+
+  assert.equal(session.state.x, 640);
+  assert.equal(session.state.y, 780);
+  assert.equal(session.state.dragging, false);
+});
+
 test("одновременный захват получает только первый участник", () => {
   const { manager } = setup();
   const session = manager.createSession({
@@ -129,6 +149,52 @@ test("указатель участника синхронизируется и 
     (message) => message.type === "presence.update"
   );
   assert.deepEqual(presence.payload.pointers, []);
+});
+
+test("session.restart возвращает общую комнату в начало", () => {
+  const { manager } = setup();
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 700, y: 900, vx: 50, vy: -30 },
+    physics: { gravity: 7 },
+    trail: [
+      [700, 900],
+      [710, 880],
+    ],
+    imprint: { x: 500, y: 800 },
+  });
+  const first = connect(manager, session, "client-restart-a1");
+  const second = connect(manager, session, "client-restart-b1");
+  manager.acquireControl(session, first.client, {
+    x: 700,
+    y: 900,
+    pointer: { x: 700, y: 900, mode: "grabbing", visible: true },
+  });
+
+  manager.handleMessage(session, second.client, {
+    v: 1,
+    type: "session.restart",
+    seq: 1,
+    payload: { x: 321, y: 654 },
+  });
+
+  assert.equal(session.state.phase, Physics.PHASES.INTRO);
+  assert.equal(session.state.x, 321);
+  assert.equal(session.state.y, 654);
+  assert.equal(session.state.vx, 0);
+  assert.equal(session.state.vy, 0);
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.controllerId, null);
+  assert.equal(session.physics.gravity, 7);
+  assert.deepEqual(session.trail, []);
+  assert.equal(session.imprint, null);
+  assert.equal(first.client.pointer.mode, "grab");
+
+  const snapshot = first.socket.messages.findLast(
+    (message) => message.type === "session.snapshot"
+  );
+  assert.equal(snapshot.payload.phase, Physics.PHASES.INTRO);
+  assert.deepEqual(snapshot.payload.trail, []);
+  assert.equal(snapshot.payload.imprint, null);
 });
 
 test("явный выход последнего участника удаляет сессию после grace-периода", () => {
