@@ -23,27 +23,62 @@ async function visibleRockPoint(page) {
 }
 
 test("два браузера видят один камень и по очереди управляют им", async ({ browser }) => {
-  const firstContext = await browser.newContext();
+  const firstContext = await browser.newContext({
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
   const secondContext = await browser.newContext();
   const first = await firstContext.newPage();
   const second = await secondContext.newPage();
 
   await first.goto("/");
+  await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(first.getByTestId("session-status")).toContainText("В сессии");
+  const sharedUrl = first.url();
+
+  const shareToggle = first.getByTestId("share-session-top");
+  const controlSizes = await first.evaluate(() => {
+    const share = document.querySelector(".session-share-toggle").getBoundingClientRect();
+    const settings = document.querySelector(".settings-toggle").getBoundingClientRect();
+    return {
+      share: [share.width, share.height],
+      settings: [settings.width, settings.height],
+    };
+  });
+  expect(controlSizes.share).toEqual(controlSizes.settings);
+
+  await shareToggle.click();
+  await expect(shareToggle).toHaveClass(/is-copied/);
+  await expect(shareToggle.locator('[data-share-icon="check"]')).toBeVisible();
+  await expect.poll(() => first.evaluate(() => navigator.clipboard.readText())).toBe(sharedUrl);
+  await first.waitForTimeout(450);
+  await expect(shareToggle).not.toHaveClass(/is-copied/);
+
   await first.locator(".settings-toggle").click();
+  await setRange(first, "mass", 100);
   await setRange(first, "gravity", 2);
   await setRange(first, "bounce", 0);
-  await first.getByTestId("share-session").click();
-  await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
-  const sharedUrl = first.url();
-  await expect(first.getByTestId("session-status")).toContainText("В сессии");
 
+  await second.goto("/");
+  await expect(second).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  expect(second.url()).not.toBe(sharedUrl);
   await second.goto(sharedUrl);
   await second.locator(".settings-toggle").click();
   await expect(second.getByTestId("session-status")).toContainText("В сессии");
   await expect(first.getByTestId("session-status")).toContainText("2");
+  await expect(second.locator('[name="mass"]')).toHaveValue("100");
 
   await first.locator(".settings-toggle").click();
-  await first.locator(".rock").click({ position: { x: 100, y: 100 } });
+  const firstPoint = await visibleRockPoint(first);
+  await first.mouse.move(firstPoint.x, firstPoint.y);
+  const remoteCursor = second.getByTestId("remote-cursor");
+  await expect(remoteCursor).toHaveClass(/is-visible/);
+  await expect(remoteCursor).not.toHaveClass(/is-grabbing/);
+  await expect(remoteCursor).toHaveCSS("background-image", /cursor-grab\.png/);
+
+  await first.mouse.down();
+  await expect(remoteCursor).toHaveClass(/is-grabbing/);
+  await expect(remoteCursor).toHaveCSS("background-image", /cursor-grabbing\.png/);
+  await first.mouse.up();
   await expect(first.locator("body")).toHaveClass(/state-fallingToBottom/);
   await expect(second.locator("body")).toHaveClass(/state-fallingToBottom/);
 
@@ -67,6 +102,23 @@ test("два браузера видят один камень и по очер�
   });
   await expect(first.getByTestId("session-status")).toContainText("другой участник");
   await second.mouse.up();
+
+  await first.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false }));
+  });
+  await expect(second.getByTestId("session-status")).toContainText("В сессии: 1");
+  await first.close();
+
+  await second.evaluate(() => {
+    window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false }));
+  });
+  await second.close();
+
+  const verification = await secondContext.newPage();
+  await verification.goto(sharedUrl);
+  await expect(verification.getByTestId("session-status")).toContainText(
+    "Сессия истекла"
+  );
 
   await firstContext.close();
   await secondContext.close();

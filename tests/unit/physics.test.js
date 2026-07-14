@@ -4,6 +4,11 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Physics = require("../../shared/physics");
 
+test("масса поддерживает значения до 100", () => {
+  assert.equal(Physics.sanitizePhysics({ mass: 100 }).mass, 100);
+  assert.equal(Physics.sanitizePhysics({ mass: 101 }).mass, 100);
+});
+
 test("первое падение получает серверный случайный импульс", () => {
   const state = Physics.sanitizeState({ phase: Physics.PHASES.INTRO, x: 500, y: 500 });
   const values = [0.9, 0.5];

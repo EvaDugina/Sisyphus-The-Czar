@@ -16,6 +16,7 @@ const DEV_ASSET_POLL_INTERVAL_MS = 500;
 const DEV_BROWSER_POLL_INTERVAL_MS = 750;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const LEAVE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 function devAssetFingerprint() {
   const entries = [];
@@ -250,6 +251,36 @@ function createService(options = {}) {
       sessionId: session.id,
       expiresAt: session.expiresAt,
     });
+  });
+
+  app.post("/api/sessions/:sessionId/leave", (request, response) => {
+    if (!originAllowed(request, config.allowedOrigins, config.debug)) {
+      response.status(403).json({ error: "origin_not_allowed" });
+      return;
+    }
+
+    const sessionId = String(request.params.sessionId || "");
+    const clientId = String(request.body?.clientId || "");
+    const leaveToken = String(request.body?.leaveToken || "");
+    if (
+      !SESSION_ID_PATTERN.test(sessionId) ||
+      !CLIENT_ID_PATTERN.test(clientId) ||
+      !LEAVE_TOKEN_PATTERN.test(leaveToken)
+    ) {
+      response.status(400).json({ error: "invalid_leave" });
+      return;
+    }
+
+    const session = manager.getSession(sessionId);
+    if (!session) {
+      response.status(204).end();
+      return;
+    }
+    if (!manager.leaveClient(session, clientId, leaveToken)) {
+      response.status(403).json({ error: "invalid_leave_token" });
+      return;
+    }
+    response.status(204).end();
   });
 
   app.use(

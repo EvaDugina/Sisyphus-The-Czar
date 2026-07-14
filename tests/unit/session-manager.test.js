@@ -86,6 +86,72 @@ test("одновременный захват получает только пе
   assert.equal(session.state.controllerId, second.client.id);
 });
 
+test("указатель участника синхронизируется и исчезает при отключении", () => {
+  const { manager } = setup();
+  const session = manager.createSession();
+  const first = connect(manager, session, "client-pointer-a1");
+  const second = connect(manager, session, "client-pointer-b1");
+
+  manager.handleMessage(session, first.client, {
+    v: 1,
+    type: "pointer.update",
+    seq: 1,
+    payload: { x: 420, y: 1750, mode: "grab", visible: true },
+  });
+
+  const pointerMessage = second.socket.messages.findLast(
+    (message) => message.type === "pointer.update"
+  );
+  assert.deepEqual(pointerMessage.payload, {
+    clientId: first.client.id,
+    x: 420,
+    y: 1750,
+    mode: "grab",
+    visible: true,
+    serverTime: 0,
+  });
+
+  manager.handleMessage(session, first.client, {
+    v: 1,
+    type: "pointer.update",
+    seq: 2,
+    payload: { x: -1, y: 1750, mode: "grab", visible: true },
+  });
+  assert.equal(
+    first.socket.messages.findLast((message) => message.type === "error").payload.code,
+    "invalid_pointer"
+  );
+
+  manager.disconnectClient(session, first.client.id, first.socket);
+  const presence = second.socket.messages.findLast(
+    (message) => message.type === "presence.update"
+  );
+  assert.deepEqual(presence.payload.pointers, []);
+});
+
+test("явный выход последнего участника сразу удаляет сессию", () => {
+  const { manager } = setup();
+  const session = manager.createSession();
+  const first = connect(manager, session, "client-leave-a001");
+  const second = connect(manager, session, "client-leave-b001");
+
+  assert.equal(manager.leaveClient(session, first.client.id, "invalid-token"), false);
+  assert.equal(manager.sessions.has(session.id), true);
+
+  assert.equal(
+    manager.leaveClient(session, first.client.id, first.client.leaveToken),
+    true
+  );
+  assert.equal(manager.sessions.has(session.id), true);
+  assert.equal(manager.connectedCount(session), 1);
+
+  assert.equal(
+    manager.leaveClient(session, second.client.id, second.client.leaveToken),
+    true
+  );
+  assert.equal(manager.sessions.has(session.id), false);
+});
+
 test("разрыв соединения освобождает камень после grace-периода", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({

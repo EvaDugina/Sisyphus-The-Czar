@@ -76,15 +76,42 @@ test("два WebSocket-клиента делят состояние и пере�
   const first = connect(`${wsBase}&client=integration-client-a`);
   const second = connect(`${wsBase}&client=integration-client-b`);
   await Promise.all([first.opened, second.opened]);
-  await Promise.all([
+  const [firstSnapshot, secondSnapshot] = await Promise.all([
     first.waitFor("session.snapshot"),
     second.waitFor("session.snapshot"),
   ]);
 
   first.socket.send(
-    JSON.stringify({ v: 1, type: "control.acquire", seq: 1, payload: { x: 500, y: 5000 } })
+    JSON.stringify({
+      v: 1,
+      type: "pointer.update",
+      seq: 1,
+      payload: { x: 480, y: 4900, mode: "grab", visible: true },
+    })
+  );
+  const sharedPointer = await second.waitFor(
+    "pointer.update",
+    (payload) => payload.clientId === "integration-client-a" && payload.mode === "grab"
+  );
+  assert.equal(sharedPointer.payload.x, 480);
+
+  first.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "control.acquire",
+      seq: 2,
+      payload: {
+        x: 500,
+        y: 5000,
+        pointer: { x: 480, y: 4900, mode: "grabbing", visible: true },
+      },
+    })
   );
   await first.waitFor("control.granted");
+  await second.waitFor(
+    "pointer.update",
+    (payload) => payload.clientId === "integration-client-a" && payload.mode === "grabbing"
+  );
 
   second.socket.send(
     JSON.stringify({ v: 1, type: "control.acquire", seq: 1, payload: { x: 500, y: 5000 } })
@@ -92,7 +119,16 @@ test("два WebSocket-клиента делят состояние и пере�
   await second.waitFor("control.denied", (payload) => payload.reason === "busy");
 
   first.socket.send(
-    JSON.stringify({ v: 1, type: "control.release", seq: 2, payload: { vx: 0, vy: 0 } })
+    JSON.stringify({
+      v: 1,
+      type: "control.release",
+      seq: 3,
+      payload: {
+        vx: 0,
+        vy: 0,
+        pointer: { x: 480, y: 4900, mode: "grab", visible: true },
+      },
+    })
   );
   await second.waitFor(
     "session.snapshot",
@@ -118,6 +154,40 @@ test("два WebSocket-клиента делят состояние и пере�
   );
   assert.equal(synced.payload.controllerId, "integration-client-b");
 
-  first.socket.close();
-  second.socket.close();
+  const invalidLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientId: "integration-client-a",
+      leaveToken: "AAAAAAAAAAAAAAAAAAAAAA",
+    }),
+  });
+  assert.equal(invalidLeave.status, 403);
+  assert.equal(service.manager.sessions.has(sessionId), true);
+
+  const firstLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientId: "integration-client-a",
+      leaveToken: firstSnapshot.payload.leaveToken,
+    }),
+  });
+  assert.equal(firstLeave.status, 204);
+  assert.equal(service.manager.sessions.has(sessionId), true);
+  await second.waitFor(
+    "presence.update",
+    (payload) => payload.participants === 1
+  );
+
+  const secondLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      clientId: "integration-client-b",
+      leaveToken: secondSnapshot.payload.leaveToken,
+    }),
+  });
+  assert.equal(secondLeave.status, 204);
+  assert.equal(service.manager.sessions.has(sessionId), false);
 });

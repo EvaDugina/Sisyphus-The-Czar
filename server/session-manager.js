@@ -7,6 +7,7 @@ const SNAPSHOT_INTERVAL_MS = 1000 / 20;
 const DISCONNECT_GRACE_MS = 500;
 const DISCONNECTED_CLIENT_TTL_MS = 60_000;
 const MAX_TRAIL_POINTS = 1000;
+const POINTER_MODES = new Set(["grab", "grabbing"]);
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -15,6 +16,18 @@ function finite(value, fallback = 0) {
 
 function socketIsOpen(socket) {
   return socket && socket.readyState === 1;
+}
+
+function tokensMatch(actual, expected) {
+  if (typeof actual !== "string" || typeof expected !== "string") {
+    return false;
+  }
+  const actualBuffer = Buffer.from(actual, "utf8");
+  const expectedBuffer = Buffer.from(expected, "utf8");
+  return (
+    actualBuffer.length === expectedBuffer.length &&
+    crypto.timingSafeEqual(actualBuffer, expectedBuffer)
+  );
 }
 
 function sanitizeTrail(input) {
@@ -124,10 +137,21 @@ class SessionManager {
     client.lastSeq = -1;
     client.disconnectedAt = null;
     client.lastSeenAt = now;
+    client.leaveToken = crypto.randomBytes(16).toString("base64url");
+    client.pointer = {
+      x: finite(client.pointer?.x, Physics.WORLD_WIDTH / 2),
+      y: finite(client.pointer?.y, 0),
+      mode: "grab",
+      visible: false,
+      updatedAt: now,
+    };
     session.clients.set(clientId, client);
     this.touch(session);
 
-    this.sendTo(client, "session.snapshot", this.snapshot(session, true));
+    this.sendTo(client, "session.snapshot", {
+      ...this.snapshot(session, true),
+      leaveToken: client.leaveToken,
+    });
     this.broadcastPresence(session);
     this.logger("client_connected", {
       session: session.id.slice(0, 8),
@@ -144,12 +168,57 @@ class SessionManager {
 
     client.socket = null;
     client.disconnectedAt = this.now();
+    client.pointer.visible = false;
+    client.pointer.mode = "grab";
+    client.pointer.updatedAt = this.now();
     this.touch(session);
     this.broadcastPresence(session);
     this.logger("client_disconnected", {
       session: session.id.slice(0, 8),
       participants: this.connectedCount(session),
     });
+  }
+
+  leaveClient(session, clientId, leaveToken) {
+    const client = session.clients.get(clientId);
+    if (!client || !tokensMatch(leaveToken, client.leaveToken)) {
+      return false;
+    }
+
+    const socket = client.socket;
+    client.socket = null;
+    client.disconnectedAt = this.now();
+    client.pointer.visible = false;
+    client.pointer.mode = "grab";
+    client.pointer.updatedAt = this.now();
+
+    if (session.state.controllerId === clientId) {
+      this.finishRelease(
+        session,
+        null,
+        session.lastPointer.vx,
+        session.lastPointer.vy
+      );
+    }
+
+    session.clients.delete(clientId);
+    if (socketIsOpen(socket)) {
+      socket.close(1000, "session_left");
+    }
+
+    this.logger("client_left", {
+      session: session.id.slice(0, 8),
+      participants: this.connectedCount(session),
+    });
+
+    if (this.connectedCount(session) === 0) {
+      this.destroySession(session, 1000, "session_empty");
+      return true;
+    }
+
+    this.touch(session);
+    this.broadcastPresence(session);
+    return true;
   }
 
   connectedCount(session) {
@@ -192,6 +261,9 @@ class SessionManager {
         break;
       case "physics.update":
         this.updatePhysics(session, payload);
+        break;
+      case "pointer.update":
+        this.updatePointer(session, client, payload);
         break;
       case "ping":
         this.sendTo(client, "pong", {
@@ -245,6 +317,13 @@ class SessionManager {
       firstFallAt: session.firstFallAt,
       holdReleaseAt: session.holdReleaseAt,
     });
+    if (payload.pointer) {
+      this.updatePointer(session, client, payload.pointer);
+    } else if (client.pointer.visible) {
+      client.pointer.mode = "grabbing";
+      client.pointer.updatedAt = this.now();
+      this.broadcastPointer(session, client);
+    }
     this.broadcastSnapshot(session);
     this.broadcastPresence(session);
     return true;
@@ -262,6 +341,9 @@ class SessionManager {
       vx: Physics.clamp(finite(payload.vx, session.lastPointer.vx), -4000, 4000),
       vy: Physics.clamp(finite(payload.vy, session.lastPointer.vy), -9000, 9000),
     };
+    if (payload.pointer) {
+      this.updatePointer(session, client, payload.pointer);
+    }
     this.markChanged(session);
     return true;
   }
@@ -276,16 +358,27 @@ class SessionManager {
 
     const vx = finite(payload.vx, session.lastPointer.vx);
     const vy = finite(payload.vy, session.lastPointer.vy);
+    if (payload.pointer) {
+      this.updatePointer(session, client, payload.pointer);
+    }
     return this.finishRelease(session, payload.target, vx, vy);
   }
 
   finishRelease(session, target, pointerVx, pointerVy) {
     const state = session.state;
     const phaseAtRelease = state.phase;
+    const controller = state.controllerId
+      ? session.clients.get(state.controllerId)
+      : null;
     session.firstFallAt = null;
     session.holdReleaseAt = null;
     state.dragging = false;
     state.controllerId = null;
+    if (controller?.pointer?.visible && controller.pointer.mode === "grabbing") {
+      controller.pointer.mode = "grab";
+      controller.pointer.updatedAt = this.now();
+      this.broadcastPointer(session, controller);
+    }
 
     if (phaseAtRelease === Physics.PHASES.INTRO) {
       Physics.beginFirstFall(state, this.random);
@@ -346,6 +439,40 @@ class SessionManager {
     }
     this.markChanged(session);
     this.broadcastSnapshot(session);
+  }
+
+  updatePointer(session, client, payload = {}) {
+    const x = Number(payload.x);
+    const y = Number(payload.y);
+    const visible = payload.visible;
+    const mode = payload.mode;
+    if (
+      !Number.isFinite(x) ||
+      !Number.isFinite(y) ||
+      x < 0 ||
+      x > Physics.WORLD_WIDTH ||
+      y < 0 ||
+      y > Physics.WORLD_HEIGHT ||
+      typeof visible !== "boolean" ||
+      !POINTER_MODES.has(mode)
+    ) {
+      this.sendError(client, "invalid_pointer", "Некорректное состояние указателя");
+      return false;
+    }
+    if (mode === "grabbing" && session.state.controllerId !== client.id) {
+      this.sendError(client, "pointer_not_controller", "Указатель не управляет камнем");
+      return false;
+    }
+
+    client.pointer = {
+      x,
+      y,
+      mode,
+      visible,
+      updatedAt: this.now(),
+    };
+    this.broadcastPointer(session, client);
+    return true;
   }
 
   markChanged(session) {
@@ -491,9 +618,30 @@ class SessionManager {
     const payload = {
       participants: this.connectedCount(session),
       controllerId: session.state.controllerId,
+      pointers: [...session.clients.values()]
+        .filter((client) => socketIsOpen(client.socket) && client.pointer?.visible)
+        .map((client) => this.pointerPayload(client)),
     };
     session.clients.forEach((client) => {
       this.sendTo(client, "presence.update", payload);
+    });
+  }
+
+  pointerPayload(client) {
+    return {
+      clientId: client.id,
+      x: client.pointer.x,
+      y: client.pointer.y,
+      mode: client.pointer.mode,
+      visible: client.pointer.visible,
+      serverTime: this.now(),
+    };
+  }
+
+  broadcastPointer(session, client) {
+    const payload = this.pointerPayload(client);
+    session.clients.forEach((participant) => {
+      this.sendTo(participant, "pointer.update", payload);
     });
   }
 

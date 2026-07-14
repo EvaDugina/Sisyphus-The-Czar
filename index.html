@@ -249,14 +249,33 @@
           scale(1.04);
       }
 
-      .settings-toggle {
+      .hand-cursor.is-remote {
+        z-index: 19;
+        display: block;
+        opacity: 0;
+        transition:
+          opacity 120ms ease,
+          filter 130ms ease,
+          transform 70ms linear;
+      }
+
+      .hand-cursor.is-remote.is-visible {
+        opacity: 0.82;
+      }
+
+      .settings-toggle,
+      .session-share-toggle {
         position: fixed;
-        right: 1rem;
         top: 1rem;
         z-index: 30;
         display: grid;
         width: 2.75rem;
+        min-width: 2.75rem;
+        max-width: 2.75rem;
         height: 2.75rem;
+        min-height: 2.75rem;
+        max-height: 2.75rem;
+        padding: 0;
         place-items: center;
         border: 1px solid var(--line);
         border-radius: 50%;
@@ -271,12 +290,52 @@
           transform 180ms ease;
       }
 
-      .settings-toggle:hover {
+      .settings-toggle {
+        right: 1rem;
+      }
+
+      .session-share-toggle {
+        right: 4.5rem;
+      }
+
+      .session-share-toggle svg {
+        width: 1.1rem;
+        height: 1.1rem;
+        fill: none;
+        stroke: currentColor;
+        stroke-linecap: round;
+        stroke-linejoin: round;
+        stroke-width: 1.8;
+      }
+
+      .session-share-toggle [data-share-icon="check"] {
+        display: none;
+      }
+
+      .session-share-toggle.is-copied [data-share-icon="link"] {
+        display: none;
+      }
+
+      .session-share-toggle.is-copied [data-share-icon="check"] {
+        display: block;
+      }
+
+      .settings-toggle:hover,
+      .session-share-toggle:hover {
         transform: translateY(-1px);
       }
 
       .settings-toggle[aria-expanded="true"] {
         border-color: var(--target-line);
+      }
+
+      .session-share-toggle[data-state="online"] {
+        border-color: var(--target-line);
+      }
+
+      .session-share-toggle:disabled {
+        cursor: wait;
+        opacity: 0.58;
       }
 
       .settings-panel {
@@ -609,6 +668,24 @@
   </head>
   <body class="state-intro theme-light">
     <button
+      class="session-share-toggle"
+      type="button"
+      data-session-share
+      data-testid="share-session-top"
+      data-state="local"
+      aria-label="Поделиться сессией"
+      title="Поделиться сессией"
+    >
+      <svg data-share-icon="link" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
+        <path d="M14 11a5 5 0 0 0-7.1-.1l-2 2A5 5 0 0 0 12 20l1.1-1.1" />
+      </svg>
+      <svg data-share-icon="check" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m5 12 4 4L19 6" />
+      </svg>
+    </button>
+
+    <button
       class="settings-toggle"
       type="button"
       aria-controls="settings-panel"
@@ -651,7 +728,7 @@
             <span>Масса</span>
             <output class="control-value" data-output="mass">4</output>
           </span>
-          <input name="mass" type="range" min="1" max="10" step="1" value="4" />
+          <input name="mass" type="range" min="1" max="100" step="1" value="4" />
         </label>
 
         <label
@@ -952,6 +1029,7 @@
         alt="Камень"
         draggable="false"
       />
+      <div class="remote-cursors" aria-hidden="true"></div>
       <div class="hand-cursor" aria-hidden="true"></div>
     </main>
 
@@ -967,6 +1045,7 @@
       const world = document.querySelector(".world");
       const rock = document.querySelector(".rock");
       const handCursor = document.querySelector(".hand-cursor");
+      const remoteCursorLayer = document.querySelector(".remote-cursors");
       const targetZone = document.querySelector(".target-zone");
       const settingsToggle = document.querySelector(".settings-toggle");
       const settingsPanel = document.querySelector(".settings-panel");
@@ -974,7 +1053,9 @@
       const trailCtx = trailCanvas.getContext("2d");
       const hintEl = document.querySelector(".hint");
       const sessionStatus = document.querySelector("[data-session-status]");
-      const sessionShare = document.querySelector("[data-session-share]");
+      const sessionShare = document.querySelector(".session-share");
+      const sessionShareToggle = document.querySelector(".session-share-toggle");
+      const sessionShareButtons = [...document.querySelectorAll("[data-session-share]")];
       const finePointer = window.matchMedia("(pointer: fine)");
       const SharedPhysics = window.SisyphusPhysics;
 
@@ -1094,6 +1175,7 @@
       ];
       const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
       const SNAPSHOT_DELAY_MS = 90;
+      const POINTER_SEND_INTERVAL_MS = 1000 / 30;
 
       function getClientId() {
         try {
@@ -1113,6 +1195,8 @@
         enabled: false,
         sessionId: new URLSearchParams(window.location.search).get("session") || "",
         clientId: getClientId(),
+        leaveToken: null,
+        leaving: false,
         socket: null,
         connected: false,
         expired: false,
@@ -1120,6 +1204,7 @@
         reconnectAttempt: 0,
         reconnectTimerId: null,
         pingTimerId: null,
+        copyFeedbackTimerId: null,
         renderId: null,
         snapshots: [],
         lastRevision: -1,
@@ -1134,7 +1219,15 @@
         physicsSignature: "",
         firstReleaseTimerId: null,
         lastMoveSentAt: 0,
+        lastPointerSentAt: 0,
         lastRenderAt: 0,
+        localPointer: {
+          x: SharedPhysics.WORLD_WIDTH / 2,
+          y: 0,
+          mode: "grab",
+          visible: false,
+        },
+        remotePointers: new Map(),
       };
       collab.enabled = Boolean(collab.sessionId);
 
@@ -1371,14 +1464,20 @@
       }
 
       function updateSessionStatus() {
+        const shareLabel = !collab.enabled
+          ? "Поделиться сессией"
+          : collab.expired
+            ? "Создать новую сессию"
+            : "Скопировать ссылку";
+        sessionShare.textContent = shareLabel;
+        sessionShareToggle.setAttribute("aria-label", shareLabel);
+        sessionShareToggle.title = shareLabel;
+        sessionShareToggle.dataset.state = collab.connected ? "online" : "local";
+        sessionShareToggle.disabled = !collab.sessionId || collab.expired;
         if (!collab.enabled) {
           setSessionStatus("Локальная сессия", "local");
-          sessionShare.textContent = "Поделиться сессией";
           return;
         }
-        sessionShare.textContent = collab.expired
-          ? "Создать новую сессию"
-          : "Скопировать ссылку";
         if (collab.expired) {
           setSessionStatus("Сессия истекла или сервер перезапущен", "error");
         } else if (!collab.connected) {
@@ -1431,6 +1530,149 @@
           x: (clamp(x, 0, SharedPhysics.WORLD_WIDTH) / SharedPhysics.WORLD_WIDTH) * bounds.maxX,
           y: (clamp(y, 0, SharedPhysics.WORLD_HEIGHT) / SharedPhysics.WORLD_HEIGHT) * bounds.maxY,
         };
+      }
+
+      function pointerEventToCanonical(event) {
+        const rect = world.getBoundingClientRect();
+        return {
+          x:
+            rect.width > 0
+              ? clamp(
+                  ((event.clientX - rect.left) / rect.width) * SharedPhysics.WORLD_WIDTH,
+                  0,
+                  SharedPhysics.WORLD_WIDTH
+                )
+              : SharedPhysics.WORLD_WIDTH / 2,
+          y:
+            rect.height > 0
+              ? clamp(
+                  ((event.clientY - rect.top) / rect.height) * SharedPhysics.WORLD_HEIGHT,
+                  0,
+                  SharedPhysics.WORLD_HEIGHT
+                )
+              : 0,
+        };
+      }
+
+      function pointerIsOverRock(event) {
+        if (!event || !Number.isFinite(event.clientX) || !Number.isFinite(event.clientY)) {
+          return false;
+        }
+        const target = document.elementFromPoint(event.clientX, event.clientY);
+        return target === rock || rock.contains(target);
+      }
+
+      function updateLocalSharedPointer(event, mode, visible) {
+        if (event) {
+          const position = pointerEventToCanonical(event);
+          collab.localPointer.x = position.x;
+          collab.localPointer.y = position.y;
+        }
+        collab.localPointer.mode = mode === "grabbing" ? "grabbing" : "grab";
+        collab.localPointer.visible = Boolean(visible);
+        return { ...collab.localPointer };
+      }
+
+      function sendSharedPointer(event, mode, visible, force = false) {
+        const payload = updateLocalSharedPointer(event, mode, visible);
+        if (!collab.enabled || !collab.connected) {
+          return payload;
+        }
+        const now = performance.now();
+        if (!force && now - collab.lastPointerSentAt < POINTER_SEND_INTERVAL_MS) {
+          return payload;
+        }
+        collab.lastPointerSentAt = now;
+        sendShared("pointer.update", payload);
+        return payload;
+      }
+
+      function removeRemotePointer(clientId) {
+        const pointer = collab.remotePointers.get(clientId);
+        if (!pointer) {
+          return;
+        }
+        pointer.element.remove();
+        collab.remotePointers.delete(clientId);
+      }
+
+      function clearRemotePointers() {
+        collab.remotePointers.forEach((pointer) => pointer.element.remove());
+        collab.remotePointers.clear();
+      }
+
+      function receiveRemotePointer(payload) {
+        if (!payload || payload.clientId === collab.clientId) {
+          return;
+        }
+        const clientId = String(payload.clientId || "");
+        const x = Number(payload.x);
+        const y = Number(payload.y);
+        const mode = payload.mode;
+        if (
+          !clientId ||
+          !Number.isFinite(x) ||
+          !Number.isFinite(y) ||
+          x < 0 ||
+          x > SharedPhysics.WORLD_WIDTH ||
+          y < 0 ||
+          y > SharedPhysics.WORLD_HEIGHT ||
+          !["grab", "grabbing"].includes(mode)
+        ) {
+          return;
+        }
+        if (!payload.visible) {
+          removeRemotePointer(clientId);
+          return;
+        }
+
+        let pointer = collab.remotePointers.get(clientId);
+        if (!pointer) {
+          const element = document.createElement("div");
+          element.className = "hand-cursor is-remote is-visible";
+          element.dataset.remoteCursor = clientId;
+          element.dataset.testid = "remote-cursor";
+          remoteCursorLayer.appendChild(element);
+          pointer = { element, x, y, targetX: x, targetY: y };
+          collab.remotePointers.set(clientId, pointer);
+        }
+        pointer.targetX = x;
+        pointer.targetY = y;
+        pointer.element.classList.toggle("is-grabbing", mode === "grabbing");
+      }
+
+      function syncRemotePointers(pointers) {
+        const visibleIds = new Set();
+        if (Array.isArray(pointers)) {
+          pointers.forEach((pointer) => {
+            if (pointer && pointer.visible && pointer.clientId !== collab.clientId) {
+              visibleIds.add(String(pointer.clientId));
+            }
+            receiveRemotePointer(pointer);
+          });
+        }
+        [...collab.remotePointers.keys()].forEach((clientId) => {
+          if (!visibleIds.has(clientId)) {
+            removeRemotePointer(clientId);
+          }
+        });
+      }
+
+      function renderRemotePointers() {
+        if (collab.remotePointers.size === 0) {
+          return;
+        }
+        const rect = world.getBoundingClientRect();
+        collab.remotePointers.forEach((pointer) => {
+          pointer.x += (pointer.targetX - pointer.x) * 0.42;
+          pointer.y += (pointer.targetY - pointer.y) * 0.42;
+          const viewportX =
+            rect.left + (pointer.x / SharedPhysics.WORLD_WIDTH) * rect.width;
+          const viewportY =
+            rect.top + (pointer.y / SharedPhysics.WORLD_HEIGHT) * rect.height;
+          pointer.element.style.setProperty("--cursor-x", `${viewportX}px`);
+          pointer.element.style.setProperty("--cursor-y", `${viewportY}px`);
+        });
       }
 
       function localVelocityToCanonical(vx, vy) {
@@ -1588,7 +1830,20 @@
         }, 100);
       }
 
-      async function copySessionLink() {
+      function showCopiedLinkFeedback() {
+        window.clearTimeout(collab.copyFeedbackTimerId);
+        sessionShareToggle.classList.add("is-copied");
+        sessionShareToggle.setAttribute("aria-label", "Ссылка скопирована");
+        collab.copyFeedbackTimerId = window.setTimeout(() => {
+          collab.copyFeedbackTimerId = null;
+          sessionShareToggle.classList.remove("is-copied");
+          updateSessionStatus();
+        }, 400);
+      }
+
+      async function copySessionLink(options = {}) {
+        const showToggleFeedback = Boolean(options.showToggleFeedback);
+        const announce = options.announce !== false;
         const link = window.location.href;
         try {
           await navigator.clipboard.writeText(link);
@@ -1606,13 +1861,21 @@
             window.prompt("Скопируйте ссылку на сессию", link);
           }
         }
-        setSessionStatus("Ссылка скопирована", collab.connected ? "online" : "connecting");
-        window.setTimeout(updateSessionStatus, 1600);
+        if (showToggleFeedback) {
+          showCopiedLinkFeedback();
+        }
+        if (announce) {
+          setSessionStatus("Ссылка скопирована", collab.connected ? "online" : "connecting");
+          window.setTimeout(updateSessionStatus, 1600);
+        }
       }
 
-      async function createSharedSession() {
+      async function createSharedSession(options = {}) {
+        const copyAfterCreate = options.copyAfterCreate !== false;
         if (collab.enabled && collab.sessionId && !collab.expired) {
-          await copySessionLink();
+          if (copyAfterCreate) {
+            await copySessionLink();
+          }
           return;
         }
         if (window.location.protocol === "file:") {
@@ -1620,7 +1883,9 @@
           return;
         }
 
-        sessionShare.disabled = true;
+        sessionShareButtons.forEach((button) => {
+          button.disabled = true;
+        });
         setSessionStatus("Создаём общую сессию…", "connecting");
         try {
           const response = await fetch(appUrl("api/sessions"), {
@@ -1644,14 +1909,25 @@
           url.searchParams.set("session", collab.sessionId);
           window.history.replaceState({}, "", url);
           connectSharedSession();
-          await copySessionLink();
+          if (copyAfterCreate) {
+            await copySessionLink();
+          }
         } catch (error) {
           collab.enabled = false;
           setSessionStatus("Не удалось создать сессию", "error");
         } finally {
-          sessionShare.disabled = false;
+          sessionShareButtons.forEach((button) => {
+            button.disabled = false;
+          });
           updateSessionStatus();
         }
+      }
+
+      async function copyCurrentSessionLink() {
+        if (!collab.sessionId || collab.expired) {
+          return;
+        }
+        await copySessionLink({ showToggleFeedback: true, announce: false });
       }
 
       function sendShared(type, payload = {}) {
@@ -1673,7 +1949,12 @@
       }
 
       function scheduleSharedReconnect() {
-        if (!collab.enabled || collab.expired || collab.reconnectTimerId !== null) {
+        if (
+          !collab.enabled ||
+          collab.expired ||
+          collab.leaving ||
+          collab.reconnectTimerId !== null
+        ) {
           return;
         }
         const delay = RECONNECT_DELAYS[
@@ -1687,7 +1968,12 @@
       }
 
       function connectSharedSession() {
-        if (!collab.enabled || !collab.sessionId || collab.expired) {
+        if (
+          !collab.enabled ||
+          !collab.sessionId ||
+          collab.expired ||
+          collab.leaving
+        ) {
           return;
         }
         clearSharedConnectionTimers();
@@ -1711,6 +1997,12 @@
             sendShared("ping", { clientTime: Date.now() });
           }, 20_000);
           sendShared("ping", { clientTime: Date.now() });
+          sendSharedPointer(
+            null,
+            collab.localPointer.mode,
+            collab.localPointer.visible,
+            true
+          );
           updateSessionStatus();
         });
 
@@ -1733,6 +2025,9 @@
           collab.hasControl = false;
           collab.pendingControl = false;
           cancelSharedLocalDrag();
+          updateLocalSharedPointer(null, "grab", false);
+          hideHandCursor();
+          clearRemotePointers();
           if (event.code === 4004) {
             collab.expired = true;
           }
@@ -1761,7 +2056,10 @@
         } else if (message.type === "presence.update") {
           collab.participants = Math.max(1, Number(payload.participants) || 1);
           collab.remoteControllerId = payload.controllerId || null;
+          syncRemotePointers(payload.pointers);
           updateSessionStatus();
+        } else if (message.type === "pointer.update") {
+          receiveRemotePointer(payload);
         } else if (message.type === "pong") {
           const sample = Date.now() - Number(payload.serverTime || Date.now());
           collab.clockOffset = collab.clockOffsetReady
@@ -1784,6 +2082,13 @@
         }
         if (!Object.values(PHASES).includes(payload.phase)) {
           return;
+        }
+
+        if (
+          typeof payload.leaveToken === "string" &&
+          /^[A-Za-z0-9_-]{22}$/.test(payload.leaveToken)
+        ) {
+          collab.leaveToken = payload.leaveToken;
         }
 
         collab.lastRevision = revision;
@@ -1848,6 +2153,46 @@
 
         startSharedRenderLoop();
         updateSessionStatus();
+      }
+
+      function leaveSharedSession(event) {
+        if (
+          event?.persisted ||
+          collab.leaving ||
+          !collab.enabled ||
+          !collab.sessionId ||
+          !collab.leaveToken ||
+          window.location.protocol === "file:"
+        ) {
+          return;
+        }
+
+        collab.leaving = true;
+        clearSharedConnectionTimers();
+        const endpoint = appUrl(
+          `api/sessions/${encodeURIComponent(collab.sessionId)}/leave`
+        );
+        const body = JSON.stringify({
+          clientId: collab.clientId,
+          leaveToken: collab.leaveToken,
+        });
+        let queued = false;
+        try {
+          queued = navigator.sendBeacon(
+            endpoint,
+            new Blob([body], { type: "application/json" })
+          );
+        } catch (error) {
+          queued = false;
+        }
+        if (!queued) {
+          fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body,
+            keepalive: true,
+          }).catch(() => {});
+        }
       }
 
       function applySharedFrame(snapshot) {
@@ -1929,6 +2274,7 @@
           recordTrailPoint(deltaSeconds);
         }
         drawTrail();
+        renderRemotePointers();
       }
 
       function startSharedRenderLoop() {
@@ -1948,6 +2294,11 @@
         rock.classList.remove("is-dragging");
         setGrabbingCursor(false);
         setHandToGrab();
+        updateLocalSharedPointer(
+          null,
+          "grab",
+          collab.localPointer.visible
+        );
         if (releaseCapture) {
           releasePointerCapture(pointerId);
         }
@@ -1997,7 +2348,8 @@
         collab.pendingControl = true;
 
         const position = localToCanonical(motion.x, motion.y);
-        sendShared("control.acquire", position);
+        const pointer = updateLocalSharedPointer(event, "grabbing", true);
+        sendShared("control.acquire", { ...position, pointer });
         if (motion.phase === PHASES.INTRO) {
           collab.firstReleaseTimerId = window.setTimeout(() => {
             if (motion.dragging && collab.enabled) {
@@ -2010,7 +2362,13 @@
 
       function moveSharedDrag(event) {
         moveHandCursor(event);
+        const pointer = updateLocalSharedPointer(
+          event,
+          motion.dragging ? "grabbing" : "grab",
+          true
+        );
         if (!motion.dragging || (!collab.hasControl && !collab.pendingControl)) {
+          sendSharedPointer(event, "grab", true);
           return;
         }
         event.preventDefault();
@@ -2019,7 +2377,7 @@
         applyDragTargetMovement(MAX_FRAME_SECONDS);
 
         const now = performance.now();
-        if (now - collab.lastMoveSentAt < 1000 / 30) {
+        if (now - collab.lastMoveSentAt < POINTER_SEND_INTERVAL_MS) {
           return;
         }
         collab.lastMoveSentAt = now;
@@ -2028,7 +2386,7 @@
           motion.pointerVx,
           motion.pointerVy
         );
-        sendShared("control.move", { ...position, ...velocity });
+        sendShared("control.move", { ...position, ...velocity, pointer });
       }
 
       function releaseSharedDrag(event) {
@@ -2040,17 +2398,24 @@
           motion.pointerVx,
           motion.pointerVy
         );
+        const pointerVisible =
+          event.type !== "pointercancel" && pointerIsOverRock(event);
+        const pointer = updateLocalSharedPointer(event, "grab", pointerVisible);
         sendShared("control.release", {
           ...velocity,
           target: motion.phase === PHASES.PLAY ? sharedTargetBounds() : null,
+          pointer,
         });
         collab.pendingControl = false;
         collab.hasControl = false;
         cancelSharedLocalDrag();
+        if (!pointerVisible) {
+          hideHandCursor();
+        }
         updateSessionStatus();
       }
 
-      function forceReleaseSharedDrag() {
+      function forceReleaseSharedDrag(hidePointer = false) {
         if (!motion.dragging) {
           return;
         }
@@ -2058,13 +2423,22 @@
           motion.pointerVx,
           motion.pointerVy
         );
+        const pointer = updateLocalSharedPointer(
+          null,
+          "grab",
+          hidePointer ? false : collab.localPointer.visible
+        );
         sendShared("control.release", {
           ...velocity,
           target: motion.phase === PHASES.PLAY ? sharedTargetBounds() : null,
+          pointer,
         });
         collab.pendingControl = false;
         collab.hasControl = false;
         cancelSharedLocalDrag();
+        if (hidePointer) {
+          hideHandCursor();
+        }
         updateSessionStatus();
       }
 
@@ -2534,7 +2908,7 @@
 
       function forceReleaseRock() {
         if (collab.enabled) {
-          forceReleaseSharedDrag();
+          forceReleaseSharedDrag(true);
           return;
         }
 
@@ -2700,17 +3074,23 @@
         }
 
         showHandCursor(event);
+        if (collab.enabled) {
+          sendSharedPointer(event, "grab", true, true);
+        }
       }
 
-      function leaveRock() {
+      function leaveRock(event) {
         if (!motion.dragging) {
           hideHandCursor();
+          if (collab.enabled) {
+            sendSharedPointer(event, "grab", false, true);
+          }
         }
       }
 
       function cancelDragAndCursor() {
         if (collab.enabled && motion.dragging) {
-          forceReleaseSharedDrag();
+          forceReleaseSharedDrag(true);
           return;
         }
 
@@ -2721,6 +3101,9 @@
         rock.classList.remove("is-dragging");
         setHandToGrab();
         hideHandCursor();
+        if (collab.enabled) {
+          sendSharedPointer(null, "grab", false, true);
+        }
       }
 
       function toggleSettings() {
@@ -2762,7 +3145,8 @@
       settingsPanel.addEventListener("focusout", hideHint);
 
       settingsToggle.addEventListener("click", toggleSettings);
-      sessionShare.addEventListener("click", createSharedSession);
+      sessionShare.addEventListener("click", () => createSharedSession());
+      sessionShareToggle.addEventListener("click", copyCurrentSessionLink);
       rock.addEventListener("pointerenter", enterRock);
       rock.addEventListener("pointerleave", leaveRock);
       rock.addEventListener("pointerdown", startDrag);
@@ -2776,6 +3160,7 @@
       });
       rock.addEventListener("dragstart", (event) => event.preventDefault());
       window.addEventListener("blur", cancelDragAndCursor);
+      window.addEventListener("pagehide", leaveSharedSession);
       window.addEventListener("resize", () => {
         updateBounds();
         resizeTrailCanvas();
@@ -2796,6 +3181,8 @@
         updateSessionStatus();
         if (collab.enabled) {
           connectSharedSession();
+        } else {
+          createSharedSession({ copyAfterCreate: false });
         }
       }
 
