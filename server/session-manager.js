@@ -78,6 +78,7 @@ class SessionManager {
       state,
       physics,
       trail: sanitizeTrail(payload.trail),
+      imprint: Physics.sanitizeImprint(payload.imprint),
       clients: new Map(),
       revision: 1,
       createdAt: now,
@@ -89,7 +90,6 @@ class SessionManager {
       lastTrailAt: now,
       firstFallAt: null,
       holdReleaseAt: null,
-      stopMaxY: null,
       lastPointer: { vx: 0, vy: 0 },
       dirty: true,
     };
@@ -196,7 +196,6 @@ class SessionManager {
     if (session.state.controllerId === clientId) {
       this.finishRelease(
         session,
-        null,
         session.lastPointer.vx,
         session.lastPointer.vy
       );
@@ -302,7 +301,9 @@ class SessionManager {
     if (Number.isFinite(Number(payload.y))) {
       state.y = Physics.clamp(Number(payload.y), 0, Physics.WORLD_HEIGHT);
     }
-    session.stopMaxY = Physics.sanitizeStopMaxY(payload.stopMaxY);
+    if (state.phase === Physics.PHASES.INTRO && !session.imprint) {
+      session.imprint = Physics.createImprintAtState(state, payload.imprint);
+    }
     session.lastPointer = { vx: 0, vy: 0 };
     session.firstFallAt =
       state.phase === Physics.PHASES.INTRO
@@ -339,10 +340,6 @@ class SessionManager {
 
     state.x = Physics.clamp(finite(payload.x, state.x), 0, Physics.WORLD_WIDTH);
     state.y = Physics.clamp(finite(payload.y, state.y), 0, Physics.WORLD_HEIGHT);
-    const stopMaxY = Physics.sanitizeStopMaxY(payload.stopMaxY);
-    if (stopMaxY !== null) {
-      session.stopMaxY = stopMaxY;
-    }
     session.lastPointer = {
       vx: Physics.clamp(finite(payload.vx, session.lastPointer.vx), -4000, 4000),
       vy: Physics.clamp(finite(payload.vy, session.lastPointer.vy), -9000, 9000),
@@ -350,7 +347,7 @@ class SessionManager {
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
-    if (this.finishAtStopZone(session)) {
+    if (this.finishAtImprint(session)) {
       return true;
     }
     this.markChanged(session);
@@ -370,10 +367,10 @@ class SessionManager {
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
-    return this.finishRelease(session, payload.stopMaxY, vx, vy);
+    return this.finishRelease(session, vx, vy);
   }
 
-  finishRelease(session, stopMaxY, pointerVx, pointerVy) {
+  finishRelease(session, pointerVx, pointerVy) {
     const state = session.state;
     const phaseAtRelease = state.phase;
     const controller = state.controllerId
@@ -381,10 +378,6 @@ class SessionManager {
       : null;
     session.firstFallAt = null;
     session.holdReleaseAt = null;
-    const cleanStopMaxY = Physics.sanitizeStopMaxY(stopMaxY);
-    if (cleanStopMaxY !== null) {
-      session.stopMaxY = cleanStopMaxY;
-    }
     state.dragging = false;
     state.controllerId = null;
     if (controller?.pointer?.visible && controller.pointer.mode === "grabbing") {
@@ -397,9 +390,9 @@ class SessionManager {
       Physics.beginFirstFall(state, this.random);
     } else if (
       phaseAtRelease === Physics.PHASES.PLAY &&
-      Physics.finishAtStopZone(state, session.stopMaxY)
+      Physics.finishAtImprint(state, session.imprint)
     ) {
-      session.stopMaxY = state.y;
+      /* finishAtImprint примагничивает камень к сохранённому отпечатку. */
     } else {
       Physics.applyReleaseImpulse(
         state,
@@ -415,18 +408,17 @@ class SessionManager {
     return true;
   }
 
-  finishAtStopZone(session) {
+  finishAtImprint(session) {
     const state = session.state;
     const controller = state.controllerId
       ? session.clients.get(state.controllerId)
       : null;
-    if (!Physics.finishAtStopZone(state, session.stopMaxY)) {
+    if (!Physics.finishAtImprint(state, session.imprint)) {
       return false;
     }
 
     session.firstFallAt = null;
     session.holdReleaseAt = null;
-    session.stopMaxY = state.y;
     if (controller?.pointer?.visible && controller.pointer.mode === "grabbing") {
       controller.pointer.mode = "grab";
       controller.pointer.updatedAt = this.now();
@@ -522,7 +514,6 @@ class SessionManager {
       ) {
         this.finishRelease(
           session,
-          null,
           session.lastPointer.vx,
           session.lastPointer.vy
         );
@@ -546,7 +537,6 @@ class SessionManager {
       ) {
         this.finishRelease(
           session,
-          null,
           session.lastPointer.vx,
           session.lastPointer.vy
         );
@@ -557,7 +547,6 @@ class SessionManager {
       ) {
         this.finishRelease(
           session,
-          null,
           session.lastPointer.vx,
           session.lastPointer.vy
         );
@@ -571,7 +560,7 @@ class SessionManager {
       );
 
       let physicsChanged = false;
-      let stoppedAtTop = false;
+      let stoppedAtImprint = false;
       while (
         session.accumulator >= Physics.FIXED_STEP_SECONDS &&
         Physics.isMoving(session.state)
@@ -583,13 +572,13 @@ class SessionManager {
         );
         session.accumulator -= Physics.FIXED_STEP_SECONDS;
         physicsChanged = true;
-        if (this.finishAtStopZone(session)) {
-          stoppedAtTop = true;
+        if (this.finishAtImprint(session)) {
+          stoppedAtImprint = true;
           break;
         }
       }
 
-      if (physicsChanged && !stoppedAtTop) {
+      if (physicsChanged && !stoppedAtImprint) {
         this.markChanged(session);
       } else if (!Physics.isMoving(session.state)) {
         session.accumulator = 0;
@@ -610,6 +599,7 @@ class SessionManager {
     const payload = {
       ...session.state,
       physics: { ...session.physics },
+      imprint: session.imprint ? { ...session.imprint } : null,
       revision: session.revision,
       serverTime: this.now(),
       expiresAt: session.expiresAt,

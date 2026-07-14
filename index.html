@@ -40,7 +40,7 @@
         --target-line: rgba(138, 107, 49, 0.56);
         --shadow: rgba(23, 20, 17, 0.18);
 
-        min-height: 500svh;
+        min-height: 10000vh;
         margin: 0;
         overflow-x: hidden;
         background: var(--surface);
@@ -74,7 +74,7 @@
 
       .world {
         position: relative;
-        min-height: 500svh;
+        min-height: 10000vh;
         overflow: hidden;
         background:
           linear-gradient(180deg, var(--surface) 0%, var(--surface-deep) 48%, var(--surface-low) 100%),
@@ -166,6 +166,29 @@
           filter 160ms ease,
           opacity 240ms ease;
         will-change: transform;
+      }
+
+      .rock-imprint {
+        --imprint-x: 0px;
+        --imprint-y: 0px;
+
+        position: absolute;
+        left: 0;
+        top: 0;
+        z-index: 4;
+        width: clamp(440px, 84vmin, 1040px);
+        height: auto;
+        opacity: 0;
+        pointer-events: none;
+        filter: grayscale(1) contrast(0.72);
+        transform: translate3d(var(--imprint-x), var(--imprint-y), 0);
+        transition: opacity 220ms ease;
+        user-select: none;
+        will-change: transform, opacity;
+      }
+
+      .rock-imprint.is-visible {
+        opacity: 0.22;
       }
 
       .rock.is-dragging {
@@ -648,7 +671,8 @@
           font-size: 2.1rem;
         }
 
-        .rock {
+        .rock,
+        .rock-imprint {
           width: clamp(300px, 90vw, 520px);
         }
 
@@ -1036,6 +1060,14 @@
       </section>
 
       <img
+        class="rock-imprint"
+        src="assets/rock.png"
+        alt=""
+        aria-hidden="true"
+        data-testid="rock-imprint"
+        draggable="false"
+      />
+      <img
         class="rock"
         src="assets/rock.png"
         alt="Камень"
@@ -1056,6 +1088,7 @@
       const body = document.body;
       const world = document.querySelector(".world");
       const rock = document.querySelector(".rock");
+      const rockImprint = document.querySelector(".rock-imprint");
       const handCursor = document.querySelector(".hand-cursor");
       const remoteCursorLayer = document.querySelector(".remote-cursors");
       const settingsToggle = document.querySelector(".settings-toggle");
@@ -1173,6 +1206,7 @@
         pointerVy: 0,
         alternateHand: false,
         turbTime: 0,
+        imprint: null,
       };
 
       const SHARED_PHYSICS_KEYS = [
@@ -1233,6 +1267,7 @@
         lastMoveSentAt: 0,
         lastPointerSentAt: 0,
         lastRenderAt: 0,
+        imprint: null,
         localPointer: {
           x: SharedPhysics.WORLD_WIDTH / 2,
           y: 0,
@@ -1436,11 +1471,10 @@
       }
 
       function updateBounds() {
-        const rockRect = rock.getBoundingClientRect();
         bounds.worldWidth = window.innerWidth;
         bounds.worldHeight = world.offsetHeight;
-        bounds.rockWidth = rockRect.width;
-        bounds.rockHeight = rockRect.height;
+        bounds.rockWidth = rock.offsetWidth;
+        bounds.rockHeight = rock.offsetHeight;
         bounds.maxX = Math.max(0, bounds.worldWidth - bounds.rockWidth);
         bounds.maxY = Math.max(0, bounds.worldHeight - bounds.rockHeight - FLOOR_INSET);
       }
@@ -1451,6 +1485,90 @@
         motion.y = clamp(y, 0, bounds.maxY);
         rock.style.setProperty("--rock-x", `${motion.x}px`);
         rock.style.setProperty("--rock-y", `${motion.y}px`);
+      }
+
+      function localImprintToCanonical(imprint) {
+        if (!imprint) {
+          return null;
+        }
+        updateBounds();
+        const position = localToCanonical(imprint.x, imprint.y);
+        return SharedPhysics.sanitizeImprint({
+          ...position,
+          toleranceX:
+            bounds.maxX > 0
+              ? (imprint.toleranceX / bounds.maxX) * SharedPhysics.WORLD_WIDTH
+              : SharedPhysics.WORLD_WIDTH,
+          toleranceY:
+            bounds.maxY > 0
+              ? (imprint.toleranceY / bounds.maxY) * SharedPhysics.WORLD_HEIGHT
+              : 1,
+        });
+      }
+
+      function sharedImprintAt(position) {
+        updateBounds();
+        return SharedPhysics.sanitizeImprint({
+          ...position,
+          toleranceX:
+            bounds.maxX > 0
+              ? ((bounds.rockWidth * SharedPhysics.IMPRINT_TOLERANCE_FRACTION) /
+                  bounds.maxX) *
+                SharedPhysics.WORLD_WIDTH
+              : SharedPhysics.WORLD_WIDTH,
+          toleranceY:
+            bounds.maxY > 0
+              ? ((bounds.rockHeight * SharedPhysics.IMPRINT_TOLERANCE_FRACTION) /
+                  bounds.maxY) *
+                SharedPhysics.WORLD_HEIGHT
+              : 1,
+        });
+      }
+
+      function activeLocalImprint() {
+        updateBounds();
+        if (collab.enabled) {
+          const imprint = SharedPhysics.sanitizeImprint(collab.imprint);
+          if (!imprint) {
+            return null;
+          }
+          const position = canonicalToLocal(imprint.x, imprint.y);
+          return {
+            ...position,
+            toleranceX:
+              (imprint.toleranceX / SharedPhysics.WORLD_WIDTH) * bounds.maxX,
+            toleranceY:
+              (imprint.toleranceY / SharedPhysics.WORLD_HEIGHT) * bounds.maxY,
+          };
+        }
+        return motion.imprint;
+      }
+
+      function renderImprint() {
+        const imprint = activeLocalImprint();
+        rockImprint.classList.toggle("is-visible", Boolean(imprint));
+        if (!imprint) {
+          return;
+        }
+        rockImprint.style.setProperty("--imprint-x", `${imprint.x}px`);
+        rockImprint.style.setProperty("--imprint-y", `${imprint.y}px`);
+      }
+
+      function createLocalImprint() {
+        if (motion.imprint) {
+          return motion.imprint;
+        }
+        updateBounds();
+        motion.imprint = {
+          x: motion.x,
+          y: motion.y,
+          toleranceX:
+            bounds.rockWidth * SharedPhysics.IMPRINT_TOLERANCE_FRACTION,
+          toleranceY:
+            bounds.rockHeight * SharedPhysics.IMPRINT_TOLERANCE_FRACTION,
+        };
+        renderImprint();
+        return motion.imprint;
       }
 
       function setDragTargetFromPointer(event) {
@@ -1759,8 +1877,11 @@
         });
       }
 
-      function sharedStopMaxY() {
-        return localToCanonical(0, stopZoneMaxTop()).y;
+      function currentSharedImprint() {
+        if (collab.imprint) {
+          return { ...collab.imprint };
+        }
+        return localImprintToCanonical(motion.imprint);
       }
 
       function loadSharedTrail(points) {
@@ -1902,6 +2023,7 @@
               state: currentSharedState(),
               physics: sharedPhysicsPayload(),
               trail: currentSharedTrail(),
+              imprint: currentSharedImprint(),
             }),
           });
           if (!response.ok) {
@@ -2105,6 +2227,9 @@
           : offsetSample;
         collab.clockOffsetReady = true;
         applySharedPhysics(payload.physics);
+
+        collab.imprint = SharedPhysics.sanitizeImprint(payload.imprint);
+        renderImprint();
 
         if (Array.isArray(payload.trail)) {
           loadSharedTrail(payload.trail);
@@ -2325,6 +2450,13 @@
         }
         toggleHandVariant();
         updateBounds();
+        const position = localToCanonical(motion.x, motion.y);
+        let proposedImprint = null;
+        if (motion.phase === PHASES.INTRO && !collab.imprint) {
+          proposedImprint = sharedImprintAt(position);
+          collab.imprint = proposedImprint;
+          renderImprint();
+        }
         const rect = rock.getBoundingClientRect();
         motion.dragging = true;
         motion.activePointerId = event.pointerId;
@@ -2343,11 +2475,10 @@
         rock.setPointerCapture(event.pointerId);
         collab.pendingControl = true;
 
-        const position = localToCanonical(motion.x, motion.y);
         const pointer = updateLocalSharedPointer(event, "grabbing", true);
         sendShared("control.acquire", {
           ...position,
-          stopMaxY: sharedStopMaxY(),
+          imprint: proposedImprint,
           pointer,
         });
         if (motion.phase === PHASES.INTRO) {
@@ -2377,10 +2508,10 @@
         applyDragTargetMovement(MAX_FRAME_SECONDS);
 
         const now = performance.now();
-        const reachedStopZone =
-          motion.phase === PHASES.PLAY && rockFullyInsideStopZone();
+        const reachedImprint =
+          motion.phase === PHASES.PLAY && rockInsideImprint();
         if (
-          !reachedStopZone &&
+          !reachedImprint &&
           now - collab.lastMoveSentAt < POINTER_SEND_INTERVAL_MS
         ) {
           return;
@@ -2394,7 +2525,6 @@
         sendShared("control.move", {
           ...position,
           ...velocity,
-          stopMaxY: sharedStopMaxY(),
           pointer,
         });
       }
@@ -2413,7 +2543,6 @@
         const pointer = updateLocalSharedPointer(event, "grab", pointerVisible);
         sendShared("control.release", {
           ...velocity,
-          stopMaxY: sharedStopMaxY(),
           pointer,
         });
         collab.pendingControl = false;
@@ -2440,7 +2569,6 @@
         );
         sendShared("control.release", {
           ...velocity,
-          stopMaxY: sharedStopMaxY(),
           pointer,
         });
         collab.pendingControl = false;
@@ -2702,26 +2830,21 @@
         motion.holdTimerId = window.setTimeout(forceReleaseRock, maxHoldMs());
       }
 
-      function stopZoneMaxTop() {
-        updateBounds();
-        const firstPageHeight = bounds.worldHeight / SharedPhysics.PAGE_COUNT;
-        return Math.max(
-          0,
-          firstPageHeight * SharedPhysics.FIRST_PAGE_STOP_FRACTION -
-            bounds.rockHeight
+      function rockInsideImprint() {
+        const imprint = activeLocalImprint();
+        return Boolean(
+          imprint &&
+            Math.abs(motion.x - imprint.x) <= imprint.toleranceX &&
+            Math.abs(motion.y - imprint.y) <= imprint.toleranceY
         );
       }
 
-      function rockFullyInsideStopZone() {
-        return motion.y <= stopZoneMaxTop();
-      }
-
-      function finishIfInStopZone() {
-        if (motion.phase !== PHASES.PLAY || !rockFullyInsideStopZone()) {
+      function finishIfInImprint() {
+        const imprint = activeLocalImprint();
+        if (motion.phase !== PHASES.PLAY || !imprint || !rockInsideImprint()) {
           return false;
         }
 
-        const stopY = stopZoneMaxTop();
         setPhase(PHASES.WON);
         setTheme("light");
         clearHoldTimer();
@@ -2732,7 +2855,7 @@
         motion.vy = 0;
         rock.classList.remove("is-dragging", "is-falling");
         setGrabbingCursor(false);
-        setPosition(motion.x, stopY);
+        setPosition(imprint.x, imprint.y);
         return true;
       }
 
@@ -2863,12 +2986,12 @@
           (motion.phase === PHASES.INTRO || motion.phase === PHASES.PLAY)
         ) {
           applyDragTargetMovement(deltaSeconds);
-          finishIfInStopZone();
+          finishIfInImprint();
         }
 
         if (motion.phase === PHASES.FALLING || motion.phase === PHASES.PLAY) {
           applyPhysics(deltaSeconds);
-          finishIfInStopZone();
+          finishIfInImprint();
           recordTrailPoint(deltaSeconds);
         }
 
@@ -2938,7 +3061,7 @@
           return;
         }
 
-        if (finishIfInStopZone()) {
+        if (finishIfInImprint()) {
           return;
         }
 
@@ -2966,6 +3089,7 @@
 
           toggleHandVariant();
           updateBounds();
+          createLocalImprint();
           const rect = rock.getBoundingClientRect();
           motion.dragging = true;
           motion.activePointerId = event.pointerId;
@@ -3065,7 +3189,7 @@
           return;
         }
 
-        if (finishIfInStopZone()) {
+        if (finishIfInImprint()) {
           return;
         }
 
@@ -3178,6 +3302,7 @@
         } else {
           setPosition(motion.x, motion.y);
         }
+        renderImprint();
       });
 
       function initScene() {

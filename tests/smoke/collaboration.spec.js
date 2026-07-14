@@ -22,6 +22,24 @@ async function visibleRockPoint(page) {
   });
 }
 
+async function grabVisibleRock(page) {
+  const status = page.getByTestId("session-status");
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const point = await visibleRockPoint(page);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    try {
+      await expect(status).toContainText("камень у вас", { timeout: 1500 });
+      return point;
+    } catch (error) {
+      lastError = error;
+      await page.mouse.up();
+    }
+  }
+  throw lastError;
+}
+
 test("два браузера видят один камень и по очереди управляют им", async ({ browser }) => {
   const firstContext = await browser.newContext({
     permissions: ["clipboard-read", "clipboard-write"],
@@ -33,6 +51,10 @@ test("два браузера видят один камень и по очер�
   await first.goto("/");
   await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
   await expect(first.getByTestId("session-status")).toContainText("В сессии");
+  const sceneHeightInViewports = await first.locator(".world").evaluate(
+    (world) => world.offsetHeight / window.innerHeight
+  );
+  expect(sceneHeightInViewports).toBeCloseTo(100, 1);
   const sharedUrl = first.url();
 
   const shareToggle = first.getByTestId("share-session-top");
@@ -91,6 +113,7 @@ test("два браузера видят один камень и по очер�
   await setRange(first, "mass", 100);
   await setRange(first, "gravity", 2);
   await setRange(first, "bounce", 0);
+  await setRange(first, "inertia", 0);
 
   await second.goto("/");
   await expect(second).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
@@ -108,10 +131,36 @@ test("два браузера видят один камень и по очер�
   await expect(remoteCursor).toHaveClass(/is-visible/);
   await expect(remoteCursor).not.toHaveClass(/is-grabbing/);
   await expect(remoteCursor).toHaveCSS("background-image", /cursor-grab\.png/);
+  const positionBeforeFirstTouch = await first.evaluate(() => ({
+    x: Number.parseFloat(
+      getComputedStyle(document.querySelector(".rock")).getPropertyValue("--rock-x")
+    ),
+    y: Number.parseFloat(
+      getComputedStyle(document.querySelector(".rock")).getPropertyValue("--rock-y")
+    ),
+  }));
 
   await first.mouse.down();
   await expect(remoteCursor).toHaveClass(/is-grabbing/);
   await expect(remoteCursor).toHaveCSS("background-image", /cursor-grabbing\.png/);
+  const firstImprint = first.getByTestId("rock-imprint");
+  const secondImprint = second.getByTestId("rock-imprint");
+  await expect(firstImprint).toHaveClass(/is-visible/);
+  await expect(secondImprint).toHaveClass(/is-visible/);
+  const initialAlignment = await first.evaluate(() => ({
+    imprintX: Number.parseFloat(
+      getComputedStyle(document.querySelector(".rock-imprint")).getPropertyValue(
+        "--imprint-x"
+      )
+    ),
+    imprintY: Number.parseFloat(
+      getComputedStyle(document.querySelector(".rock-imprint")).getPropertyValue(
+        "--imprint-y"
+      )
+    ),
+  }));
+  expect(initialAlignment.imprintX).toBeCloseTo(positionBeforeFirstTouch.x, 0);
+  expect(initialAlignment.imprintY).toBeCloseTo(positionBeforeFirstTouch.y, 0);
   await first.mouse.up();
   await expect(first.locator("body")).toHaveClass(/state-fallingToBottom/);
   await expect(second.locator("body")).toHaveClass(/state-fallingToBottom/);
@@ -125,25 +174,23 @@ test("два браузера видят один камень и по очер�
   );
   expect(secondY).toBeGreaterThan(firstY);
 
-  await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 7000 });
+  await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
   await second.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-  const point = await visibleRockPoint(second);
-  await second.mouse.move(point.x, point.y);
-  await second.mouse.down();
-  await expect(second.getByTestId("session-status")).toContainText("камень у вас");
+  const point = await grabVisibleRock(second);
   await second.mouse.move(point.x, point.y - 40, {
     steps: 4,
   });
   await expect(first.getByTestId("session-status")).toContainText("другой участник");
   await second.evaluate(() => {
-    const stopMaxY = sharedStopMaxY();
-    const position = localToCanonical(motion.x, motion.y);
+    const imprint = collab.imprint;
+    if (!imprint) {
+      throw new Error("Сервер не прислал отпечаток камня");
+    }
     sendShared("control.move", {
-      x: position.x,
-      y: Math.max(0, stopMaxY - 1),
+      x: imprint.x,
+      y: imprint.y,
       vx: 0,
       vy: -100,
-      stopMaxY,
       pointer: collab.localPointer,
     });
   });
@@ -152,16 +199,21 @@ test("два браузера видят один камень и по очер�
   await second.mouse.up();
 
   await second.evaluate(() => window.scrollTo(0, 0));
-  const stoppedRock = await second.locator(".rock").evaluate((rock) => {
-    const rect = rock.getBoundingClientRect();
+  const stoppedAlignment = await second.evaluate(() => {
+    const rockRect = document.querySelector(".rock").getBoundingClientRect();
+    const imprintRect = document
+      .querySelector(".rock-imprint")
+      .getBoundingClientRect();
     return {
-      top: rect.top,
-      bottom: rect.bottom,
-      stopLine: window.innerHeight * 0.8,
+      left: Math.abs(rockRect.left - imprintRect.left),
+      top: Math.abs(rockRect.top - imprintRect.top),
+      right: Math.abs(rockRect.right - imprintRect.right),
+      bottom: Math.abs(rockRect.bottom - imprintRect.bottom),
     };
   });
-  expect(stoppedRock.top).toBeGreaterThanOrEqual(-1);
-  expect(stoppedRock.bottom).toBeLessThanOrEqual(stoppedRock.stopLine + 1);
+  Object.values(stoppedAlignment).forEach((difference) => {
+    expect(difference).toBeLessThanOrEqual(1);
+  });
 
   await first.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false }));

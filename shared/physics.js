@@ -17,11 +17,11 @@
   });
 
   const WORLD_WIDTH = 1000;
-  const WORLD_HEIGHT = 5000;
-  const PAGE_COUNT = 5;
-  const FIRST_PAGE_STOP_FRACTION = 0.8;
-  const STOP_ZONE_BOTTOM_Y =
-    (WORLD_HEIGHT / PAGE_COUNT) * FIRST_PAGE_STOP_FRACTION;
+  const WORLD_HEIGHT = 100000;
+  const IMPRINT_TOLERANCE_FRACTION = 0.12;
+  const DEFAULT_IMPRINT_TOLERANCE_X = 100;
+  const DEFAULT_IMPRINT_TOLERANCE_Y = 80;
+  const MAX_IMPRINT_TOLERANCE_Y = 1000;
   const FIXED_STEP_SECONDS = 1 / 60;
   const FIRST_FALL_DELAY_MS = 400;
   const GRAVITY_UNITS = 1260;
@@ -105,26 +105,54 @@
     );
   }
 
-  function sanitizeStopMaxY(value) {
-    const number = Number(value);
-    if (!Number.isFinite(number)) {
+  function sanitizeImprint(input) {
+    if (!input || typeof input !== "object") {
       return null;
     }
-    return clamp(number, 0, STOP_ZONE_BOTTOM_Y);
+    const x = Number(input.x);
+    const y = Number(input.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return null;
+    }
+    return {
+      x: clamp(x, 0, WORLD_WIDTH),
+      y: clamp(y, 0, WORLD_HEIGHT),
+      toleranceX: clamp(
+        finiteNumber(input.toleranceX, DEFAULT_IMPRINT_TOLERANCE_X),
+        1,
+        WORLD_WIDTH
+      ),
+      toleranceY: clamp(
+        finiteNumber(input.toleranceY, DEFAULT_IMPRINT_TOLERANCE_Y),
+        1,
+        MAX_IMPRINT_TOLERANCE_Y
+      ),
+    };
   }
 
-  function finishAtStopZone(state, stopMaxY) {
-    const maxY = sanitizeStopMaxY(stopMaxY);
+  function createImprintAtState(state, input = {}) {
+    return sanitizeImprint({
+      x: state.x,
+      y: state.y,
+      toleranceX: input.toleranceX,
+      toleranceY: input.toleranceY,
+    });
+  }
+
+  function finishAtImprint(state, imprint) {
+    const target = sanitizeImprint(imprint);
     if (
       state.phase !== PHASES.PLAY ||
-      maxY === null ||
-      state.y > maxY
+      target === null ||
+      Math.abs(state.x - target.x) > target.toleranceX ||
+      Math.abs(state.y - target.y) > target.toleranceY
     ) {
       return false;
     }
 
     state.phase = PHASES.WON;
-    state.y = maxY;
+    state.x = target.x;
+    state.y = target.y;
     state.vx = 0;
     state.vy = 0;
     state.dragging = false;
@@ -248,9 +276,7 @@
     PHASES,
     WORLD_WIDTH,
     WORLD_HEIGHT,
-    PAGE_COUNT,
-    FIRST_PAGE_STOP_FRACTION,
-    STOP_ZONE_BOTTOM_Y,
+    IMPRINT_TOLERANCE_FRACTION,
     FIXED_STEP_SECONDS,
     FIRST_FALL_DELAY_MS,
     DEFAULT_PHYSICS,
@@ -259,8 +285,9 @@
     sanitizePhysics,
     sanitizeState,
     maxHoldMs,
-    sanitizeStopMaxY,
-    finishAtStopZone,
+    sanitizeImprint,
+    createImprintAtState,
+    finishAtImprint,
     beginFirstFall,
     applyReleaseImpulse,
     stepState,
