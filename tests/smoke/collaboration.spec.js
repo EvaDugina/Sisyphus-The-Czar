@@ -40,6 +40,59 @@ async function grabVisibleRock(page) {
   throw lastError;
 }
 
+test("ссылка копируется после перезагрузки истёкшей сессии", async ({ browser }) => {
+  const context = await browser.newContext({
+    permissions: ["clipboard-read", "clipboard-write"],
+  });
+  const page = await context.newPage();
+  const missingSessionId = "AAAAAAAAAAAAAAAAAAAAAA";
+
+  await page.goto(`/?session=${missingSessionId}`);
+  await expect(page.getByTestId("session-status")).toContainText("Сессия истекла");
+  const currentUrl = page.url();
+  await page.reload();
+  await expect(page.getByTestId("session-status")).toContainText("Сессия истекла");
+
+  const shareToggle = page.getByTestId("share-session-top");
+  await expect(shareToggle).toBeEnabled();
+  await shareToggle.click();
+  await expect(shareToggle).toHaveClass(/is-copied/);
+  await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toBe(
+    currentUrl
+  );
+
+  await context.close();
+});
+
+test("вход на корень перенаправляет в рабочую сессию", async ({ browser }) => {
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const documentRequests = [];
+  page.on("request", (request) => {
+    if (request.resourceType() === "document") {
+      const url = new URL(request.url());
+      documentRequests.push(`${url.pathname}${url.search}`);
+    }
+  });
+
+  await page.goto("/");
+  await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect.poll(() => documentRequests.length).toBeGreaterThanOrEqual(2);
+  expect(documentRequests[0]).toBe("/");
+  expect(documentRequests.at(-1)).toMatch(/^\/\?session=[A-Za-z0-9_-]{22}$/);
+
+  const point = await visibleRockPoint(page);
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await expect(page.getByTestId("session-status")).toContainText("камень у вас");
+  await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
+  await page.mouse.up();
+  await expect(page.locator("body")).toHaveClass(/state-fallingToBottom/);
+
+  await context.close();
+});
+
 test("два браузера видят один камень и по очереди управляют им", async ({ browser }) => {
   const firstContext = await browser.newContext({
     permissions: ["clipboard-read", "clipboard-write"],

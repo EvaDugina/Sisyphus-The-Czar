@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Бедный Сизиф</title>
+    <title>Царь Сизиф</title>
     <style>
       @import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&display=swap");
 
@@ -356,11 +356,6 @@
         border-color: var(--target-line);
       }
 
-      .session-share-toggle:disabled {
-        cursor: wait;
-        opacity: 0.58;
-      }
-
       .settings-panel {
         position: fixed;
         right: 1rem;
@@ -698,11 +693,10 @@
     <button
       class="session-share-toggle"
       type="button"
-      data-session-share
       data-testid="share-session-top"
       data-state="local"
-      aria-label="Поделиться сессией"
-      title="Поделиться сессией"
+      aria-label="Скопировать ссылку"
+      title="Скопировать ссылку"
     >
       <svg data-share-icon="link" viewBox="0 0 24 24" aria-hidden="true">
         <path d="M10 13a5 5 0 0 0 7.1.1l2-2a5 5 0 0 0-7.1-7.1l-1.1 1.1" />
@@ -1056,7 +1050,7 @@
       <section class="summit" aria-hidden="true">
         <div class="target-zone"></div>
         <h2 class="title2">Миниатюра</h2>
-        <h1 class="title">Бедный Сизиф</h1>
+        <h1 class="title">Царь Сизиф</h1>
       </section>
 
       <img
@@ -1604,16 +1598,15 @@
       }
 
       function updateSessionStatus() {
-        const shareLabel = !collab.enabled
+        const panelShareLabel = !collab.enabled
           ? "Поделиться сессией"
           : collab.expired
             ? "Создать новую сессию"
             : "Скопировать ссылку";
-        sessionShare.textContent = shareLabel;
-        sessionShareToggle.setAttribute("aria-label", shareLabel);
-        sessionShareToggle.title = shareLabel;
+        sessionShare.textContent = panelShareLabel;
+        sessionShareToggle.setAttribute("aria-label", "Скопировать ссылку");
+        sessionShareToggle.title = "Скопировать ссылку";
         sessionShareToggle.dataset.state = collab.connected ? "online" : "local";
-        sessionShareToggle.disabled = !collab.sessionId || collab.expired;
         if (!collab.enabled) {
           setSessionStatus("Локальная сессия", "local");
           return;
@@ -1972,7 +1965,7 @@
       async function copySessionLink(options = {}) {
         const showToggleFeedback = Boolean(options.showToggleFeedback);
         const announce = options.announce !== false;
-        const link = window.location.href;
+        const link = options.link || window.location.href;
         try {
           await navigator.clipboard.writeText(link);
         } catch (error) {
@@ -2030,17 +2023,12 @@
             throw new Error(`HTTP ${response.status}`);
           }
           const result = await response.json();
-          collab.sessionId = result.sessionId;
-          collab.enabled = true;
-          collab.expired = false;
-          collab.reconnectAttempt = 0;
           const url = new URL(window.location.href);
-          url.searchParams.set("session", collab.sessionId);
-          window.history.replaceState({}, "", url);
-          connectSharedSession();
+          url.searchParams.set("session", result.sessionId);
           if (copyAfterCreate) {
-            await copySessionLink();
+            await copySessionLink({ link: url.href });
           }
+          window.location.replace(url);
         } catch (error) {
           collab.enabled = false;
           setSessionStatus("Не удалось создать сессию", "error");
@@ -2053,9 +2041,6 @@
       }
 
       async function copyCurrentSessionLink() {
-        if (!collab.sessionId || collab.expired) {
-          return;
-        }
         await copySessionLink({ showToggleFeedback: true, announce: false });
       }
 
