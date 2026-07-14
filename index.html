@@ -442,6 +442,36 @@
         margin-bottom: 0.6rem;
       }
 
+      .sliding-control {
+        position: fixed;
+        left: 50%;
+        bottom: max(1rem, env(safe-area-inset-bottom));
+        z-index: 28;
+        display: grid;
+        width: min(34rem, calc(100vw - 2rem));
+        gap: 0.45rem;
+        padding: 0.72rem 0.85rem 0.8rem;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: var(--panel);
+        color: var(--ink);
+        box-shadow: 0 0.9rem 1.8rem color-mix(in srgb, var(--shadow) 42%, transparent);
+        backdrop-filter: blur(14px);
+        transform: translateX(-50%);
+      }
+
+      .sliding-control-label {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 1rem;
+        font-size: 0.92rem;
+      }
+
+      .sliding-control-title {
+        font-weight: 600;
+      }
+
       .hint {
         position: fixed;
         z-index: 40;
@@ -529,6 +559,12 @@
 
         .hand-cursor.is-alternate {
           --hotspot-y: 168px;
+        }
+
+        .sliding-control {
+          bottom: max(0.75rem, env(safe-area-inset-bottom));
+          width: min(28rem, calc(100vw - 1.5rem));
+          padding: 0.65rem 0.75rem 0.7rem;
         }
       }
     </style>
@@ -833,6 +869,22 @@
 
     <div class="hint" role="tooltip" aria-hidden="true"></div>
 
+    <label class="sliding-control">
+      <span class="sliding-control-label">
+        <span class="sliding-control-title">Скольжение</span>
+        <output class="control-value" data-output="inertia">0.90</output>
+      </span>
+      <input
+        name="bottomInertia"
+        type="range"
+        min="0"
+        max="1"
+        step="0.05"
+        value="0.9"
+        aria-label="Скольжение"
+      />
+    </label>
+
     <main class="world" aria-label="Сцена Сизифа">
       <canvas class="trail" aria-hidden="true"></canvas>
       <section class="summit" aria-hidden="true">
@@ -864,6 +916,7 @@
       const targetZone = document.querySelector(".target-zone");
       const settingsToggle = document.querySelector(".settings-toggle");
       const settingsPanel = document.querySelector(".settings-panel");
+      const bottomInertiaInput = document.querySelector('[name="bottomInertia"]');
       const trailCanvas = document.querySelector(".trail");
       const trailCtx = trailCanvas.getContext("2d");
       const hintEl = document.querySelector(".hint");
@@ -1049,11 +1102,20 @@
         };
 
         Object.entries(outputs).forEach(([key, value]) => {
-          const el = document.querySelector(`[data-output="${key}"]`);
-          if (el) {
+          document.querySelectorAll(`[data-output="${key}"]`).forEach((el) => {
             el.textContent = value;
-          }
+          });
         });
+      }
+
+      function syncBottomInertiaControl() {
+        bottomInertiaInput.value = String(params.inertia);
+      }
+
+      function setInertiaFromBottomControl() {
+        const inertiaInput = settingsPanel.querySelector('[name="inertia"]');
+        inertiaInput.value = bottomInertiaInput.value;
+        readControls();
       }
 
       function readControls() {
@@ -1093,6 +1155,7 @@
 
         trailCanvas.style.mixBlendMode = params.blendMode;
 
+        syncBottomInertiaControl();
         updateControlOutputs();
         saveSettings();
         drawTrail();
@@ -1468,6 +1531,13 @@
           return;
         }
 
+        const pointerId = motion.activePointerId;
+        motion.dragging = false;
+        motion.activePointerId = null;
+        rock.classList.remove("is-dragging");
+        setGrabbingCursor(false);
+        releasePointerCapture(pointerId);
+
         setPhase(PHASES.FALLING);
         // Тёмная тема включается сразу, как только камень выпадает из руки,
         // не дожидаясь касания дна.
@@ -1614,12 +1684,19 @@
         }
 
         const pointerId = motion.activePointerId;
+        const phaseAtRelease = motion.phase;
+        clearFirstFallTimer();
         motion.dragging = false;
         motion.activePointerId = null;
         motion.holdTimerId = null;
         rock.classList.remove("is-dragging");
         setGrabbingCursor(false);
         releasePointerCapture(pointerId);
+
+        if (phaseAtRelease === PHASES.INTRO) {
+          beginFirstFall();
+          return;
+        }
 
         if (finishIfInTarget()) {
           return;
@@ -1638,12 +1715,26 @@
 
         if (motion.phase === PHASES.INTRO) {
           event.preventDefault();
-          if (motion.firstFallTimerId !== null) {
+          if (motion.dragging || motion.firstFallTimerId !== null) {
             return;
           }
 
           toggleHandVariant();
+          updateBounds();
+          const rect = rock.getBoundingClientRect();
+          motion.dragging = true;
+          motion.activePointerId = event.pointerId;
+          motion.grabX = event.clientX - rect.left;
+          motion.grabY = event.clientY - rect.top;
+          motion.pointerVx = 0;
+          motion.pointerVy = 0;
+          motion.lastPointerAt = 0;
+          recordPointerVelocity(event);
           showHandCursor(event);
+          setGrabbingCursor(true);
+          rock.classList.remove("is-falling");
+          rock.classList.add("is-dragging");
+          rock.setPointerCapture(event.pointerId);
           startFirstFall();
           return;
         }
@@ -1679,7 +1770,10 @@
       function moveDrag(event) {
         moveHandCursor(event);
 
-        if (!motion.dragging || motion.phase !== PHASES.PLAY) {
+        if (
+          !motion.dragging ||
+          (motion.phase !== PHASES.INTRO && motion.phase !== PHASES.PLAY)
+        ) {
           return;
         }
 
@@ -1696,13 +1790,20 @@
           return;
         }
 
+        const phaseAtRelease = motion.phase;
         clearHoldTimer();
+        clearFirstFallTimer();
         motion.dragging = false;
         motion.activePointerId = null;
         rock.classList.remove("is-dragging");
         setGrabbingCursor(false);
         releasePointerCapture(event.pointerId);
         recordPointerVelocity(event);
+
+        if (phaseAtRelease === PHASES.INTRO) {
+          beginFirstFall();
+          return;
+        }
 
         if (finishIfInTarget()) {
           return;
@@ -1749,6 +1850,8 @@
         el.addEventListener("input", readControls);
         el.addEventListener("change", readControls);
       });
+      bottomInertiaInput.addEventListener("input", setInertiaFromBottomControl);
+      bottomInertiaInput.addEventListener("change", setInertiaFromBottomControl);
 
       settingsPanel.querySelector(".trail-clear").addEventListener("click", resetTrail);
 
