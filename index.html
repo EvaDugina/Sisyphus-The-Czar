@@ -587,7 +587,7 @@
 
         <label
           class="control"
-          data-hint="Масса камня. Чем тяжелее — тем медленнее разгон и слабее бросок."
+          data-hint="Масса камня. Чем тяжелее — тем медленнее подъём, медленнее разгон и слабее бросок."
         >
           <span class="control-label">
             <span>Масса</span>
@@ -598,7 +598,7 @@
 
         <label
           class="control"
-          data-hint="Сила притяжения к земле. Больше значение — камень падает быстрее."
+          data-hint="Сила притяжения к земле. Больше значение — камень падает быстрее и медленнее поднимается."
         >
           <span class="control-label">
             <span>Тяготение</span>
@@ -946,6 +946,10 @@
       const FIRST_FALL_DRIFT_MIN = 160;
       const FIRST_FALL_DRIFT_RANGE = 240;
       const LIFT_SCALE = 0.42;
+      const DRAG_LIFT_BASE_SPEED = 420;
+      const DRAG_LIFT_FORCE_SPEED = 880;
+      const DRAG_LIFT_MIN_SPEED = 220;
+      const DRAG_LIFT_MAX_SPEED = 2800;
       // Доля горизонтальной скорости, сохраняемая за секунду после отпускания.
       // Инерция 0 — быстрое торможение, 1 — почти без трения (долгий накат).
       const INERTIA_MIN_RETENTION = 0.35;
@@ -1005,6 +1009,8 @@
         vy: 0,
         grabX: 0,
         grabY: 0,
+        dragTargetX: 0,
+        dragTargetY: 0,
         dragging: false,
         activePointerId: null,
         holdTimerId: null,
@@ -1045,6 +1051,15 @@
           (3000 * params.handForce) / (params.mass * params.gravity * 5),
           500,
           3000
+        );
+      }
+
+      function dragLiftSpeed() {
+        const load = Math.max(params.mass * params.gravity, 0.1);
+        return clamp(
+          DRAG_LIFT_BASE_SPEED + (DRAG_LIFT_FORCE_SPEED * params.handForce) / load,
+          DRAG_LIFT_MIN_SPEED,
+          DRAG_LIFT_MAX_SPEED
         );
       }
 
@@ -1217,6 +1232,25 @@
         motion.y = clamp(y, 0, bounds.maxY);
         rock.style.setProperty("--rock-x", `${motion.x}px`);
         rock.style.setProperty("--rock-y", `${motion.y}px`);
+      }
+
+      function setDragTargetFromPointer(event) {
+        motion.dragTargetX = event.clientX + window.scrollX - motion.grabX;
+        motion.dragTargetY = event.clientY + window.scrollY - motion.grabY;
+      }
+
+      function applyDragTargetMovement(deltaSeconds) {
+        if (!motion.dragging) {
+          return;
+        }
+
+        const maxLiftDistance = dragLiftSpeed() * deltaSeconds;
+        const nextY =
+          motion.dragTargetY < motion.y
+            ? Math.max(motion.dragTargetY, motion.y - maxLiftDistance)
+            : motion.dragTargetY;
+
+        setPosition(motion.dragTargetX, nextY);
       }
 
       function centerIntroRock() {
@@ -1632,6 +1666,13 @@
 
         updateBounds();
 
+        if (
+          motion.dragging &&
+          (motion.phase === PHASES.INTRO || motion.phase === PHASES.PLAY)
+        ) {
+          applyDragTargetMovement(deltaSeconds);
+        }
+
         if (motion.phase === PHASES.FALLING || motion.phase === PHASES.PLAY) {
           applyPhysics(deltaSeconds);
           recordTrailPoint(deltaSeconds);
@@ -1726,6 +1767,8 @@
           motion.activePointerId = event.pointerId;
           motion.grabX = event.clientX - rect.left;
           motion.grabY = event.clientY - rect.top;
+          motion.dragTargetX = motion.x;
+          motion.dragTargetY = motion.y;
           motion.pointerVx = 0;
           motion.pointerVy = 0;
           motion.lastPointerAt = 0;
@@ -1754,6 +1797,8 @@
         motion.activePointerId = event.pointerId;
         motion.grabX = event.clientX - rect.left;
         motion.grabY = event.clientY - rect.top;
+        motion.dragTargetX = motion.x;
+        motion.dragTargetY = motion.y;
         motion.pointerVx = 0;
         motion.pointerVy = 0;
         motion.lastPointerAt = 0;
@@ -1779,10 +1824,11 @@
 
         event.preventDefault();
         recordPointerVelocity(event);
-        setPosition(
-          event.clientX + window.scrollX - motion.grabX,
-          event.clientY + window.scrollY - motion.grabY
-        );
+        setDragTargetFromPointer(event);
+
+        if (motion.phase === PHASES.INTRO) {
+          applyDragTargetMovement(MAX_FRAME_SECONDS);
+        }
       }
 
       function stopDrag(event) {
