@@ -456,10 +456,8 @@ class SessionManager {
       state.phase === Physics.PHASES.INTRO
         ? this.now() + Physics.FIRST_FALL_DELAY_MS
         : null;
-    session.holdReleaseAt =
-      state.phase === Physics.PHASES.PLAY
-        ? this.now() + Physics.maxHoldMs(session.physics)
-        : null;
+    session.holdReleaseAt = null;
+    this.syncHoldRelease(session, this.now(), true);
     this.markChanged(session);
 
     this.sendTo(client, "control.granted", {
@@ -494,6 +492,7 @@ class SessionManager {
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
+    this.syncHoldRelease(session);
     this.markChanged(session);
     return true;
   }
@@ -568,11 +567,31 @@ class SessionManager {
       { ...session.physics, ...payload },
       session.physics
     );
-    if (session.state.dragging && session.state.phase === Physics.PHASES.PLAY) {
-      session.holdReleaseAt = this.now() + Physics.maxHoldMs(session.physics);
-    }
+    this.syncHoldRelease(session, this.now(), true);
     this.markChanged(session);
     this.broadcastSnapshot(session);
+  }
+
+  holdReleasePaused(session) {
+    return (
+      session.state.dragging &&
+      session.state.phase === Physics.PHASES.PLAY &&
+      Physics.stateInsideImprint(session.state, session.imprint)
+    );
+  }
+
+  syncHoldRelease(session, now = this.now(), reset = false) {
+    if (
+      !session.state.dragging ||
+      session.state.phase !== Physics.PHASES.PLAY ||
+      this.holdReleasePaused(session)
+    ) {
+      session.holdReleaseAt = null;
+      return;
+    }
+    if (reset || session.holdReleaseAt === null) {
+      session.holdReleaseAt = now + Physics.maxHoldMs(session.physics);
+    }
   }
 
   restartSession(session, payload = {}) {
@@ -730,11 +749,16 @@ class SessionManager {
         session.holdReleaseAt !== null &&
         now >= session.holdReleaseAt
       ) {
-        this.finishRelease(
-          session,
-          session.lastPointer.vx,
-          session.lastPointer.vy
-        );
+        if (this.holdReleasePaused(session)) {
+          session.holdReleaseAt = null;
+          this.markChanged(session);
+        } else {
+          this.finishRelease(
+            session,
+            session.lastPointer.vx,
+            session.lastPointer.vy
+          );
+        }
       }
 
       const elapsed = Math.min(Math.max((now - session.lastTickAt) / 1000, 0), 0.25);

@@ -3029,7 +3029,24 @@
 
       function scheduleHoldLimit() {
         clearHoldTimer();
-        motion.holdTimerId = window.setTimeout(forceReleaseRock, maxHoldMs());
+        motion.holdTimerId = window.setTimeout(
+          () => forceReleaseRock({ pauseInsideImprint: true }),
+          maxHoldMs()
+        );
+      }
+
+      function syncHoldLimit() {
+        if (!motion.dragging || motion.phase !== PHASES.PLAY) {
+          clearHoldTimer();
+          return;
+        }
+        if (rockInsideImprint()) {
+          clearHoldTimer();
+          return;
+        }
+        if (motion.holdTimerId === null) {
+          scheduleHoldLimit();
+        }
       }
 
       function rockInsideImprint() {
@@ -3128,6 +3145,7 @@
           (motion.phase === PHASES.INTRO || motion.phase === PHASES.PLAY)
         ) {
           applyDragTargetMovement(deltaSeconds);
+          syncHoldLimit();
           syncReturnTheme();
         }
 
@@ -3182,13 +3200,23 @@
         motion.vy = localVelocity.vy;
       }
 
-      function forceReleaseRock() {
+      function forceReleaseRock({ pauseInsideImprint = false } = {}) {
         if (collab.enabled) {
           forceReleaseSharedDrag(true);
           return;
         }
 
         if (!motion.dragging) {
+          return;
+        }
+
+        if (
+          pauseInsideImprint &&
+          motion.phase === PHASES.PLAY &&
+          rockInsideImprint()
+        ) {
+          motion.holdTimerId = null;
+          syncHoldLimit();
           return;
         }
 
@@ -3287,7 +3315,7 @@
         rock.classList.remove("is-falling");
         rock.classList.add("is-dragging");
         rock.setPointerCapture(event.pointerId);
-        scheduleHoldLimit();
+        syncHoldLimit();
         syncReturnTheme();
         startLoop();
       }
