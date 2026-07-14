@@ -494,9 +494,6 @@ class SessionManager {
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
-    if (this.finishAtImprint(session)) {
-      return true;
-    }
     this.markChanged(session);
     return true;
   }
@@ -547,9 +544,10 @@ class SessionManager {
       Physics.beginFirstFall(state, this.random);
     } else if (
       phaseAtRelease === Physics.PHASES.PLAY &&
-      Physics.finishAtImprint(state, session.imprint)
+      Physics.stateInsideImprint(state, session.imprint)
     ) {
-      /* finishAtImprint примагничивает камень к сохранённому отпечатку. */
+      state.vx = 0;
+      state.vy = 0;
     } else {
       Physics.applyReleaseImpulse(
         state,
@@ -559,28 +557,6 @@ class SessionManager {
       );
     }
 
-    this.markChanged(session);
-    this.broadcastSnapshot(session);
-    this.broadcastPresence(session);
-    return true;
-  }
-
-  finishAtImprint(session) {
-    const state = session.state;
-    const controller = state.controllerId
-      ? session.clients.get(state.controllerId)
-      : null;
-    if (!Physics.finishAtImprint(state, session.imprint)) {
-      return false;
-    }
-
-    session.firstFallAt = null;
-    session.holdReleaseAt = null;
-    if (controller?.pointer?.visible && controller.pointer.mode === "grabbing") {
-      controller.pointer.mode = "grab";
-      controller.pointer.updatedAt = this.now();
-      this.broadcastPointer(session, controller);
-    }
     this.markChanged(session);
     this.broadcastSnapshot(session);
     this.broadcastPresence(session);
@@ -769,7 +745,6 @@ class SessionManager {
       );
 
       let physicsChanged = false;
-      let stoppedAtImprint = false;
       while (
         session.accumulator >= Physics.FIXED_STEP_SECONDS &&
         Physics.isMoving(session.state)
@@ -781,13 +756,9 @@ class SessionManager {
         );
         session.accumulator -= Physics.FIXED_STEP_SECONDS;
         physicsChanged = true;
-        if (this.finishAtImprint(session)) {
-          stoppedAtImprint = true;
-          break;
-        }
       }
 
-      if (physicsChanged && !stoppedAtImprint) {
+      if (physicsChanged) {
         this.markChanged(session);
       } else if (!Physics.isMoving(session.state)) {
         session.accumulator = 0;

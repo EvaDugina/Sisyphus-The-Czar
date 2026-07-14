@@ -139,25 +139,14 @@
     });
   }
 
-  function finishAtImprint(state, imprint) {
+  function stateInsideImprint(state, imprint) {
     const target = sanitizeImprint(imprint);
-    if (
-      state.phase !== PHASES.PLAY ||
-      target === null ||
-      Math.abs(state.x - target.x) > target.toleranceX ||
-      Math.abs(state.y - target.y) > target.toleranceY
-    ) {
-      return false;
-    }
-
-    state.phase = PHASES.WON;
-    state.x = target.x;
-    state.y = target.y;
-    state.vx = 0;
-    state.vy = 0;
-    state.dragging = false;
-    state.controllerId = null;
-    return true;
+    return Boolean(
+      state.phase === PHASES.PLAY &&
+        target !== null &&
+        Math.abs(state.x - target.x) <= target.toleranceX &&
+        Math.abs(state.y - target.y) <= target.toleranceY
+    );
   }
 
   function beginFirstFall(state, random = Math.random) {
@@ -287,7 +276,7 @@
     maxHoldMs,
     sanitizeImprint,
     createImprintAtState,
-    finishAtImprint,
+    stateInsideImprint,
     beginFirstFall,
     applyReleaseImpulse,
     stepState,

@@ -463,34 +463,43 @@ test("два браузера видят один камень и по очер�
     if (!imprint) {
       throw new Error("Сервер не прислал отпечаток камня");
     }
+    const local = canonicalToLocal(imprint.x, imprint.y);
+    setPosition(local.x, local.y);
+    motion.pointerVx = 0;
+    motion.pointerVy = 0;
+    syncReturnTheme(true);
     sendShared("control.move", {
       x: imprint.x,
       y: imprint.y,
       vx: 0,
-      vy: -100,
-      pointer: collab.localPointer,
+      vy: 0,
+      pointer: {
+        ...collab.localPointer,
+        x: imprint.x,
+        y: imprint.y,
+        mode: "grabbing",
+        visible: true,
+      },
     });
   });
-  await expect(first.locator("body")).toHaveClass(/state-won/);
-  await expect(second.locator("body")).toHaveClass(/state-won/);
+  await expect(first.locator("body")).toHaveClass(/theme-light/);
+  await expect(second.locator("body")).toHaveClass(/theme-light/);
+  await expect(first.locator("body")).not.toHaveClass(/state-won/);
+  await expect(second.locator("body")).not.toHaveClass(/state-won/);
   await second.mouse.up();
-
-  await second.evaluate(() => window.scrollTo(0, 0));
-  const stoppedAlignment = await second.evaluate(() => {
-    const rockRect = document.querySelector(".rock").getBoundingClientRect();
-    const imprintRect = document
-      .querySelector(".rock-imprint")
-      .getBoundingClientRect();
-    return {
-      left: Math.abs(rockRect.left - imprintRect.left),
-      top: Math.abs(rockRect.top - imprintRect.top),
-      right: Math.abs(rockRect.right - imprintRect.right),
-      bottom: Math.abs(rockRect.bottom - imprintRect.bottom),
-    };
-  });
-  Object.values(stoppedAlignment).forEach((difference) => {
-    expect(difference).toBeLessThanOrEqual(1);
-  });
+  await expect(first.locator("body")).toHaveClass(/theme-dark/);
+  await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  await expect(first.locator("body")).toHaveClass(/state-play/);
+  await expect(second.locator("body")).toHaveClass(/state-play/);
+  await first.waitForTimeout(250);
+  const releaseY = await first.locator(".rock").evaluate((rock) =>
+    Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
+  );
+  await first.waitForTimeout(500);
+  const fallingY = await first.locator(".rock").evaluate((rock) =>
+    Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
+  );
+  expect(fallingY).toBeGreaterThan(releaseY);
 
   await first.locator(".settings-toggle").click();
   await first.getByTestId("restart-session").click();

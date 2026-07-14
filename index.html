@@ -2148,6 +2148,23 @@
         return position;
       }
 
+      function sharedSnapshotTheme(snapshot) {
+        if (snapshot.phase === PHASES.INTRO || snapshot.phase === PHASES.WON) {
+          return "light";
+        }
+        if (
+          snapshot.phase === PHASES.PLAY &&
+          snapshot.dragging &&
+          SharedPhysics.stateInsideImprint(
+            { phase: snapshot.phase, x: snapshot.x, y: snapshot.y },
+            collab.imprint
+          )
+        ) {
+          return "light";
+        }
+        return "dark";
+      }
+
       function resetLocalExperience() {
         const pointerId = motion.activePointerId;
         window.clearTimeout(collab.firstReleaseTimerId);
@@ -2437,11 +2454,7 @@
         }
 
         setPhase(snapshot.phase);
-        setTheme(
-          snapshot.phase === PHASES.INTRO || snapshot.phase === PHASES.WON
-            ? "light"
-            : "dark"
-        );
+        setTheme(sharedSnapshotTheme(snapshot));
 
         if (snapshot.phase === PHASES.WON) {
           collab.hasControl = false;
@@ -2519,6 +2532,7 @@
             Math.abs(snapshot.vy) > 0.5);
         rock.classList.toggle("is-dragging", visiblyDragging);
         rock.classList.toggle("is-falling", visiblyFalling);
+        syncReturnTheme(visiblyDragging);
       }
 
       function renderSharedFrame(now) {
@@ -2678,6 +2692,7 @@
         recordPointerVelocity(event);
         setDragTargetFromPointer(event);
         applyDragTargetMovement(MAX_FRAME_SECONDS);
+        syncReturnTheme();
 
         const now = performance.now();
         const reachedImprint =
@@ -2725,6 +2740,7 @@
         collab.pendingControl = false;
         collab.hasControl = false;
         cancelSharedLocalDrag();
+        setTheme("dark");
         if (!pointerVisible) {
           hideHandCursor();
         }
@@ -2756,6 +2772,7 @@
         collab.pendingControl = false;
         collab.hasControl = false;
         cancelSharedLocalDrag();
+        setTheme("dark");
         if (hidePointer) {
           hideHandCursor();
         }
@@ -3024,24 +3041,16 @@
         );
       }
 
-      function finishIfInImprint() {
-        const imprint = activeLocalImprint();
-        if (motion.phase !== PHASES.PLAY || !imprint || !rockInsideImprint()) {
-          return false;
+      function syncReturnTheme(isDragging = motion.dragging) {
+        if (motion.phase === PHASES.INTRO || motion.phase === PHASES.WON) {
+          setTheme("light");
+          return;
         }
-
-        setPhase(PHASES.WON);
-        setTheme("light");
-        clearHoldTimer();
-        stopLoop();
-        motion.dragging = false;
-        motion.activePointerId = null;
-        motion.vx = 0;
-        motion.vy = 0;
-        rock.classList.remove("is-dragging", "is-falling");
-        setGrabbingCursor(false);
-        setPosition(imprint.x, imprint.y);
-        return true;
+        setTheme(
+          motion.phase === PHASES.PLAY && isDragging && rockInsideImprint()
+            ? "light"
+            : "dark"
+        );
       }
 
       function enterPlayPhase() {
@@ -3099,6 +3108,8 @@
         applyCanonicalMotion(state);
         if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
           enterPlayPhase();
+        } else {
+          syncReturnTheme(false);
         }
       }
 
@@ -3117,12 +3128,11 @@
           (motion.phase === PHASES.INTRO || motion.phase === PHASES.PLAY)
         ) {
           applyDragTargetMovement(deltaSeconds);
-          finishIfInImprint();
+          syncReturnTheme();
         }
 
         if (motion.phase === PHASES.FALLING || motion.phase === PHASES.PLAY) {
           applyPhysics(deltaSeconds);
-          finishIfInImprint();
           recordTrailPoint(deltaSeconds);
         }
 
@@ -3184,6 +3194,8 @@
 
         const pointerId = motion.activePointerId;
         const phaseAtRelease = motion.phase;
+        const releasedInImprint =
+          phaseAtRelease === PHASES.PLAY && rockInsideImprint();
         clearFirstFallTimer();
         motion.dragging = false;
         motion.activePointerId = null;
@@ -3197,11 +3209,13 @@
           return;
         }
 
-        if (finishIfInImprint()) {
-          return;
+        if (releasedInImprint) {
+          motion.vx = 0;
+          motion.vy = 0;
+        } else {
+          applyReleaseImpulse();
         }
-
-        applyReleaseImpulse();
+        setTheme("dark");
         setHandToGrab();
         rock.classList.add("is-falling");
         startLoop();
@@ -3274,6 +3288,7 @@
         rock.classList.add("is-dragging");
         rock.setPointerCapture(event.pointerId);
         scheduleHoldLimit();
+        syncReturnTheme();
         startLoop();
       }
 
@@ -3312,6 +3327,8 @@
         }
 
         const phaseAtRelease = motion.phase;
+        const releasedInImprint =
+          phaseAtRelease === PHASES.PLAY && rockInsideImprint();
         clearHoldTimer();
         clearFirstFallTimer();
         motion.dragging = false;
@@ -3326,11 +3343,13 @@
           return;
         }
 
-        if (finishIfInImprint()) {
-          return;
+        if (releasedInImprint) {
+          motion.vx = 0;
+          motion.vy = 0;
+        } else {
+          applyReleaseImpulse();
         }
-
-        applyReleaseImpulse();
+        setTheme("dark");
         setHandToGrab();
         rock.classList.add("is-falling");
         startLoop();
