@@ -1,0 +1,45 @@
+stages:
+  - validate
+  - test
+  - smoke
+  - security
+
+default:
+  image: node:24.18.0-alpine3.23
+  cache:
+    key:
+      files:
+        - package-lock.json
+    paths:
+      - .npm/
+  before_script:
+    - npm ci --cache .npm --prefer-offline
+
+lint_and_unit:
+  stage: test
+  script:
+    - npm run lint
+    - npm test
+
+commit_lint:
+  stage: validate
+  script:
+    - FROM_SHA="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}"
+    - if [ -z "$FROM_SHA" ] || echo "$FROM_SHA" | grep -Eq '^0+$'; then FROM_SHA="HEAD~1"; fi
+    - npx --no-install commitlint --from "$FROM_SHA" --to "$CI_COMMIT_SHA" --verbose
+
+browser_smoke:
+  stage: smoke
+  image: mcr.microsoft.com/playwright:v1.61.1-noble
+  script:
+    - npm ci --cache .npm --prefer-offline
+    - npm run test:smoke
+
+gitleaks:
+  stage: security
+  image:
+    name: zricethezav/gitleaks:v8.24.2
+    entrypoint: [""]
+  before_script: []
+  script:
+    - gitleaks git --redact --verbose

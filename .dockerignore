@@ -1,4 +1,7 @@
 .git
+.gitlab
+.gitlab-ci.yml
+.docs
 .env
 .env.*
 *.log
@@ -11,3 +14,7 @@ __pycache__/
 dist/
 build/
 .cache/
+test-results/
+playwright-report/
+tests/
+npm-debug.log*

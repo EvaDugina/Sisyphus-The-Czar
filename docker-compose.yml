@@ -1,7 +1,27 @@
 services:
   sisyphus-the-czar:
-    build: .
+    build:
+      context: .
+      target: production
     container_name: sisyphus-the-czar
     restart: unless-stopped
+    environment:
+      PORT: "8080"
+      DEBUG: "${DEBUG:-false}"
+      ALLOWED_ORIGIN: "${ALLOWED_ORIGIN:-}"
+      SESSION_TTL_SECONDS: "${SESSION_TTL_SECONDS:-86400}"
     ports:
-      - "127.0.0.1:18082:80"
+      - "127.0.0.1:18082:8080"
+    mem_limit: 256m
+    cpus: 0.5
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,noexec,nosuid
+    security_opt:
+      - no-new-privileges:true
+    logging:
+      driver: json-file
+      options:
+        max-size: 10m
+        max-file: "3"

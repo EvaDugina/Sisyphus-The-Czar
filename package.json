@@ -1,0 +1,30 @@
+{
+  "name": "sisyphus-the-czar",
+  "version": "0.2.0",
+  "private": true,
+  "description": "Совместная интерактивная веб-миниатюра с одним камнем",
+  "main": "server/index.js",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "nodemon --legacy-watch --watch server --watch shared --ext js --exec node server/index.js",
+    "lint": "node --check server/index.js && node --check server/session-manager.js && node --check shared/physics.js",
+    "test": "node --test tests/unit/physics.test.js tests/unit/session-manager.test.js tests/unit/server.test.js tests/integration/realtime.test.js",
+    "test:smoke": "playwright test tests/smoke",
+    "test:soak": "playwright test --config=playwright.soak.config.js",
+    "test:all": "npm run lint && npm test && npm run test:smoke",
+    "commitlint": "commitlint"
+  },
+  "engines": {
+    "node": ">=24.17.0 <25"
+  },
+  "dependencies": {
+    "express": "5.2.1",
+    "ws": "8.21.0"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "21.2.1",
+    "@commitlint/config-conventional": "21.2.0",
+    "@playwright/test": "1.61.1",
+    "nodemon": "3.1.14"
+  }
+}
