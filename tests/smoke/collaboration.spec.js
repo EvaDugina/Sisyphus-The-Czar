@@ -54,6 +54,40 @@ test("два браузера видят один камень и по очер�
   await expect(shareToggle).not.toHaveClass(/is-copied/);
 
   await first.locator(".settings-toggle").click();
+  const trailLength = first.locator('[name="trailMaxPoints"]');
+  const trailUnlimited = first.locator('[name="trailUnlimited"]');
+  await setRange(first, "trailMaxPoints", 20);
+  await trailUnlimited.check();
+  await expect(trailLength).toBeDisabled();
+  const trailCounts = await first.evaluate(() => {
+    trail.points = Array.from({ length: 25 }, (_, index) => ({
+      x: index,
+      y: index,
+    }));
+    trimTrailToLimit();
+    const unlimited = trail.points.length;
+
+    const checkbox = document.querySelector('[name="trailUnlimited"]');
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event("input", { bubbles: true }));
+    const limited = trail.points.length;
+
+    resetTrail();
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("input", { bubbles: true }));
+    return { unlimited, limited };
+  });
+  expect(trailCounts).toEqual({ unlimited: 25, limited: 20 });
+  await expect
+    .poll(() =>
+      first.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v2") || "{}"
+        );
+        return stored.trailUnlimited;
+      })
+    )
+    .toBe(true);
   await setRange(first, "mass", 100);
   await setRange(first, "gravity", 2);
   await setRange(first, "bounce", 0);
@@ -101,7 +135,33 @@ test("два браузера видят один камень и по очер�
     steps: 4,
   });
   await expect(first.getByTestId("session-status")).toContainText("другой участник");
+  await second.evaluate(() => {
+    const stopMaxY = sharedStopMaxY();
+    const position = localToCanonical(motion.x, motion.y);
+    sendShared("control.move", {
+      x: position.x,
+      y: Math.max(0, stopMaxY - 1),
+      vx: 0,
+      vy: -100,
+      stopMaxY,
+      pointer: collab.localPointer,
+    });
+  });
+  await expect(first.locator("body")).toHaveClass(/state-won/);
+  await expect(second.locator("body")).toHaveClass(/state-won/);
   await second.mouse.up();
+
+  await second.evaluate(() => window.scrollTo(0, 0));
+  const stoppedRock = await second.locator(".rock").evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      stopLine: window.innerHeight * 0.8,
+    };
+  });
+  expect(stoppedRock.top).toBeGreaterThanOrEqual(-1);
+  expect(stoppedRock.bottom).toBeLessThanOrEqual(stoppedRock.stopLine + 1);
 
   await first.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false }));

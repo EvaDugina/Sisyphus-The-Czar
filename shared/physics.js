@@ -18,6 +18,10 @@
 
   const WORLD_WIDTH = 1000;
   const WORLD_HEIGHT = 5000;
+  const PAGE_COUNT = 5;
+  const FIRST_PAGE_STOP_FRACTION = 0.8;
+  const STOP_ZONE_BOTTOM_Y =
+    (WORLD_HEIGHT / PAGE_COUNT) * FIRST_PAGE_STOP_FRACTION;
   const FIXED_STEP_SECONDS = 1 / 60;
   const FIRST_FALL_DELAY_MS = 400;
   const GRAVITY_UNITS = 1260;
@@ -99,6 +103,33 @@
       500,
       3000
     );
+  }
+
+  function sanitizeStopMaxY(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return null;
+    }
+    return clamp(number, 0, STOP_ZONE_BOTTOM_Y);
+  }
+
+  function finishAtStopZone(state, stopMaxY) {
+    const maxY = sanitizeStopMaxY(stopMaxY);
+    if (
+      state.phase !== PHASES.PLAY ||
+      maxY === null ||
+      state.y > maxY
+    ) {
+      return false;
+    }
+
+    state.phase = PHASES.WON;
+    state.y = maxY;
+    state.vx = 0;
+    state.vy = 0;
+    state.dragging = false;
+    state.controllerId = null;
+    return true;
   }
 
   function beginFirstFall(state, random = Math.random) {
@@ -217,6 +248,9 @@
     PHASES,
     WORLD_WIDTH,
     WORLD_HEIGHT,
+    PAGE_COUNT,
+    FIRST_PAGE_STOP_FRACTION,
+    STOP_ZONE_BOTTOM_Y,
     FIXED_STEP_SECONDS,
     FIRST_FALL_DELAY_MS,
     DEFAULT_PHYSICS,
@@ -225,6 +259,8 @@
     sanitizePhysics,
     sanitizeState,
     maxHoldMs,
+    sanitizeStopMaxY,
+    finishAtStopZone,
     beginFirstFall,
     applyReleaseImpulse,
     stepState,

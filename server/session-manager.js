@@ -89,6 +89,7 @@ class SessionManager {
       lastTrailAt: now,
       firstFallAt: null,
       holdReleaseAt: null,
+      stopMaxY: null,
       lastPointer: { vx: 0, vy: 0 },
       dirty: true,
     };
@@ -301,6 +302,7 @@ class SessionManager {
     if (Number.isFinite(Number(payload.y))) {
       state.y = Physics.clamp(Number(payload.y), 0, Physics.WORLD_HEIGHT);
     }
+    session.stopMaxY = Physics.sanitizeStopMaxY(payload.stopMaxY);
     session.lastPointer = { vx: 0, vy: 0 };
     session.firstFallAt =
       state.phase === Physics.PHASES.INTRO
@@ -337,12 +339,19 @@ class SessionManager {
 
     state.x = Physics.clamp(finite(payload.x, state.x), 0, Physics.WORLD_WIDTH);
     state.y = Physics.clamp(finite(payload.y, state.y), 0, Physics.WORLD_HEIGHT);
+    const stopMaxY = Physics.sanitizeStopMaxY(payload.stopMaxY);
+    if (stopMaxY !== null) {
+      session.stopMaxY = stopMaxY;
+    }
     session.lastPointer = {
       vx: Physics.clamp(finite(payload.vx, session.lastPointer.vx), -4000, 4000),
       vy: Physics.clamp(finite(payload.vy, session.lastPointer.vy), -9000, 9000),
     };
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
+    }
+    if (this.finishAtStopZone(session)) {
+      return true;
     }
     this.markChanged(session);
     return true;
@@ -361,10 +370,10 @@ class SessionManager {
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
-    return this.finishRelease(session, payload.target, vx, vy);
+    return this.finishRelease(session, payload.stopMaxY, vx, vy);
   }
 
-  finishRelease(session, target, pointerVx, pointerVy) {
+  finishRelease(session, stopMaxY, pointerVx, pointerVy) {
     const state = session.state;
     const phaseAtRelease = state.phase;
     const controller = state.controllerId
@@ -372,6 +381,10 @@ class SessionManager {
       : null;
     session.firstFallAt = null;
     session.holdReleaseAt = null;
+    const cleanStopMaxY = Physics.sanitizeStopMaxY(stopMaxY);
+    if (cleanStopMaxY !== null) {
+      session.stopMaxY = cleanStopMaxY;
+    }
     state.dragging = false;
     state.controllerId = null;
     if (controller?.pointer?.visible && controller.pointer.mode === "grabbing") {
@@ -384,13 +397,9 @@ class SessionManager {
       Physics.beginFirstFall(state, this.random);
     } else if (
       phaseAtRelease === Physics.PHASES.PLAY &&
-      this.isInsideTarget(state, target)
+      Physics.finishAtStopZone(state, session.stopMaxY)
     ) {
-      state.phase = Physics.PHASES.WON;
-      state.vx = 0;
-      state.vy = 0;
-      state.x = Physics.clamp((finite(target.minX) + finite(target.maxX)) / 2, 0, Physics.WORLD_WIDTH);
-      state.y = Physics.clamp((finite(target.minY) + finite(target.maxY)) / 2, 0, Physics.WORLD_HEIGHT);
+      session.stopMaxY = state.y;
     } else {
       Physics.applyReleaseImpulse(
         state,
@@ -406,27 +415,27 @@ class SessionManager {
     return true;
   }
 
-  isInsideTarget(state, target) {
-    if (!target || typeof target !== "object") {
+  finishAtStopZone(session) {
+    const state = session.state;
+    const controller = state.controllerId
+      ? session.clients.get(state.controllerId)
+      : null;
+    if (!Physics.finishAtStopZone(state, session.stopMaxY)) {
       return false;
     }
 
-    if (
-      ![target.minX, target.maxX, target.minY, target.maxY].every((value) =>
-        Number.isFinite(Number(value))
-      )
-    ) {
-      return false;
+    session.firstFallAt = null;
+    session.holdReleaseAt = null;
+    session.stopMaxY = state.y;
+    if (controller?.pointer?.visible && controller.pointer.mode === "grabbing") {
+      controller.pointer.mode = "grab";
+      controller.pointer.updatedAt = this.now();
+      this.broadcastPointer(session, controller);
     }
-
-    const minX = Physics.clamp(finite(target.minX), 0, Physics.WORLD_WIDTH);
-    const maxX = Physics.clamp(finite(target.maxX), 0, Physics.WORLD_WIDTH);
-    const minY = Physics.clamp(finite(target.minY), 0, Physics.WORLD_HEIGHT);
-    const maxY = Physics.clamp(finite(target.maxY), 0, Physics.WORLD_HEIGHT);
-    if (maxX < minX || maxY < minY) {
-      return false;
-    }
-    return state.x >= minX && state.x <= maxX && state.y >= minY && state.y <= maxY;
+    this.markChanged(session);
+    this.broadcastSnapshot(session);
+    this.broadcastPresence(session);
+    return true;
   }
 
   updatePhysics(session, payload) {
@@ -562,6 +571,7 @@ class SessionManager {
       );
 
       let physicsChanged = false;
+      let stoppedAtTop = false;
       while (
         session.accumulator >= Physics.FIXED_STEP_SECONDS &&
         Physics.isMoving(session.state)
@@ -573,9 +583,13 @@ class SessionManager {
         );
         session.accumulator -= Physics.FIXED_STEP_SECONDS;
         physicsChanged = true;
+        if (this.finishAtStopZone(session)) {
+          stoppedAtTop = true;
+          break;
+        }
       }
 
-      if (physicsChanged) {
+      if (physicsChanged && !stoppedAtTop) {
         this.markChanged(session);
       } else if (!Physics.isMoving(session.state)) {
         session.accumulator = 0;
