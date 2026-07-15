@@ -12,6 +12,7 @@ services:
       EMPTY_SESSION_GRACE_SECONDS: "10"
       SESSION_STORE_PATH: "/app/data/sessions.json"
       SESSION_PERSIST_INTERVAL_MS: "250"
+      VITE_HMR_CLIENT_PORT: "18082"
     ports:
       - "127.0.0.1:18082:8080"
     volumes:

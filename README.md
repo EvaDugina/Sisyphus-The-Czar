@@ -12,7 +12,7 @@
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-Приложение откроется на `http://127.0.0.1:18082/`. Vite на порту `8080` обновляет React/CSS/assets через HMR и проксирует API, health и WebSocket во внутренний Express на `8081`; Nodemon перезапускает backend при изменениях `server/` и `shared/`.
+Приложение откроется на `http://127.0.0.1:18082/`. После первого запуска контейнер оставляют работающим: изменения в `src/`, `index.html` и `assets/` применяются React Fast Refresh/Vite HMR примерно за 150–300 мс, изменения в `shared/physics.js` вызывают полный reload страницы, а Nodemon автоматически перезапускает Express при изменениях `server/` и `shared/`. Ручные `restart`, `up` или пересборка для исходников не нужны. Только изменение зависимостей, Dockerfile или Compose-конфигурации требует `docker compose -f docker-compose.dev.yml up -d --build`.
 
 Остановить локальный контейнер:
 

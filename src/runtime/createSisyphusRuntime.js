@@ -37,6 +37,15 @@ export function createSisyphusRuntime(elements = {}) {
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
+  const listenerDisposers = [];
+  let disposed = false;
+
+  function listen(target, type, listener, options) {
+    target.addEventListener(type, listener, options);
+    listenerDisposers.push(() => {
+      target.removeEventListener(type, listener, options);
+    });
+  }
 
   const trail = {
     points: [],
@@ -203,6 +212,7 @@ export function createSisyphusRuntime(elements = {}) {
     reconnectTimerId: null,
     pingTimerId: null,
     copyFeedbackTimerId: null,
+    statusResetTimerId: null,
     renderId: null,
     snapshots: [],
     lastRevision: -1,
@@ -218,6 +228,7 @@ export function createSisyphusRuntime(elements = {}) {
     physicsSignature: "",
     pendingPhysicsChanges: Object.create(null),
     sessionCreateInFlight: false,
+    sessionCreateAbortController: null,
     firstReleaseTimerId: null,
     lastMoveSentAt: 0,
     lastPointerSentAt: 0,
@@ -545,15 +556,19 @@ export function createSisyphusRuntime(elements = {}) {
       const size = resizeCanvasToCssPixels(rainFxCanvas);
       if (rain.rainFx) {
         rain.rainFx.resize?.(size.width, size.height);
-      } else {
-        rain.fallback?.resize?.();
       }
+      rain.fallback?.resize?.();
     };
     rain.resizeHandler = handleResize;
     window.addEventListener("resize", handleResize, { passive: true });
 
     setRainOpacity(rainFxCanvas, 0);
-    setRainOpacity(rainFallbackCanvas, 0);
+    resizeCanvasToCssPixels(rainFallbackCanvas);
+    rain.fallback = startFallbackRain(rainFallbackCanvas, rainProfile);
+    setRainOpacity(
+      rainFallbackCanvas,
+      rain.fallback ? rainProfile.fallbackOpacity : 0
+    );
 
     window.requestAnimationFrame(async () => {
       try {
@@ -592,14 +607,21 @@ export function createSisyphusRuntime(elements = {}) {
           return;
         }
 
+        rain.fallback?.stop?.();
+        rain.fallback = null;
         setRainOpacity(rainFxCanvas, rainProfile.fxOpacity);
         setRainOpacity(rainFallbackCanvas, 0);
       } catch {
         if (token !== rain.renderToken) {
           return;
         }
-        resizeCanvasToCssPixels(rainFallbackCanvas);
-        rain.fallback = startFallbackRain(rainFallbackCanvas, rainProfile);
+        rain.rainFx?.stop?.();
+        rain.rainFx?.destroy?.();
+        rain.rainFx = null;
+        if (!rain.fallback) {
+          resizeCanvasToCssPixels(rainFallbackCanvas);
+          rain.fallback = startFallbackRain(rainFallbackCanvas, rainProfile);
+        }
         setRainOpacity(rainFxCanvas, 0);
         setRainOpacity(
           rainFallbackCanvas,
@@ -1475,12 +1497,18 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (announce) {
       setSessionStatus("Ссылка скопирована", collab.connected ? "online" : "connecting");
-      window.setTimeout(updateSessionStatus, 1600);
+      window.clearTimeout(collab.statusResetTimerId);
+      collab.statusResetTimerId = window.setTimeout(() => {
+        collab.statusResetTimerId = null;
+        if (!disposed) {
+          updateSessionStatus();
+        }
+      }, 1600);
     }
   }
 
   async function createSharedSession() {
-    if (collab.sessionCreateInFlight) {
+    if (disposed || collab.sessionCreateInFlight) {
       return;
     }
     if (collab.enabled && collab.sessionId && !collab.expired) {
@@ -1492,11 +1520,14 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     collab.sessionCreateInFlight = true;
+    const abortController = new AbortController();
+    collab.sessionCreateAbortController = abortController;
     setSessionStatus("Создаём общую сессию…", "connecting");
     try {
       const response = await fetch(appUrl("api/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortController.signal,
         body: JSON.stringify({
           state: currentSharedState(),
           physics: sharedPhysicsPayload(),
@@ -1508,15 +1539,26 @@ export function createSisyphusRuntime(elements = {}) {
         throw new Error(`HTTP ${response.status}`);
       }
       const result = await response.json();
+      if (disposed) {
+        return;
+      }
       const url = new URL(window.location.href);
       url.searchParams.set("session", result.sessionId);
       window.location.replace(url);
     } catch {
+      if (disposed) {
+        return;
+      }
       collab.enabled = false;
       setSessionStatus("Не удалось создать сессию", "error");
     } finally {
       collab.sessionCreateInFlight = false;
-      updateSessionStatus();
+      if (collab.sessionCreateAbortController === abortController) {
+        collab.sessionCreateAbortController = null;
+      }
+      if (!disposed) {
+        updateSessionStatus();
+      }
     }
   }
 
@@ -1672,6 +1714,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function scheduleSharedReconnect() {
     if (
+      disposed ||
       !collab.enabled ||
       collab.expired ||
       collab.leaving ||
@@ -1691,6 +1734,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function connectSharedSession() {
     if (
+      disposed ||
       !collab.enabled ||
       !collab.sessionId ||
       collab.expired ||
@@ -1730,6 +1774,9 @@ export function createSisyphusRuntime(elements = {}) {
     });
 
     socket.addEventListener("message", (event) => {
+      if (disposed || collab.socket !== socket) {
+        return;
+      }
       let message;
       try {
         message = JSON.parse(event.data);
@@ -2908,20 +2955,20 @@ export function createSisyphusRuntime(elements = {}) {
   settingsPanel.querySelectorAll("input, select").forEach((el) => {
     const handleControlChange = () =>
       readControls({ changedKey: el.name });
-    el.addEventListener("input", handleControlChange);
-    el.addEventListener("change", handleControlChange);
+    listen(el, "input", handleControlChange);
+    listen(el, "change", handleControlChange);
   });
 
-  settingsPanel.querySelector(".trail-clear").addEventListener("click", resetTrail);
-  sessionRestartButton.addEventListener("click", restartExperience);
+  listen(settingsPanel.querySelector(".trail-clear"), "click", resetTrail);
+  listen(sessionRestartButton, "click", restartExperience);
 
-  settingsPanel.addEventListener("pointerover", (event) => {
+  listen(settingsPanel, "pointerover", (event) => {
     const target = event.target.closest("[data-hint]");
     if (target) {
       showHint(target);
     }
   });
-  settingsPanel.addEventListener("pointerout", (event) => {
+  listen(settingsPanel, "pointerout", (event) => {
     const target = event.target.closest("[data-hint]");
     const next =
       event.relatedTarget && event.relatedTarget.closest
@@ -2931,33 +2978,34 @@ export function createSisyphusRuntime(elements = {}) {
       hideHint();
     }
   });
-  settingsPanel.addEventListener("focusin", (event) => {
+  listen(settingsPanel, "focusin", (event) => {
     const target = event.target.closest("[data-hint]");
     if (target) {
       showHint(target);
     }
   });
-  settingsPanel.addEventListener("focusout", hideHint);
+  listen(settingsPanel, "focusout", hideHint);
 
   // Открытием панели управляет React-хук useSettings.
-  sessionShareToggle.addEventListener("click", copyCurrentSessionLink);
-  rock.addEventListener("pointerenter", enterRock);
-  rock.addEventListener("pointerleave", leaveRock);
-  rock.addEventListener("pointerdown", startDrag);
-  rock.addEventListener("pointermove", moveDrag);
-  rock.addEventListener("pointerup", stopDrag);
-  rock.addEventListener("pointercancel", stopDrag);
-  rock.addEventListener("lostpointercapture", () => {
+  listen(sessionShareToggle, "click", copyCurrentSessionLink);
+  listen(rock, "pointerenter", enterRock);
+  listen(rock, "pointerleave", leaveRock);
+  listen(rock, "pointerdown", startDrag);
+  listen(rock, "pointermove", moveDrag);
+  listen(rock, "pointerup", stopDrag);
+  listen(rock, "pointercancel", stopDrag);
+  listen(rock, "lostpointercapture", () => {
     if (motion.dragging) {
       forceReleaseRock();
     }
   });
-  rock.addEventListener("dragstart", (event) => event.preventDefault());
-  window.addEventListener("pointerup", stopDrag);
-  window.addEventListener("pointercancel", stopDrag);
-  window.addEventListener("blur", cancelDragAndCursor);
-  window.addEventListener("pagehide", leaveSharedSession);
-  window.addEventListener(
+  listen(rock, "dragstart", (event) => event.preventDefault());
+  listen(window, "pointerup", stopDrag);
+  listen(window, "pointercancel", stopDrag);
+  listen(window, "blur", cancelDragAndCursor);
+  listen(window, "pagehide", leaveSharedSession);
+  listen(
+    window,
     "scroll",
     () => {
       if (document.documentElement.classList.contains("is-scroll-locked")) {
@@ -2968,7 +3016,7 @@ export function createSisyphusRuntime(elements = {}) {
     },
     { passive: true }
   );
-  window.addEventListener("resize", () => {
+  listen(window, "resize", () => {
     updateBounds();
     resizeTrailCanvas();
     if (collab.enabled && collab.snapshots.length > 0) {
@@ -3018,22 +3066,51 @@ export function createSisyphusRuntime(elements = {}) {
   if (rock.complete) {
     initScene();
   } else {
-    rock.addEventListener("load", initScene, { once: true });
+    listen(rock, "load", initScene, { once: true });
   }
 
   return {
     dispose() {
+      if (disposed) {
+        return;
+      }
+      disposed = true;
+      collab.leaving = true;
       stopLoop();
       stopRainRenderers();
+      clearHoldTimer();
+      clearFirstFallTimer();
       clearSharedConnectionTimers();
       clearSharedReleaseHandoff();
       window.clearTimeout(collab.copyFeedbackTimerId);
+      window.clearTimeout(collab.statusResetTimerId);
       window.clearTimeout(collab.physicsTimerId);
+      window.clearTimeout(collab.firstReleaseTimerId);
+      collab.sessionCreateAbortController?.abort();
+      collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {
         window.cancelAnimationFrame(collab.renderId);
       }
-      if (collab.socket && collab.socket.readyState < WebSocket.CLOSING) {
-        collab.socket.close(1000, "react_unmount");
+      listenerDisposers.splice(0).forEach((removeListener) => {
+        removeListener();
+      });
+      const socket = collab.socket;
+      collab.socket = null;
+      collab.connected = false;
+      if (socket && socket.readyState < WebSocket.CLOSING) {
+        socket.close(1000, "react_unmount");
+      }
+      if (window.__sisyphusTestApi === testApi) {
+        Reflect.deleteProperty(window, "__sisyphusTestApi");
+      }
+      Object.entries(testApi).forEach(([name, value]) => {
+        if (window[name] === value) {
+          Reflect.deleteProperty(window, name);
+        }
+      });
+      if (rain.hideTimerId !== null) {
+        window.clearTimeout(rain.hideTimerId);
+        rain.hideTimerId = null;
       }
     },
   };

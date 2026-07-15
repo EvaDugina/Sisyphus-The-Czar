@@ -77,14 +77,14 @@ HTTP-тело ограничено 16 КиБ, WebSocket-сообщение — 6
 | `SESSION_PERSIST_INTERVAL_MS` | период фоновой записи движущихся комнат, мс | `250` |
 | `PORT` | внутренний порт контейнера | `8080` |
 
-- `DEBUG=true` — Vite на `8080` обновляет React/CSS/assets через HMR и проксирует API/WebSocket во внутренний Express на `8081`; Nodemon перезапускает backend при изменениях `server/` и `shared/`.
+- `DEBUG=true` — Vite на `8080` через 150-миллисекундный polling видит изменения bind mounts Docker Desktop, обновляет React/CSS/assets через Fast Refresh/HMR и проксирует API/WebSocket во внутренний Express на `8081`. `shared/physics.js` вызывает полный reload браузера с 600-миллисекундной задержкой на restart backend, а Nodemon в legacy-watch режиме автоматически перезапускает Express при изменениях `server/` и `shared/`; внешний HMR WebSocket использует порт `18082`. Dispose React runtime снимает listeners, отменяет timers/fetch и закрывает старый realtime socket без повторного reconnect.
 - `DEBUG=false` — same-origin/allowlist, CSP, CORP, production-кэш ассетов и без автообновления.
 
 ---
 
 ## Развёртывание
 
-- **Локальный запуск:** `docker compose -f docker-compose.dev.yml up --build`; после первого запуска исходники подхватываются из bind mounts без пересборки контейнера.
+- **Локальный запуск:** `docker compose -f docker-compose.dev.yml up --build`; после первого запуска контейнер остаётся работающим, а изменения frontend/backend/shared исходников подхватываются из bind mounts без ручного restart или пересборки. Пересборка нужна только после изменения зависимостей, Dockerfile или Compose-конфигурации.
 - **Деплой:** `bash deploy.sh` идемпотентно собирает production-образ, обновляет один контейнер и показывает его статус.
 - Приложение публикуется только на `127.0.0.1:18082`; HTTPS/WSS и WebSocket Upgrade настраиваются в nginx хоста. Named volume `/app/data` переживает обычный restart/recreate/deploy контейнера.
 
@@ -152,6 +152,7 @@ HTTP-тело ограничено 16 КиБ, WebSocket-сообщение — 6
 - **2026-07-14:** canvas по высоте всей сцены не рисовался стабильно → backing buffer ограничен viewport × DPR, отрисовка переводится на `scrollX/scrollY`.
 - **2026-07-15:** монолитный `index.html` мешал безопасно менять интерфейс → разметка перенесена в React-компоненты, lifecycle в hooks, а статические assets собираются Vite без изменения realtime-протокола.
 - **2026-07-15:** параметр инерции одновременно означал воздушное затухание и не управлял стартовым броском → шкала изменена на `0–100`, параметр перенесён в единый расчёт отпускания, а старая шкала local/session storage мигрирует при чтении.
+- **2026-07-15:** Docker Desktop терял файловые события bind mounts, а Fast Refresh оставлял старый reconnect → Vite и Nodemon переведены на polling, runtime получил полный dispose, shared reload синхронизирован с restart Express → исходники применяются без recreate контейнера и без дублирования WebSocket.
 
 ---
 
