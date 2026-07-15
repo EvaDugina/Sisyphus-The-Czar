@@ -224,6 +224,48 @@
         filter: drop-shadow(0 1.6rem 1.8rem rgba(43, 34, 17, 0.24));
       }
 
+      .weather-rain {
+        position: fixed;
+        inset: 0;
+        z-index: 7;
+        overflow: hidden;
+        pointer-events: none;
+        opacity: 0;
+        visibility: hidden;
+        mix-blend-mode: multiply;
+        transition:
+          opacity var(--rain-exit-duration, 2000ms) var(--rain-exit-easing, cubic-bezier(0.4, 0, 0.2, 1)),
+          visibility 0s linear var(--rain-exit-duration, 2000ms);
+        will-change: opacity;
+      }
+
+      .weather-rain.is-rain-visible {
+        opacity: 1;
+        visibility: visible;
+        transition:
+          opacity var(--rain-enter-duration, 1100ms) var(--rain-enter-easing, cubic-bezier(0.2, 0, 0, 1)),
+          visibility 0s linear 0s;
+      }
+
+      .weather-rain.is-rain-hiding {
+        opacity: 0;
+        visibility: visible;
+        transition:
+          opacity var(--rain-exit-duration, 2000ms) var(--rain-exit-easing, cubic-bezier(0.4, 0, 0.2, 1)),
+          visibility 0s linear var(--rain-exit-duration, 2000ms);
+      }
+
+      .weather-rain__canvas {
+        position: absolute;
+        inset: 0;
+        width: 100vw;
+        height: 100vh;
+        opacity: var(--rain-fx-opacity, 0);
+        pointer-events: none;
+        transition: opacity 820ms cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: opacity;
+      }
+
       .hand-cursor {
         --cursor-x: -999px;
         --cursor-y: -999px;
@@ -429,6 +471,8 @@
         accent-color: var(--accent);
       }
 
+      .control input[type="number"],
+      .control input[type="text"],
       .control select {
         width: 100%;
         padding: 0.32rem 0.4rem;
@@ -438,6 +482,9 @@
         color: var(--ink);
         font: inherit;
         font-size: 0.9rem;
+      }
+
+      .control select {
         cursor: pointer;
       }
 
@@ -679,6 +726,14 @@
         }
 
       }
+
+      @media (prefers-reduced-motion: reduce) {
+        .weather-rain,
+        .weather-rain__canvas {
+          transition-delay: 0s !important;
+          transition-duration: 0.001ms !important;
+        }
+      }
     </style>
   </head>
   <body class="state-intro theme-light is-scroll-locked">
@@ -904,6 +959,59 @@
       </details>
 
       <details class="control-group">
+        <summary>Дождь</summary>
+
+        <label
+          class="control"
+          data-hint="Насколько сильным будет ливень при удержании камня в исходном отпечатке."
+        >
+          <span class="control-label">
+            <span>Сила дождя</span>
+            <output class="control-value" data-output="rainStrength">100%</output>
+          </span>
+          <input name="rainStrength" type="range" min="0.25" max="1.5" step="0.05" value="1" />
+        </label>
+
+        <label
+          class="control"
+          data-hint="CSS timing-function для появления дождя. Невалидное значение заменяется стандартной cubic-bezier кривой."
+        >
+          <span class="control-label"><span>Кривая появления</span></span>
+          <input name="rainEnterEasing" type="text" value="cubic-bezier(0.2, 0, 0, 1)" spellcheck="false" />
+        </label>
+
+        <label
+          class="control"
+          data-hint="CSS timing-function для исчезновения дождя. Невалидное значение заменяется стандартной cubic-bezier кривой."
+        >
+          <span class="control-label"><span>Кривая исчезновения</span></span>
+          <input name="rainExitEasing" type="text" value="cubic-bezier(0.4, 0, 0.2, 1)" spellcheck="false" />
+        </label>
+
+        <label
+          class="control"
+          data-hint="Сколько миллисекунд дождь набирает видимость после возврата камня в отпечаток."
+        >
+          <span class="control-label">
+            <span>Появление, мс</span>
+            <output class="control-value" data-output="rainEnterMs">1100</output>
+          </span>
+          <input name="rainEnterMs" type="number" min="0" max="10000" step="50" value="1100" />
+        </label>
+
+        <label
+          class="control"
+          data-hint="Сколько миллисекунд дождь плавно исчезает после выхода камня из отпечатка."
+        >
+          <span class="control-label">
+            <span>Исчезновение, мс</span>
+            <output class="control-value" data-output="rainExitMs">2000</output>
+          </span>
+          <input name="rainExitMs" type="number" min="0" max="10000" step="50" value="2000" />
+        </label>
+      </details>
+
+      <details class="control-group">
         <summary>След — стиль</summary>
 
         <label
@@ -1039,6 +1147,10 @@
 
     <main class="world" aria-label="Сцена Сизифа">
       <canvas class="trail" aria-hidden="true"></canvas>
+      <div class="weather-rain" data-testid="weather-rain" aria-hidden="true">
+        <canvas class="weather-rain__canvas weather-rain__canvas--fx"></canvas>
+        <canvas class="weather-rain__canvas weather-rain__canvas--fallback"></canvas>
+      </div>
       <section class="summit" aria-hidden="true">
         <div class="target-zone"></div>
         <h2 class="title2">Миниатюра</h2>
@@ -1081,11 +1193,15 @@
       const settingsPanel = document.querySelector(".settings-panel");
       const trailCanvas = document.querySelector(".trail");
       const trailCtx = trailCanvas.getContext("2d");
+      const rainLayer = document.querySelector(".weather-rain");
+      const rainFxCanvas = document.querySelector(".weather-rain__canvas--fx");
+      const rainFallbackCanvas = document.querySelector(".weather-rain__canvas--fallback");
       const hintEl = document.querySelector(".hint");
       const sessionStatus = document.querySelector("[data-session-status]");
       const sessionShareToggle = document.querySelector(".session-share-toggle");
       const sessionRestartButton = document.querySelector(".session-restart");
       const finePointer = window.matchMedia("(pointer: fine)");
+      const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
       const SharedPhysics = window.SisyphusPhysics;
 
       const trail = {
@@ -1108,6 +1224,29 @@
       const DRAG_LIFT_MIN_SPEED = 220;
       const DRAG_LIFT_MAX_SPEED = 2800;
       const MAX_FRAME_SECONDS = 0.032;
+      const RAIN_VENDOR_SRC = "assets/raindrop-fx/index.js";
+      const RAIN_SCRIPT_ID = "sisyphus-raindrop-fx";
+      const DEFAULT_RAIN_ENTER_EASING = "cubic-bezier(0.2, 0, 0, 1)";
+      const DEFAULT_RAIN_EXIT_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
+      const DEFAULT_RAIN_ENTER_MS = 1100;
+      const DEFAULT_RAIN_EXIT_MS = 2000;
+      const MIN_RAIN_STRENGTH = 0.25;
+      const MAX_RAIN_STRENGTH = 1.5;
+      const MAX_RAIN_FX_OPACITY = 0.42;
+      const RAIN_BASE_PROFILE = {
+        dropletsPerSecond: 1300,
+        fallbackDropCount: 130,
+        fallbackOpacity: 0.36,
+        fallbackAlpha: [0.18, 0.46],
+        fallbackLength: [16, 50],
+        fallbackSpeed: [9, 21],
+        fallbackWidth: [0.8, 2],
+        fxOpacity: MAX_RAIN_FX_OPACITY,
+        mistAlpha: 0.48,
+        spawnInterval: [0.018, 0.05],
+        spawnLimit: 1300,
+        spawnSize: [38, 104],
+      };
 
       const params = {
         mass: 4,
@@ -1118,6 +1257,13 @@
         inertia: 0.9,
         sliding: 0.35,
         turbulence: 0.4,
+
+        // Дождь
+        rainStrength: 1,
+        rainEnterEasing: DEFAULT_RAIN_ENTER_EASING,
+        rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
+        rainEnterMs: DEFAULT_RAIN_ENTER_MS,
+        rainExitMs: DEFAULT_RAIN_EXIT_MS,
 
         // След
         trailEnabled: true,
@@ -1257,8 +1403,448 @@
       };
       collab.enabled = Boolean(collab.sessionId);
 
+      const rain = {
+        active: false,
+        fallback: null,
+        hideTimerId: null,
+        rainFx: null,
+        renderToken: 0,
+        resizeHandler: null,
+      };
+
+      let rainFxScriptPromise = null;
+
       function clamp(value, min, max) {
         return Math.min(Math.max(value, min), max);
+      }
+
+      function finiteNumber(value, fallback) {
+        const number = Number(value);
+        return Number.isFinite(number) ? number : fallback;
+      }
+
+      function sanitizeTimingFunction(value, fallback) {
+        const trimmed = String(value || "").trim();
+        if (
+          trimmed &&
+          window.CSS &&
+          typeof CSS.supports === "function" &&
+          CSS.supports("transition-timing-function", trimmed)
+        ) {
+          return trimmed;
+        }
+        return fallback;
+      }
+
+      function getRainFxConstructor() {
+        const rainFx = window.RaindropFX;
+        if (typeof rainFx === "function") {
+          return rainFx;
+        }
+        if (rainFx && typeof rainFx === "object" && typeof rainFx.default === "function") {
+          return rainFx.default;
+        }
+        return null;
+      }
+
+      function loadRainFxScript() {
+        if (getRainFxConstructor()) {
+          return Promise.resolve();
+        }
+        if (rainFxScriptPromise) {
+          return rainFxScriptPromise;
+        }
+
+        rainFxScriptPromise = new Promise((resolve, reject) => {
+          const existing = document.getElementById(RAIN_SCRIPT_ID);
+          if (existing) {
+            if (existing.dataset.loaded === "true") {
+              resolve();
+              return;
+            }
+            existing.addEventListener("load", () => resolve(), { once: true });
+            existing.addEventListener(
+              "error",
+              () => {
+                rainFxScriptPromise = null;
+                reject(new Error("Failed to load raindrop-fx"));
+              },
+              { once: true }
+            );
+            return;
+          }
+
+          const script = document.createElement("script");
+          script.id = RAIN_SCRIPT_ID;
+          script.src = RAIN_VENDOR_SRC;
+          script.async = true;
+          script.addEventListener(
+            "load",
+            () => {
+              script.dataset.loaded = "true";
+              resolve();
+            },
+            { once: true }
+          );
+          script.addEventListener(
+            "error",
+            () => {
+              rainFxScriptPromise = null;
+              reject(new Error("Failed to load raindrop-fx"));
+            },
+            { once: true }
+          );
+          document.head.appendChild(script);
+        });
+
+        return rainFxScriptPromise;
+      }
+
+      function resizeCanvasToCssPixels(canvas) {
+        const rect = canvas.getBoundingClientRect();
+        const width = Math.max(1, Math.round(rect.width || window.innerWidth));
+        const height = Math.max(1, Math.round(rect.height || window.innerHeight));
+        canvas.width = width;
+        canvas.height = height;
+        return { width, height };
+      }
+
+      function createRainBackground(canvas) {
+        const background = document.createElement("canvas");
+        const width = Math.max(1, canvas.width || window.innerWidth);
+        const height = Math.max(1, canvas.height || window.innerHeight);
+        background.width = width;
+        background.height = height;
+
+        const context = background.getContext("2d");
+        if (!context) {
+          return background;
+        }
+
+        const gradient = context.createLinearGradient(0, 0, width, height);
+        gradient.addColorStop(0, "#f9fbff");
+        gradient.addColorStop(0.5, "#d9e0ea");
+        gradient.addColorStop(1, "#ffffff");
+        context.fillStyle = gradient;
+        context.fillRect(0, 0, width, height);
+
+        context.fillStyle = "rgba(255, 255, 255, 0.36)";
+        context.fillRect(width * 0.16, 0, width * 0.2, height);
+        context.fillStyle = "rgba(76, 92, 113, 0.16)";
+        context.fillRect(width * 0.58, 0, width * 0.18, height);
+
+        return background;
+      }
+
+      function setRainOpacity(canvas, opacity) {
+        if (!canvas) {
+          return;
+        }
+        canvas.style.setProperty(
+          "--rain-fx-opacity",
+          clamp(opacity, 0, MAX_RAIN_FX_OPACITY).toFixed(2)
+        );
+      }
+
+      function scaleRainRange(range, scale) {
+        return range.map((value) => Number((value * scale).toFixed(3)));
+      }
+
+      function getRainVisualProfile() {
+        const strength = clamp(
+          finiteNumber(params.rainStrength, 1),
+          MIN_RAIN_STRENGTH,
+          MAX_RAIN_STRENGTH
+        );
+        const opacityScale = Math.sqrt(strength);
+        const sizeScale = 0.9 + strength * 0.1;
+        const speedScale = 0.9 + strength * 0.12;
+        const widthScale = Math.min(1.18, 0.86 + strength * 0.14);
+
+        return {
+          dropletsPerSecond: Math.round(RAIN_BASE_PROFILE.dropletsPerSecond * strength),
+          fallbackDropCount: Math.round(RAIN_BASE_PROFILE.fallbackDropCount * strength),
+          fallbackOpacity: clamp(
+            RAIN_BASE_PROFILE.fallbackOpacity * opacityScale,
+            0.06,
+            MAX_RAIN_FX_OPACITY
+          ),
+          fallbackAlpha: RAIN_BASE_PROFILE.fallbackAlpha.map((alpha) =>
+            clamp(alpha * opacityScale, 0.04, 0.72)
+          ),
+          fallbackLength: scaleRainRange(RAIN_BASE_PROFILE.fallbackLength, sizeScale),
+          fallbackSpeed: scaleRainRange(RAIN_BASE_PROFILE.fallbackSpeed, speedScale),
+          fallbackWidth: scaleRainRange(RAIN_BASE_PROFILE.fallbackWidth, widthScale),
+          fxOpacity: clamp(
+            RAIN_BASE_PROFILE.fxOpacity * opacityScale,
+            0.08,
+            MAX_RAIN_FX_OPACITY
+          ),
+          mistAlpha: clamp(RAIN_BASE_PROFILE.mistAlpha * opacityScale, 0.12, 0.8),
+          spawnInterval: [
+            Math.max(0.01, RAIN_BASE_PROFILE.spawnInterval[0] / strength),
+            Math.max(0.025, RAIN_BASE_PROFILE.spawnInterval[1] / strength),
+          ],
+          spawnLimit: Math.round(RAIN_BASE_PROFILE.spawnLimit * strength),
+          spawnSize: scaleRainRange(RAIN_BASE_PROFILE.spawnSize, sizeScale),
+        };
+      }
+
+      function applyRainSettings({ restartIfActive = false } = {}) {
+        if (!rainLayer) {
+          return;
+        }
+
+        rainLayer.style.setProperty("--rain-enter-duration", `${params.rainEnterMs}ms`);
+        rainLayer.style.setProperty("--rain-exit-duration", `${params.rainExitMs}ms`);
+        rainLayer.style.setProperty("--rain-enter-easing", params.rainEnterEasing);
+        rainLayer.style.setProperty("--rain-exit-easing", params.rainExitEasing);
+
+        if (restartIfActive && rain.active) {
+          stopRainRenderers();
+          startRainRenderers();
+        }
+      }
+
+      function getRainExitDurationMs() {
+        return reducedMotion.matches ? 0 : params.rainExitMs;
+      }
+
+      function randomRange(range) {
+        const [min, max] = range;
+        return min + Math.random() * (max - min);
+      }
+
+      function createFallbackDrop(width, height, randomizeY, rainProfile) {
+        const length = randomRange(rainProfile.fallbackLength);
+        const speed = randomRange(rainProfile.fallbackSpeed);
+        return {
+          alpha: randomRange(rainProfile.fallbackAlpha),
+          drift: 0.24 + Math.random() * 0.18,
+          length,
+          speed,
+          width: randomRange(rainProfile.fallbackWidth),
+          x: Math.random() * width,
+          y: randomizeY ? Math.random() * height : -length,
+        };
+      }
+
+      function startFallbackRain(canvas, rainProfile) {
+        const context = canvas.getContext("2d");
+        if (!context) {
+          return null;
+        }
+
+        let frameId = 0;
+        let previousTime = performance.now();
+        let width = 1;
+        let height = 1;
+        let drops = [];
+
+        const resize = () => {
+          const rect = canvas.getBoundingClientRect();
+          const dpr = Math.min(window.devicePixelRatio || 1, 2);
+          width = Math.max(1, Math.round(rect.width || window.innerWidth));
+          height = Math.max(1, Math.round(rect.height || window.innerHeight));
+          canvas.width = Math.round(width * dpr);
+          canvas.height = Math.round(height * dpr);
+          context.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+          const density = clamp((width * height) / (1280 * 720), 0.8, 1.6);
+          const count = Math.round(rainProfile.fallbackDropCount * density);
+          drops = Array.from({ length: count }, () =>
+            createFallbackDrop(width, height, true, rainProfile)
+          );
+        };
+
+        const render = (time) => {
+          const delta = clamp((time - previousTime) / 16.67, 0.5, 2.4);
+          previousTime = time;
+
+          context.clearRect(0, 0, width, height);
+          context.lineCap = "round";
+
+          for (const drop of drops) {
+            context.beginPath();
+            context.strokeStyle = `rgba(82, 113, 143, ${drop.alpha})`;
+            context.lineWidth = drop.width;
+            context.moveTo(drop.x, drop.y);
+            context.lineTo(drop.x - drop.length * drop.drift, drop.y + drop.length);
+            context.stroke();
+
+            drop.x -= drop.speed * drop.drift * delta;
+            drop.y += drop.speed * delta;
+
+            if (drop.y - drop.length > height || drop.x < -drop.length) {
+              Object.assign(drop, createFallbackDrop(width, height, false, rainProfile));
+              drop.x = Math.random() * (width + 80);
+            }
+          }
+
+          frameId = window.requestAnimationFrame(render);
+        };
+
+        resize();
+        frameId = window.requestAnimationFrame(render);
+
+        return {
+          resize,
+          stop: () => window.cancelAnimationFrame(frameId),
+        };
+      }
+
+      function stopRainRenderers() {
+        rain.renderToken += 1;
+        if (rain.resizeHandler) {
+          window.removeEventListener("resize", rain.resizeHandler);
+          rain.resizeHandler = null;
+        }
+        rain.rainFx?.stop?.();
+        rain.rainFx?.destroy?.();
+        rain.rainFx = null;
+        rain.fallback?.stop?.();
+        rain.fallback = null;
+        rain.active = false;
+        setRainOpacity(rainFxCanvas, 0);
+        setRainOpacity(rainFallbackCanvas, 0);
+      }
+
+      function startRainRenderers() {
+        if (!rainLayer || !rainFxCanvas || !rainFallbackCanvas || rain.active) {
+          return;
+        }
+
+        const rainProfile = getRainVisualProfile();
+        rain.active = true;
+        const token = ++rain.renderToken;
+
+        const handleResize = () => {
+          const size = resizeCanvasToCssPixels(rainFxCanvas);
+          if (rain.rainFx) {
+            rain.rainFx.resize?.(size.width, size.height);
+          } else {
+            rain.fallback?.resize?.();
+          }
+        };
+        rain.resizeHandler = handleResize;
+        window.addEventListener("resize", handleResize, { passive: true });
+
+        setRainOpacity(rainFxCanvas, 0);
+        setRainOpacity(rainFallbackCanvas, 0);
+
+        window.requestAnimationFrame(async () => {
+          try {
+            await loadRainFxScript();
+            if (token !== rain.renderToken) {
+              return;
+            }
+
+            const RaindropFX = getRainFxConstructor();
+            if (!RaindropFX) {
+              throw new Error("RaindropFX constructor is unavailable");
+            }
+
+            resizeCanvasToCssPixels(rainFxCanvas);
+            const instance = new RaindropFX({
+              canvas: rainFxCanvas,
+              background: createRainBackground(rainFxCanvas),
+              dropletsPerSecond: rainProfile.dropletsPerSecond,
+              dropletsPerSeconds: rainProfile.dropletsPerSecond,
+              spawnInterval: rainProfile.spawnInterval,
+              spawnSize: rainProfile.spawnSize,
+              spawnLimit: rainProfile.spawnLimit,
+              mist: true,
+              mistColor: [0.04, 0.04, 0.05, rainProfile.mistAlpha],
+              backgroundBlurSteps: 3,
+              raindropCompose: "harder",
+              raindropDiffuseLight: [0.42, 0.42, 0.44],
+              raindropSpecularLight: [0.78, 0.78, 0.8],
+            });
+            rain.rainFx = instance;
+
+            await instance.start?.();
+            if (token !== rain.renderToken) {
+              instance.stop?.();
+              instance.destroy?.();
+              return;
+            }
+
+            setRainOpacity(rainFxCanvas, rainProfile.fxOpacity);
+            setRainOpacity(rainFallbackCanvas, 0);
+          } catch (error) {
+            if (token !== rain.renderToken) {
+              return;
+            }
+            resizeCanvasToCssPixels(rainFallbackCanvas);
+            rain.fallback = startFallbackRain(rainFallbackCanvas, rainProfile);
+            setRainOpacity(rainFxCanvas, 0);
+            setRainOpacity(
+              rainFallbackCanvas,
+              rain.fallback ? rainProfile.fallbackOpacity : 0
+            );
+          }
+        });
+      }
+
+      function showReturnRain() {
+        if (!rainLayer) {
+          return;
+        }
+
+        window.clearTimeout(rain.hideTimerId);
+        rain.hideTimerId = null;
+        rainLayer.classList.remove("is-rain-hiding");
+        rainLayer.classList.add("is-rain-visible");
+        startRainRenderers();
+      }
+
+      function hideReturnRain({ immediate = false } = {}) {
+        if (!rainLayer) {
+          return;
+        }
+
+        if (immediate) {
+          window.clearTimeout(rain.hideTimerId);
+          rain.hideTimerId = null;
+          rainLayer.classList.remove("is-rain-visible", "is-rain-hiding");
+          stopRainRenderers();
+          return;
+        }
+
+        if (
+          rainLayer.classList.contains("is-rain-hiding") &&
+          !rainLayer.classList.contains("is-rain-visible")
+        ) {
+          return;
+        }
+
+        window.clearTimeout(rain.hideTimerId);
+        rain.hideTimerId = null;
+
+        if (!rain.active && !rainLayer.classList.contains("is-rain-visible")) {
+          rainLayer.classList.remove("is-rain-hiding");
+          return;
+        }
+
+        rainLayer.classList.remove("is-rain-visible");
+        rainLayer.classList.add("is-rain-hiding");
+        rain.hideTimerId = window.setTimeout(() => {
+          rainLayer.classList.remove("is-rain-hiding");
+          stopRainRenderers();
+          rain.hideTimerId = null;
+        }, getRainExitDurationMs());
+      }
+
+      function syncReturnRain(isAtReturnPlace) {
+        if (isAtReturnPlace) {
+          showReturnRain();
+        } else {
+          hideReturnRain();
+        }
+      }
+
+      function isAtReturnPlace(isDragging = motion.dragging) {
+        return motion.phase === PHASES.PLAY && isDragging && rockInsideImprint();
       }
 
       function setTheme(theme) {
@@ -1350,6 +1936,9 @@
           inertia: params.inertia.toFixed(2),
           sliding: params.sliding.toFixed(2),
           turbulence: params.turbulence.toFixed(2),
+          rainStrength: `${Math.round(params.rainStrength * 100)}%`,
+          rainEnterMs: params.rainEnterMs.toFixed(0),
+          rainExitMs: params.rainExitMs.toFixed(0),
           lineDelay: params.lineDelay.toFixed(2),
           trailMaxPoints: params.trailMaxPoints.toFixed(0),
           trailSampleDist: params.trailSampleDist.toFixed(0),
@@ -1370,9 +1959,12 @@
       function readControls(options = {}) {
         const num = (name) =>
           Number(settingsPanel.querySelector(`[name="${name}"]`).value);
+        const boundedNum = (name, min, max, fallback) =>
+          clamp(finiteNumber(num(name), fallback), min, max);
         const str = (name) => settingsPanel.querySelector(`[name="${name}"]`).value;
         const bool = (name) =>
           settingsPanel.querySelector(`[name="${name}"]`).checked;
+        const changedKey = options.changedKey || "";
 
         params.mass = num("mass");
         params.gravity = num("gravity");
@@ -1382,6 +1974,22 @@
         params.inertia = num("inertia");
         params.sliding = num("sliding");
         params.turbulence = num("turbulence");
+
+        params.rainStrength = boundedNum("rainStrength", MIN_RAIN_STRENGTH, MAX_RAIN_STRENGTH, 1);
+        params.rainEnterEasing = sanitizeTimingFunction(
+          str("rainEnterEasing"),
+          DEFAULT_RAIN_ENTER_EASING
+        );
+        params.rainExitEasing = sanitizeTimingFunction(
+          str("rainExitEasing"),
+          DEFAULT_RAIN_EXIT_EASING
+        );
+        params.rainEnterMs = Math.round(
+          boundedNum("rainEnterMs", 0, 10000, DEFAULT_RAIN_ENTER_MS)
+        );
+        params.rainExitMs = Math.round(
+          boundedNum("rainExitMs", 0, 10000, DEFAULT_RAIN_EXIT_MS)
+        );
 
         params.trailEnabled = bool("trailEnabled");
         params.trailReset = bool("trailReset");
@@ -1404,6 +2012,13 @@
         params.glow = num("glow");
         params.glowColor = str("glowColor");
 
+        settingsPanel.querySelector('[name="rainStrength"]').value = params.rainStrength;
+        settingsPanel.querySelector('[name="rainEnterEasing"]').value = params.rainEnterEasing;
+        settingsPanel.querySelector('[name="rainExitEasing"]').value = params.rainExitEasing;
+        settingsPanel.querySelector('[name="rainEnterMs"]').value = params.rainEnterMs;
+        settingsPanel.querySelector('[name="rainExitMs"]').value = params.rainExitMs;
+        applyRainSettings({ restartIfActive: changedKey === "rainStrength" });
+
         trailCanvas.style.mixBlendMode = params.blendMode;
 
         const trailLengthInput = settingsPanel.querySelector(
@@ -1418,7 +2033,6 @@
         updateControlOutputs();
         saveSettings();
         drawTrail();
-        const changedKey = options.changedKey || "";
         if (
           collab.enabled &&
           !collab.applyingRemotePhysics &&
@@ -2148,10 +2762,7 @@
         return position;
       }
 
-      function sharedSnapshotTheme(snapshot) {
-        if (snapshot.phase === PHASES.INTRO || snapshot.phase === PHASES.WON) {
-          return "light";
-        }
+      function sharedSnapshotAtReturnPlace(snapshot) {
         if (
           snapshot.phase === PHASES.PLAY &&
           snapshot.dragging &&
@@ -2160,9 +2771,16 @@
             collab.imprint
           )
         ) {
+          return true;
+        }
+        return false;
+      }
+
+      function sharedSnapshotTheme(snapshot) {
+        if (snapshot.phase === PHASES.INTRO || snapshot.phase === PHASES.WON) {
           return "light";
         }
-        return "dark";
+        return sharedSnapshotAtReturnPlace(snapshot) ? "light" : "dark";
       }
 
       function resetLocalExperience() {
@@ -2195,6 +2813,7 @@
         updateLocalSharedPointer(null, "grab", false);
         setPhase(PHASES.INTRO);
         setTheme("light");
+        hideReturnRain({ immediate: true });
         syncScrollLock(false);
         resetTrail();
         renderImprint();
@@ -2453,8 +3072,14 @@
           cancelSharedLocalDrag();
         }
 
+        const snapshotAtReturnPlace = sharedSnapshotAtReturnPlace(snapshot);
         setPhase(snapshot.phase);
         setTheme(sharedSnapshotTheme(snapshot));
+        if (snapshot.phase === PHASES.INTRO) {
+          hideReturnRain({ immediate: true });
+        } else {
+          syncReturnRain(snapshotAtReturnPlace);
+        }
 
         if (snapshot.phase === PHASES.WON) {
           collab.hasControl = false;
@@ -2741,6 +3366,7 @@
         collab.hasControl = false;
         cancelSharedLocalDrag();
         setTheme("dark");
+        hideReturnRain();
         if (!pointerVisible) {
           hideHandCursor();
         }
@@ -2773,6 +3399,7 @@
         collab.hasControl = false;
         cancelSharedLocalDrag();
         setTheme("dark");
+        hideReturnRain();
         if (hidePointer) {
           hideHandCursor();
         }
@@ -3061,18 +3688,18 @@
       function syncReturnTheme(isDragging = motion.dragging) {
         if (motion.phase === PHASES.INTRO || motion.phase === PHASES.WON) {
           setTheme("light");
+          hideReturnRain({ immediate: motion.phase === PHASES.INTRO });
           return;
         }
-        setTheme(
-          motion.phase === PHASES.PLAY && isDragging && rockInsideImprint()
-            ? "light"
-            : "dark"
-        );
+        const atReturnPlace = isAtReturnPlace(isDragging);
+        setTheme(atReturnPlace ? "light" : "dark");
+        syncReturnRain(atReturnPlace);
       }
 
       function enterPlayPhase() {
         setPhase(PHASES.PLAY);
         setTheme("dark");
+        hideReturnRain();
         motion.vx = 0;
         motion.vy = 0;
         setPosition(motion.x, bounds.maxY);
@@ -3098,6 +3725,7 @@
         // Тёмная тема включается сразу, как только камень выпадает из руки,
         // не дожидаясь касания дна.
         setTheme("dark");
+        hideReturnRain();
         applyCanonicalMotion(state);
         setHandToGrab();
         rock.classList.add("is-falling");
@@ -3244,6 +3872,7 @@
           applyReleaseImpulse();
         }
         setTheme("dark");
+        hideReturnRain();
         setHandToGrab();
         rock.classList.add("is-falling");
         startLoop();
@@ -3378,6 +4007,7 @@
           applyReleaseImpulse();
         }
         setTheme("dark");
+        hideReturnRain();
         setHandToGrab();
         rock.classList.add("is-falling");
         startLoop();
@@ -3416,6 +4046,7 @@
         rock.classList.remove("is-dragging");
         setHandToGrab();
         hideHandCursor();
+        syncReturnTheme(false);
         if (collab.enabled) {
           sendSharedPointer(null, "grab", false, true);
         }

@@ -7,6 +7,13 @@ async function setRange(page, name, value) {
   }, value);
 }
 
+async function setField(page, name, value) {
+  await page.locator(`[name="${name}"]`).evaluate((input, next) => {
+    input.value = String(next);
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, value);
+}
+
 async function visibleRockPoint(page) {
   return page.locator(".rock").evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
@@ -289,6 +296,52 @@ test("два браузера видят один камень и по очер�
       })
     )
     .toBe(true);
+  const firstRain = first.getByTestId("weather-rain");
+  await setRange(first, "rainStrength", 1.25);
+  await setField(first, "rainEnterEasing", "cubic-bezier(0.12, 0.8, 0.2, 1)");
+  await setField(first, "rainExitEasing", "cubic-bezier(0.7, 0, 0.3, 1)");
+  await setField(first, "rainEnterMs", 650);
+  await setField(first, "rainExitMs", 700);
+  await expect(first.locator('[data-output="rainStrength"]')).toHaveText("125%");
+  await expect(first.locator('[data-output="rainEnterMs"]')).toHaveText("650");
+  await expect(first.locator('[data-output="rainExitMs"]')).toHaveText("700");
+  await expect
+    .poll(() =>
+      first.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v2") || "{}"
+        );
+        return {
+          rainEnterEasing: stored.rainEnterEasing,
+          rainEnterMs: stored.rainEnterMs,
+          rainExitEasing: stored.rainExitEasing,
+          rainExitMs: stored.rainExitMs,
+          rainStrength: stored.rainStrength,
+        };
+      })
+    )
+    .toEqual({
+      rainEnterEasing: "cubic-bezier(0.12, 0.8, 0.2, 1)",
+      rainEnterMs: 650,
+      rainExitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
+      rainExitMs: 700,
+      rainStrength: 1.25,
+    });
+  await expect
+    .poll(() =>
+      firstRain.evaluate((layer) => ({
+        enterDuration: getComputedStyle(layer).getPropertyValue("--rain-enter-duration").trim(),
+        enterEasing: getComputedStyle(layer).getPropertyValue("--rain-enter-easing").trim(),
+        exitDuration: getComputedStyle(layer).getPropertyValue("--rain-exit-duration").trim(),
+        exitEasing: getComputedStyle(layer).getPropertyValue("--rain-exit-easing").trim(),
+      }))
+    )
+    .toEqual({
+      enterDuration: "650ms",
+      enterEasing: "cubic-bezier(0.12, 0.8, 0.2, 1)",
+      exitDuration: "700ms",
+      exitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
+    });
   await setRange(first, "mass", 100);
   await setRange(first, "gravity", 10);
   await setRange(first, "handForce", 9);
@@ -484,6 +537,9 @@ test("два браузера видят один камень и по очер�
   });
   await expect(first.locator("body")).toHaveClass(/theme-light/);
   await expect(second.locator("body")).toHaveClass(/theme-light/);
+  const secondRain = second.getByTestId("weather-rain");
+  await expect(firstRain).toHaveClass(/is-rain-visible/);
+  await expect(secondRain).toHaveClass(/is-rain-visible/);
   await expect(first.locator("body")).not.toHaveClass(/state-won/);
   await expect(second.locator("body")).not.toHaveClass(/state-won/);
   await second.waitForTimeout(3200);
@@ -491,9 +547,13 @@ test("два браузера видят один камень и по очер�
   await expect(second.locator(".rock")).toHaveClass(/is-dragging/);
   await expect(first.locator("body")).toHaveClass(/theme-light/);
   await expect(second.locator("body")).toHaveClass(/theme-light/);
+  await expect(firstRain).toHaveClass(/is-rain-visible/);
+  await expect(secondRain).toHaveClass(/is-rain-visible/);
   await second.mouse.up();
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  await expect(firstRain).toHaveClass(/is-rain-hiding/);
+  await expect(secondRain).toHaveClass(/is-rain-hiding/);
   await expect(first.locator("body")).toHaveClass(/state-play/);
   await expect(second.locator("body")).toHaveClass(/state-play/);
   await first.waitForTimeout(250);
@@ -505,6 +565,10 @@ test("два браузера видят один камень и по очер�
     Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
   );
   expect(fallingY).toBeGreaterThan(releaseY);
+  await expect(firstRain).not.toHaveClass(/is-rain-hiding/, { timeout: 1800 });
+  await expect(secondRain).not.toHaveClass(/is-rain-hiding/, { timeout: 3500 });
+  await expect(firstRain).not.toHaveClass(/is-rain-visible/);
+  await expect(secondRain).not.toHaveClass(/is-rain-visible/);
 
   await first.locator(".settings-toggle").click();
   await first.getByTestId("restart-session").click();
@@ -512,6 +576,8 @@ test("два браузера видят один камень и по очер�
   await expect(second.locator("body")).toHaveClass(/state-intro/);
   await expect(first.locator("body")).toHaveClass(/theme-light/);
   await expect(second.locator("body")).toHaveClass(/theme-light/);
+  await expect(firstRain).not.toHaveClass(/is-rain-/);
+  await expect(secondRain).not.toHaveClass(/is-rain-/);
   await expect(first.locator("html")).toHaveClass(/is-scroll-locked/);
   await expect(second.locator("html")).toHaveClass(/is-scroll-locked/);
   await expect(firstImprint).not.toHaveClass(/is-visible/);
