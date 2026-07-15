@@ -25,14 +25,13 @@
   const FIXED_STEP_SECONDS = 1 / 60;
   const FIRST_FALL_DELAY_MS = 400;
   const GRAVITY_UNITS = 1260;
-  const PHYSICS_VERSION = 2;
+  const PHYSICS_VERSION = 3;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
   const MAX_RELEASE_UPWARD_SPEED = 1800;
   const MAX_RELEASE_DOWNWARD_SPEED = 900;
-  const FLOOR_FRICTION_MIN_RETENTION = 0.08;
-  const FLOOR_FRICTION_MAX_RETENTION = 1;
+  const GROUND_FRICTION_ACCELERATION_SCALE = 3.2;
   const BOUNCE_MIN_VELOCITY = 120;
   const BOUNCE_IMPACT_CAP = 900;
   const TURB_ACCEL = 1600;
@@ -44,7 +43,7 @@
     pointerInfluence: [0, 2],
     bounce: [0, 1],
     inertia: [0, 100],
-    sliding: [0, 1],
+    groundFriction: [0, 1],
     turbulence: [0, 1],
   });
 
@@ -55,7 +54,7 @@
     pointerInfluence: 1,
     bounce: 0.35,
     inertia: 90,
-    sliding: 0.35,
+    groundFriction: 0.35,
     turbulence: 0.4,
   });
 
@@ -68,8 +67,20 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  function hasOwn(source, key) {
+    return Object.prototype.hasOwnProperty.call(source, key);
+  }
+
+  function normalizePhysicsInput(input) {
+    const source = input && typeof input === "object" ? { ...input } : {};
+    if (!hasOwn(source, "groundFriction") && hasOwn(source, "sliding")) {
+      source.groundFriction = source.sliding;
+    }
+    return source;
+  }
+
   function sanitizePhysics(input, fallback = DEFAULT_PHYSICS) {
-    const source = input && typeof input === "object" ? input : {};
+    const source = normalizePhysicsInput(input);
     const clean = {};
 
     Object.entries(PHYSICS_LIMITS).forEach(([key, [min, max]]) => {
@@ -81,10 +92,11 @@
   }
 
   function migratePhysics(input, version = 1) {
-    const source = input && typeof input === "object" ? { ...input } : {};
+    const source = normalizePhysicsInput(input);
+    const sourceVersion = finiteNumber(version, 1);
     const inertia = Number(source.inertia);
     if (
-      finiteNumber(version, 1) < PHYSICS_VERSION &&
+      sourceVersion < 2 &&
       Number.isFinite(inertia) &&
       inertia >= 0 &&
       inertia <= 1
@@ -207,6 +219,25 @@
     state.controllerId = null;
   }
 
+  function applyGroundFriction(state, physics, dt) {
+    if (physics.groundFriction <= 0 || state.vx === 0) {
+      return;
+    }
+
+    const slowdown =
+      physics.groundFriction *
+      GRAVITY_UNITS *
+      physics.gravity *
+      GROUND_FRICTION_ACCELERATION_SCALE *
+      dt;
+    if (Math.abs(state.vx) <= slowdown) {
+      state.vx = 0;
+      return;
+    }
+
+    state.vx -= Math.sign(state.vx) * slowdown;
+  }
+
   function stepState(state, physics, deltaSeconds) {
     if (
       state.dragging ||
@@ -244,11 +275,7 @@
 
     if (state.y >= WORLD_HEIGHT) {
       state.y = WORLD_HEIGHT;
-
-      const floorRetentionPerSecond =
-        FLOOR_FRICTION_MAX_RETENTION -
-        physics.sliding * (FLOOR_FRICTION_MAX_RETENTION - FLOOR_FRICTION_MIN_RETENTION);
-      state.vx *= Math.pow(floorRetentionPerSecond, dt);
+      applyGroundFriction(state, physics, dt);
 
       if (physics.bounce > 0 && state.vy > BOUNCE_MIN_VELOCITY) {
         const impact = Math.min(state.vy, BOUNCE_IMPACT_CAP);

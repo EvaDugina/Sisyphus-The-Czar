@@ -372,7 +372,7 @@ test("два браузера видят один камень и по очер�
   await setRange(first, "pointerInfluence", 1.8);
   await setRange(first, "bounce", 0.1);
   await setRange(first, "inertia", 80);
-  await setRange(first, "sliding", 0.2);
+  await setRange(first, "groundFriction", 0.2);
   await setRange(first, "turbulence", 0.3);
 
   await second.goto("/");
@@ -389,7 +389,7 @@ test("два браузера видят один камень и по очер�
     pointerInfluence: "1.8",
     bounce: "0.1",
     inertia: "80",
-    sliding: "0.2",
+    groundFriction: "0.2",
     turbulence: "0.3",
   };
   for (const [name, value] of Object.entries(expectedPhysics)) {
@@ -570,6 +570,39 @@ test("два браузера видят один камень и по очер�
   const secondRain = second.getByTestId("weather-rain");
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   await expect(secondRain).toHaveClass(/is-rain-visible/);
+  const rainLayering = await second.evaluate(() => {
+    const rainLayer = document.querySelector(".weather-rain");
+    const summit = document.querySelector(".summit");
+    const title = document.querySelector(".title");
+    const title2 = document.querySelector(".title2");
+    return {
+      followsSummit: Boolean(
+        summit.compareDocumentPosition(rainLayer) & Node.DOCUMENT_POSITION_FOLLOWING
+      ),
+      rainZIndex: Number.parseInt(getComputedStyle(rainLayer).zIndex, 10),
+      titleZIndexes: [
+        Number.parseInt(getComputedStyle(title).zIndex, 10),
+        Number.parseInt(getComputedStyle(title2).zIndex, 10),
+      ],
+    };
+  });
+  expect(rainLayering.followsSummit).toBe(true);
+  expect(rainLayering.titleZIndexes.every(
+    (titleZIndex) => rainLayering.rainZIndex > titleZIndex
+  )).toBe(true);
+  await expect
+    .poll(() =>
+      secondRain.locator("canvas").evaluateAll((canvases) =>
+        Math.max(
+          ...canvases.map((canvas) =>
+            Number.parseFloat(
+              canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+            )
+          )
+        )
+      )
+    )
+    .toBeGreaterThan(0);
   await expect(first.locator("body")).not.toHaveClass(/state-won/);
   await expect(second.locator("body")).not.toHaveClass(/state-won/);
   await second.waitForTimeout(3200);
@@ -579,6 +612,81 @@ test("два браузера видят один камень и по очер�
   await expect(second.locator("body")).toHaveClass(/theme-light/);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   await expect(secondRain).toHaveClass(/is-rain-visible/);
+  await second.evaluate(() => {
+    const imprint = collab.imprint;
+    const outsideYCandidate = imprint.y + imprint.toleranceY + 10;
+    const outsideY =
+      outsideYCandidate <= SharedPhysics.WORLD_HEIGHT
+        ? outsideYCandidate
+        : imprint.y - imprint.toleranceY - 10;
+    const local = canonicalToLocal(imprint.x, outsideY);
+    setPosition(local.x, local.y);
+    motion.dragTargetX = local.x;
+    motion.dragTargetY = local.y;
+    syncReturnTheme(true);
+    sendShared("control.move", {
+      x: imprint.x,
+      y: outsideY,
+      vx: 0,
+      vy: 0,
+      pointer: {
+        ...collab.localPointer,
+        x: imprint.x,
+        y: outsideY,
+        mode: "grabbing",
+        visible: true,
+      },
+    });
+  });
+  await expect(firstRain).toHaveClass(/is-rain-hiding/);
+  await expect(secondRain).toHaveClass(/is-rain-hiding/);
+  await expect
+    .poll(() =>
+      secondRain.locator("canvas").evaluateAll((canvases) =>
+        canvases.map((canvas) =>
+          Number.parseFloat(
+            canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+          )
+        )
+      )
+    )
+    .toEqual([0, 0]);
+  await second.evaluate(() => {
+    const imprint = collab.imprint;
+    const local = canonicalToLocal(imprint.x, imprint.y);
+    setPosition(local.x, local.y);
+    motion.dragTargetX = local.x;
+    motion.dragTargetY = local.y;
+    syncReturnTheme(true);
+    sendShared("control.move", {
+      x: imprint.x,
+      y: imprint.y,
+      vx: 0,
+      vy: 0,
+      pointer: {
+        ...collab.localPointer,
+        x: imprint.x,
+        y: imprint.y,
+        mode: "grabbing",
+        visible: true,
+      },
+    });
+  });
+  await expect(firstRain).toHaveClass(/is-rain-visible/);
+  await expect(secondRain).toHaveClass(/is-rain-visible/);
+  await expect
+    .poll(() =>
+      secondRain.locator("canvas").evaluateAll((canvases) =>
+        Math.max(
+          ...canvases.map((canvas) =>
+            Number.parseFloat(
+              canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+            )
+          )
+        )
+      )
+    )
+    .toBeGreaterThan(0);
   await second.mouse.up();
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);

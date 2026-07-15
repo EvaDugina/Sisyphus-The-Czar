@@ -98,7 +98,7 @@ export function createSisyphusRuntime(elements = {}) {
     pointerInfluence: 1,
     bounce: 0.35,
     inertia: 90,
-    sliding: 0.35,
+    groundFriction: 0.35,
     turbulence: 0.4,
 
     // Дождь
@@ -174,7 +174,7 @@ export function createSisyphusRuntime(elements = {}) {
     "pointerInfluence",
     "bounce",
     "inertia",
-    "sliding",
+    "groundFriction",
     "turbulence",
   ];
   const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
@@ -768,6 +768,12 @@ export function createSisyphusRuntime(elements = {}) {
         stored = { ...stored, inertia: legacyInertia * 100 };
       }
     }
+    if (
+      !Object.hasOwn(stored, "groundFriction") &&
+      Object.hasOwn(stored, "sliding")
+    ) {
+      stored = { ...stored, groundFriction: stored.sliding };
+    }
 
     settingsPanel.querySelectorAll("input, select").forEach((el) => {
       const key = el.getAttribute("name");
@@ -790,7 +796,7 @@ export function createSisyphusRuntime(elements = {}) {
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
       inertia: params.inertia.toFixed(0),
-      sliding: params.sliding.toFixed(2),
+      groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
       rainEnterMs: params.rainEnterMs.toFixed(0),
@@ -826,7 +832,7 @@ export function createSisyphusRuntime(elements = {}) {
     params.pointerInfluence = num("pointerInfluence");
     params.bounce = num("bounce");
     params.inertia = num("inertia");
-    params.sliding = num("sliding");
+    params.groundFriction = num("groundFriction");
     params.turbulence = num("turbulence");
 
     Object.assign(

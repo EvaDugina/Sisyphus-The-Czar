@@ -7,16 +7,16 @@ export function Scene({ scene, trail, rain }) {
   return (
     <main ref={scene.worldRef} className="world" aria-label="Сцена Сизифа">
       <TrailCanvas canvasRef={trail.trailCanvasRef} />
-      <WeatherRain
-        layerRef={rain.rainLayerRef}
-        fxCanvasRef={rain.rainFxCanvasRef}
-        fallbackCanvasRef={rain.rainFallbackCanvasRef}
-      />
       <section className="summit" aria-hidden="true">
         <div className="target-zone" />
         <h2 className="title2">Миниатюра</h2>
         <h1 className="title">Царь Сизиф</h1>
       </section>
+      <WeatherRain
+        layerRef={rain.rainLayerRef}
+        fxCanvasRef={rain.rainFxCanvasRef}
+        fallbackCanvasRef={rain.rainFallbackCanvasRef}
+      />
       <RockImprint rockImprintRef={scene.rockImprintRef} />
       <Rock rockRef={scene.rockRef} />
       <div ref={scene.remoteCursorLayerRef} className="remote-cursors" aria-hidden="true" />

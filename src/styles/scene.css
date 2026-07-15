@@ -137,7 +137,7 @@ body.state-won .rock {
 .weather-rain {
   position: fixed;
   inset: 0;
-  z-index: 7;
+  z-index: 5;
   overflow: hidden;
   pointer-events: none;
   opacity: 0;

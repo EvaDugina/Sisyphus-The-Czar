@@ -602,8 +602,15 @@ class SessionManager {
   }
 
   updatePhysics(session, payload) {
+    const sourcePayload =
+      payload && typeof payload === "object" ? payload : {};
+    const nextPayload =
+      !Object.hasOwn(sourcePayload, "groundFriction") &&
+      Object.hasOwn(sourcePayload, "sliding")
+        ? { ...sourcePayload, groundFriction: sourcePayload.sliding }
+        : sourcePayload;
     session.physics = Physics.sanitizePhysics(
-      { ...session.physics, ...payload },
+      { ...session.physics, ...nextPayload },
       session.physics
     );
     this.syncHoldRelease(session, this.now(), true);
