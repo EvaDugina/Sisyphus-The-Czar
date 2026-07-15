@@ -7,6 +7,10 @@ import {
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
 import { normalizeRainSettings } from "../../src/lib/settingsModel.mjs";
+import {
+  SETTINGS_GROUPS,
+  SETTINGS_STORAGE_KEY,
+} from "../../src/config/settings.js";
 
 test("координаты сохраняют каноническое положение между viewport", () => {
   const world = { width: 1000, height: 2000 };
@@ -94,5 +98,22 @@ test("повторный hide не перезапускает таймер ис�
       isVisible: false,
     }),
     false,
+  );
+});
+
+test("настройка инерции отображает целочисленную шкалу 0–100", () => {
+  const inertia = SETTINGS_GROUPS.flatMap((group) => group.controls).find(
+    (control) => control.name === "inertia"
+  );
+
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v3");
+  assert.deepEqual(
+    {
+      min: inertia.min,
+      max: inertia.max,
+      step: inertia.step,
+      defaultValue: inertia.defaultValue,
+    },
+    { min: 0, max: 100, step: 1, defaultValue: 90 }
   );
 });

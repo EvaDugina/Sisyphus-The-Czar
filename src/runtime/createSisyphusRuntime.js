@@ -6,6 +6,10 @@ import {
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import { normalizeRainSettings } from "../lib/settingsModel.mjs";
+import {
+  LEGACY_SETTINGS_STORAGE_KEY,
+  SETTINGS_STORAGE_KEY,
+} from "../config/settings.js";
 
 export function createSisyphusRuntime(elements = {}) {
   // При обновлении страницы всегда открываем её сверху: запрещаем браузеру
@@ -84,7 +88,7 @@ export function createSisyphusRuntime(elements = {}) {
     handForce: 5,
     pointerInfluence: 1,
     bounce: 0.35,
-    inertia: 0.9,
+    inertia: 90,
     sliding: 0.35,
     turbulence: 0.4,
 
@@ -167,6 +171,7 @@ export function createSisyphusRuntime(elements = {}) {
   const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
   const SNAPSHOT_DELAY_MS = 90;
   const POINTER_SEND_INTERVAL_MS = 1000 / 30;
+  const POINTER_VELOCITY_MAX_AGE_MS = 150;
   const RELEASE_HANDOFF_MS = 150;
   const RELEASE_HANDOFF_MAX_STEP_PX = 150;
 
@@ -642,9 +647,9 @@ export function createSisyphusRuntime(elements = {}) {
 
     rainLayer.classList.remove("is-rain-visible");
     rainLayer.classList.add("is-rain-hiding");
+    stopRainRenderers();
     rain.hideTimerId = window.setTimeout(() => {
       rainLayer.classList.remove("is-rain-hiding");
-      stopRainRenderers();
       rain.hideTimerId = null;
     }, getRainExitDurationMs());
   }
@@ -706,7 +711,7 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
-  const STORAGE_KEY = "sisyphus-czar-settings-v2";
+  const STORAGE_KEY = SETTINGS_STORAGE_KEY;
 
   function saveSettings() {
     try {
@@ -718,13 +723,28 @@ export function createSisyphusRuntime(elements = {}) {
 
   function loadSettings() {
     let stored = null;
+    let migratedLegacySettings = false;
     try {
-      stored = JSON.parse(localStorage.getItem(STORAGE_KEY) || "null");
+      const current = localStorage.getItem(STORAGE_KEY);
+      const raw = current ?? localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
+      migratedLegacySettings = current === null && raw !== null;
+      stored = JSON.parse(raw || "null");
     } catch {
       stored = null;
     }
     if (!stored || typeof stored !== "object") {
       return;
+    }
+
+    if (migratedLegacySettings) {
+      const legacyInertia = Number(stored.inertia);
+      if (
+        Number.isFinite(legacyInertia) &&
+        legacyInertia >= 0 &&
+        legacyInertia <= 1
+      ) {
+        stored = { ...stored, inertia: legacyInertia * 100 };
+      }
     }
 
     settingsPanel.querySelectorAll("input, select").forEach((el) => {
@@ -747,7 +767,7 @@ export function createSisyphusRuntime(elements = {}) {
       handForce: params.handForce.toFixed(0),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
-      inertia: params.inertia.toFixed(2),
+      inertia: params.inertia.toFixed(0),
       sliding: params.sliding.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
@@ -2156,9 +2176,10 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     recordPointerVelocity(event);
+    const pointerVelocity = currentPointerVelocity();
     const velocity = localVelocityToCanonical(
-      motion.pointerVx,
-      motion.pointerVy
+      pointerVelocity.vx,
+      pointerVelocity.vy
     );
     const position = localToCanonical(motion.x, motion.y);
     const pointerVisible =
@@ -2187,9 +2208,10 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
+    const pointerVelocity = currentPointerVelocity();
     const velocity = localVelocityToCanonical(
-      motion.pointerVx,
-      motion.pointerVy
+      pointerVelocity.vx,
+      pointerVelocity.vy
     );
     const position = localToCanonical(motion.x, motion.y);
     const pointer = updateLocalSharedPointer(
@@ -2530,7 +2552,17 @@ export function createSisyphusRuntime(elements = {}) {
     releasePointerCapture(pointerId);
 
     const state = SharedPhysics.sanitizeState(currentSharedState());
-    SharedPhysics.beginFirstFall(state, Math.random);
+    const pointerVelocity = currentPointerVelocity();
+    const velocity = localVelocityToCanonical(
+      pointerVelocity.vx,
+      pointerVelocity.vy
+    );
+    SharedPhysics.beginFirstFall(
+      state,
+      SharedPhysics.sanitizePhysics(params),
+      velocity.vx,
+      velocity.vy
+    );
     setPhase(state.phase);
     // Тёмная тема включается сразу, как только камень выпадает из руки,
     // не дожидаясь касания дна.
@@ -2615,6 +2647,16 @@ export function createSisyphusRuntime(elements = {}) {
     motion.lastPointerAt = now;
   }
 
+  function currentPointerVelocity() {
+    if (
+      motion.lastPointerAt <= 0 ||
+      performance.now() - motion.lastPointerAt > POINTER_VELOCITY_MAX_AGE_MS
+    ) {
+      return { vx: 0, vy: 0 };
+    }
+    return { vx: motion.pointerVx, vy: motion.pointerVy };
+  }
+
   function releasePointerCapture(pointerId) {
     if (pointerId !== null && rock.hasPointerCapture(pointerId)) {
       rock.releasePointerCapture(pointerId);
@@ -2623,9 +2665,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function applyReleaseImpulse() {
     const state = SharedPhysics.sanitizeState(currentSharedState());
+    const pointerVelocity = currentPointerVelocity();
     const velocity = localVelocityToCanonical(
-      motion.pointerVx,
-      motion.pointerVy
+      pointerVelocity.vx,
+      pointerVelocity.vy
     );
     SharedPhysics.applyReleaseImpulse(
       state,

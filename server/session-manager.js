@@ -7,6 +7,7 @@ const SNAPSHOT_INTERVAL_MS = 1000 / 20;
 const DISCONNECT_GRACE_MS = 500;
 const DISCONNECTED_CLIENT_TTL_MS = 60_000;
 const DEFAULT_EMPTY_SESSION_GRACE_MS = 10_000;
+const POINTER_VELOCITY_MAX_AGE_MS = 150;
 const MAX_TRAIL_POINTS = 1000;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
@@ -18,6 +19,17 @@ function finite(value, fallback = 0) {
 
 function socketIsOpen(socket) {
   return socket && socket.readyState === 1;
+}
+
+function pointerVelocityAt(pointer, updatedAt, now) {
+  const age = now - finite(updatedAt, 0);
+  if (age < 0 || age > POINTER_VELOCITY_MAX_AGE_MS) {
+    return { vx: 0, vy: 0 };
+  }
+  return {
+    vx: Physics.clamp(finite(pointer?.vx, 0), -4000, 4000),
+    vy: Physics.clamp(finite(pointer?.vy, 0), -9000, 9000),
+  };
 }
 
 function tokensMatch(actual, expected) {
@@ -61,7 +73,6 @@ class SessionManager {
     this.emptyGraceMs =
       options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS;
     this.now = options.now || Date.now;
-    this.random = options.random || Math.random;
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
   }
@@ -96,6 +107,7 @@ class SessionManager {
       firstFallAt: null,
       holdReleaseAt: null,
       lastPointer: { vx: 0, vy: 0 },
+      lastPointerAt: now,
       dirty: true,
     };
 
@@ -109,6 +121,7 @@ class SessionManager {
       id: session.id,
       state: { ...session.state },
       physics: { ...session.physics },
+      physicsVersion: Physics.PHYSICS_VERSION,
       trail: session.trail.map((point) => [...point]),
       imprint: session.imprint ? { ...session.imprint } : null,
       revision: session.revision,
@@ -117,6 +130,7 @@ class SessionManager {
       expiresAt: session.expiresAt,
       emptyDeleteAt: session.emptyDeleteAt,
       lastPointer: { ...session.lastPointer },
+      lastPointerAt: session.lastPointerAt,
     }));
   }
 
@@ -149,21 +163,30 @@ class SessionManager {
       }
 
       const state = Physics.sanitizeState(record.state);
-      const physics = Physics.sanitizePhysics(record.physics);
+      const physics = Physics.sanitizePhysics(
+        Physics.migratePhysics(record.physics, record.physicsVersion)
+      );
       const lastPointer = {
         vx: finite(record.lastPointer?.vx, 0),
         vy: finite(record.lastPointer?.vy, 0),
       };
+      const lastPointerAt = finite(record.lastPointerAt, 0);
+      const releasePointer = pointerVelocityAt(lastPointer, lastPointerAt, now);
 
       if (record.state?.dragging) {
         if (state.phase === Physics.PHASES.INTRO) {
-          Physics.beginFirstFall(state, this.random);
+          Physics.beginFirstFall(
+            state,
+            physics,
+            releasePointer.vx,
+            releasePointer.vy
+          );
         } else if (state.phase === Physics.PHASES.PLAY) {
           Physics.applyReleaseImpulse(
             state,
             physics,
-            lastPointer.vx,
-            lastPointer.vy
+            releasePointer.vx,
+            releasePointer.vy
           );
         }
       }
@@ -193,6 +216,7 @@ class SessionManager {
         firstFallAt: null,
         holdReleaseAt: null,
         lastPointer,
+        lastPointerAt,
         dirty: true,
       };
 
@@ -452,6 +476,7 @@ class SessionManager {
       session.imprint = Physics.createImprintAtState(state, payload.imprint);
     }
     session.lastPointer = { vx: 0, vy: 0 };
+    session.lastPointerAt = this.now();
     session.firstFallAt =
       state.phase === Physics.PHASES.INTRO
         ? this.now() + Physics.FIRST_FALL_DELAY_MS
@@ -489,6 +514,7 @@ class SessionManager {
       vx: Physics.clamp(finite(payload.vx, session.lastPointer.vx), -4000, 4000),
       vy: Physics.clamp(finite(payload.vy, session.lastPointer.vy), -9000, 9000),
     };
+    session.lastPointerAt = this.now();
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
@@ -540,7 +566,12 @@ class SessionManager {
     }
 
     if (phaseAtRelease === Physics.PHASES.INTRO) {
-      Physics.beginFirstFall(state, this.random);
+      Physics.beginFirstFall(
+        state,
+        session.physics,
+        pointerVx,
+        pointerVy
+      );
     } else if (
       phaseAtRelease === Physics.PHASES.PLAY &&
       Physics.stateInsideImprint(state, session.imprint)
@@ -560,6 +591,14 @@ class SessionManager {
     this.broadcastSnapshot(session);
     this.broadcastPresence(session);
     return true;
+  }
+
+  currentPointerVelocity(session) {
+    return pointerVelocityAt(
+      session.lastPointer,
+      session.lastPointerAt,
+      this.now()
+    );
   }
 
   updatePhysics(session, payload) {
@@ -616,6 +655,7 @@ class SessionManager {
     session.firstFallAt = null;
     session.holdReleaseAt = null;
     session.lastPointer = { vx: 0, vy: 0 };
+    session.lastPointerAt = this.now();
     session.accumulator = 0;
     session.lastTickAt = this.now();
     session.nextSnapshotAt = this.now();
@@ -716,10 +756,11 @@ class SessionManager {
         controller.disconnectedAt !== null &&
         now - controller.disconnectedAt >= DISCONNECT_GRACE_MS
       ) {
+        const pointerVelocity = this.currentPointerVelocity(session);
         this.finishRelease(
           session,
-          session.lastPointer.vx,
-          session.lastPointer.vy
+          pointerVelocity.vx,
+          pointerVelocity.vy
         );
       }
 
@@ -739,10 +780,11 @@ class SessionManager {
         session.firstFallAt !== null &&
         now >= session.firstFallAt
       ) {
+        const pointerVelocity = this.currentPointerVelocity(session);
         this.finishRelease(
           session,
-          session.lastPointer.vx,
-          session.lastPointer.vy
+          pointerVelocity.vx,
+          pointerVelocity.vy
         );
       } else if (
         session.state.dragging &&
@@ -753,10 +795,11 @@ class SessionManager {
           session.holdReleaseAt = null;
           this.markChanged(session);
         } else {
+          const pointerVelocity = this.currentPointerVelocity(session);
           this.finishRelease(
             session,
-            session.lastPointer.vx,
-            session.lastPointer.vy
+            pointerVelocity.vx,
+            pointerVelocity.vy
           );
         }
       }

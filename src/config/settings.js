@@ -1,4 +1,5 @@
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v2";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v3";
+export const LEGACY_SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v2";
 
 export const SETTINGS_GROUPS = [
   {
@@ -64,11 +65,11 @@ export const SETTINGS_GROUPS = [
         label: "Инерция",
         type: "range",
         min: 0,
-        max: 1,
-        step: 0.05,
-        defaultValue: 0.9,
-        output: "0.90",
-        hint: "Насколько камень сохраняет горизонтальный импульс после броска. Больше — дольше несёт по инерции; меньше — быстрее теряет ход.",
+        max: 100,
+        step: 1,
+        defaultValue: 90,
+        output: "90",
+        hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 100 — максимальная передача с учётом массы, силы и влияния рывка.",
       },
       {
         name: "sliding",

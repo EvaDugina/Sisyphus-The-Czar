@@ -25,11 +25,12 @@
   const FIXED_STEP_SECONDS = 1 / 60;
   const FIRST_FALL_DELAY_MS = 400;
   const GRAVITY_UNITS = 1260;
-  const FIRST_FALL_DRIFT_MIN = 160;
-  const FIRST_FALL_DRIFT_RANGE = 240;
-  const LIFT_SCALE = 0.42;
-  const INERTIA_MIN_RETENTION = 0.35;
-  const INERTIA_MAX_RETENTION = 0.995;
+  const PHYSICS_VERSION = 2;
+  const RELEASE_TRANSFER_SCALE = 0.42;
+  const AIR_RETENTION_PER_SECOND = 0.9305;
+  const MAX_RELEASE_HORIZONTAL_SPEED = 900;
+  const MAX_RELEASE_UPWARD_SPEED = 1800;
+  const MAX_RELEASE_DOWNWARD_SPEED = 900;
   const FLOOR_FRICTION_MIN_RETENTION = 0.08;
   const FLOOR_FRICTION_MAX_RETENTION = 1;
   const BOUNCE_MIN_VELOCITY = 120;
@@ -42,7 +43,7 @@
     handForce: [1, 10],
     pointerInfluence: [0, 2],
     bounce: [0, 1],
-    inertia: [0, 1],
+    inertia: [0, 100],
     sliding: [0, 1],
     turbulence: [0, 1],
   });
@@ -53,7 +54,7 @@
     handForce: 5,
     pointerInfluence: 1,
     bounce: 0.35,
-    inertia: 0.9,
+    inertia: 90,
     sliding: 0.35,
     turbulence: 0.4,
   });
@@ -77,6 +78,20 @@
     });
 
     return clean;
+  }
+
+  function migratePhysics(input, version = 1) {
+    const source = input && typeof input === "object" ? { ...input } : {};
+    const inertia = Number(source.inertia);
+    if (
+      finiteNumber(version, 1) < PHYSICS_VERSION &&
+      Number.isFinite(inertia) &&
+      inertia >= 0 &&
+      inertia <= 1
+    ) {
+      source.inertia = inertia * 100;
+    }
+    return source;
   }
 
   function sanitizeState(input) {
@@ -149,18 +164,18 @@
     );
   }
 
-  function beginFirstFall(state, random = Math.random) {
+  function beginFirstFall(state, physics, pointerVx, pointerVy) {
     if (state.phase !== PHASES.INTRO) {
       return false;
     }
 
-    const direction = random() < 0.5 ? -1 : 1;
     state.phase = PHASES.FALLING;
-    state.dragging = false;
-    state.controllerId = null;
-    state.vx =
-      direction * (FIRST_FALL_DRIFT_MIN + random() * FIRST_FALL_DRIFT_RANGE);
-    state.vy = 120;
+    applyReleaseImpulse(
+      state,
+      sanitizePhysics(physics),
+      pointerVx,
+      pointerVy
+    );
     return true;
   }
 
@@ -169,11 +184,25 @@
     const safeVy = clamp(finiteNumber(pointerVy, 0), -9000, 9000);
     const strength = physics.handForce / physics.mass;
     const influence = physics.pointerInfluence;
-    const liftBoost = Math.max(0, -safeVy) * strength * LIFT_SCALE * influence;
-    const horizontalBoost = safeVx * strength * 0.18 * influence;
+    const inertiaFraction = physics.inertia / 100;
+    const transfer =
+      strength * influence * inertiaFraction * RELEASE_TRANSFER_SCALE;
+    const releaseVx = safeVx * transfer;
+    const releaseVy = safeVy * transfer;
+    const verticalLimit =
+      releaseVy < 0
+        ? MAX_RELEASE_UPWARD_SPEED
+        : MAX_RELEASE_DOWNWARD_SPEED;
+    const limitScale = Math.min(
+      1,
+      Math.abs(releaseVx) > 0
+        ? MAX_RELEASE_HORIZONTAL_SPEED / Math.abs(releaseVx)
+        : 1,
+      Math.abs(releaseVy) > 0 ? verticalLimit / Math.abs(releaseVy) : 1
+    );
 
-    state.vx = clamp(horizontalBoost, -900, 900);
-    state.vy = clamp(safeVy * 0.18 * influence - liftBoost, -1800, 900);
+    state.vx = releaseVx === 0 ? 0 : releaseVx * limitScale;
+    state.vy = releaseVy === 0 ? 0 : releaseVy * limitScale;
     state.dragging = false;
     state.controllerId = null;
   }
@@ -206,10 +235,7 @@
     state.x += state.vx * dt;
     state.y += state.vy * dt;
 
-    const inertiaRetentionPerSecond =
-      INERTIA_MIN_RETENTION +
-      physics.inertia * (INERTIA_MAX_RETENTION - INERTIA_MIN_RETENTION);
-    state.vx *= Math.pow(inertiaRetentionPerSecond, dt);
+    state.vx *= Math.pow(AIR_RETENTION_PER_SECOND, dt);
 
     if (state.x <= 0 || state.x >= WORLD_WIDTH) {
       state.x = clamp(state.x, 0, WORLD_WIDTH);
@@ -265,6 +291,7 @@
     PHASES,
     WORLD_WIDTH,
     WORLD_HEIGHT,
+    PHYSICS_VERSION,
     IMPRINT_TOLERANCE_FRACTION,
     FIXED_STEP_SECONDS,
     FIRST_FALL_DELAY_MS,
@@ -272,6 +299,7 @@
     PHYSICS_LIMITS,
     clamp,
     sanitizePhysics,
+    migratePhysics,
     sanitizeState,
     maxHoldMs,
     sanitizeImprint,
