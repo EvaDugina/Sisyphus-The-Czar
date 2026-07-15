@@ -16,6 +16,8 @@ services:
       - "127.0.0.1:18082:8080"
     volumes:
       - ./index.html:/app/index.html:ro
+      - ./vite.config.mjs:/app/vite.config.mjs:ro
+      - ./src:/app/src:ro
       - ./assets:/app/assets:ro
       - ./server:/app/server:ro
       - ./shared:/app/shared:ro

@@ -19,6 +19,7 @@ lint_and_unit:
   stage: test
   script:
     - npm run lint
+    - npm run build
     - npm test
 
 commit_lint:

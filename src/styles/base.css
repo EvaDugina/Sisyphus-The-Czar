@@ -1,0 +1,82 @@
+@import url("https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@600;700&display=swap");
+
+:root {
+  color-scheme: light;
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+    "Segoe UI", sans-serif;
+  background: #f8f8f5;
+  color: #161616;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  margin: 0;
+  scroll-behavior: auto;
+}
+
+html.is-scroll-locked,
+body.is-scroll-locked {
+  overflow-y: hidden;
+  overscroll-behavior-y: none;
+}
+
+html.is-scroll-locked {
+  height: 100%;
+}
+
+body.is-scroll-locked {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+}
+
+body {
+  --surface: #f8f8f5;
+  --surface-deep: #e9e8e2;
+  --surface-low: #d9d8d1;
+  --ink: #161616;
+  --muted: rgba(22, 22, 22, 0.62);
+  --line: rgba(22, 22, 22, 0.2);
+  --panel: rgba(248, 248, 245, 0.88);
+  --accent: #8a6b31;
+  --accent-strong: #3c2b11;
+  --target: rgba(138, 107, 49, 0.18);
+  --target-line: rgba(138, 107, 49, 0.56);
+  --shadow: rgba(23, 20, 17, 0.18);
+
+  min-height: 200vh;
+  margin: 0;
+  overflow-x: hidden;
+  background: var(--surface);
+  color: var(--ink);
+  user-select: none;
+  transition:
+    background-color 420ms ease,
+    color 420ms ease;
+}
+
+body.theme-dark {
+  color-scheme: dark;
+  --surface: #101211;
+  --surface-deep: #191a16;
+  --surface-low: #070807;
+  --ink: #f4f1ea;
+  --muted: rgba(244, 241, 234, 0.64);
+  --line: rgba(244, 241, 234, 0.18);
+  --panel: rgba(16, 18, 17, 0.86);
+  --accent: #b7a06b;
+  --accent-strong: #f0dfaa;
+  --target: rgba(183, 160, 107, 0.2);
+  --target-line: rgba(183, 160, 107, 0.58);
+  --shadow: rgba(0, 0, 0, 0.58);
+}
+
+button,
+input {
+  font: inherit;
+}

@@ -1,7 +1,6 @@
 "use strict";
 
 const crypto = require("node:crypto");
-const fs = require("node:fs");
 const http = require("node:http");
 const path = require("node:path");
 const express = require("express");
@@ -10,82 +9,13 @@ const { SessionManager } = require("./session-manager");
 const { SessionStore } = require("./session-store");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
+const DIST_DIR = path.join(ROOT_DIR, "dist");
 const MAX_WS_MESSAGE_BYTES = 64 * 1024;
 const HEARTBEAT_INTERVAL_MS = 20_000;
 const CONNECTION_TIMEOUT_MS = 45_000;
-const DEV_ASSET_POLL_INTERVAL_MS = 500;
-const DEV_BROWSER_POLL_INTERVAL_MS = 750;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const LEAVE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{22}$/;
-
-function devAssetFingerprint() {
-  const entries = [];
-
-  function collect(entryPath) {
-    let stats;
-    try {
-      stats = fs.statSync(entryPath);
-    } catch (error) {
-      if (error.code === "ENOENT") {
-        entries.push(`${entryPath}:missing`);
-        return;
-      }
-      throw error;
-    }
-
-    if (!stats.isDirectory()) {
-      entries.push(`${entryPath}:${stats.size}:${stats.mtimeMs}`);
-      return;
-    }
-
-    const children = fs.readdirSync(entryPath).sort();
-    entries.push(`${entryPath}:${children.join(",")}`);
-    children.forEach((child) => collect(path.join(entryPath, child)));
-  }
-
-  collect(path.join(ROOT_DIR, "index.html"));
-  collect(path.join(ROOT_DIR, "assets"));
-  return crypto.createHash("sha1").update(entries.join("\n")).digest("hex");
-}
-
-function injectDevReload(html) {
-  const style = `<style data-sisyphus-dev-scene-height>
-body,
-.world {
-  min-height: 200vh;
-}
-</style>`;
-  const script = `<script data-sisyphus-dev-reload>
-(() => {
-  let currentVersion = null;
-  const poll = async () => {
-    try {
-      const response = await fetch("/__dev/version", { cache: "no-store" });
-      if (!response.ok) return;
-      const { version } = await response.json();
-      if (currentVersion !== null && version !== currentVersion) {
-        window.location.reload();
-        return;
-      }
-      currentVersion = version;
-    } catch {
-      // The server may be restarting; the next successful poll will reload the page.
-    }
-  };
-  poll();
-  window.setInterval(poll, ${DEV_BROWSER_POLL_INTERVAL_MS});
-})();
-</script>`;
-
-  const withStyle = html.includes("</head>")
-    ? html.replace("</head>", `${style}\n</head>`)
-    : `${style}\n${html}`;
-
-  return withStyle.includes("</body>")
-    ? withStyle.replace("</body>", `${script}\n</body>`)
-    : `${withStyle}\n${script}`;
-}
 
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
@@ -190,7 +120,7 @@ function securityHeaders(debug) {
         "img-src 'self' data:",
         "font-src 'self' https://fonts.gstatic.com",
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-        "script-src 'self' 'unsafe-inline'",
+        "script-src 'self'",
         "connect-src 'self' ws: wss:",
       ].join("; ")
     );
@@ -248,9 +178,6 @@ function createService(options = {}) {
   const createLimiter = new WindowRateLimiter(10, 60_000);
   const connectLimiter = new WindowRateLimiter(30, 60_000);
   const app = express();
-  let devVersion = config.debug ? crypto.randomUUID() : null;
-  let assetFingerprint = config.debug ? devAssetFingerprint() : null;
-
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
   app.use(securityHeaders(config.debug));
@@ -264,13 +191,6 @@ function createService(options = {}) {
       memoryRssBytes: process.memoryUsage().rss,
     });
   });
-
-  if (config.debug) {
-    app.get("/__dev/version", (_request, response) => {
-      response.setHeader("Cache-Control", "no-store");
-      response.json({ version: devVersion });
-    });
-  }
 
   app.post("/api/sessions", (request, response) => {
     if (!originAllowed(request, config.allowedOrigins, config.debug)) {
@@ -323,10 +243,10 @@ function createService(options = {}) {
 
   app.use(
     "/assets",
-    express.static(path.join(ROOT_DIR, "assets"), {
+    express.static(path.join(DIST_DIR, "assets"), {
       dotfiles: "deny",
       immutable: !config.debug,
-      maxAge: config.debug ? 0 : "1h",
+      maxAge: config.debug ? 0 : "1y",
     })
   );
 
@@ -339,19 +259,9 @@ function createService(options = {}) {
     response.sendFile(path.join(ROOT_DIR, "shared", "physics.js"));
   });
 
-  const sendIndex = (_request, response, next) => {
+  const sendIndex = (_request, response) => {
     response.setHeader("Cache-Control", "no-store");
-    if (!config.debug) {
-      response.sendFile(path.join(ROOT_DIR, "index.html"));
-      return;
-    }
-    fs.readFile(path.join(ROOT_DIR, "index.html"), "utf8", (error, html) => {
-      if (error) {
-        next(error);
-        return;
-      }
-      response.type("html").send(injectDevReload(html));
-    });
+    response.sendFile(path.join(DIST_DIR, "index.html"));
   };
   app.get("/", sendIndex);
   app.get("/index.html", sendIndex);
@@ -478,19 +388,9 @@ function createService(options = {}) {
   const persistenceTimer = sessionStore.enabled
     ? setInterval(() => persistSessions(), config.persistIntervalMs)
     : null;
-  const devAssetTimer = config.debug
-    ? setInterval(() => {
-        const nextFingerprint = devAssetFingerprint();
-        if (nextFingerprint !== assetFingerprint) {
-          assetFingerprint = nextFingerprint;
-          devVersion = crypto.randomUUID();
-        }
-      }, DEV_ASSET_POLL_INTERVAL_MS)
-    : null;
   tickTimer.unref();
   heartbeatTimer.unref();
   persistenceTimer?.unref();
-  devAssetTimer?.unref();
 
   async function start() {
     await new Promise((resolve, reject) => {
@@ -520,9 +420,6 @@ function createService(options = {}) {
       clearInterval(heartbeatTimer);
       if (persistenceTimer) {
         clearInterval(persistenceTimer);
-      }
-      if (devAssetTimer) {
-        clearInterval(devAssetTimer);
       }
       persistSessions(true);
       manager.close();
@@ -566,7 +463,7 @@ if (require.main === module) {
 
 module.exports = {
   createService,
-  injectDevReload,
+  securityHeaders,
   WindowRateLimiter,
   originAllowed,
 };

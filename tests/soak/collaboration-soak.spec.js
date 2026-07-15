@@ -25,6 +25,24 @@ async function visibleRockPoint(page) {
   });
 }
 
+async function grabVisibleRock(page) {
+  const status = page.getByTestId("session-status");
+  let lastError = null;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const point = await visibleRockPoint(page);
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    try {
+      await expect(status).toContainText("камень у вас", { timeout: 1500 });
+      return;
+    } catch (error) {
+      lastError = error;
+      await page.mouse.up();
+    }
+  }
+  throw lastError;
+}
+
 test("два браузера работают 10 минут без зависшей блокировки и роста памяти", async ({
   browser,
   request,
@@ -56,9 +74,7 @@ test("два браузера работают 10 минут без зависш
     const actor = pages[iteration % pages.length];
     const observer = pages[(iteration + 1) % pages.length];
     await actor.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
-    const point = await visibleRockPoint(actor);
-    await actor.mouse.move(point.x, point.y);
-    await actor.mouse.down();
+    await grabVisibleRock(actor);
     await expect(actor.getByTestId("session-status")).toContainText("камень у вас");
     await expect(observer.getByTestId("session-status")).toContainText("другой участник");
     await actor.mouse.up();

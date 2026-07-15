@@ -1,0 +1,317 @@
+.settings-toggle,
+.session-share-toggle {
+  position: fixed;
+  top: 1rem;
+  z-index: 30;
+  display: grid;
+  width: 2.75rem;
+  min-width: 2.75rem;
+  max-width: 2.75rem;
+  height: 2.75rem;
+  min-height: 2.75rem;
+  max-height: 2.75rem;
+  padding: 0;
+  place-items: center;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  box-shadow: 0 0.8rem 1.4rem color-mix(in srgb, var(--shadow) 38%, transparent);
+  backdrop-filter: blur(12px);
+  transition:
+    background 220ms ease,
+    border-color 220ms ease,
+    transform 180ms ease;
+}
+
+.settings-toggle {
+  right: 1rem;
+}
+
+.session-share-toggle {
+  right: 4.5rem;
+}
+
+.session-share-toggle svg {
+  width: 1.1rem;
+  height: 1.1rem;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+}
+
+.session-share-toggle [data-share-icon="check"] {
+  display: none;
+}
+
+.session-share-toggle.is-copied [data-share-icon="link"] {
+  display: none;
+}
+
+.session-share-toggle.is-copied [data-share-icon="check"] {
+  display: block;
+}
+
+.settings-toggle:hover,
+.session-share-toggle:hover {
+  transform: translateY(-1px);
+}
+
+.settings-toggle[aria-expanded="true"] {
+  border-color: var(--target-line);
+}
+
+.session-share-toggle[data-state="online"] {
+  border-color: var(--target-line);
+}
+
+.settings-panel {
+  position: fixed;
+  right: 1rem;
+  top: 4.25rem;
+  z-index: 29;
+  width: min(19rem, calc(100vw - 2rem));
+  max-height: calc(100dvh - 5.5rem);
+  overflow-y: auto;
+  padding: 1rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: var(--panel);
+  color: var(--ink);
+  box-shadow: 0 1rem 2rem color-mix(in srgb, var(--shadow) 38%, transparent);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-0.6rem);
+  transition:
+    opacity 180ms ease,
+    transform 180ms ease;
+  backdrop-filter: blur(14px);
+}
+
+.settings-panel.is-open {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateY(0);
+}
+
+.control {
+  display: grid;
+  gap: 0.45rem;
+}
+
+.control + .control {
+  margin-top: 0.9rem;
+}
+
+.control-label {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+  color: var(--ink);
+  font-size: 0.92rem;
+}
+
+.control-value {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+
+.control input[type="number"],
+.control input[type="text"],
+.control select {
+  width: 100%;
+  padding: 0.32rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--ink);
+  font: inherit;
+  font-size: 0.9rem;
+}
+
+.control select {
+  cursor: pointer;
+}
+
+.control input[type="color"] {
+  width: 100%;
+  height: 1.9rem;
+  padding: 2px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  cursor: pointer;
+}
+
+.control.is-check {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.55rem;
+  cursor: pointer;
+}
+
+.control.is-check input[type="checkbox"] {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  accent-color: var(--accent);
+}
+
+.control.is-check span {
+  font-size: 0.92rem;
+}
+
+.control.is-disabled {
+  opacity: 0.5;
+}
+
+.trail-clear,
+.session-restart {
+  width: 100%;
+  margin-top: 0.7rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+  transition:
+    background 180ms ease,
+    border-color 180ms ease;
+}
+
+.trail-clear:hover,
+.session-restart:hover {
+  border-color: var(--target-line);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+}
+
+.session-panel {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.7rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+}
+
+.session-state {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  line-height: 1.3;
+}
+
+.session-state::before {
+  content: "";
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--muted);
+  box-shadow: 0 0 0 0.2rem color-mix(in srgb, var(--muted) 12%, transparent);
+}
+
+.session-state[data-state="online"]::before {
+  background: #55a86a;
+  box-shadow: 0 0 0 0.2rem rgba(85, 168, 106, 0.16);
+}
+
+.session-state[data-state="connecting"]::before {
+  background: #c09645;
+  animation: session-pulse 1.1s ease-in-out infinite;
+}
+
+.session-state[data-state="error"]::before {
+  background: #b85252;
+}
+
+@keyframes session-pulse {
+  50% {
+    opacity: 0.42;
+  }
+}
+
+.control-group {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 0;
+  padding: 0.65rem 0 0.15rem;
+}
+
+.control-group:first-of-type {
+  border-top: 0;
+  padding-top: 0;
+}
+
+.control-group > summary {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.2rem 0;
+  color: var(--muted);
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.control-group > summary::-webkit-details-marker {
+  display: none;
+}
+
+.control-group > summary::before {
+  content: "▸";
+  display: inline-block;
+  color: var(--accent);
+  transition: transform 160ms ease;
+}
+
+.control-group[open] > summary::before {
+  transform: rotate(90deg);
+}
+
+.control-group[open] > summary {
+  margin-bottom: 0.6rem;
+}
+
+.hint {
+  position: fixed;
+  z-index: 40;
+  max-width: 15rem;
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--ink);
+  font-size: 0.8rem;
+  line-height: 1.35;
+  box-shadow: 0 0.6rem 1.4rem color-mix(in srgb, var(--shadow) 42%, transparent);
+  backdrop-filter: blur(14px);
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-0.2rem);
+  transition:
+    opacity 120ms ease,
+    transform 120ms ease;
+}
+
+.hint.is-visible {
+  opacity: 1;
+  transform: translateY(0);
+}

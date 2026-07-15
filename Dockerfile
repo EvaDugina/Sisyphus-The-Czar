@@ -4,15 +4,30 @@ WORKDIR /app
 ENV NODE_ENV=development
 
 COPY package.json package-lock.json ./
-RUN npm ci
+RUN npm ci --include=dev
 
-COPY index.html ./
+COPY index.html vite.config.mjs ./
+COPY src/ ./src/
 COPY assets/ ./assets/
 COPY server/ ./server/
 COPY shared/ ./shared/
 
-EXPOSE 8080
+EXPOSE 8080 8081
 CMD ["npm", "run", "dev"]
+
+FROM node:24.18.0-alpine3.23 AS frontend-build
+
+WORKDIR /app
+ENV NODE_ENV=production
+
+COPY package.json package-lock.json ./
+RUN npm ci --include=dev
+
+COPY index.html vite.config.mjs ./
+COPY src/ ./src/
+COPY assets/ ./assets/
+COPY shared/ ./shared/
+RUN npm run build
 
 FROM node:24.18.0-alpine3.23 AS production
 
@@ -22,10 +37,9 @@ ENV NODE_ENV=production
 COPY package.json package-lock.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 
-COPY --chown=node:node index.html ./
-COPY --chown=node:node assets/ ./assets/
 COPY --chown=node:node server/ ./server/
 COPY --chown=node:node shared/ ./shared/
+COPY --chown=node:node --from=frontend-build /app/dist/ ./dist/
 RUN mkdir -p /app/data && chown node:node /app/data
 
 USER node

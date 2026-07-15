@@ -2,25 +2,31 @@
 
 Стадия: POC B
 
-Интерактивная веб-миниатюра с общей realtime-сессией: участники открывают одну ссылку, видят один падающий камень и по очереди управляют им.
+Интерактивная веб-миниатюра с общей realtime-сессией: участники открывают одну ссылку, видят один падающий камень и по очереди управляют им. Клиент собран на React + Vite, API и WebSocket обслуживает Node.js.
 
 ## Локальный запуск
 
-Нужны Docker Engine и Docker Compose v2. Первая команда собирает и запускает Node.js-сервер:
+Нужны Docker Engine и Docker Compose v2:
 
 ```bash
 docker compose -f docker-compose.dev.yml up --build
 ```
 
-Приложение откроется на `http://127.0.0.1:18082/`. Изменения `index.html`, `assets/`, `server/` и `shared/` подхватываются через bind mounts: серверный код автоматически перезапускается polling-наблюдателем, а открытая страница обновляется сама. Пересобирать или переподнимать контейнер после обычных правок не нужно; `--build` снова требуется только после изменения зависимостей или Dockerfile. Остановить: `docker compose -f docker-compose.dev.yml down`.
+Приложение откроется на `http://127.0.0.1:18082/`. Vite на порту `8080` обновляет React/CSS/assets через HMR и проксирует API, health и WebSocket во внутренний Express на `8081`; Nodemon перезапускает backend при изменениях `server/` и `shared/`.
+
+Остановить локальный контейнер:
+
+```bash
+docker compose -f docker-compose.dev.yml down
+```
 
 ## Совместная сессия
 
 1. Откройте приложение: сервер автоматически создаст уникальную комнату и переведёт браузер на `/?session=<id>`.
 2. Нажмите верхнюю кнопку с иконкой ссылки рядом с настройками.
-3. Отправьте скопированный текущий URL второму участнику.
+3. Отправьте скопированный URL второму участнику.
 
-Один участник держит камень, остальные наблюдают и могут взять его после отпускания. Физика общая, оформление следа остаётся локальным. Reload/reconnect и перезапуск контейнера сохраняют ID и серверное состояние комнаты в Docker volume. После выхода последнего участника комната ждёт 10 секунд и удаляется, если никто не вернулся.
+Один участник держит камень, остальные наблюдают и могут взять его после отпускания. Физика общая; оформление следа и ливня остаётся локальным. Reload/reconnect и пересоздание контейнера сохраняют ID и серверное состояние комнаты в Docker volume. После выхода последнего участника комната ждёт 10 секунд и удаляется, если никто не вернулся.
 
 ## Настройки
 
@@ -31,9 +37,9 @@ docker compose -f docker-compose.dev.yml up --build
 | `DEBUG` | `true` для dev-послаблений, `false` для production hardening |
 | `ALLOWED_ORIGIN` | публичный HTTPS origin; несколько значений через запятую |
 | `SESSION_TTL_SECONDS` | время жизни комнаты после последней активности, по умолчанию `86400` |
-| `EMPTY_SESSION_GRACE_SECONDS` | задержка удаления пустой комнаты для reload/reconnect, по умолчанию `10` |
-| `SESSION_STORE_PATH` | файл постоянного состояния в Docker volume, по умолчанию `/app/data/sessions.json` |
-| `SESSION_PERSIST_INTERVAL_MS` | интервал фонового сохранения движущихся комнат, по умолчанию `250` мс |
+| `EMPTY_SESSION_GRACE_SECONDS` | задержка удаления пустой комнаты, по умолчанию `10` |
+| `SESSION_STORE_PATH` | файл состояния в Docker volume, по умолчанию `/app/data/sessions.json` |
+| `SESSION_PERSIST_INTERVAL_MS` | интервал фонового сохранения, по умолчанию `250` мс |
 
 Секретов приложение не использует. Файл `.env` не коммитится.
 
@@ -42,11 +48,11 @@ docker compose -f docker-compose.dev.yml up --build
 Все исполняемые проверки запускаются в Docker:
 
 ```bash
-docker run --rm -v "$(pwd):/app" -v /app/node_modules -w /app node:24.18.0-alpine3.23 sh -c "npm ci && npm run lint && npm test"
+docker run --rm -v "$(pwd):/app" -v /app/node_modules -w /app node:24.18.0-alpine3.23 sh -c "npm ci && npm run lint && npm run build && npm test"
 docker run --rm --ipc=host -v "$(pwd):/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "npm ci && npm run test:smoke"
 ```
 
-Перед крупным релизом длительную проверку двух браузеров можно запустить той же Playwright-командой, заменив `npm run test:smoke` на `npm run test:soak`. Она занимает не менее 10 минут.
+Перед крупным релизом замените `npm run test:smoke` на `npm run test:soak`: два браузера проверяются не менее 10 минут.
 
 ## Деплой
 
@@ -58,8 +64,8 @@ cp .env.example .env
 bash deploy.sh
 ```
 
-Контейнер слушает только `127.0.0.1:18082`. Внешний nginx хоста должен публиковать приложение через HTTPS, поддерживать WebSocket Upgrade и иметь `proxy_read_timeout` не менее 75 секунд. Порт приложения наружу не открывается.
+Multi-stage Docker build собирает React-клиент в `dist`, а production-образ запускает только Express/WebSocket и раздаёт hashed assets. Контейнер слушает `127.0.0.1:18082`; внешний nginx хоста публикует HTTPS, поддерживает WebSocket Upgrade и использует `proxy_read_timeout` не менее 75 секунд.
 
-Named volume с комнатами сохраняется при обычном `deploy.sh`, `docker compose restart` и `docker compose down`. Команда `docker compose down -v` удаляет его вместе со всеми сессиями.
+Named volume с комнатами сохраняется при `deploy.sh`, `docker compose restart` и `docker compose down`. Команда `docker compose down -v` удаляет volume вместе со всеми сессиями.
 
-Минимум для двух участников: Ubuntu Server 24.04 LTS, 1 vCPU, 512 МБ RAM и 2 ГБ свободного диска. Рекомендуется 1 ГБ RAM и канал от 10 Мбит/с.
+Минимум: Ubuntu Server 24.04 LTS, 1 vCPU, 512 МБ RAM и 2 ГБ диска. Рекомендуется 1 ГБ RAM и канал от 10 Мбит/с.
