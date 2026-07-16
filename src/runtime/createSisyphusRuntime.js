@@ -73,6 +73,7 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_EXIT_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const DEFAULT_RAIN_ENTER_MS = 1100;
   const DEFAULT_RAIN_EXIT_MS = 2000;
+  const DEFAULT_RAIN_Z_INDEX = 5;
   const MIN_RAIN_STRENGTH = 0.25;
   const MAX_RAIN_STRENGTH = 1.5;
   const MAX_RAIN_FX_OPACITY = 0.42;
@@ -102,7 +103,9 @@ export function createSisyphusRuntime(elements = {}) {
     turbulence: 0.4,
 
     // Дождь
+    rainEnabled: false,
     rainStrength: 1,
+    rainZIndex: DEFAULT_RAIN_Z_INDEX,
     rainEnterEasing: DEFAULT_RAIN_ENTER_EASING,
     rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
     rainEnterMs: DEFAULT_RAIN_ENTER_MS,
@@ -256,6 +259,7 @@ export function createSisyphusRuntime(elements = {}) {
     hideTimerId: null,
     rainFx: null,
     renderToken: 0,
+    returnRequested: false,
     resizeHandler: null,
   };
 
@@ -433,6 +437,8 @@ export function createSisyphusRuntime(elements = {}) {
     rainLayer.style.setProperty("--rain-exit-duration", `${params.rainExitMs}ms`);
     rainLayer.style.setProperty("--rain-enter-easing", params.rainEnterEasing);
     rainLayer.style.setProperty("--rain-exit-easing", params.rainExitEasing);
+    rainLayer.style.setProperty("--rain-layer-z-index", String(params.rainZIndex));
+    rainLayer.style.setProperty("--rain-canvas-z-index", String(params.rainZIndex + 1));
 
     if (restartIfActive && rain.active) {
       stopRainRenderers();
@@ -463,7 +469,7 @@ export function createSisyphusRuntime(elements = {}) {
     };
   }
 
-  function startFallbackRain(canvas, rainProfile) {
+  function startFallbackRain(canvas, initialRainProfile) {
     const context = canvas.getContext("2d");
     if (!context) {
       return null;
@@ -474,6 +480,19 @@ export function createSisyphusRuntime(elements = {}) {
     let width = 1;
     let height = 1;
     let drops = [];
+    let rainProfile = initialRainProfile;
+
+    const syncDropCount = () => {
+      const density = clamp((width * height) / (1280 * 720), 0.8, 1.6);
+      const count = Math.round(rainProfile.fallbackDropCount * density);
+      if (drops.length > count) {
+        drops.length = count;
+        return;
+      }
+      while (drops.length < count) {
+        drops.push(createFallbackDrop(width, height, true, rainProfile));
+      }
+    };
 
     const resize = () => {
       const rect = canvas.getBoundingClientRect();
@@ -484,11 +503,8 @@ export function createSisyphusRuntime(elements = {}) {
       canvas.height = Math.round(height * dpr);
       context.setTransform(dpr, 0, 0, dpr, 0, 0);
 
-      const density = clamp((width * height) / (1280 * 720), 0.8, 1.6);
-      const count = Math.round(rainProfile.fallbackDropCount * density);
-      drops = Array.from({ length: count }, () =>
-        createFallbackDrop(width, height, true, rainProfile)
-      );
+      drops = [];
+      syncDropCount();
     };
 
     const render = (time) => {
@@ -523,6 +539,10 @@ export function createSisyphusRuntime(elements = {}) {
 
     return {
       resize,
+      setProfile: (nextProfile) => {
+        rainProfile = nextProfile;
+        syncDropCount();
+      },
       stop: () => window.cancelAnimationFrame(frameId),
     };
   }
@@ -607,10 +627,11 @@ export function createSisyphusRuntime(elements = {}) {
           return;
         }
 
-        rain.fallback?.stop?.();
-        rain.fallback = null;
         setRainOpacity(rainFxCanvas, rainProfile.fxOpacity);
-        setRainOpacity(rainFallbackCanvas, 0);
+        setRainOpacity(
+          rainFallbackCanvas,
+          rain.fallback ? rainProfile.fallbackOpacity : 0
+        );
       } catch {
         if (token !== rain.renderToken) {
           return;
@@ -631,7 +652,11 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
-  function showReturnRain() {
+  function shouldShowRain() {
+    return params.rainEnabled || rain.returnRequested;
+  }
+
+  function showRainLayer() {
     if (!rainLayer) {
       return;
     }
@@ -643,7 +668,7 @@ export function createSisyphusRuntime(elements = {}) {
     startRainRenderers();
   }
 
-  function hideReturnRain({ immediate = false } = {}) {
+  function hideRainLayer({ immediate = false } = {}) {
     if (!rainLayer) {
       return;
     }
@@ -669,11 +694,32 @@ export function createSisyphusRuntime(elements = {}) {
 
     rainLayer.classList.remove("is-rain-visible");
     rainLayer.classList.add("is-rain-hiding");
-    stopRainRenderers();
     rain.hideTimerId = window.setTimeout(() => {
+      if (shouldShowRain()) {
+        return;
+      }
       rainLayer.classList.remove("is-rain-hiding");
       rain.hideTimerId = null;
+      stopRainRenderers();
     }, getRainExitDurationMs());
+  }
+
+  function syncRainVisibility(options = {}) {
+    if (shouldShowRain()) {
+      showRainLayer();
+    } else {
+      hideRainLayer(options);
+    }
+  }
+
+  function showReturnRain() {
+    rain.returnRequested = true;
+    syncRainVisibility();
+  }
+
+  function hideReturnRain(options = {}) {
+    rain.returnRequested = false;
+    syncRainVisibility(options);
   }
 
   function syncReturnRain(isAtReturnPlace) {
@@ -799,6 +845,7 @@ export function createSisyphusRuntime(elements = {}) {
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
+      rainZIndex: params.rainZIndex.toFixed(0),
       rainEnterMs: params.rainEnterMs.toFixed(0),
       rainExitMs: params.rainExitMs.toFixed(0),
       lineDelay: params.lineDelay.toFixed(2),
@@ -834,12 +881,14 @@ export function createSisyphusRuntime(elements = {}) {
     params.inertia = num("inertia");
     params.groundFriction = num("groundFriction");
     params.turbulence = num("turbulence");
+    params.rainEnabled = bool("rainEnabled");
 
     Object.assign(
       params,
       normalizeRainSettings(
         {
           rainStrength: num("rainStrength"),
+          rainZIndex: num("rainZIndex"),
           rainEnterEasing: str("rainEnterEasing"),
           rainExitEasing: str("rainExitEasing"),
           rainEnterMs: num("rainEnterMs"),
@@ -851,6 +900,7 @@ export function createSisyphusRuntime(elements = {}) {
             rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
             rainEnterMs: DEFAULT_RAIN_ENTER_MS,
             rainExitMs: DEFAULT_RAIN_EXIT_MS,
+            rainZIndex: DEFAULT_RAIN_Z_INDEX,
           },
           isTimingFunctionSupported: (value) =>
             Boolean(
@@ -884,11 +934,17 @@ export function createSisyphusRuntime(elements = {}) {
     params.glowColor = str("glowColor");
 
     settingsPanel.querySelector('[name="rainStrength"]').value = params.rainStrength;
+    settingsPanel.querySelector('[name="rainZIndex"]').value = params.rainZIndex;
     settingsPanel.querySelector('[name="rainEnterEasing"]').value = params.rainEnterEasing;
     settingsPanel.querySelector('[name="rainExitEasing"]').value = params.rainExitEasing;
     settingsPanel.querySelector('[name="rainEnterMs"]').value = params.rainEnterMs;
     settingsPanel.querySelector('[name="rainExitMs"]').value = params.rainExitMs;
     applyRainSettings({ restartIfActive: changedKey === "rainStrength" });
+    if (changedKey === "rainEnabled" || changedKey === "") {
+      syncRainVisibility({
+        immediate: changedKey === "",
+      });
+    }
 
     trailCanvas.style.mixBlendMode = params.blendMode;
 

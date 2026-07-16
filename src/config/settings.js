@@ -172,6 +172,12 @@ export const SETTINGS_GROUPS = [
     title: "Дождь",
     controls: [
       {
+        name: "rainEnabled",
+        label: "Включить дождь",
+        type: "checkbox",
+        hint: "Локально включает или выключает дождь по клику. Возврат камня в отпечаток всё равно временно включает ливень.",
+      },
+      {
         name: "rainStrength",
         label: "Сила дождя",
         type: "range",
@@ -180,7 +186,18 @@ export const SETTINGS_GROUPS = [
         step: 0.05,
         defaultValue: 1,
         output: "100%",
-        hint: "Насколько сильным будет ливень при удержании камня в исходном отпечатке.",
+        hint: "Плотность и заметность ливня. Больше значение — больше капель и сильнее дождевой эффект.",
+      },
+      {
+        name: "rainZIndex",
+        label: "Z-index дождя",
+        type: "number",
+        min: 0,
+        max: 30,
+        step: 1,
+        defaultValue: 5,
+        output: "5",
+        hint: "Локально меняет высоту слоя дождя. Canvas дождя получает значение на 1 выше, чтобы оставаться поверх слоя.",
       },
       {
         name: "rainEnterEasing",
@@ -188,7 +205,7 @@ export const SETTINGS_GROUPS = [
         type: "text",
         defaultValue: "cubic-bezier(0.2, 0, 0, 1)",
         spellCheck: false,
-        hint: "CSS timing-function для появления дождя. Невалидное значение заменяется стандартной cubic-bezier кривой.",
+        hint: "CSS timing-function появления слоя дождя. Невалидное значение заменяется стандартной cubic-bezier кривой.",
       },
       {
         name: "rainExitEasing",
@@ -196,7 +213,7 @@ export const SETTINGS_GROUPS = [
         type: "text",
         defaultValue: "cubic-bezier(0.4, 0, 0.2, 1)",
         spellCheck: false,
-        hint: "CSS timing-function для исчезновения дождя. Невалидное значение заменяется стандартной cubic-bezier кривой.",
+        hint: "CSS timing-function исчезновения слоя дождя. Невалидное значение заменяется стандартной cubic-bezier кривой.",
       },
       {
         name: "rainEnterMs",
@@ -207,7 +224,7 @@ export const SETTINGS_GROUPS = [
         step: 50,
         defaultValue: 1100,
         output: "1100",
-        hint: "Сколько миллисекунд дождь набирает видимость после возврата камня в отпечаток.",
+        hint: "Сколько миллисекунд слой дождя проявляется после включения или возврата камня в отпечаток.",
       },
       {
         name: "rainExitMs",
@@ -218,7 +235,7 @@ export const SETTINGS_GROUPS = [
         step: 50,
         defaultValue: 2000,
         output: "2000",
-        hint: "Сколько миллисекунд дождь плавно исчезает после выхода камня из отпечатка.",
+        hint: "Сколько миллисекунд слой дождя исчезает после выключения или выхода камня из отпечатка.",
       },
     ],
   },

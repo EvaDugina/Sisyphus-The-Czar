@@ -137,16 +137,23 @@ body.state-won .rock {
 .weather-rain {
   position: fixed;
   inset: 0;
-  z-index: 5;
+  z-index: var(--rain-layer-z-index, 5);
   overflow: hidden;
   pointer-events: none;
   opacity: 0;
   visibility: hidden;
-  mix-blend-mode: multiply;
   transition:
     opacity var(--rain-exit-duration, 2000ms) var(--rain-exit-easing, cubic-bezier(0.4, 0, 0.2, 1)),
     visibility 0s linear var(--rain-exit-duration, 2000ms);
   will-change: opacity;
+}
+
+body.theme-light .weather-rain {
+  mix-blend-mode: multiply;
+}
+
+body.theme-dark .weather-rain {
+  mix-blend-mode: normal;
 }
 
 .weather-rain.is-rain-visible {
@@ -168,12 +175,24 @@ body.state-won .rock {
 .weather-rain__canvas {
   position: absolute;
   inset: 0;
+  z-index: var(--rain-canvas-z-index, 6);
   width: 100vw;
   height: 100vh;
   opacity: var(--rain-fx-opacity, 0);
+  mix-blend-mode: normal;
   pointer-events: none;
-  transition: opacity 820ms cubic-bezier(0.22, 1, 0.36, 1);
-  will-change: opacity;
+}
+
+body.theme-dark .weather-rain__canvas {
+  mix-blend-mode: normal;
+}
+
+body.theme-light .weather-rain__canvas--fallback {
+  opacity: 0;
+}
+
+body.theme-dark .weather-rain__canvas--fallback {
+  filter: grayscale(1) contrast(1.18) brightness(1.18);
 }
 
 .hand-cursor {
@@ -257,7 +276,7 @@ body.state-won .rock {
 .trail {
   position: fixed;
   inset: 0;
-  z-index: 5;
+  z-index: 0;
   width: 100vw;
   height: 100vh;
   pointer-events: none;

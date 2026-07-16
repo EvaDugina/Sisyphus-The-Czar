@@ -58,10 +58,12 @@ test("настройки дождя ограничиваются и исполь
     rainExitEasing: "ease-out",
     rainEnterMs: 1100,
     rainExitMs: 2000,
+    rainZIndex: 5,
   };
   const settings = normalizeRainSettings(
     {
       rainStrength: 8,
+      rainZIndex: 100,
       rainEnterEasing: "invalid",
       rainExitEasing: " linear ",
       rainEnterMs: -10,
@@ -75,6 +77,7 @@ test("настройки дождя ограничиваются и исполь
 
   assert.deepEqual(settings, {
     rainStrength: 1.5,
+    rainZIndex: 30,
     rainEnterEasing: "ease-in",
     rainExitEasing: "linear",
     rainEnterMs: 0,
@@ -134,5 +137,40 @@ test("настройка трения земли заменяет скольже
       defaultValue: groundFriction.defaultValue,
     },
     { min: 0, max: 1, step: 0.05, defaultValue: 0.35 }
+  );
+});
+
+test("группа дождя содержит локальный toggle включения", () => {
+  const rainGroup = SETTINGS_GROUPS.find((group) => group.title === "Дождь");
+  const rainEnabled = rainGroup.controls.find(
+    (control) => control.name === "rainEnabled"
+  );
+  const rainZIndex = rainGroup.controls.find(
+    (control) => control.name === "rainZIndex"
+  );
+
+  assert.equal(rainEnabled.type, "checkbox");
+  assert.equal(rainEnabled.label, "Включить дождь");
+  assert.equal(rainEnabled.defaultChecked, undefined);
+  assert.equal(rainZIndex.type, "number");
+  assert.equal(rainZIndex.label, "Z-index дождя");
+  assert.deepEqual(
+    {
+      min: rainZIndex.min,
+      max: rainZIndex.max,
+      step: rainZIndex.step,
+      defaultValue: rainZIndex.defaultValue,
+    },
+    { min: 0, max: 30, step: 1, defaultValue: 5 },
+  );
+  assert.equal(
+    rainGroup.controls.some((control) => control.name.startsWith("rainBlur")),
+    false,
+  );
+  assert.equal(
+    rainGroup.controls.some(
+      (control) => control.name === "rainBackgroundBlurSteps",
+    ),
+    false,
   );
 });

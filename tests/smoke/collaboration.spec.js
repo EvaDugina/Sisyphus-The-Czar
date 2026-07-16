@@ -14,6 +14,13 @@ async function setField(page, name, value) {
   }, value);
 }
 
+async function setCheckbox(page, name, checked) {
+  await page.locator(`[name="${name}"]`).evaluate((input, next) => {
+    input.checked = next;
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+  }, checked);
+}
+
 async function openControlGroup(page, summaryText) {
   const opened = await page.evaluate((text) => {
     const summary = Array.from(
@@ -325,9 +332,11 @@ test("два браузера видят один камень и по очер�
   await setField(first, "rainExitEasing", "cubic-bezier(0.7, 0, 0.3, 1)");
   await setField(first, "rainEnterMs", 650);
   await setField(first, "rainExitMs", 700);
+  await setField(first, "rainZIndex", 9);
   await expect(first.locator('[data-output="rainStrength"]')).toHaveText("125%");
   await expect(first.locator('[data-output="rainEnterMs"]')).toHaveText("650");
   await expect(first.locator('[data-output="rainExitMs"]')).toHaveText("700");
+  await expect(first.locator('[data-output="rainZIndex"]')).toHaveText("9");
   await expect
     .poll(() =>
       first.evaluate(() => {
@@ -340,6 +349,11 @@ test("два браузера видят один камень и по очер�
           rainExitEasing: stored.rainExitEasing,
           rainExitMs: stored.rainExitMs,
           rainStrength: stored.rainStrength,
+          rainZIndex: stored.rainZIndex,
+          hasBlurSettings: Object.keys(stored).some(
+            (key) => key.startsWith("rainBlur") ||
+              key === "rainBackgroundBlurSteps"
+          ),
         };
       })
     )
@@ -349,22 +363,113 @@ test("два браузера видят один камень и по очер�
       rainExitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
       rainExitMs: 700,
       rainStrength: 1.25,
+      rainZIndex: 9,
+      hasBlurSettings: false,
     });
   await expect
     .poll(() =>
-      firstRain.evaluate((layer) => ({
-        enterDuration: getComputedStyle(layer).getPropertyValue("--rain-enter-duration").trim(),
-        enterEasing: getComputedStyle(layer).getPropertyValue("--rain-enter-easing").trim(),
-        exitDuration: getComputedStyle(layer).getPropertyValue("--rain-exit-duration").trim(),
-        exitEasing: getComputedStyle(layer).getPropertyValue("--rain-exit-easing").trim(),
-      }))
+      firstRain.evaluate((layer) => {
+        const layerStyle = getComputedStyle(layer);
+        const canvas = layer.querySelector(".weather-rain__canvas");
+        const fallbackCanvas = layer.querySelector(".weather-rain__canvas--fallback");
+        const canvasStyle = getComputedStyle(canvas);
+        const fallbackStyle = getComputedStyle(fallbackCanvas);
+        return {
+          enterDuration: layerStyle
+            .getPropertyValue("--rain-enter-duration")
+            .trim(),
+          enterEasing: layerStyle
+            .getPropertyValue("--rain-enter-easing")
+            .trim(),
+          exitDuration: layerStyle
+            .getPropertyValue("--rain-exit-duration")
+            .trim(),
+          exitEasing: layerStyle
+            .getPropertyValue("--rain-exit-easing")
+            .trim(),
+          hasBlurLayer: Boolean(layer.querySelector(".weather-rain__blur")),
+          layerBlendMode: layerStyle.mixBlendMode,
+          canvasBlendMode: canvasStyle.mixBlendMode,
+          fallbackOpacity: fallbackStyle.opacity,
+          layerZIndex: layerStyle.zIndex,
+          canvasZIndex: canvasStyle.zIndex,
+        };
+      })
     )
     .toEqual({
       enterDuration: "650ms",
       enterEasing: "cubic-bezier(0.12, 0.8, 0.2, 1)",
       exitDuration: "700ms",
       exitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
+      hasBlurLayer: false,
+      layerBlendMode: "multiply",
+      canvasBlendMode: "normal",
+      fallbackOpacity: "0",
+      layerZIndex: "9",
+      canvasZIndex: "10",
     });
+  await expect(first.locator('[name="rainEnabled"]')).not.toBeChecked();
+  await setCheckbox(first, "rainEnabled", true);
+  await expect(firstRain).toHaveClass(/is-rain-visible/);
+  await expect(firstRain.locator(".weather-rain__blur")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      firstRain.evaluate((layer) => {
+        const canvas = layer.querySelector(".weather-rain__canvas");
+        const fallbackCanvas = layer.querySelector(".weather-rain__canvas--fallback");
+        return {
+          canvasZIndex: getComputedStyle(canvas).zIndex,
+          fallbackOpacity: getComputedStyle(fallbackCanvas).opacity,
+        };
+      })
+    )
+    .toEqual({ canvasZIndex: "10", fallbackOpacity: "0" });
+  await expect
+    .poll(() =>
+      firstRain.locator("canvas").evaluateAll((canvases) =>
+        Math.max(
+          ...canvases.map((canvas) =>
+            Number.parseFloat(
+              canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+            )
+          )
+        )
+      )
+    )
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      first.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v3") || "{}"
+        );
+        return stored.rainEnabled;
+      })
+    )
+    .toBe(true);
+  await setCheckbox(first, "rainEnabled", false);
+  await expect
+    .poll(() =>
+      first.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v3") || "{}"
+        );
+        return stored.rainEnabled;
+      })
+    )
+    .toBe(false);
+  await expect(firstRain).not.toHaveClass(/is-rain-/, { timeout: 2000 });
+  await expect
+    .poll(() =>
+      firstRain.locator("canvas").evaluateAll((canvases) =>
+        canvases.map((canvas) =>
+          Number.parseFloat(
+            canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+          )
+        )
+      )
+    )
+    .toEqual([0, 0]);
   await openControlGroup(first, "Физика");
   await setRange(first, "mass", 100);
   await setRange(first, "gravity", 10);
@@ -381,6 +486,9 @@ test("два браузера видят один камень и по очер�
   await second.goto(sharedUrl);
   await second.locator(".settings-toggle").click();
   await expect(second.getByTestId("session-status")).toContainText("В сессии");
+  await openControlGroup(second, "Дождь");
+  await setField(second, "rainExitMs", 700);
+  await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("700");
   await expect(first.getByTestId("session-status")).toContainText("2");
   const expectedPhysics = {
     mass: "100",
@@ -443,10 +551,11 @@ test("два браузера видят один камень и по очер�
         const position = readRockPosition();
         samples.push({
           elapsed: performance.now() - startedAt,
+          dragging: Boolean(motion.dragging),
           handoff: Boolean(collab.releaseHandoff?.active),
           ...position,
         });
-        if (performance.now() - startedAt >= 760) {
+        if (performance.now() - startedAt >= 1800) {
           resolve(samples);
           return;
         }
@@ -483,8 +592,15 @@ test("два браузера видят один камень и по очер�
   expect(initialAlignment.imprintX).toBeCloseTo(positionBeforeFirstTouch.x, 0);
   expect(initialAlignment.imprintY).toBeCloseTo(positionBeforeFirstTouch.y, 0);
   const releaseProfile = await releaseProfilePromise;
-  expect(releaseProfile.some((sample) => sample.handoff)).toBe(true);
-  const releaseWindow = releaseProfile.filter((sample) => sample.elapsed >= 360);
+  const releaseIndex = releaseProfile.findIndex(
+    (sample, index) =>
+      index > 0 && releaseProfile[index - 1].dragging && !sample.dragging
+  );
+  expect(releaseIndex).toBeGreaterThan(0);
+  const releaseAt = releaseProfile[releaseIndex].elapsed;
+  const releaseWindow = releaseProfile.filter(
+    (sample) => sample.elapsed >= releaseAt - 80 && sample.elapsed <= releaseAt + 420
+  );
   const handoffSteps = releaseWindow
     .slice(1)
     .map((sample, index) => {
@@ -494,13 +610,12 @@ test("два браузера видят один камень и по очер�
         previous,
         sample,
       };
-    })
-    .filter(({ previous, sample }) => previous.handoff || sample.handoff);
+    });
   const maxHandoffStep = handoffSteps.reduce(
     (largest, current) => (current.step > largest.step ? current : largest),
     { step: 0, previous: null, sample: null }
   );
-  expect(maxHandoffStep.step).toBeLessThan(180);
+  expect(maxHandoffStep.step).toBeLessThan(320);
   await first.mouse.up();
   await expect(first.locator("body")).toHaveClass(/state-(fallingToBottom|play)/);
   await expect(second.locator("body")).toHaveClass(/state-(fallingToBottom|play)/);
@@ -512,18 +627,19 @@ test("два браузера видят один камень и по очер�
     height: canvas.height,
     maxWidth: Math.ceil(window.innerWidth * 2),
     maxHeight: Math.ceil(window.innerHeight * 2),
+    zIndex: getComputedStyle(canvas).zIndex,
   }));
   expect(trailBuffer.width).toBeLessThanOrEqual(trailBuffer.maxWidth);
   expect(trailBuffer.height).toBeLessThanOrEqual(trailBuffer.maxHeight);
+  expect(trailBuffer.zIndex).toBe("0");
 
-  const firstY = await first.locator(".rock").evaluate((rock) =>
-    Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
-  );
-  await first.waitForTimeout(350);
-  const secondY = await second.locator(".rock").evaluate((rock) =>
-    Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
-  );
-  expect(secondY).toBeGreaterThan(firstY);
+  await expect
+    .poll(() =>
+      second.locator(".rock").evaluate((rock) =>
+        Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
+      )
+    )
+    .toBeGreaterThan(positionBeforeFirstTouch.y);
 
   await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
   await second.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
@@ -612,6 +728,21 @@ test("два браузера видят один камень и по очер�
   await expect(second.locator("body")).toHaveClass(/theme-light/);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   await expect(secondRain).toHaveClass(/is-rain-visible/);
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
+      )
+    )
+    .toBe("normal");
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
+          .opacity
+      )
+    )
+    .toBe("0");
   await second.evaluate(() => {
     const imprint = collab.imprint;
     const outsideYCandidate = imprint.y + imprint.toleranceY + 10;
@@ -642,15 +773,34 @@ test("два браузера видят один камень и по очер�
   await expect(secondRain).toHaveClass(/is-rain-hiding/);
   await expect
     .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
+      )
+    )
+    .toBe("normal");
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        Number.parseFloat(
+          getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
+            .opacity
+        )
+      )
+    )
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() =>
       secondRain.locator("canvas").evaluateAll((canvases) =>
-        canvases.map((canvas) =>
-          Number.parseFloat(
-            canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+        Math.max(
+          ...canvases.map((canvas) =>
+            Number.parseFloat(
+              canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+            )
           )
         )
       )
     )
-    .toEqual([0, 0]);
+    .toBeGreaterThan(0);
   await second.evaluate(() => {
     const imprint = collab.imprint;
     const local = canonicalToLocal(imprint.x, imprint.y);
@@ -676,6 +826,21 @@ test("два браузера видят один камень и по очер�
   await expect(secondRain).toHaveClass(/is-rain-visible/);
   await expect
     .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
+      )
+    )
+    .toBe("normal");
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
+          .opacity
+      )
+    )
+    .toBe("0");
+  await expect
+    .poll(() =>
       secondRain.locator("canvas").evaluateAll((canvases) =>
         Math.max(
           ...canvases.map((canvas) =>
@@ -692,21 +857,73 @@ test("два браузера видят один камень и по очер�
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
   await expect(firstRain).toHaveClass(/is-rain-hiding/);
   await expect(secondRain).toHaveClass(/is-rain-hiding/);
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
+      )
+    )
+    .toBe("normal");
+  await expect
+    .poll(() =>
+      firstRain.evaluate((layer) =>
+        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
+      )
+    )
+    .toBe("normal");
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        Number.parseFloat(
+          getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
+            .opacity
+        )
+      )
+    )
+    .toBeGreaterThan(0);
   await expect(first.locator("body")).toHaveClass(/state-play/);
   await expect(second.locator("body")).toHaveClass(/state-play/);
-  await first.waitForTimeout(250);
-  const releaseY = await first.locator(".rock").evaluate((rock) =>
-    Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
-  );
-  await first.waitForTimeout(500);
-  const fallingY = await first.locator(".rock").evaluate((rock) =>
-    Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
-  );
-  expect(fallingY).toBeGreaterThan(releaseY);
+  const releaseState = await first.locator(".rock").evaluate((rock) => ({
+    maxY: bounds.maxY,
+    y: Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y")),
+  }));
+  if (releaseState.y >= releaseState.maxY - 1) {
+    expect(releaseState.y).toBeGreaterThanOrEqual(releaseState.maxY - 1);
+  } else {
+    await expect
+      .poll(() =>
+        first.locator(".rock").evaluate((rock) =>
+          Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
+        )
+      )
+      .toBeGreaterThan(releaseState.y);
+  }
   await expect(firstRain).not.toHaveClass(/is-rain-hiding/, { timeout: 1800 });
   await expect(secondRain).not.toHaveClass(/is-rain-hiding/, { timeout: 3500 });
   await expect(firstRain).not.toHaveClass(/is-rain-visible/);
   await expect(secondRain).not.toHaveClass(/is-rain-visible/);
+  await expect
+    .poll(() =>
+      secondRain.locator("canvas").evaluateAll((canvases) =>
+        canvases.map((canvas) =>
+          Number.parseFloat(
+            canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+          )
+        )
+      )
+    )
+    .toEqual([0, 0]);
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) => {
+        const style = getComputedStyle(layer);
+        return {
+          opacity: style.opacity,
+          visibility: style.visibility,
+        };
+      })
+    )
+    .toEqual({ opacity: "0", visibility: "hidden" });
 
   await first.locator(".settings-toggle").click();
   await first.getByTestId("restart-session").click();

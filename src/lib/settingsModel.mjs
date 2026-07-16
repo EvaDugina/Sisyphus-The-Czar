@@ -17,6 +17,9 @@ export function normalizeRainSettings(raw, options) {
 
   return {
     rainStrength: clamp(finiteNumber(raw.rainStrength, 1), 0.25, 1.5),
+    rainZIndex: Math.round(
+      clamp(finiteNumber(raw.rainZIndex, defaults.rainZIndex), 0, 30),
+    ),
     rainEnterEasing: timingFunction(
       raw.rainEnterEasing,
       defaults.rainEnterEasing,
