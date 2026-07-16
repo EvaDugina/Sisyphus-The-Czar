@@ -191,10 +191,6 @@ body.theme-light .weather-rain__canvas--fallback {
   opacity: 0;
 }
 
-body.theme-dark .weather-rain__canvas--fallback {
-  filter: grayscale(1) contrast(1.18) brightness(1.18);
-}
-
 .hand-cursor {
   --cursor-x: -999px;
   --cursor-y: -999px;

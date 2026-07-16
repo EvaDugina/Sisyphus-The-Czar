@@ -3,6 +3,10 @@ import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
 } from "../lib/coordinates.mjs";
+import {
+  getRainVisualProfile,
+  MAX_RAIN_FX_OPACITY,
+} from "../lib/rainProfile.mjs";
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import { normalizeRainSettings } from "../lib/settingsModel.mjs";
@@ -74,23 +78,6 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_ENTER_MS = 1100;
   const DEFAULT_RAIN_EXIT_MS = 2000;
   const DEFAULT_RAIN_Z_INDEX = 5;
-  const MIN_RAIN_STRENGTH = 0.25;
-  const MAX_RAIN_STRENGTH = 1.5;
-  const MAX_RAIN_FX_OPACITY = 0.42;
-  const RAIN_BASE_PROFILE = {
-    dropletsPerSecond: 1300,
-    fallbackDropCount: 130,
-    fallbackOpacity: 0.36,
-    fallbackAlpha: [0.18, 0.46],
-    fallbackLength: [16, 50],
-    fallbackSpeed: [9, 21],
-    fallbackWidth: [0.8, 2],
-    fxOpacity: MAX_RAIN_FX_OPACITY,
-    mistAlpha: 0.48,
-    spawnInterval: [0.018, 0.05],
-    spawnLimit: 1300,
-    spawnSize: [38, 104],
-  };
 
   const params = {
     mass: 4,
@@ -269,11 +256,6 @@ export function createSisyphusRuntime(elements = {}) {
     return Math.min(Math.max(value, min), max);
   }
 
-  function finiteNumber(value, fallback) {
-    const number = Number(value);
-    return Number.isFinite(number) ? number : fallback;
-  }
-
   function getRainFxConstructor() {
     const rainFx = window.RaindropFX;
     if (typeof rainFx === "function") {
@@ -351,6 +333,7 @@ export function createSisyphusRuntime(elements = {}) {
     const background = document.createElement("canvas");
     const width = Math.max(1, canvas.width || window.innerWidth);
     const height = Math.max(1, canvas.height || window.innerHeight);
+    const isDark = currentRainTheme() === "dark";
     background.width = width;
     background.height = height;
 
@@ -360,15 +343,19 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     const gradient = context.createLinearGradient(0, 0, width, height);
-    gradient.addColorStop(0, "#f9fbff");
-    gradient.addColorStop(0.5, "#d9e0ea");
-    gradient.addColorStop(1, "#ffffff");
+    gradient.addColorStop(0, isDark ? "#202426" : "#f9fbff");
+    gradient.addColorStop(0.5, isDark ? "#141819" : "#d9e0ea");
+    gradient.addColorStop(1, isDark ? "#252a2c" : "#ffffff");
     context.fillStyle = gradient;
     context.fillRect(0, 0, width, height);
 
-    context.fillStyle = "rgba(255, 255, 255, 0.36)";
+    context.fillStyle = isDark
+      ? "rgba(255, 255, 255, 0.08)"
+      : "rgba(255, 255, 255, 0.36)";
     context.fillRect(width * 0.16, 0, width * 0.2, height);
-    context.fillStyle = "rgba(76, 92, 113, 0.16)";
+    context.fillStyle = isDark
+      ? "rgba(0, 0, 0, 0.22)"
+      : "rgba(76, 92, 113, 0.16)";
     context.fillRect(width * 0.58, 0, width * 0.18, height);
 
     return background;
@@ -384,48 +371,16 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
-  function scaleRainRange(range, scale) {
-    return range.map((value) => Number((value * scale).toFixed(3)));
+  function currentRainTheme() {
+    return body.classList.contains("theme-dark") ? "dark" : "light";
   }
 
-  function getRainVisualProfile() {
-    const strength = clamp(
-      finiteNumber(params.rainStrength, 1),
-      MIN_RAIN_STRENGTH,
-      MAX_RAIN_STRENGTH
-    );
-    const opacityScale = Math.sqrt(strength);
-    const sizeScale = 0.9 + strength * 0.1;
-    const speedScale = 0.9 + strength * 0.12;
-    const widthScale = Math.min(1.18, 0.86 + strength * 0.14);
-
-    return {
-      dropletsPerSecond: Math.round(RAIN_BASE_PROFILE.dropletsPerSecond * strength),
-      fallbackDropCount: Math.round(RAIN_BASE_PROFILE.fallbackDropCount * strength),
-      fallbackOpacity: clamp(
-        RAIN_BASE_PROFILE.fallbackOpacity * opacityScale,
-        0.06,
-        MAX_RAIN_FX_OPACITY
-      ),
-      fallbackAlpha: RAIN_BASE_PROFILE.fallbackAlpha.map((alpha) =>
-        clamp(alpha * opacityScale, 0.04, 0.72)
-      ),
-      fallbackLength: scaleRainRange(RAIN_BASE_PROFILE.fallbackLength, sizeScale),
-      fallbackSpeed: scaleRainRange(RAIN_BASE_PROFILE.fallbackSpeed, speedScale),
-      fallbackWidth: scaleRainRange(RAIN_BASE_PROFILE.fallbackWidth, widthScale),
-      fxOpacity: clamp(
-        RAIN_BASE_PROFILE.fxOpacity * opacityScale,
-        0.08,
-        MAX_RAIN_FX_OPACITY
-      ),
-      mistAlpha: clamp(RAIN_BASE_PROFILE.mistAlpha * opacityScale, 0.12, 0.8),
-      spawnInterval: [
-        Math.max(0.01, RAIN_BASE_PROFILE.spawnInterval[0] / strength),
-        Math.max(0.025, RAIN_BASE_PROFILE.spawnInterval[1] / strength),
-      ],
-      spawnLimit: Math.round(RAIN_BASE_PROFILE.spawnLimit * strength),
-      spawnSize: scaleRainRange(RAIN_BASE_PROFILE.spawnSize, sizeScale),
-    };
+  function restartRainRenderers() {
+    if (!rain.active) {
+      return;
+    }
+    stopRainRenderers();
+    startRainRenderers();
   }
 
   function applyRainSettings({ restartIfActive = false } = {}) {
@@ -568,7 +523,10 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const rainProfile = getRainVisualProfile();
+    const rainProfile = getRainVisualProfile({
+      rainStrength: params.rainStrength,
+      theme: currentRainTheme(),
+    });
     rain.active = true;
     const token = ++rain.renderToken;
 
@@ -585,10 +543,7 @@ export function createSisyphusRuntime(elements = {}) {
     setRainOpacity(rainFxCanvas, 0);
     resizeCanvasToCssPixels(rainFallbackCanvas);
     rain.fallback = startFallbackRain(rainFallbackCanvas, rainProfile);
-    setRainOpacity(
-      rainFallbackCanvas,
-      rain.fallback ? rainProfile.fallbackOpacity : 0
-    );
+    setRainOpacity(rainFallbackCanvas, 0);
 
     window.requestAnimationFrame(async () => {
       try {
@@ -612,14 +567,15 @@ export function createSisyphusRuntime(elements = {}) {
           spawnSize: rainProfile.spawnSize,
           spawnLimit: rainProfile.spawnLimit,
           mist: true,
-          mistColor: [0.04, 0.04, 0.05, rainProfile.mistAlpha],
-          backgroundBlurSteps: 3,
-          raindropCompose: "harder",
-          raindropDiffuseLight: [0.42, 0.42, 0.44],
-          raindropSpecularLight: [0.78, 0.78, 0.8],
+          mistColor: rainProfile.mistColor,
+          backgroundBlurSteps: rainProfile.backgroundBlurSteps,
+          raindropCompose: rainProfile.raindropCompose,
+          raindropDiffuseLight: rainProfile.raindropDiffuseLight,
+          raindropSpecularLight: rainProfile.raindropSpecularLight,
         });
         rain.rainFx = instance;
 
+        setRainOpacity(rainFxCanvas, rainProfile.fxOpacity);
         await instance.start?.();
         if (token !== rain.renderToken) {
           instance.stop?.();
@@ -628,10 +584,9 @@ export function createSisyphusRuntime(elements = {}) {
         }
 
         setRainOpacity(rainFxCanvas, rainProfile.fxOpacity);
-        setRainOpacity(
-          rainFallbackCanvas,
-          rain.fallback ? rainProfile.fallbackOpacity : 0
-        );
+        rain.fallback?.stop?.();
+        rain.fallback = null;
+        setRainOpacity(rainFallbackCanvas, 0);
       } catch {
         if (token !== rain.renderToken) {
           return;
@@ -735,8 +690,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function setTheme(theme) {
+    const previousRainTheme = currentRainTheme();
     body.classList.toggle("theme-light", theme === "light");
     body.classList.toggle("theme-dark", theme === "dark");
+    if (currentRainTheme() !== previousRainTheme) {
+      restartRainRenderers();
+    }
   }
 
   function setScrollLocked(locked) {

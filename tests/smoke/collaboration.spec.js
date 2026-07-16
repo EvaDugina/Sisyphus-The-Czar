@@ -781,82 +781,16 @@ test("два браузера видят один камень и по очер�
   await expect
     .poll(() =>
       secondRain.evaluate((layer) =>
-        Number.parseFloat(
-          getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
-            .opacity
-        )
-      )
-    )
-    .toBeGreaterThan(0);
-  await expect
-    .poll(() =>
-      secondRain.locator("canvas").evaluateAll((canvases) =>
-        Math.max(
-          ...canvases.map((canvas) =>
-            Number.parseFloat(
-              canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
-            )
-          )
-        )
-      )
-    )
-    .toBeGreaterThan(0);
-  await second.evaluate(() => {
-    const imprint = collab.imprint;
-    const local = canonicalToLocal(imprint.x, imprint.y);
-    setPosition(local.x, local.y);
-    motion.dragTargetX = local.x;
-    motion.dragTargetY = local.y;
-    syncReturnTheme(true);
-    sendShared("control.move", {
-      x: imprint.x,
-      y: imprint.y,
-      vx: 0,
-      vy: 0,
-      pointer: {
-        ...collab.localPointer,
-        x: imprint.x,
-        y: imprint.y,
-        mode: "grabbing",
-        visible: true,
-      },
-    });
-  });
-  await expect(firstRain).toHaveClass(/is-rain-visible/);
-  await expect(secondRain).toHaveClass(/is-rain-visible/);
-  await expect
-    .poll(() =>
-      secondRain.evaluate((layer) =>
-        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
-      )
-    )
-    .toBe("normal");
-  await expect
-    .poll(() =>
-      secondRain.evaluate((layer) =>
         getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
           .opacity
       )
     )
     .toBe("0");
-  await expect
-    .poll(() =>
-      secondRain.locator("canvas").evaluateAll((canvases) =>
-        Math.max(
-          ...canvases.map((canvas) =>
-            Number.parseFloat(
-              canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
-            )
-          )
-        )
-      )
-    )
-    .toBeGreaterThan(0);
   await second.mouse.up();
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
-  await expect(firstRain).toHaveClass(/is-rain-hiding/);
-  await expect(secondRain).toHaveClass(/is-rain-hiding/);
+  await expect(firstRain).not.toHaveClass(/is-rain-visible/);
+  await expect(secondRain).not.toHaveClass(/is-rain-visible/);
   await expect
     .poll(() =>
       secondRain.evaluate((layer) =>
@@ -874,13 +808,11 @@ test("два браузера видят один камень и по очер�
   await expect
     .poll(() =>
       secondRain.evaluate((layer) =>
-        Number.parseFloat(
-          getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
-            .opacity
-        )
+        getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
+          .opacity
       )
     )
-    .toBeGreaterThan(0);
+    .toBe("0");
   await expect(first.locator("body")).toHaveClass(/state-play/);
   await expect(second.locator("body")).toHaveClass(/state-play/);
   const releaseState = await first.locator(".rock").evaluate((rock) => ({
@@ -924,6 +856,42 @@ test("два браузера видят один камень и по очер�
       })
     )
     .toEqual({ opacity: "0", visibility: "hidden" });
+  await setCheckbox(second, "rainEnabled", true);
+  await expect(secondRain).toHaveClass(/is-rain-visible/);
+  await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) => {
+        const canvas = layer.querySelector(".weather-rain__canvas--fx");
+        return {
+          canvasBlendMode: getComputedStyle(canvas).mixBlendMode,
+          layerBlendMode: getComputedStyle(layer).mixBlendMode,
+        };
+      })
+    )
+    .toEqual({
+      canvasBlendMode: "normal",
+      layerBlendMode: "normal",
+    });
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
+          .opacity
+      )
+    )
+    .toBe("0");
+  await expect
+    .poll(() =>
+      secondRain.locator(".weather-rain__canvas--fx").evaluate((canvas) =>
+        Number.parseFloat(
+          canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
+        )
+      )
+    )
+    .toBeGreaterThan(0);
+  await setCheckbox(second, "rainEnabled", false);
+  await expect(secondRain).not.toHaveClass(/is-rain-visible/, { timeout: 2000 });
 
   await first.locator(".settings-toggle").click();
   await first.getByTestId("restart-session").click();

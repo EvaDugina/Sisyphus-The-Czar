@@ -4,6 +4,7 @@ import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
 } from "../../src/lib/coordinates.mjs";
+import { getRainVisualProfile } from "../../src/lib/rainProfile.mjs";
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
 import { normalizeRainSettings } from "../../src/lib/settingsModel.mjs";
@@ -173,4 +174,49 @@ test("группа дождя содержит локальный toggle вкл�
     ),
     false,
   );
+});
+
+test("профиль дождя различает светлую и тёмную тему", () => {
+  const lightProfile = getRainVisualProfile({
+    rainStrength: 1,
+    theme: "light",
+  });
+  const darkProfile = getRainVisualProfile({
+    rainStrength: 1,
+    theme: "dark",
+  });
+
+  assert.equal(lightProfile.theme, "light");
+  assert.equal(lightProfile.dropletsPerSecond, 1300);
+  assert.deepEqual(lightProfile.spawnInterval, [0.018, 0.05]);
+  assert.deepEqual(lightProfile.spawnSize, [38, 104]);
+  assert.deepEqual(lightProfile.mistColor, [0.04, 0.04, 0.05, 0.48]);
+  assert.deepEqual(lightProfile.raindropDiffuseLight, [0.42, 0.42, 0.44]);
+
+  assert.equal(darkProfile.theme, "dark");
+  assert.equal(darkProfile.dropletsPerSecond, 1800);
+  assert.equal(darkProfile.spawnLimit, 1800);
+  assert.deepEqual(darkProfile.spawnInterval, [0.01, 0.04]);
+  assert.deepEqual(darkProfile.spawnSize, [45, 120]);
+  assert.deepEqual(darkProfile.mistColor, [0.04, 0.04, 0.04, 0.8]);
+  assert.deepEqual(darkProfile.raindropDiffuseLight, [0.45, 0.45, 0.45]);
+  assert.deepEqual(darkProfile.raindropSpecularLight, [0.8, 0.8, 0.8]);
+});
+
+test("сила дождя масштабирует тёмный профиль дождя", () => {
+  const weakProfile = getRainVisualProfile({
+    rainStrength: 0.5,
+    theme: "dark",
+  });
+  const strongProfile = getRainVisualProfile({
+    rainStrength: 1.5,
+    theme: "dark",
+  });
+
+  assert.equal(weakProfile.dropletsPerSecond, 900);
+  assert.equal(strongProfile.dropletsPerSecond, 2700);
+  assert.equal(strongProfile.spawnLimit, 2700);
+  assert.ok(strongProfile.spawnSize[0] > weakProfile.spawnSize[0]);
+  assert.ok(strongProfile.fxOpacity > weakProfile.fxOpacity);
+  assert.equal(strongProfile.fxOpacity, 0.5);
 });
