@@ -67,7 +67,6 @@ export function createSisyphusRuntime(elements = {}) {
   // Камера занимает 200vh, но физика не читает DOM-высоту .world.
   const SCENE_VIEWPORT_HEIGHTS = 2;
   const FLOOR_INSET = 0;
-  const FIRST_FALL_DELAY_MS = 400;
   const DRAG_LIFT_BASE_SPEED = 420;
   const DRAG_LIFT_FORCE_SPEED = 880;
   const DRAG_LIFT_MIN_SPEED = 220;
@@ -158,7 +157,9 @@ export function createSisyphusRuntime(elements = {}) {
     dragging: false,
     activePointerId: null,
     holdTimerId: null,
-    firstFallTimerId: null,
+    firstScrollHandled: false,
+    introScrollBaselineY: 0,
+    sceneReady: false,
     animationId: null,
     lastFrameAt: null,
     lastPointerX: 0,
@@ -233,7 +234,7 @@ export function createSisyphusRuntime(elements = {}) {
     pendingPhysicsChanges: Object.create(null),
     sessionCreateInFlight: false,
     sessionCreateAbortController: null,
-    firstReleaseTimerId: null,
+    firstFallRequestSent: false,
     lastMoveSentAt: 0,
     lastPointerSentAt: 0,
     lastRenderAt: 0,
@@ -718,10 +719,6 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function isAtReturnPlace(isDragging = motion.dragging) {
-    return motion.phase === PHASES.PLAY && isDragging && rockInsideImprint();
-  }
-
   function setTheme(theme) {
     const previousRainTheme = currentRainTheme();
     body.classList.toggle("theme-light", theme === "light");
@@ -729,18 +726,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (currentRainTheme() !== previousRainTheme) {
       restartRainRenderers();
     }
-  }
-
-  function setScrollLocked(locked) {
-    document.documentElement.classList.toggle("is-scroll-locked", locked);
-    body.classList.toggle("is-scroll-locked", locked);
-    if (locked && window.scrollY !== 0) {
-      window.scrollTo(0, 0);
-    }
-  }
-
-  function syncScrollLock(firstTouchHappened) {
-    setScrollLocked(!firstTouchHappened);
   }
 
   function setPhase(phase) {
@@ -995,7 +980,11 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function canShowPhotoCursor(event) {
-    return finePointer.matches && (!event.pointerType || event.pointerType === "mouse");
+    return (
+      motion.phase === PHASES.PLAY &&
+      finePointer.matches &&
+      (!event.pointerType || event.pointerType === "mouse")
+    );
   }
 
   function moveHandCursor(event) {
@@ -1723,10 +1712,9 @@ export function createSisyphusRuntime(elements = {}) {
 
   function sharedSnapshotAtReturnPlace(snapshot) {
     if (
-      snapshot.phase === PHASES.PLAY &&
-      snapshot.dragging &&
+      (snapshot.phase === PHASES.PLAY || snapshot.phase === PHASES.WON) &&
       SharedPhysics.stateInsideImprint(
-        { phase: snapshot.phase, x: snapshot.x, y: snapshot.y },
+        { phase: PHASES.PLAY, x: snapshot.x, y: snapshot.y },
         collab.imprint
       )
     ) {
@@ -1736,18 +1724,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function sharedSnapshotTheme(snapshot) {
-    if (snapshot.phase === PHASES.INTRO || snapshot.phase === PHASES.WON) {
-      return "light";
-    }
     return sharedSnapshotAtReturnPlace(snapshot) ? "light" : "dark";
   }
 
   function resetLocalExperience() {
     const pointerId = motion.activePointerId;
-    window.clearTimeout(collab.firstReleaseTimerId);
-    collab.firstReleaseTimerId = null;
     clearHoldTimer();
-    clearFirstFallTimer();
     stopLoop();
     motion.dragging = false;
     motion.activePointerId = null;
@@ -1771,12 +1753,12 @@ export function createSisyphusRuntime(elements = {}) {
     hideHandCursor();
     updateLocalSharedPointer(null, "grab", false);
     setPhase(PHASES.INTRO);
-    setTheme("light");
+    setTheme("dark");
     hideReturnRain({ immediate: true });
-    syncScrollLock(false);
     resetTrail();
     renderImprint();
     centerIntroRock();
+    resetFirstScrollTrigger({ scrollToTop: true });
     updateSessionStatus();
   }
 
@@ -1831,6 +1813,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     clearSharedConnectionTimers();
     collab.connected = false;
+    collab.firstFallRequestSent = false;
     updateSessionStatus();
 
     const endpoint = appUrl("realtime");
@@ -1879,6 +1862,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
       clearSharedConnectionTimers();
       collab.connected = false;
+      collab.firstFallRequestSent = false;
       collab.hasControl = false;
       collab.pendingControl = false;
       collab.releasePending = false;
@@ -1908,7 +1892,6 @@ export function createSisyphusRuntime(elements = {}) {
       collab.pendingControl = false;
       collab.hasControl = true;
       collab.remoteControllerId = collab.clientId;
-      syncScrollLock(true);
       updateSessionStatus();
     } else if (message.type === "control.denied") {
       collab.pendingControl = false;
@@ -1954,6 +1937,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    const previousPhase = motion.phase;
     collab.lastRevision = revision;
     const offsetSample = Date.now() - Number(payload.serverTime || Date.now());
     collab.clockOffset = collab.clockOffsetReady
@@ -1963,9 +1947,6 @@ export function createSisyphusRuntime(elements = {}) {
     applySharedPhysics(payload.physics);
 
     collab.imprint = SharedPhysics.sanitizeImprint(payload.imprint);
-    syncScrollLock(
-      Boolean(collab.imprint) || payload.phase !== PHASES.INTRO
-    );
     renderImprint();
 
     if (Array.isArray(payload.trail)) {
@@ -2040,8 +2021,12 @@ export function createSisyphusRuntime(elements = {}) {
     setPhase(snapshot.phase);
     setTheme(sharedSnapshotTheme(snapshot));
     if (snapshot.phase === PHASES.INTRO) {
+      if (previousPhase !== PHASES.INTRO) {
+        resetFirstScrollTrigger({ scrollToTop: true });
+      }
       hideReturnRain({ immediate: true });
     } else {
+      collab.firstFallRequestSent = false;
       syncReturnRain(snapshotAtReturnPlace);
     }
 
@@ -2056,6 +2041,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     startSharedRenderLoop();
+    requestSharedFirstFall();
     updateSessionStatus();
   }
 
@@ -2121,7 +2107,7 @@ export function createSisyphusRuntime(elements = {}) {
         Math.abs(snapshot.vy) > 0.5);
     rock.classList.toggle("is-dragging", visiblyDragging);
     rock.classList.toggle("is-falling", visiblyFalling);
-    syncReturnTheme(visiblyDragging);
+    syncReturnTheme();
   }
 
   function renderSharedFrame(now) {
@@ -2180,8 +2166,6 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function cancelSharedLocalDrag(releaseCapture = true) {
-    window.clearTimeout(collab.firstReleaseTimerId);
-    collab.firstReleaseTimerId = null;
     const pointerId = motion.activePointerId;
     motion.dragging = false;
     motion.activePointerId = null;
@@ -2203,10 +2187,7 @@ export function createSisyphusRuntime(elements = {}) {
       updateSessionStatus();
       return;
     }
-    if (
-      motion.phase !== PHASES.INTRO &&
-      motion.phase !== PHASES.PLAY
-    ) {
+    if (motion.phase !== PHASES.PLAY) {
       return;
     }
     if (
@@ -2218,7 +2199,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     event.preventDefault();
-    if (params.trailReset && motion.phase === PHASES.PLAY) {
+    if (params.trailReset) {
       resetTrail();
     }
     clearSharedReleaseHandoff();
@@ -2226,12 +2207,6 @@ export function createSisyphusRuntime(elements = {}) {
     toggleHandVariant();
     updateBounds();
     const position = localToCanonical(motion.x, motion.y);
-    let proposedImprint = null;
-    if (motion.phase === PHASES.INTRO && !collab.imprint) {
-      proposedImprint = sharedImprintAt(position);
-      collab.imprint = proposedImprint;
-      renderImprint();
-    }
     const rect = rock.getBoundingClientRect();
     motion.dragging = true;
     motion.activePointerId = event.pointerId;
@@ -2253,16 +2228,8 @@ export function createSisyphusRuntime(elements = {}) {
     const pointer = updateLocalSharedPointer(event, "grabbing", true);
     sendShared("control.acquire", {
       ...position,
-      imprint: proposedImprint,
       pointer,
     });
-    if (motion.phase === PHASES.INTRO) {
-      collab.firstReleaseTimerId = window.setTimeout(() => {
-        if (motion.dragging && collab.enabled) {
-          forceReleaseSharedDrag(false);
-        }
-      }, FIRST_FALL_DELAY_MS);
-    }
     updateSessionStatus();
   }
 
@@ -2330,8 +2297,7 @@ export function createSisyphusRuntime(elements = {}) {
     collab.pendingControl = false;
     collab.hasControl = false;
     cancelSharedLocalDrag();
-    setTheme("dark");
-    hideReturnRain();
+    syncReturnTheme();
     if (!pointerVisible) {
       hideHandCursor();
     }
@@ -2364,8 +2330,7 @@ export function createSisyphusRuntime(elements = {}) {
     collab.pendingControl = false;
     collab.hasControl = false;
     cancelSharedLocalDrag();
-    setTheme("dark");
-    hideReturnRain();
+    syncReturnTheme();
     if (hidePointer) {
       hideHandCursor();
     }
@@ -2619,15 +2584,6 @@ export function createSisyphusRuntime(elements = {}) {
     motion.holdTimerId = null;
   }
 
-  function clearFirstFallTimer() {
-    if (motion.firstFallTimerId === null) {
-      return;
-    }
-
-    window.clearTimeout(motion.firstFallTimerId);
-    motion.firstFallTimerId = null;
-  }
-
   function scheduleHoldLimit() {
     clearHoldTimer();
     motion.holdTimerId = window.setTimeout(
@@ -2659,13 +2615,15 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
-  function syncReturnTheme(isDragging = motion.dragging) {
-    if (motion.phase === PHASES.INTRO || motion.phase === PHASES.WON) {
-      setTheme("light");
-      hideReturnRain({ immediate: motion.phase === PHASES.INTRO });
+  function syncReturnTheme() {
+    if (motion.phase === PHASES.INTRO) {
+      setTheme("dark");
+      hideReturnRain({ immediate: true });
       return;
     }
-    const atReturnPlace = isAtReturnPlace(isDragging);
+    const atReturnPlace =
+      (motion.phase === PHASES.PLAY || motion.phase === PHASES.WON) &&
+      rockInsideImprint();
     setTheme(atReturnPlace ? "light" : "dark");
     syncReturnRain(atReturnPlace);
   }
@@ -2680,10 +2638,39 @@ export function createSisyphusRuntime(elements = {}) {
     rock.classList.remove("is-falling");
   }
 
+  function resetFirstScrollTrigger({ scrollToTop = false } = {}) {
+    motion.firstScrollHandled = false;
+    motion.introScrollBaselineY = 0;
+    collab.firstFallRequestSent = false;
+    if (scrollToTop && window.scrollY !== 0) {
+      window.scrollTo(0, 0);
+    }
+  }
+
+  function requestSharedFirstFall() {
+    if (
+      !motion.sceneReady ||
+      !motion.firstScrollHandled ||
+      motion.phase !== PHASES.INTRO ||
+      !collab.enabled ||
+      !collab.connected ||
+      collab.firstFallRequestSent
+    ) {
+      return false;
+    }
+
+    const position = localToCanonical(motion.x, motion.y);
+    const proposedImprint = collab.imprint || sharedImprintAt(position);
+    collab.imprint = proposedImprint;
+    renderImprint();
+    const sent = sendShared("session.start", { imprint: proposedImprint });
+    collab.firstFallRequestSent = sent;
+    return sent;
+  }
+
   function beginFirstFall() {
-    motion.firstFallTimerId = null;
     if (motion.phase !== PHASES.INTRO) {
-      return;
+      return false;
     }
 
     const pointerId = motion.activePointerId;
@@ -2694,34 +2681,47 @@ export function createSisyphusRuntime(elements = {}) {
     releasePointerCapture(pointerId);
 
     const state = SharedPhysics.sanitizeState(currentSharedState());
-    const pointerVelocity = currentPointerVelocity();
-    const velocity = localVelocityToCanonical(
-      pointerVelocity.vx,
-      pointerVelocity.vy
-    );
     SharedPhysics.beginFirstFall(
       state,
       SharedPhysics.sanitizePhysics(params),
-      velocity.vx,
-      velocity.vy
+      0,
+      0
     );
     setPhase(state.phase);
-    // Тёмная тема включается сразу, как только камень выпадает из руки,
-    // не дожидаясь касания дна.
     setTheme("dark");
     hideReturnRain();
     applyCanonicalMotion(state);
     setHandToGrab();
     rock.classList.add("is-falling");
     startLoop();
+    return true;
   }
 
-  function startFirstFall() {
-    if (motion.phase !== PHASES.INTRO || motion.firstFallTimerId !== null) {
+  function continueFirstFallFromScroll() {
+    if (
+      !motion.sceneReady ||
+      !motion.firstScrollHandled ||
+      motion.phase !== PHASES.INTRO
+    ) {
       return false;
     }
+    if (collab.enabled) {
+      return requestSharedFirstFall();
+    }
+    createLocalImprint();
+    return beginFirstFall();
+  }
 
-    motion.firstFallTimerId = window.setTimeout(beginFirstFall, FIRST_FALL_DELAY_MS);
+  function handleFirstScroll() {
+    if (
+      motion.firstScrollHandled ||
+      motion.phase !== PHASES.INTRO ||
+      window.scrollY === motion.introScrollBaselineY
+    ) {
+      return false;
+    }
+    motion.firstScrollHandled = true;
+    continueFirstFallFromScroll();
     return true;
   }
 
@@ -2738,7 +2738,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
       enterPlayPhase();
     } else {
-      syncReturnTheme(false);
+      syncReturnTheme();
     }
   }
 
@@ -2847,7 +2847,6 @@ export function createSisyphusRuntime(elements = {}) {
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
-    clearFirstFallTimer();
     motion.dragging = false;
     motion.activePointerId = null;
     motion.holdTimerId = null;
@@ -2855,21 +2854,15 @@ export function createSisyphusRuntime(elements = {}) {
     setGrabbingCursor(false);
     releasePointerCapture(pointerId);
 
-    if (phaseAtRelease === PHASES.INTRO) {
-      beginFirstFall();
-      return;
-    }
-
     if (releasedInImprint) {
       motion.vx = 0;
       motion.vy = 0;
     } else {
       applyReleaseImpulse();
     }
-    setTheme("dark");
-    hideReturnRain();
     setHandToGrab();
     rock.classList.add("is-falling");
+    syncReturnTheme();
     startLoop();
   }
 
@@ -2878,42 +2871,12 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    if (motion.phase !== PHASES.PLAY) {
+      return;
+    }
+
     if (collab.enabled) {
       beginSharedDrag(event);
-      return;
-    }
-
-    if (motion.phase === PHASES.INTRO) {
-      event.preventDefault();
-      if (motion.dragging || motion.firstFallTimerId !== null) {
-        return;
-      }
-
-      toggleHandVariant();
-      updateBounds();
-      createLocalImprint();
-      syncScrollLock(true);
-      const rect = rock.getBoundingClientRect();
-      motion.dragging = true;
-      motion.activePointerId = event.pointerId;
-      motion.grabX = event.clientX - rect.left;
-      motion.grabY = event.clientY - rect.top;
-      motion.dragTargetX = motion.x;
-      motion.dragTargetY = motion.y;
-      motion.pointerVx = 0;
-      motion.pointerVy = 0;
-      motion.lastPointerAt = 0;
-      recordPointerVelocity(event);
-      showHandCursor(event);
-      setGrabbingCursor(true);
-      rock.classList.remove("is-falling");
-      rock.classList.add("is-dragging");
-      rock.setPointerCapture(event.pointerId);
-      startFirstFall();
-      return;
-    }
-
-    if (motion.phase !== PHASES.PLAY) {
       return;
     }
 
@@ -2952,20 +2915,13 @@ export function createSisyphusRuntime(elements = {}) {
 
     moveHandCursor(event);
 
-    if (
-      !motion.dragging ||
-      (motion.phase !== PHASES.INTRO && motion.phase !== PHASES.PLAY)
-    ) {
+    if (!motion.dragging || motion.phase !== PHASES.PLAY) {
       return;
     }
 
     event.preventDefault();
     recordPointerVelocity(event);
     setDragTargetFromPointer(event);
-
-    if (motion.phase === PHASES.INTRO) {
-      applyDragTargetMovement(MAX_FRAME_SECONDS);
-    }
   }
 
   function stopDrag(event) {
@@ -2982,7 +2938,6 @@ export function createSisyphusRuntime(elements = {}) {
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
     clearHoldTimer();
-    clearFirstFallTimer();
     motion.dragging = false;
     motion.activePointerId = null;
     rock.classList.remove("is-dragging");
@@ -2990,26 +2945,20 @@ export function createSisyphusRuntime(elements = {}) {
     releasePointerCapture(event.pointerId);
     recordPointerVelocity(event);
 
-    if (phaseAtRelease === PHASES.INTRO) {
-      beginFirstFall();
-      return;
-    }
-
     if (releasedInImprint) {
       motion.vx = 0;
       motion.vy = 0;
     } else {
       applyReleaseImpulse();
     }
-    setTheme("dark");
-    hideReturnRain();
     setHandToGrab();
     rock.classList.add("is-falling");
+    syncReturnTheme();
     startLoop();
   }
 
   function enterRock(event) {
-    if (motion.phase === PHASES.WON) {
+    if (motion.phase !== PHASES.PLAY) {
       return;
     }
 
@@ -3035,13 +2984,12 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     clearHoldTimer();
-    clearFirstFallTimer();
     motion.dragging = false;
     motion.activePointerId = null;
     rock.classList.remove("is-dragging");
     setHandToGrab();
     hideHandCursor();
-    syncReturnTheme(false);
+    syncReturnTheme();
     if (collab.enabled) {
       sendSharedPointer(null, "grab", false, true);
     }
@@ -3103,10 +3051,7 @@ export function createSisyphusRuntime(elements = {}) {
     window,
     "scroll",
     () => {
-      if (document.documentElement.classList.contains("is-scroll-locked")) {
-        window.scrollTo(0, 0);
-        return;
-      }
+      handleFirstScroll();
       trail.dirty = true;
       drawTrail();
     },
@@ -3127,6 +3072,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function initScene() {
     centerIntroRock();
+    motion.sceneReady = true;
     resizeTrailCanvas();
     updateSessionStatus();
     if (collab.enabled) {
@@ -3134,6 +3080,7 @@ export function createSisyphusRuntime(elements = {}) {
     } else {
       createSharedSession();
     }
+    continueFirstFallFromScroll();
   }
 
   const testApi = {
@@ -3186,13 +3133,11 @@ export function createSisyphusRuntime(elements = {}) {
       stopLoop();
       stopRainRenderers();
       clearHoldTimer();
-      clearFirstFallTimer();
       clearSharedConnectionTimers();
       clearSharedReleaseHandoff();
       window.clearTimeout(collab.copyFeedbackTimerId);
       window.clearTimeout(collab.statusResetTimerId);
       window.clearTimeout(collab.physicsTimerId);
-      window.clearTimeout(collab.firstReleaseTimerId);
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {

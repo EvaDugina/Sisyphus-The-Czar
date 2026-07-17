@@ -69,6 +69,16 @@ async function grabVisibleRock(page) {
   throw lastError;
 }
 
+async function startWithFirstScroll(page) {
+  await page.evaluate(() => {
+    window.scrollTo(0, Math.max(1, Math.floor(window.innerHeight / 2)));
+  });
+  await expect(page.locator("body")).toHaveClass(
+    /state-(fallingToBottom|play)/
+  );
+  await expect(page.locator("body")).toHaveClass(/theme-dark/);
+}
+
 test("потерянная сессия заменяется рабочей и ссылка копируется", async ({ browser }) => {
   const context = await browser.newContext({
     permissions: ["clipboard-read", "clipboard-write"],
@@ -92,9 +102,12 @@ test("потерянная сессия заменяется рабочей и �
     currentUrl
   );
 
-  const point = await visibleRockPoint(page);
-  await page.mouse.move(point.x, point.y);
-  await page.mouse.down();
+  await startWithFirstScroll(page);
+  await expect(page.locator("body")).toHaveClass(/state-play/, {
+    timeout: 20_000,
+  });
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("камень у вас");
   await page.mouse.up();
 
@@ -115,10 +128,38 @@ test("вход на корень перенаправляет в рабочую 
   await page.goto("/");
   await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
-  await expect(page.locator("html")).toHaveClass(/is-scroll-locked/);
-  await expect(page.locator("body")).toHaveClass(/theme-light/);
-  await page.evaluate(() => window.scrollTo(0, window.innerHeight * 2));
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page).toHaveTitle("ЦАРЬ ДОЖДЯ");
+  await expect(page.locator(".title")).toHaveText("ЦАРЬ ДОЖДЯ");
+  await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
+  await expect(page.locator("body")).not.toHaveClass(/is-scroll-locked/);
+  await expect(page.locator("body")).toHaveClass(/theme-dark/);
+  const introState = await page.locator(".rock").evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    return {
+      point: {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      },
+      pointerEvents: getComputedStyle(rock).pointerEvents,
+      scrollable: document.documentElement.scrollHeight > window.innerHeight,
+    };
+  });
+  expect(introState.pointerEvents).toBe("none");
+  expect(introState.scrollable).toBe(true);
+  await page.mouse.move(introState.point.x, introState.point.y);
+  await expect(page.locator(".hand-cursor")).not.toHaveClass(/is-visible/);
+  await page.locator(".rock").evaluate((rock) => {
+    rock.dispatchEvent(
+      new PointerEvent("pointerdown", {
+        bubbles: true,
+        button: 0,
+        pointerId: 1,
+        pointerType: "mouse",
+      })
+    );
+  });
+  await expect(page.locator("body")).toHaveClass(/state-intro/);
+  await expect(page.locator(".rock")).not.toHaveClass(/is-dragging/);
   await expect.poll(() => documentRequests.length).toBeGreaterThanOrEqual(2);
   expect(documentRequests[0]).toBe("/");
   expect(documentRequests.at(-1)).toMatch(/^\/\?session=[A-Za-z0-9_-]{22}$/);
@@ -136,14 +177,8 @@ test("вход на корень перенаправляет в рабочую 
     const rect = rock.getBoundingClientRect();
     return { width: rect.width, height: rect.height };
   });
-  const point = await visibleRockPoint(page);
-  await page.mouse.move(point.x, point.y);
-  await page.mouse.down();
-  await expect(page.getByTestId("session-status")).toContainText("камень у вас");
-  await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
+  await startWithFirstScroll(page);
   await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
-  await page.mouse.up();
-  await expect(page.locator("body")).toHaveClass(/state-fallingToBottom/);
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
   await expect(page.locator(".rock")).not.toHaveClass(/is-dragging/);
   const sizeAfterRelease = await page.locator(".rock").evaluate((rock) => {
@@ -152,6 +187,11 @@ test("вход на корень перенаправляет в рабочую 
   });
   expect(sizeAfterRelease.width).toBeCloseTo(sizeBeforeTouch.width, 1);
   expect(sizeAfterRelease.height).toBeCloseTo(sizeBeforeTouch.height, 1);
+  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await expect
+    .poll(() => page.evaluate(() => motion.firstScrollHandled))
+    .toBe(true);
+  await expect(page.locator("body")).not.toHaveClass(/state-intro/);
 
   await expect
     .poll(() =>
@@ -162,6 +202,17 @@ test("вход на корень перенаправляет в рабочую 
       })
     )
     .toBe(true);
+
+  await expect(page.locator("body")).toHaveClass(/state-play/, {
+    timeout: 20_000,
+  });
+  await expect(page.locator(".rock")).toHaveCSS("pointer-events", "auto");
+  const playablePoint = await visibleRockPoint(page);
+  await page.mouse.move(playablePoint.x, playablePoint.y);
+  await expect(page.locator(".hand-cursor")).toHaveClass(/is-visible/);
+  await page.mouse.down();
+  await expect(page.getByTestId("session-status")).toContainText("камень у вас");
+  await page.mouse.up();
 
   const urlBeforeReload = page.url();
   await page.reload();
@@ -427,10 +478,10 @@ test("два браузера видят один камень и по очер�
       exitDuration: "700ms",
       exitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
       hasBlurLayer: true,
-      blurDisplay: "none",
+      blurDisplay: "block",
       blurBlendMode: "overlay",
-      layerBlendMode: "screen",
-      canvasBlendMode: "normal",
+      layerBlendMode: "normal",
+      canvasBlendMode: "screen",
       fallbackOpacity: "0",
       layerZIndex: "9",
       canvasZIndex: "10",
@@ -548,10 +599,10 @@ test("два браузера видят один камень и по очер�
   for (const [name, value] of Object.entries(expectedPhysics)) {
     await expect(second.locator(`[name="${name}"]`)).toHaveValue(value);
   }
-  await expect(first.locator("html")).toHaveClass(/is-scroll-locked/);
-  await expect(second.locator("html")).toHaveClass(/is-scroll-locked/);
-  await expect(first.locator("body")).toHaveClass(/theme-light/);
-  await expect(second.locator("body")).toHaveClass(/theme-light/);
+  await expect(first.locator("html")).not.toHaveClass(/is-scroll-locked/);
+  await expect(second.locator("html")).not.toHaveClass(/is-scroll-locked/);
+  await expect(first.locator("body")).toHaveClass(/theme-dark/);
+  await expect(second.locator("body")).toHaveClass(/theme-dark/);
 
   await second.evaluate(() => collab.socket.close(4100, "test_reconnect"));
   await expect(second.getByTestId("session-status")).toContainText("Переподключение");
@@ -562,62 +613,35 @@ test("два браузера видят один камень и по очер�
 
   await first.locator(".settings-toggle").click();
   await second.locator(".settings-toggle").click();
-  const firstPoint = await visibleRockPoint(first);
-  await first.mouse.move(firstPoint.x, firstPoint.y);
   const remoteCursor = second.getByTestId("remote-cursor");
-  await expect(remoteCursor).toHaveClass(/is-visible/);
-  await expect(remoteCursor).not.toHaveClass(/is-grabbing/);
-  await expect(remoteCursor).toHaveCSS("opacity", "1");
-  await expect(remoteCursor).toHaveCSS(
-    "background-image",
-    /cursor-grab(?:-[A-Za-z0-9_-]+)?\.webp/
-  );
-  const positionBeforeFirstTouch = await first.evaluate(() => ({
-    x: Number.parseFloat(
-      getComputedStyle(document.querySelector(".rock")).getPropertyValue("--rock-x")
-    ),
-    y: Number.parseFloat(
-      getComputedStyle(document.querySelector(".rock")).getPropertyValue("--rock-y")
-    ),
-  }));
-
-  const releaseProfilePromise = first.evaluate(() => {
-    const readRockPosition = () => {
-      const style = getComputedStyle(document.querySelector(".rock"));
-      return {
+  const introRock = await first.locator(".rock").evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    const style = getComputedStyle(rock);
+    return {
+      point: {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      },
+      pointerEvents: style.pointerEvents,
+      position: {
         x: Number.parseFloat(style.getPropertyValue("--rock-x")),
         y: Number.parseFloat(style.getPropertyValue("--rock-y")),
-      };
+      },
     };
-    return new Promise((resolve) => {
-      const startedAt = performance.now();
-      const samples = [];
-      const sample = () => {
-        const position = readRockPosition();
-        samples.push({
-          elapsed: performance.now() - startedAt,
-          dragging: Boolean(motion.dragging),
-          handoff: Boolean(collab.releaseHandoff?.active),
-          ...position,
-        });
-        if (performance.now() - startedAt >= 1800) {
-          resolve(samples);
-          return;
-        }
-        requestAnimationFrame(sample);
-      };
-      sample();
-    });
   });
-  await first.mouse.down();
-  await expect(first.locator("html")).not.toHaveClass(/is-scroll-locked/);
-  await expect(second.locator("html")).not.toHaveClass(/is-scroll-locked/);
-  await expect(remoteCursor).toHaveClass(/is-grabbing/);
-  await expect(remoteCursor).toHaveCSS("opacity", "1");
-  await expect(remoteCursor).toHaveCSS(
-    "background-image",
-    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.webp/
+  expect(introRock.pointerEvents).toBe("none");
+  await first.mouse.move(introRock.point.x, introRock.point.y);
+  await expect(first.locator(".hand-cursor")).not.toHaveClass(/is-visible/);
+  await expect(second.locator(".hand-cursor.is-remote.is-visible")).toHaveCount(0);
+
+  await startWithFirstScroll(first);
+  await expect(second.locator("body")).toHaveClass(
+    /state-(fallingToBottom|play)/
   );
+  await expect(first.locator("body")).toHaveClass(/theme-dark/);
+  await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  await expect(first.locator(".rock")).not.toHaveClass(/is-dragging/);
+  await expect(second.locator(".rock")).not.toHaveClass(/is-dragging/);
   const firstImprint = first.getByTestId("rock-imprint");
   const secondImprint = second.getByTestId("rock-imprint");
   await expect(firstImprint).toHaveClass(/is-visible/);
@@ -634,38 +658,8 @@ test("два браузера видят один камень и по очер�
       )
     ),
   }));
-  expect(initialAlignment.imprintX).toBeCloseTo(positionBeforeFirstTouch.x, 0);
-  expect(initialAlignment.imprintY).toBeCloseTo(positionBeforeFirstTouch.y, 0);
-  const releaseProfile = await releaseProfilePromise;
-  const releaseIndex = releaseProfile.findIndex(
-    (sample, index) =>
-      index > 0 && releaseProfile[index - 1].dragging && !sample.dragging
-  );
-  expect(releaseIndex).toBeGreaterThan(0);
-  const releaseAt = releaseProfile[releaseIndex].elapsed;
-  const releaseWindow = releaseProfile.filter(
-    (sample) => sample.elapsed >= releaseAt - 80 && sample.elapsed <= releaseAt + 420
-  );
-  const handoffSteps = releaseWindow
-    .slice(1)
-    .map((sample, index) => {
-      const previous = releaseWindow[index];
-      return {
-        step: Math.hypot(sample.x - previous.x, sample.y - previous.y),
-        previous,
-        sample,
-      };
-    });
-  const maxHandoffStep = handoffSteps.reduce(
-    (largest, current) => (current.step > largest.step ? current : largest),
-    { step: 0, previous: null, sample: null }
-  );
-  expect(maxHandoffStep.step).toBeLessThan(320);
-  await first.mouse.up();
-  await expect(first.locator("body")).toHaveClass(/state-(fallingToBottom|play)/);
-  await expect(second.locator("body")).toHaveClass(/state-(fallingToBottom|play)/);
-  await expect(first.locator("body")).toHaveClass(/theme-dark/);
-  await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  expect(initialAlignment.imprintX).toBeCloseTo(introRock.position.x, 0);
+  expect(initialAlignment.imprintY).toBeCloseTo(introRock.position.y, 0);
 
   const trailBuffer = await first.locator(".trail").evaluate((canvas) => ({
     width: canvas.width,
@@ -684,9 +678,23 @@ test("два браузера видят один камень и по очер�
         Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
       )
     )
-    .toBeGreaterThan(positionBeforeFirstTouch.y);
+    .toBeGreaterThan(introRock.position.y);
 
+  await expect(first.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
   await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
+  await first.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  const enabledFirstPoint = await visibleRockPoint(first);
+  await first.mouse.move(enabledFirstPoint.x, enabledFirstPoint.y);
+  await expect(remoteCursor).toHaveClass(/is-visible/);
+  await expect(remoteCursor).not.toHaveClass(/is-grabbing/);
+  await expect(remoteCursor).toHaveCSS("opacity", "1");
+  await expect(remoteCursor).toHaveCSS(
+    "background-image",
+    /cursor-grab(?:-[A-Za-z0-9_-]+)?\.(?:png|webp)/
+  );
+  await first.mouse.move(0, 0);
+  await expect(remoteCursor).toHaveCount(0);
+
   await second.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect
     .poll(() =>
@@ -711,7 +719,7 @@ test("два браузера видят один камень и по очер�
     setPosition(local.x, local.y);
     motion.pointerVx = 0;
     motion.pointerVy = 0;
-    syncReturnTheme(true);
+    syncReturnTheme();
     sendShared("control.move", {
       x: imprint.x,
       y: imprint.y,
@@ -809,7 +817,7 @@ test("два браузера видят один камень и по очер�
     setPosition(local.x, local.y);
     motion.dragTargetX = local.x;
     motion.dragTargetY = local.y;
-    syncReturnTheme(true);
+    syncReturnTheme();
     sendShared("control.move", {
       x: imprint.x,
       y: outsideY,
@@ -1019,12 +1027,30 @@ test("два браузера видят один камень и по очер�
   await first.getByTestId("restart-session").click();
   await expect(first.locator("body")).toHaveClass(/state-intro/);
   await expect(second.locator("body")).toHaveClass(/state-intro/);
-  await expect(first.locator("body")).toHaveClass(/theme-light/);
-  await expect(second.locator("body")).toHaveClass(/theme-light/);
+  await expect(first.locator("body")).toHaveClass(/theme-dark/);
+  await expect(second.locator("body")).toHaveClass(/theme-dark/);
   await expect(firstRain).not.toHaveClass(/is-rain-/);
   await expect(secondRain).not.toHaveClass(/is-rain-/);
-  await expect(first.locator("html")).toHaveClass(/is-scroll-locked/);
-  await expect(second.locator("html")).toHaveClass(/is-scroll-locked/);
+  await expect(first.locator("html")).not.toHaveClass(/is-scroll-locked/);
+  await expect(second.locator("html")).not.toHaveClass(/is-scroll-locked/);
+  await expect(first.locator(".rock")).toHaveCSS("pointer-events", "none");
+  await expect(second.locator(".rock")).toHaveCSS("pointer-events", "none");
+  await expect
+    .poll(() =>
+      first.evaluate(() => ({
+        firstScrollHandled: motion.firstScrollHandled,
+        scrollY: window.scrollY,
+      }))
+    )
+    .toEqual({ firstScrollHandled: false, scrollY: 0 });
+  await expect
+    .poll(() =>
+      second.evaluate(() => ({
+        firstScrollHandled: motion.firstScrollHandled,
+        scrollY: window.scrollY,
+      }))
+    )
+    .toEqual({ firstScrollHandled: false, scrollY: 0 });
   await expect(firstImprint).not.toHaveClass(/is-visible/);
   await expect(secondImprint).not.toHaveClass(/is-visible/);
   await expect(first.locator('[name="gravity"]')).toHaveValue("9");

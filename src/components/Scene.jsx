@@ -5,12 +5,12 @@ import { WeatherRain } from "./WeatherRain";
 
 export function Scene({ scene, trail, rain }) {
   return (
-    <main ref={scene.worldRef} className="world" aria-label="Сцена Сизифа">
+    <main ref={scene.worldRef} className="world" aria-label="Сцена Царя Дождя">
       <TrailCanvas canvasRef={trail.trailCanvasRef} />
       <section className="summit" aria-hidden="true">
         <div className="target-zone" />
         <h2 className="title2">Миниатюра</h2>
-        <h1 className="title">Царь Сизиф</h1>
+        <h1 className="title">ЦАРЬ ДОЖДЯ</h1>
       </section>
       <WeatherRain
         layerRef={rain.rainLayerRef}

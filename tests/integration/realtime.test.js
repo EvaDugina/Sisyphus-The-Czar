@@ -211,6 +211,42 @@ test("два WebSocket-клиента делят состояние и пере�
   assert.deepEqual(restarted.payload.trail, []);
   assert.equal(restarted.payload.imprint, null);
 
+  second.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "control.acquire",
+      seq: 4,
+      payload: { x: 321, y: 654 },
+    })
+  );
+  await second.waitFor(
+    "control.denied",
+    (payload) => payload.reason === "phase_locked"
+  );
+
+  first.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "session.start",
+      seq: 5,
+      payload: { imprint: { toleranceX: 45, toleranceY: 35 } },
+    })
+  );
+  const startedByScroll = await second.waitFor(
+    "session.snapshot",
+    (payload) =>
+      payload.revision > restarted.payload.revision &&
+      payload.phase === Physics.PHASES.FALLING
+  );
+  assert.equal(startedByScroll.payload.dragging, false);
+  assert.equal(startedByScroll.payload.controllerId, null);
+  assert.deepEqual(startedByScroll.payload.imprint, {
+    x: 321,
+    y: 654,
+    toleranceX: 45,
+    toleranceY: 35,
+  });
+
   const invalidLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

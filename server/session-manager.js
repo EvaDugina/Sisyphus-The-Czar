@@ -418,6 +418,9 @@ class SessionManager {
       : {};
 
     switch (message.type) {
+      case "session.start":
+        this.startSession(session, payload);
+        break;
       case "control.acquire":
         this.acquireControl(session, client, payload);
         break;
@@ -447,9 +450,30 @@ class SessionManager {
     }
   }
 
+  startSession(session, payload = {}) {
+    const state = session.state;
+    if (
+      state.phase !== Physics.PHASES.INTRO ||
+      state.dragging ||
+      state.controllerId
+    ) {
+      return false;
+    }
+
+    session.imprint = Physics.createImprintAtState(state, payload.imprint);
+    session.firstFallAt = null;
+    session.holdReleaseAt = null;
+    session.lastPointer = { vx: 0, vy: 0 };
+    session.lastPointerAt = this.now();
+    Physics.beginFirstFall(state, session.physics, 0, 0);
+    this.markChanged(session);
+    this.broadcastSnapshot(session);
+    return true;
+  }
+
   acquireControl(session, client, payload = {}) {
     const state = session.state;
-    if (![Physics.PHASES.INTRO, Physics.PHASES.PLAY].includes(state.phase)) {
+    if (state.phase !== Physics.PHASES.PLAY) {
       this.sendTo(client, "control.denied", { reason: "phase_locked" });
       return false;
     }
@@ -472,22 +496,15 @@ class SessionManager {
     if (Number.isFinite(Number(payload.y))) {
       state.y = Physics.clamp(Number(payload.y), 0, Physics.WORLD_HEIGHT);
     }
-    if (state.phase === Physics.PHASES.INTRO && !session.imprint) {
-      session.imprint = Physics.createImprintAtState(state, payload.imprint);
-    }
     session.lastPointer = { vx: 0, vy: 0 };
     session.lastPointerAt = this.now();
-    session.firstFallAt =
-      state.phase === Physics.PHASES.INTRO
-        ? this.now() + Physics.FIRST_FALL_DELAY_MS
-        : null;
+    session.firstFallAt = null;
     session.holdReleaseAt = null;
     this.syncHoldRelease(session, this.now(), true);
     this.markChanged(session);
 
     this.sendTo(client, "control.granted", {
       controllerId: client.id,
-      firstFallAt: session.firstFallAt,
       holdReleaseAt: session.holdReleaseAt,
     });
     if (payload.pointer) {
@@ -668,10 +685,9 @@ class SessionManager {
     session.nextSnapshotAt = this.now();
     session.lastTrailAt = this.now();
     session.clients.forEach((client) => {
-      if (client.pointer?.mode === "grabbing") {
-        client.pointer.mode = "grab";
-        client.pointer.updatedAt = this.now();
-      }
+      client.pointer.mode = "grab";
+      client.pointer.visible = false;
+      client.pointer.updatedAt = this.now();
     });
 
     this.markChanged(session);

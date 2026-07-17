@@ -64,7 +64,10 @@ test("два браузера работают 10 минут без зависш
   await expect(first.getByTestId("session-status")).toContainText("2");
   await first.locator(".settings-toggle").click();
   await second.locator(".settings-toggle").click();
-  await first.locator(".rock").click({ position: { x: 100, y: 100 } });
+  await first.evaluate(() => {
+    window.scrollTo(0, Math.max(1, Math.floor(window.innerHeight / 2)));
+  });
+  await expect(first.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
   await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
 
   const pages = [first, second];

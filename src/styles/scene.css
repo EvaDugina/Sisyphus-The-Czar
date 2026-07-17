@@ -128,6 +128,13 @@
   filter: drop-shadow(0 3rem 2.8rem var(--shadow));
 }
 
+body.state-intro .rock,
+body.state-fallingToBottom .rock {
+  cursor: default;
+  pointer-events: none;
+  touch-action: auto;
+}
+
 body.state-won .rock {
   --rock-scale: 1;
   cursor: default;
@@ -307,6 +314,11 @@ body.theme-light .weather-rain__canvas--fallback {
 
 .hand-cursor.is-remote.is-visible {
   opacity: 1;
+}
+
+body.state-intro .hand-cursor,
+body.state-fallingToBottom .hand-cursor {
+  display: none;
 }
 
 .trail {
