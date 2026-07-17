@@ -6,6 +6,7 @@ export function WeatherRain({ layerRef, fxCanvasRef, fallbackCanvasRef }) {
       data-testid="weather-rain"
       aria-hidden="true"
     >
+      <div className="weather-rain__blur" />
       <canvas
         ref={fxCanvasRef}
         className="weather-rain__canvas weather-rain__canvas--fx"

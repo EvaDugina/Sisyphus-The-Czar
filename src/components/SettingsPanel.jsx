@@ -1,4 +1,4 @@
-import { SETTINGS_GROUPS } from "../config/settings";
+import { SETTINGS_GROUPS } from "../config/settings.mjs";
 import { SettingsControl } from "./SettingsControl";
 
 export function SettingsPanel({

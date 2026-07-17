@@ -1,3 +1,4 @@
+import "../../shared/physics.js";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import {
   canonicalToLocalPosition,
@@ -13,7 +14,7 @@ import { normalizeRainSettings } from "../lib/settingsModel.mjs";
 import {
   LEGACY_SETTINGS_STORAGE_KEY,
   SETTINGS_STORAGE_KEY,
-} from "../config/settings.js";
+} from "../config/settings.mjs";
 
 export function createSisyphusRuntime(elements = {}) {
   // При обновлении страницы всегда открываем её сверху: запрещаем браузеру
@@ -58,6 +59,7 @@ export function createSisyphusRuntime(elements = {}) {
     followX: null,
     followY: null,
     pixelRatio: 1,
+    dirty: true,
   };
 
   const PHASES = SharedPhysics.PHASES;
@@ -78,6 +80,12 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_ENTER_MS = 1100;
   const DEFAULT_RAIN_EXIT_MS = 2000;
   const DEFAULT_RAIN_Z_INDEX = 5;
+  const DEFAULT_RAIN_BACKGROUND_BLUR_STEPS = 3;
+  const DEFAULT_RAIN_BLUR_PX = 14;
+  const DEFAULT_RAIN_BLUR_OPACITY = 0.2;
+  const DEFAULT_RAIN_BLUR_SATURATION = 1.1;
+  const DEFAULT_RAIN_BLEND_MODE = "multiply";
+  const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
 
   const params = {
     mass: 4,
@@ -92,6 +100,12 @@ export function createSisyphusRuntime(elements = {}) {
     // Дождь
     rainEnabled: false,
     rainStrength: 1,
+    rainBlendMode: DEFAULT_RAIN_BLEND_MODE,
+    rainBlurBlendMode: DEFAULT_RAIN_BLUR_BLEND_MODE,
+    rainBackgroundBlurSteps: DEFAULT_RAIN_BACKGROUND_BLUR_STEPS,
+    rainBlurPx: DEFAULT_RAIN_BLUR_PX,
+    rainBlurOpacity: DEFAULT_RAIN_BLUR_OPACITY,
+    rainBlurSaturation: DEFAULT_RAIN_BLUR_SATURATION,
     rainZIndex: DEFAULT_RAIN_Z_INDEX,
     rainEnterEasing: DEFAULT_RAIN_ENTER_EASING,
     rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
@@ -243,6 +257,7 @@ export function createSisyphusRuntime(elements = {}) {
   const rain = {
     active: false,
     fallback: null,
+    lastProfile: null,
     hideTimerId: null,
     rainFx: null,
     renderToken: 0,
@@ -394,6 +409,20 @@ export function createSisyphusRuntime(elements = {}) {
     rainLayer.style.setProperty("--rain-exit-easing", params.rainExitEasing);
     rainLayer.style.setProperty("--rain-layer-z-index", String(params.rainZIndex));
     rainLayer.style.setProperty("--rain-canvas-z-index", String(params.rainZIndex + 1));
+    rainLayer.style.setProperty("--rain-blend-mode", params.rainBlendMode);
+    rainLayer.style.setProperty(
+      "--rain-blur-blend-mode",
+      params.rainBlurBlendMode,
+    );
+    rainLayer.style.setProperty("--rain-blur-radius", `${params.rainBlurPx}px`);
+    rainLayer.style.setProperty(
+      "--rain-blur-opacity",
+      params.rainBlurOpacity.toFixed(2),
+    );
+    rainLayer.style.setProperty(
+      "--rain-blur-saturation",
+      params.rainBlurSaturation.toFixed(2),
+    );
 
     if (restartIfActive && rain.active) {
       stopRainRenderers();
@@ -436,6 +465,7 @@ export function createSisyphusRuntime(elements = {}) {
     let height = 1;
     let drops = [];
     let rainProfile = initialRainProfile;
+    let fallbackStrokeRgb = rainProfile.fallbackColor.join(", ");
 
     const syncDropCount = () => {
       const density = clamp((width * height) / (1280 * 720), 0.8, 1.6);
@@ -471,7 +501,7 @@ export function createSisyphusRuntime(elements = {}) {
 
       for (const drop of drops) {
         context.beginPath();
-        context.strokeStyle = `rgba(82, 113, 143, ${drop.alpha})`;
+        context.strokeStyle = `rgba(${fallbackStrokeRgb}, ${drop.alpha})`;
         context.lineWidth = drop.width;
         context.moveTo(drop.x, drop.y);
         context.lineTo(drop.x - drop.length * drop.drift, drop.y + drop.length);
@@ -496,6 +526,7 @@ export function createSisyphusRuntime(elements = {}) {
       resize,
       setProfile: (nextProfile) => {
         rainProfile = nextProfile;
+        fallbackStrokeRgb = rainProfile.fallbackColor.join(", ");
         syncDropCount();
       },
       stop: () => window.cancelAnimationFrame(frameId),
@@ -523,10 +554,14 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    const theme = currentRainTheme();
     const rainProfile = getRainVisualProfile({
       rainStrength: params.rainStrength,
-      theme: currentRainTheme(),
+      theme,
+      backgroundBlurSteps:
+        theme === "dark" ? params.rainBackgroundBlurSteps : undefined,
     });
+    rain.lastProfile = rainProfile;
     rain.active = true;
     const token = ++rain.renderToken;
 
@@ -541,8 +576,6 @@ export function createSisyphusRuntime(elements = {}) {
     window.addEventListener("resize", handleResize, { passive: true });
 
     setRainOpacity(rainFxCanvas, 0);
-    resizeCanvasToCssPixels(rainFallbackCanvas);
-    rain.fallback = startFallbackRain(rainFallbackCanvas, rainProfile);
     setRainOpacity(rainFallbackCanvas, 0);
 
     window.requestAnimationFrame(async () => {
@@ -804,6 +837,10 @@ export function createSisyphusRuntime(elements = {}) {
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
+      rainBackgroundBlurSteps: params.rainBackgroundBlurSteps.toFixed(0),
+      rainBlurPx: `${params.rainBlurPx.toFixed(0)} px`,
+      rainBlurOpacity: `${Math.round(params.rainBlurOpacity * 100)}%`,
+      rainBlurSaturation: `${Math.round(params.rainBlurSaturation * 100)}%`,
       rainZIndex: params.rainZIndex.toFixed(0),
       rainEnterMs: params.rainEnterMs.toFixed(0),
       rainExitMs: params.rainExitMs.toFixed(0),
@@ -847,6 +884,12 @@ export function createSisyphusRuntime(elements = {}) {
       normalizeRainSettings(
         {
           rainStrength: num("rainStrength"),
+          rainBlendMode: str("rainBlendMode"),
+          rainBlurBlendMode: str("rainBlurBlendMode"),
+          rainBackgroundBlurSteps: num("rainBackgroundBlurSteps"),
+          rainBlurPx: num("rainBlurPx"),
+          rainBlurOpacity: num("rainBlurOpacity"),
+          rainBlurSaturation: num("rainBlurSaturation"),
           rainZIndex: num("rainZIndex"),
           rainEnterEasing: str("rainEnterEasing"),
           rainExitEasing: str("rainExitEasing"),
@@ -855,6 +898,12 @@ export function createSisyphusRuntime(elements = {}) {
         },
         {
           defaults: {
+            rainBlendMode: DEFAULT_RAIN_BLEND_MODE,
+            rainBlurBlendMode: DEFAULT_RAIN_BLUR_BLEND_MODE,
+            rainBackgroundBlurSteps: DEFAULT_RAIN_BACKGROUND_BLUR_STEPS,
+            rainBlurPx: DEFAULT_RAIN_BLUR_PX,
+            rainBlurOpacity: DEFAULT_RAIN_BLUR_OPACITY,
+            rainBlurSaturation: DEFAULT_RAIN_BLUR_SATURATION,
             rainEnterEasing: DEFAULT_RAIN_ENTER_EASING,
             rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
             rainEnterMs: DEFAULT_RAIN_ENTER_MS,
@@ -893,12 +942,27 @@ export function createSisyphusRuntime(elements = {}) {
     params.glowColor = str("glowColor");
 
     settingsPanel.querySelector('[name="rainStrength"]').value = params.rainStrength;
+    settingsPanel.querySelector('[name="rainBlendMode"]').value =
+      params.rainBlendMode;
+    settingsPanel.querySelector('[name="rainBlurBlendMode"]').value =
+      params.rainBlurBlendMode;
+    settingsPanel.querySelector('[name="rainBackgroundBlurSteps"]').value =
+      params.rainBackgroundBlurSteps;
+    settingsPanel.querySelector('[name="rainBlurPx"]').value = params.rainBlurPx;
+    settingsPanel.querySelector('[name="rainBlurOpacity"]').value =
+      params.rainBlurOpacity;
+    settingsPanel.querySelector('[name="rainBlurSaturation"]').value =
+      params.rainBlurSaturation;
     settingsPanel.querySelector('[name="rainZIndex"]').value = params.rainZIndex;
     settingsPanel.querySelector('[name="rainEnterEasing"]').value = params.rainEnterEasing;
     settingsPanel.querySelector('[name="rainExitEasing"]').value = params.rainExitEasing;
     settingsPanel.querySelector('[name="rainEnterMs"]').value = params.rainEnterMs;
     settingsPanel.querySelector('[name="rainExitMs"]').value = params.rainExitMs;
-    applyRainSettings({ restartIfActive: changedKey === "rainStrength" });
+    applyRainSettings({
+      restartIfActive:
+        changedKey === "rainStrength" ||
+        changedKey === "rainBackgroundBlurSteps",
+    });
     if (changedKey === "rainEnabled" || changedKey === "") {
       syncRainVisibility({
         immediate: changedKey === "",
@@ -918,6 +982,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     updateControlOutputs();
     saveSettings();
+    trail.dirty = true;
     drawTrail();
     if (
       collab.enabled &&
@@ -1418,6 +1483,7 @@ export function createSisyphusRuntime(elements = {}) {
     trail.lastY = last ? last.y : null;
     trail.followX = trail.lastX;
     trail.followY = trail.lastY;
+    trail.dirty = true;
     drawTrail();
   }
 
@@ -2333,11 +2399,12 @@ export function createSisyphusRuntime(elements = {}) {
       trail.pixelRatio = ratio;
       trailCanvas.width = bufferWidth;
       trailCanvas.height = bufferHeight;
+      trail.dirty = true;
     }
   }
 
   function resizeTrailCanvas() {
-    ensureTrailCanvasSize();
+    trail.dirty = true;
     drawTrail();
   }
 
@@ -2348,6 +2415,7 @@ export function createSisyphusRuntime(elements = {}) {
     trail.followX = null;
     trail.followY = null;
     clearTrailCanvas();
+    trail.dirty = false;
   }
 
   function trimTrailToLimit() {
@@ -2357,6 +2425,7 @@ export function createSisyphusRuntime(elements = {}) {
     const overflow = trail.points.length - params.trailMaxPoints;
     if (overflow > 0) {
       trail.points.splice(0, overflow);
+      trail.dirty = true;
     }
   }
 
@@ -2403,6 +2472,7 @@ export function createSisyphusRuntime(elements = {}) {
     trail.points.push({ x, y });
     trail.lastX = x;
     trail.lastY = y;
+    trail.dirty = true;
 
     trimTrailToLimit();
   }
@@ -2419,6 +2489,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function drawTrail() {
     ensureTrailCanvasSize();
+    if (!trail.dirty) {
+      return;
+    }
+    trail.dirty = false;
     clearTrailCanvas();
 
     const points = trail.points;
@@ -3033,6 +3107,7 @@ export function createSisyphusRuntime(elements = {}) {
         window.scrollTo(0, 0);
         return;
       }
+      trail.dirty = true;
       drawTrail();
     },
     { passive: true }
@@ -3069,6 +3144,17 @@ export function createSisyphusRuntime(elements = {}) {
     initialSharedState,
     motion,
     params,
+    getLastRainRendererProfile: () => {
+      const profile = rain.lastProfile;
+      return profile
+        ? {
+            theme: profile.theme,
+            raindropDiffuseLight: [...profile.raindropDiffuseLight],
+            raindropSpecularLight: [...profile.raindropSpecularLight],
+          }
+        : null;
+    },
+    getRainRenderToken: () => rain.renderToken,
     resetTrail,
     sendShared,
     setPosition,

@@ -1,17 +1,30 @@
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
 import { createSisyphusRuntime } from "../runtime/createSisyphusRuntime";
-import { useRainEffect } from "./useRainEffect";
-import { useRealtimeSession } from "./useRealtimeSession";
-import { useSceneController } from "./useSceneController";
 import { useSettings } from "./useSettings";
-import { useTrailCanvas } from "./useTrailCanvas";
 
 export function useSisyphusExperience() {
   const settings = useSettings();
-  const realtime = useRealtimeSession();
-  const scene = useSceneController();
-  const trail = useTrailCanvas();
-  const rain = useRainEffect();
+  const realtime = {
+    sessionStatusRef: useRef(null),
+    sessionShareToggleRef: useRef(null),
+    sessionRestartButtonRef: useRef(null),
+  };
+  const scene = {
+    worldRef: useRef(null),
+    rockRef: useRef(null),
+    rockImprintRef: useRef(null),
+    handCursorRef: useRef(null),
+    remoteCursorLayerRef: useRef(null),
+    hintRef: useRef(null),
+  };
+  const trail = {
+    trailCanvasRef: useRef(null),
+  };
+  const rain = {
+    rainLayerRef: useRef(null),
+    rainFxCanvasRef: useRef(null),
+    rainFallbackCanvasRef: useRef(null),
+  };
 
   const {
     settingsPanelRef,

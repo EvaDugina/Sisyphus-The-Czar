@@ -8,6 +8,7 @@ const LIGHT_RAIN_PROFILE = {
   fallbackDropCount: 130,
   fallbackOpacity: 0.36,
   fallbackAlpha: [0.18, 0.46],
+  fallbackColor: [82, 113, 143],
   fallbackLength: [16, 50],
   fallbackSpeed: [9, 21],
   fallbackWidth: [0.8, 2],
@@ -26,12 +27,13 @@ const DARK_RAIN_PROFILE = {
   ...LIGHT_RAIN_PROFILE,
   dropletsPerSecond: 1800,
   fxOpacity: 0.5,
+  fallbackColor: [82, 82, 82],
   mistColor: [0.04, 0.04, 0.04, 0.8],
   spawnInterval: [0.01, 0.04],
   spawnLimit: 1800,
   spawnSize: [45, 120],
-  raindropDiffuseLight: [0.45, 0.45, 0.45],
-  raindropSpecularLight: [0.8, 0.8, 0.8],
+  raindropDiffuseLight: [0.55, 0.55, 0.55],
+  raindropSpecularLight: [1, 1, 1],
 };
 
 function finiteNumber(value, fallback) {
@@ -51,7 +53,11 @@ function rainProfileForTheme(theme) {
   return theme === "dark" ? DARK_RAIN_PROFILE : LIGHT_RAIN_PROFILE;
 }
 
-export function getRainVisualProfile({ rainStrength = 1, theme = "light" } = {}) {
+export function getRainVisualProfile({
+  rainStrength = 1,
+  theme = "light",
+  backgroundBlurSteps,
+} = {}) {
   const baseProfile = rainProfileForTheme(theme);
   const strength = clamp(
     finiteNumber(rainStrength, 1),
@@ -76,6 +82,7 @@ export function getRainVisualProfile({ rainStrength = 1, theme = "light" } = {})
     fallbackAlpha: baseProfile.fallbackAlpha.map((alpha) =>
       clamp(alpha * opacityScale, 0.04, 0.72)
     ),
+    fallbackColor: [...baseProfile.fallbackColor],
     fallbackLength: scaleRainRange(baseProfile.fallbackLength, sizeScale),
     fallbackSpeed: scaleRainRange(baseProfile.fallbackSpeed, speedScale),
     fallbackWidth: scaleRainRange(baseProfile.fallbackWidth, widthScale),
@@ -96,7 +103,13 @@ export function getRainVisualProfile({ rainStrength = 1, theme = "light" } = {})
     ],
     spawnLimit: Math.round(baseProfile.spawnLimit * strength),
     spawnSize: scaleRainRange(baseProfile.spawnSize, sizeScale),
-    backgroundBlurSteps: baseProfile.backgroundBlurSteps,
+    backgroundBlurSteps: Math.round(
+      clamp(
+        finiteNumber(backgroundBlurSteps, baseProfile.backgroundBlurSteps),
+        0,
+        8,
+      ),
+    ),
     raindropCompose: baseProfile.raindropCompose,
     raindropDiffuseLight: baseProfile.raindropDiffuseLight,
     raindropSpecularLight: baseProfile.raindropSpecularLight,

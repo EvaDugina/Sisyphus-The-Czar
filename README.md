@@ -9,10 +9,18 @@
 Нужны Docker Engine и Docker Compose v2:
 
 ```bash
-docker compose -f docker-compose.dev.yml up --build
+docker compose -f docker-compose.dev.yml up -d --build
 ```
 
-Приложение откроется на `http://127.0.0.1:18082/`. После первого запуска контейнер оставляют работающим: изменения в `src/`, `index.html` и `assets/` применяются React Fast Refresh/Vite HMR примерно за 150–300 мс, изменения в `shared/physics.js` вызывают полный reload страницы, а Nodemon автоматически перезапускает Express при изменениях `server/` и `shared/`. Ручные `restart`, `up` или пересборка для исходников не нужны. Только изменение зависимостей, Dockerfile или Compose-конфигурации требует `docker compose -f docker-compose.dev.yml up -d --build`.
+Приложение откроется на `http://127.0.0.1:18082/`. После первого запуска контейнер оставляют работающим: изменения в `src/`, `index.html` и `assets/` применяются React Fast Refresh/Vite HMR обычно за 50–150 мс, изменения в `shared/physics.js` вызывают полный reload страницы примерно через 250 мс, а Nodemon автоматически перезапускает Express при изменениях `server/` и `shared/`. Исходники и dev-конфиги подключены bind mounts, поэтому ручные `restart`, `up` и пересборка после изменения кода не нужны.
+
+После остановки контейнер обычно поднимают без сборки:
+
+```bash
+docker compose -f docker-compose.dev.yml up -d
+```
+
+Пересборка нужна только после изменения зависимостей в `package.json`/`package-lock.json` или development-stage в `Dockerfile`. Изменение Compose-конфигурации требует повторного `docker compose -f docker-compose.dev.yml up -d`, но не требует `--build`, если образ не менялся.
 
 Остановить локальный контейнер:
 
@@ -27,6 +35,8 @@ docker compose -f docker-compose.dev.yml down
 3. Отправьте скопированный URL второму участнику.
 
 Один участник держит камень, остальные наблюдают и могут взять его после отпускания. Физика общая; оформление следа и ливня остаётся локальным. Reload/reconnect и пересоздание контейнера сохраняют ID и серверное состояние комнаты в Docker volume. После выхода последнего участника комната ждёт 10 секунд и удаляется, если никто не вернулся.
+
+Production frontend использует WebP для камня и курсоров, включает общую физику в Vite bundle, перерисовывает Canvas следа только после изменений и запускает 2D fallback дождя только при ошибке WebGL. Текущая production-сборка занимает около 1,19 МБ вместо прежних 6,2 МБ.
 
 ## Настройки
 

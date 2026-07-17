@@ -4,7 +4,20 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 
 const backend = "http://127.0.0.1:8081";
-const sharedReloadDelayMs = 600;
+
+function positiveIntegerFromEnv(name, fallback) {
+  const value = Number.parseInt(process.env[name] ?? "", 10);
+  return Number.isInteger(value) && value > 0 ? value : fallback;
+}
+
+const sharedReloadDelayMs = positiveIntegerFromEnv(
+  "VITE_SHARED_RELOAD_DELAY_MS",
+  250,
+);
+const watchIntervalMs = positiveIntegerFromEnv(
+  "VITE_WATCH_INTERVAL_MS",
+  50,
+);
 const sharedPhysicsPath = fileURLToPath(
   new URL("./shared/physics.js", import.meta.url),
 );
@@ -46,7 +59,7 @@ export default defineConfig({
     hmr: hmrClientPort ? { clientPort: hmrClientPort } : undefined,
     watch: {
       usePolling: true,
-      interval: 150,
+      interval: watchIntervalMs,
       ignored: [
         "**/.git/**",
         "**/node_modules/**",

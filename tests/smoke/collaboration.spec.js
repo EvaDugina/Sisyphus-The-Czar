@@ -328,15 +328,26 @@ test("два браузера видят один камень и по очер�
   await openControlGroup(first, "Дождь");
   const firstRain = first.getByTestId("weather-rain");
   await setRange(first, "rainStrength", 1.25);
+  await setField(first, "rainBlendMode", "screen");
+  await setField(first, "rainBlurBlendMode", "overlay");
+  await setRange(first, "rainBlurPx", 18);
+  await setRange(first, "rainBlurOpacity", 0.3);
+  await setRange(first, "rainBlurSaturation", 1.25);
   await setField(first, "rainEnterEasing", "cubic-bezier(0.12, 0.8, 0.2, 1)");
   await setField(first, "rainExitEasing", "cubic-bezier(0.7, 0, 0.3, 1)");
   await setField(first, "rainEnterMs", 650);
   await setField(first, "rainExitMs", 700);
   await setField(first, "rainZIndex", 9);
   await expect(first.locator('[data-output="rainStrength"]')).toHaveText("125%");
+  await expect(first.locator('[data-output="rainBackgroundBlurSteps"]')).toHaveText("3");
+  await expect(first.locator('[data-output="rainBlurPx"]')).toHaveText("18 px");
+  await expect(first.locator('[data-output="rainBlurOpacity"]')).toHaveText("30%");
+  await expect(first.locator('[data-output="rainBlurSaturation"]')).toHaveText("125%");
   await expect(first.locator('[data-output="rainEnterMs"]')).toHaveText("650");
   await expect(first.locator('[data-output="rainExitMs"]')).toHaveText("700");
   await expect(first.locator('[data-output="rainZIndex"]')).toHaveText("9");
+  await expect(first.locator('[name="rainBlendMode"]')).toHaveValue("screen");
+  await expect(first.locator('[name="rainBlurBlendMode"]')).toHaveValue("overlay");
   await expect
     .poll(() =>
       first.evaluate(() => {
@@ -348,12 +359,14 @@ test("два браузера видят один камень и по очер�
           rainEnterMs: stored.rainEnterMs,
           rainExitEasing: stored.rainExitEasing,
           rainExitMs: stored.rainExitMs,
+          rainBlendMode: stored.rainBlendMode,
+          rainBackgroundBlurSteps: stored.rainBackgroundBlurSteps,
+          rainBlurBlendMode: stored.rainBlurBlendMode,
+          rainBlurOpacity: stored.rainBlurOpacity,
+          rainBlurPx: stored.rainBlurPx,
+          rainBlurSaturation: stored.rainBlurSaturation,
           rainStrength: stored.rainStrength,
           rainZIndex: stored.rainZIndex,
-          hasBlurSettings: Object.keys(stored).some(
-            (key) => key.startsWith("rainBlur") ||
-              key === "rainBackgroundBlurSteps"
-          ),
         };
       })
     )
@@ -362,9 +375,14 @@ test("два браузера видят один камень и по очер�
       rainEnterMs: 650,
       rainExitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
       rainExitMs: 700,
+      rainBlendMode: "screen",
+      rainBackgroundBlurSteps: 3,
+      rainBlurBlendMode: "overlay",
+      rainBlurOpacity: 0.3,
+      rainBlurPx: 18,
+      rainBlurSaturation: 1.25,
       rainStrength: 1.25,
       rainZIndex: 9,
-      hasBlurSettings: false,
     });
   await expect
     .poll(() =>
@@ -372,6 +390,9 @@ test("два браузера видят один камень и по очер�
         const layerStyle = getComputedStyle(layer);
         const canvas = layer.querySelector(".weather-rain__canvas");
         const fallbackCanvas = layer.querySelector(".weather-rain__canvas--fallback");
+        const blurStyle = getComputedStyle(
+          layer.querySelector(".weather-rain__blur")
+        );
         const canvasStyle = getComputedStyle(canvas);
         const fallbackStyle = getComputedStyle(fallbackCanvas);
         return {
@@ -388,6 +409,10 @@ test("два браузера видят один камень и по очер�
             .getPropertyValue("--rain-exit-easing")
             .trim(),
           hasBlurLayer: Boolean(layer.querySelector(".weather-rain__blur")),
+          blurDisplay: getComputedStyle(
+            layer.querySelector(".weather-rain__blur")
+          ).display,
+          blurBlendMode: blurStyle.mixBlendMode,
           layerBlendMode: layerStyle.mixBlendMode,
           canvasBlendMode: canvasStyle.mixBlendMode,
           fallbackOpacity: fallbackStyle.opacity,
@@ -401,8 +426,10 @@ test("два браузера видят один камень и по очер�
       enterEasing: "cubic-bezier(0.12, 0.8, 0.2, 1)",
       exitDuration: "700ms",
       exitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
-      hasBlurLayer: false,
-      layerBlendMode: "multiply",
+      hasBlurLayer: true,
+      blurDisplay: "none",
+      blurBlendMode: "overlay",
+      layerBlendMode: "screen",
       canvasBlendMode: "normal",
       fallbackOpacity: "0",
       layerZIndex: "9",
@@ -411,7 +438,23 @@ test("два браузера видят один камень и по очер�
   await expect(first.locator('[name="rainEnabled"]')).not.toBeChecked();
   await setCheckbox(first, "rainEnabled", true);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
-  await expect(firstRain.locator(".weather-rain__blur")).toHaveCount(0);
+  await expect(firstRain.locator(".weather-rain__blur")).toHaveCount(1);
+  const rainRenderToken = await first.evaluate(() => getRainRenderToken());
+  await setRange(first, "rainBackgroundBlurSteps", 4);
+  await expect(first.locator('[data-output="rainBackgroundBlurSteps"]')).toHaveText("4");
+  await expect
+    .poll(() => first.evaluate(() => getRainRenderToken()))
+    .toBeGreaterThan(rainRenderToken);
+  await expect
+    .poll(() =>
+      first.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v3") || "{}"
+        );
+        return stored.rainBackgroundBlurSteps;
+      })
+    )
+    .toBe(4);
   await expect
     .poll(() =>
       firstRain.evaluate((layer) => {
@@ -487,6 +530,8 @@ test("два браузера видят один камень и по очер�
   await second.locator(".settings-toggle").click();
   await expect(second.getByTestId("session-status")).toContainText("В сессии");
   await openControlGroup(second, "Дождь");
+  await expect(second.locator('[name="rainBlendMode"]')).toHaveValue("multiply");
+  await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue("normal");
   await setField(second, "rainExitMs", 700);
   await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("700");
   await expect(first.getByTestId("session-status")).toContainText("2");
@@ -525,7 +570,7 @@ test("два браузера видят один камень и по очер�
   await expect(remoteCursor).toHaveCSS("opacity", "1");
   await expect(remoteCursor).toHaveCSS(
     "background-image",
-    /cursor-grab(?:-[A-Za-z0-9_-]+)?\.png/
+    /cursor-grab(?:-[A-Za-z0-9_-]+)?\.webp/
   );
   const positionBeforeFirstTouch = await first.evaluate(() => ({
     x: Number.parseFloat(
@@ -571,7 +616,7 @@ test("два браузера видят один камень и по очер�
   await expect(remoteCursor).toHaveCSS("opacity", "1");
   await expect(remoteCursor).toHaveCSS(
     "background-image",
-    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.png/
+    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.webp/
   );
   const firstImprint = first.getByTestId("rock-imprint");
   const secondImprint = second.getByTestId("rock-imprint");
@@ -686,6 +731,16 @@ test("два браузера видят один камень и по очер�
   const secondRain = second.getByTestId("weather-rain");
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   await expect(secondRain).toHaveClass(/is-rain-visible/);
+  await expect
+    .poll(() => second.evaluate(() => getLastRainRendererProfile()))
+    .toEqual({
+      theme: "light",
+      raindropDiffuseLight: [0.42, 0.42, 0.44],
+      raindropSpecularLight: [0.78, 0.78, 0.8],
+    });
+  const lightThemeRainRenderToken = await second.evaluate(() =>
+    getRainRenderToken()
+  );
   const rainLayering = await second.evaluate(() => {
     const rainLayer = document.querySelector(".weather-rain");
     const summit = document.querySelector(".summit");
@@ -773,11 +828,46 @@ test("два браузера видят один камень и по очер�
   await expect(secondRain).toHaveClass(/is-rain-hiding/);
   await expect
     .poll(() =>
+      firstRain.evaluate((layer) => {
+        const blur = layer.querySelector(".weather-rain__blur");
+        const blurStyle = getComputedStyle(blur);
+        const layerStyle = getComputedStyle(layer);
+        return {
+          hasBlurFilter: blurStyle.backdropFilter.includes("blur(18px)"),
+          hasSaturationFilter:
+            blurStyle.backdropFilter.includes("saturate(1.25)"),
+          hasLinearGradient:
+            blurStyle.backgroundImage.includes("linear-gradient"),
+          hasRadialGradient:
+            blurStyle.backgroundImage.includes("radial-gradient"),
+          blurBlendMode: blurStyle.mixBlendMode,
+          display: blurStyle.display,
+          opacity: blurStyle.opacity,
+          radius: layerStyle.getPropertyValue("--rain-blur-radius").trim(),
+          saturation: layerStyle
+            .getPropertyValue("--rain-blur-saturation")
+            .trim(),
+        };
+      })
+    )
+    .toEqual({
+      hasBlurFilter: true,
+      hasSaturationFilter: true,
+      hasLinearGradient: true,
+      hasRadialGradient: false,
+      blurBlendMode: "overlay",
+      display: "block",
+      opacity: "0.3",
+      radius: "18px",
+      saturation: "1.25",
+    });
+  await expect
+    .poll(() =>
       secondRain.evaluate((layer) =>
         getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
       )
     )
-    .toBe("normal");
+    .toBe("multiply");
   await expect
     .poll(() =>
       secondRain.evaluate((layer) =>
@@ -789,6 +879,16 @@ test("два браузера видят один камень и по очер�
   await second.mouse.up();
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  await expect
+    .poll(() => second.evaluate(() => getRainRenderToken()))
+    .toBeGreaterThan(lightThemeRainRenderToken);
+  await expect
+    .poll(() => second.evaluate(() => getLastRainRendererProfile()))
+    .toEqual({
+      theme: "dark",
+      raindropDiffuseLight: [0.55, 0.55, 0.55],
+      raindropSpecularLight: [1, 1, 1],
+    });
   await expect(firstRain).not.toHaveClass(/is-rain-visible/);
   await expect(secondRain).not.toHaveClass(/is-rain-visible/);
   await expect
@@ -797,14 +897,14 @@ test("два браузера видят один камень и по очер�
         getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
       )
     )
-    .toBe("normal");
+    .toBe("multiply");
   await expect
     .poll(() =>
       firstRain.evaluate((layer) =>
         getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
       )
     )
-    .toBe("normal");
+    .toBe("screen");
   await expect
     .poll(() =>
       secondRain.evaluate((layer) =>
@@ -870,9 +970,31 @@ test("два браузера видят один камень и по очер�
       })
     )
     .toEqual({
-      canvasBlendMode: "normal",
+      canvasBlendMode: "multiply",
       layerBlendMode: "normal",
     });
+  const rainBlendOverride = await second.addStyleTag({
+    content: ".weather-rain__canvas--fx { mix-blend-mode: screen; }",
+  });
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(
+          layer.querySelector(".weather-rain__canvas--fx")
+        ).mixBlendMode
+      )
+    )
+    .toBe("screen");
+  await rainBlendOverride.evaluate((style) => style.remove());
+  await expect
+    .poll(() =>
+      secondRain.evaluate((layer) =>
+        getComputedStyle(
+          layer.querySelector(".weather-rain__canvas--fx")
+        ).mixBlendMode
+      )
+    )
+    .toBe("multiply");
   await expect
     .poll(() =>
       secondRain.evaluate((layer) =>

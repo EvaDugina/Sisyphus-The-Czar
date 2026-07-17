@@ -135,6 +135,11 @@ body.state-won .rock {
 }
 
 .weather-rain {
+  --rain-blend-mode: multiply;
+  --rain-blur-blend-mode: normal;
+  --rain-fallback-blend-mode: normal;
+  --rain-fx-blend-mode: normal;
+
   position: fixed;
   inset: 0;
   z-index: var(--rain-layer-z-index, 5);
@@ -149,10 +154,13 @@ body.state-won .rock {
 }
 
 body.theme-light .weather-rain {
-  mix-blend-mode: multiply;
+  mix-blend-mode: var(--rain-blend-mode, multiply);
 }
 
 body.theme-dark .weather-rain {
+  --rain-fallback-blend-mode: var(--rain-blend-mode, multiply);
+  --rain-fx-blend-mode: var(--rain-blend-mode, multiply);
+
   mix-blend-mode: normal;
 }
 
@@ -172,6 +180,34 @@ body.theme-dark .weather-rain {
     visibility 0s linear var(--rain-exit-duration, 2000ms);
 }
 
+.weather-rain__blur {
+  position: absolute;
+  inset: -2rem;
+  z-index: 0;
+  display: none;
+  background: linear-gradient(
+    145deg,
+    rgba(255, 255, 255, 0.48) 0%,
+    rgba(235, 238, 241, 0.3) 52%,
+    rgba(255, 255, 255, 0.4) 100%
+  );
+  opacity: var(--rain-blur-opacity, 0.2);
+  mix-blend-mode: var(--rain-blur-blend-mode, normal);
+  pointer-events: none;
+  transform: translateZ(0);
+  -webkit-backdrop-filter:
+    blur(var(--rain-blur-radius, 14px))
+    saturate(var(--rain-blur-saturation, 1.1));
+  backdrop-filter:
+    blur(var(--rain-blur-radius, 14px))
+    saturate(var(--rain-blur-saturation, 1.1));
+  will-change: backdrop-filter, opacity;
+}
+
+body.theme-dark .weather-rain__blur {
+  display: block;
+}
+
 .weather-rain__canvas {
   position: absolute;
   inset: 0;
@@ -183,8 +219,12 @@ body.theme-dark .weather-rain {
   pointer-events: none;
 }
 
-body.theme-dark .weather-rain__canvas {
-  mix-blend-mode: normal;
+.weather-rain__canvas--fx {
+  mix-blend-mode: var(--rain-fx-blend-mode, normal);
+}
+
+.weather-rain__canvas--fallback {
+  mix-blend-mode: var(--rain-fallback-blend-mode, normal);
 }
 
 body.theme-light .weather-rain__canvas--fallback {
@@ -206,7 +246,7 @@ body.theme-light .weather-rain__canvas--fallback {
   display: none;
   width: var(--cursor-width);
   height: var(--cursor-height);
-  background-image: url("../../assets/cursor-grab.png");
+  background-image: url("../../assets/cursor-grab.webp");
   background-position: center top;
   background-repeat: no-repeat;
   background-size: contain;
@@ -239,13 +279,13 @@ body.theme-light .weather-rain__canvas--fallback {
 .hand-cursor.is-alternate {
   --hotspot-y: 216px;
 
-  background-image: url("../../assets/cursor-grabbing.png");
+  background-image: url("../../assets/cursor-grabbing.webp");
 }
 
 .hand-cursor.is-grabbing {
   --hotspot-y: 216px;
 
-  background-image: url("../../assets/cursor-grabbing.png");
+  background-image: url("../../assets/cursor-grabbing.webp");
   filter: drop-shadow(0 1.25rem 1.35rem rgba(0, 0, 0, 0.62));
   transform: translate3d(
       calc(var(--cursor-x) - var(--hotspot-x)),

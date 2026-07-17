@@ -7,7 +7,7 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "concurrently --kill-others --names server,client \"npm:dev:server\" \"npm:dev:client\"",
-    "dev:server": "cross-env PORT=8081 DEBUG=true nodemon --legacy-watch --watch server --watch shared --ext js --exec node server/index.js",
+    "dev:server": "cross-env PORT=8081 DEBUG=true nodemon --legacy-watch --delay 100ms --watch server --watch shared --ext js --exec node server/index.js",
     "dev:client": "vite",
     "build": "vite build",
     "lint": "npm run lint:server && npm run lint:frontend",

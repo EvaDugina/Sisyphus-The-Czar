@@ -13,9 +13,14 @@ services:
       SESSION_STORE_PATH: "/app/data/sessions.json"
       SESSION_PERSIST_INTERVAL_MS: "250"
       VITE_HMR_CLIENT_PORT: "18082"
+      VITE_SHARED_RELOAD_DELAY_MS: "250"
+      VITE_WATCH_INTERVAL_MS: "50"
     ports:
       - "127.0.0.1:18082:8080"
     volumes:
+      - ./package.json:/app/package.json:ro
+      - ./package-lock.json:/app/package-lock.json:ro
+      - ./eslint.config.mjs:/app/eslint.config.mjs:ro
       - ./index.html:/app/index.html:ro
       - ./vite.config.mjs:/app/vite.config.mjs:ro
       - ./src:/app/src:ro
