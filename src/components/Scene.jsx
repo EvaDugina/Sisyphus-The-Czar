@@ -10,7 +10,7 @@ export function Scene({ scene, trail, rain }) {
       <section className="summit" aria-hidden="true">
         <div className="target-zone" />
         <h2 className="title2">Миниатюра</h2>
-        <h1 className="title">ЦАРЬ ДОЖДЯ</h1>
+        <h1 className="title">ЦАРИ ДОЖДЯ</h1>
       </section>
       <WeatherRain
         layerRef={rain.rainLayerRef}

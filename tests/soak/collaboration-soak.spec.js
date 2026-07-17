@@ -25,6 +25,14 @@ async function visibleRockPoint(page) {
   });
 }
 
+async function scrollToRock(page) {
+  await page.locator(".rock").evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    const targetY = window.scrollY + rect.top - window.innerHeight * 0.45;
+    window.scrollTo(0, Math.max(0, targetY));
+  });
+}
+
 async function grabVisibleRock(page) {
   const status = page.getByTestId("session-status");
   let lastError = null;
@@ -76,7 +84,7 @@ test("два браузера работают 10 минут без зависш
   while (Date.now() - startedAt < SOAK_DURATION_MS) {
     const actor = pages[iteration % pages.length];
     const observer = pages[(iteration + 1) % pages.length];
-    await actor.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await scrollToRock(actor);
     await grabVisibleRock(actor);
     await expect(actor.getByTestId("session-status")).toContainText("камень у вас");
     await expect(observer.getByTestId("session-status")).toContainText("другой участник");

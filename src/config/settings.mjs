@@ -1,7 +1,10 @@
 import { MIX_BLEND_MODES } from "../lib/settingsModel.mjs";
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v3";
-export const LEGACY_SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v2";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v4";
+export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v3",
+  "sisyphus-czar-settings-v2",
+];
 
 const MIX_BLEND_LABELS = {
   normal: "Обычное",
@@ -124,7 +127,7 @@ export const SETTINGS_GROUPS = [
         name: "trailEnabled",
         label: "Показывать след",
         type: "checkbox",
-        defaultChecked: true,
+        defaultChecked: false,
         hint: "Включает или выключает отрисовку следа за камнем.",
       },
       {

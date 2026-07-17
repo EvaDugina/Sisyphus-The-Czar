@@ -12,7 +12,7 @@ import { shouldStartRainExit } from "../lib/rainState.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import { normalizeRainSettings } from "../lib/settingsModel.mjs";
 import {
-  LEGACY_SETTINGS_STORAGE_KEY,
+  LEGACY_SETTINGS_STORAGE_KEYS,
   SETTINGS_STORAGE_KEY,
 } from "../config/settings.mjs";
 
@@ -64,8 +64,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   const PHASES = SharedPhysics.PHASES;
 
-  // Камера занимает 200vh, но физика не читает DOM-высоту .world.
-  const SCENE_VIEWPORT_HEIGHTS = 2;
+  // DOM-сцена 10000vh равна 100 высотам viewport. Камень падает до этого
+  // фактического низа, но стартовая позиция остаётся в первом экране.
+  const SCENE_VIEWPORT_HEIGHTS = 100;
+  const INTRO_CANONICAL_Y = SharedPhysics.WORLD_HEIGHT * 0.0021;
   const FLOOR_INSET = 0;
   const DRAG_LIFT_BASE_SPEED = 420;
   const DRAG_LIFT_FORCE_SPEED = 880;
@@ -112,7 +114,7 @@ export function createSisyphusRuntime(elements = {}) {
     rainExitMs: DEFAULT_RAIN_EXIT_MS,
 
     // След
-    trailEnabled: true,
+    trailEnabled: false,
     trailReset: false,
     lineDelay: 0.5,
     trailMaxPoints: 1000,
@@ -771,7 +773,10 @@ export function createSisyphusRuntime(elements = {}) {
     let migratedLegacySettings = false;
     try {
       const current = localStorage.getItem(STORAGE_KEY);
-      const raw = current ?? localStorage.getItem(LEGACY_SETTINGS_STORAGE_KEY);
+      const legacy = LEGACY_SETTINGS_STORAGE_KEYS.map((key) =>
+        localStorage.getItem(key)
+      ).find((value) => value !== null);
+      const raw = current ?? legacy;
       migratedLegacySettings = current === null && raw !== null;
       stored = JSON.parse(raw || "null");
     } catch {
@@ -796,6 +801,9 @@ export function createSisyphusRuntime(elements = {}) {
       Object.hasOwn(stored, "sliding")
     ) {
       stored = { ...stored, groundFriction: stored.sliding };
+    }
+    if (migratedLegacySettings) {
+      stored = { ...stored, trailEnabled: false };
     }
 
     settingsPanel.querySelectorAll("input, select").forEach((el) => {
@@ -1150,7 +1158,7 @@ export function createSisyphusRuntime(elements = {}) {
     updateBounds();
     return canonicalToLocal(
       SharedPhysics.WORLD_WIDTH / 2,
-      SharedPhysics.WORLD_HEIGHT * 0.16
+      INTRO_CANONICAL_Y
     );
   }
 
@@ -2404,10 +2412,6 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function recordTrailPoint(deltaSeconds) {
-    if (!params.trailEnabled) {
-      return;
-    }
-
     const rockX = motion.x + bounds.rockWidth / 2;
     const rockY = motion.y + bounds.rockHeight / 2;
 
@@ -2437,7 +2441,9 @@ export function createSisyphusRuntime(elements = {}) {
     trail.points.push({ x, y });
     trail.lastX = x;
     trail.lastY = y;
-    trail.dirty = true;
+    if (params.trailEnabled) {
+      trail.dirty = true;
+    }
 
     trimTrailToLimit();
   }

@@ -51,6 +51,14 @@ async function visibleRockPoint(page) {
   });
 }
 
+async function scrollToRock(page) {
+  await page.locator(".rock").evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    const targetY = window.scrollY + rect.top - window.innerHeight * 0.45;
+    window.scrollTo(0, Math.max(0, targetY));
+  });
+}
+
 async function grabVisibleRock(page) {
   const status = page.getByTestId("session-status");
   let lastError = null;
@@ -77,6 +85,14 @@ async function startWithFirstScroll(page) {
     /state-(fallingToBottom|play)/
   );
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
+}
+
+async function trailHasVisiblePixels(page) {
+  return page.locator(".trail").evaluate((canvas) => {
+    const context = canvas.getContext("2d");
+    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
+    return data.some((channel, index) => index % 4 === 3 && channel > 0);
+  });
 }
 
 test("потерянная сессия заменяется рабочей и ссылка копируется", async ({ browser }) => {
@@ -106,7 +122,7 @@ test("потерянная сессия заменяется рабочей и �
   await expect(page.locator("body")).toHaveClass(/state-play/, {
     timeout: 20_000,
   });
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await scrollToRock(page);
   await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("камень у вас");
   await page.mouse.up();
@@ -128,8 +144,8 @@ test("вход на корень перенаправляет в рабочую 
   await page.goto("/");
   await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
-  await expect(page).toHaveTitle("ЦАРЬ ДОЖДЯ");
-  await expect(page.locator(".title")).toHaveText("ЦАРЬ ДОЖДЯ");
+  await expect(page).toHaveTitle("ЦАРИ ДОЖДЯ");
+  await expect(page.locator(".title")).toHaveText("ЦАРИ ДОЖДЯ");
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
@@ -187,25 +203,29 @@ test("вход на корень перенаправляет в рабочую 
   });
   expect(sizeAfterRelease.width).toBeCloseTo(sizeBeforeTouch.width, 1);
   expect(sizeAfterRelease.height).toBeCloseTo(sizeBeforeTouch.height, 1);
-  await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
   await expect
     .poll(() => page.evaluate(() => motion.firstScrollHandled))
     .toBe(true);
   await expect(page.locator("body")).not.toHaveClass(/state-intro/);
-
-  await expect
-    .poll(() =>
-      page.locator(".trail").evaluate((canvas) => {
-        const context = canvas.getContext("2d");
-        const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
-        return data.some((channel, index) => index % 4 === 3 && channel > 0);
-      })
-    )
-    .toBe(true);
-
   await expect(page.locator("body")).toHaveClass(/state-play/, {
     timeout: 20_000,
   });
+  await scrollToRock(page);
+
+  await expect
+    .poll(() => page.evaluate(() => trail.points.length))
+    .toBeGreaterThan(0);
+  await expect.poll(() => trailHasVisiblePixels(page)).toBe(false);
+  await page.locator(".settings-toggle").click();
+  await openControlGroup(page, "След");
+  const trailEnabled = page.locator('[name="trailEnabled"]');
+  await expect(trailEnabled).not.toBeChecked();
+  await trailEnabled.check();
+  await expect
+    .poll(() => trailHasVisiblePixels(page))
+    .toBe(true);
+  await page.locator(".settings-toggle").click();
+
   await expect(page.locator(".rock")).toHaveCSS("pointer-events", "auto");
   const playablePoint = await visibleRockPoint(page);
   await page.mouse.move(playablePoint.x, playablePoint.y);
@@ -288,17 +308,7 @@ test("два браузера видят один камень и по очер�
   const sceneProjection = await first.evaluate(() => {
     updateBounds();
     const bottom = canonicalToLocal(SharedPhysics.WORLD_WIDTH / 2, SharedPhysics.WORLD_HEIGHT);
-    const world = document.querySelector(".world");
-    const originalHeight = world.style.height;
-    const originalMinHeight = world.style.minHeight;
     const originalMaxY = bounds.maxY;
-    world.style.height = "10000vh";
-    world.style.minHeight = "10000vh";
-    updateBounds();
-    const changedDomHeightMaxY = bounds.maxY;
-    world.style.height = originalHeight;
-    world.style.minHeight = originalMinHeight;
-    updateBounds();
     return {
       maxY: originalMaxY,
       bottomY: bottom.y,
@@ -306,16 +316,14 @@ test("два браузера видят один камень и по очер�
       renderedHeight: document.querySelector(".world").offsetHeight,
       viewportHeight: window.innerHeight,
       rockHeight: document.querySelector(".rock").offsetHeight,
-      changedDomHeightMaxY,
     };
   });
-  expect(sceneProjection.renderedHeight / sceneProjection.viewportHeight).toBeCloseTo(2, 1);
+  expect(sceneProjection.renderedHeight / sceneProjection.viewportHeight).toBeCloseTo(100, 0);
   expect(sceneProjection.maxY).toBeCloseTo(
-    sceneProjection.viewportHeight * 2 - sceneProjection.rockHeight,
+    sceneProjection.viewportHeight * 100 - sceneProjection.rockHeight,
     1
   );
   expect(sceneProjection.bottomY).toBeCloseTo(sceneProjection.maxY, 1);
-  expect(sceneProjection.changedDomHeightMaxY).toBeCloseTo(sceneProjection.maxY, 1);
   const sharedUrl = first.url();
 
   const shareToggle = first.getByTestId("share-session-top");
@@ -342,8 +350,12 @@ test("два браузера видят один камень и по очер�
     first.locator(".settings-panel .control-group[open]")
   ).toHaveCount(0);
   await openControlGroup(first, "След");
+  const trailEnabled = first.locator('[name="trailEnabled"]');
   const trailLength = first.locator('[name="trailMaxPoints"]');
   const trailUnlimited = first.locator('[name="trailUnlimited"]');
+  await expect(trailEnabled).not.toBeChecked();
+  await setCheckbox(first, "trailEnabled", true);
+  await expect(trailEnabled).toBeChecked();
   await setRange(first, "trailMaxPoints", 20);
   await trailUnlimited.check();
   await expect(trailLength).toBeDisabled();
@@ -370,7 +382,7 @@ test("два браузера видят один камень и по очер�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v3") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v4") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -403,7 +415,7 @@ test("два браузера видят один камень и по очер�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v3") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v4") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -500,7 +512,7 @@ test("два браузера видят один камень и по очер�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v3") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v4") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -535,7 +547,7 @@ test("два браузера видят один камень и по очер�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v3") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v4") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -546,7 +558,7 @@ test("два браузера видят один камень и по очер�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v3") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v4") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -682,7 +694,7 @@ test("два браузера видят один камень и по очер�
 
   await expect(first.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
   await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
-  await first.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await scrollToRock(first);
   const enabledFirstPoint = await visibleRockPoint(first);
   await first.mouse.move(enabledFirstPoint.x, enabledFirstPoint.y);
   await expect(remoteCursor).toHaveClass(/is-visible/);
@@ -695,16 +707,16 @@ test("два браузера видят один камень и по очер�
   await first.mouse.move(0, 0);
   await expect(remoteCursor).toHaveCount(0);
 
-  await second.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+  await scrollToRock(second);
+  await expect.poll(() => trailHasVisiblePixels(second)).toBe(false);
+  await second.locator(".settings-toggle").click();
+  await openControlGroup(second, "След");
+  await expect(second.locator('[name="trailEnabled"]')).not.toBeChecked();
+  await setCheckbox(second, "trailEnabled", true);
   await expect
-    .poll(() =>
-      second.locator(".trail").evaluate((canvas) => {
-        const context = canvas.getContext("2d");
-        const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
-        return data.some((channel, index) => index % 4 === 3 && channel > 0);
-      })
-    )
+    .poll(() => trailHasVisiblePixels(second))
     .toBe(true);
+  await second.locator(".settings-toggle").click();
   const point = await grabVisibleRock(second);
   await second.mouse.move(point.x, point.y - 40, {
     steps: 4,
@@ -981,8 +993,11 @@ test("два браузера видят один камень и по очер�
       canvasBlendMode: "multiply",
       layerBlendMode: "normal",
     });
-  const rainBlendOverride = await second.addStyleTag({
-    content: ".weather-rain__canvas--fx { mix-blend-mode: screen; }",
+  await second.evaluate(() => {
+    const style = document.createElement("style");
+    style.dataset.testRainBlendOverride = "true";
+    style.textContent = ".weather-rain__canvas--fx { mix-blend-mode: screen; }";
+    document.head.append(style);
   });
   await expect
     .poll(() =>
@@ -993,7 +1008,9 @@ test("два браузера видят один камень и по очер�
       )
     )
     .toBe("screen");
-  await rainBlendOverride.evaluate((style) => style.remove());
+  await second.evaluate(() => {
+    document.querySelector("[data-test-rain-blend-override]")?.remove();
+  });
   await expect
     .poll(() =>
       secondRain.evaluate((layer) =>

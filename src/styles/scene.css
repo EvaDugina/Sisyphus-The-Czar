@@ -1,7 +1,7 @@
 .world {
   position: relative;
-  height: 200vh;
-  min-height: 200vh;
+  height: 10000vh;
+  min-height: 10000vh;
   overflow: hidden;
   background:
     linear-gradient(180deg, var(--surface) 0%, var(--surface-deep) 48%, var(--surface-low) 100%),
