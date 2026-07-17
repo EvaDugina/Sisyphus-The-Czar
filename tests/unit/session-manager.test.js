@@ -5,9 +5,11 @@ const assert = require("node:assert/strict");
 const Physics = require("../../shared/physics");
 const {
   SessionManager,
-  DISCONNECT_GRACE_MS,
   DISCONNECTED_CLIENT_TTL_MS,
   DEFAULT_EMPTY_SESSION_GRACE_MS,
+  REQUIRED_HOLDERS,
+  SLIP_DELAY_MIN_MS,
+  SLIP_DELAY_MAX_MS,
 } = require("../../server/session-manager");
 
 class FakeSocket {
@@ -31,6 +33,7 @@ function setup(options = {}) {
     ttlMs: options.ttlMs || 10_000,
     emptyGraceMs: options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS,
     now: () => clock.value,
+    random: options.random || (() => 0.5),
   });
   return { clock, manager };
 }
@@ -97,10 +100,12 @@ test("control.release применяет финальную позицию ко�
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 200, y: 900 },
   });
-  const { client } = connect(manager, session, "client-release-pos1");
+  const first = connect(manager, session, "client-release-pos1");
+  const second = connect(manager, session, "client-release-pos2");
 
-  manager.acquireControl(session, client, { x: 200, y: 900 });
-  manager.releaseControl(session, client, {
+  manager.acquireControl(session, first.client, { x: 200, y: 900 });
+  manager.acquireControl(session, second.client, { x: 640, y: 780 });
+  manager.releaseControl(session, first.client, {
     x: 640,
     y: 780,
     vx: 0,
@@ -161,7 +166,7 @@ test("старый клиент обновляет sliding как трение �
   assert.equal(session.physics.groundFriction, 0.7);
 });
 
-test("одновременный захват получает только первый участник", () => {
+test("камень начинает двигаться только когда его держат два участника", () => {
   const { manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, y: Physics.WORLD_HEIGHT },
@@ -170,12 +175,27 @@ test("одновременный захват получает только пе
   const second = connect(manager, session, "client-lock-b-001");
 
   assert.equal(manager.acquireControl(session, first.client, {}), true);
-  assert.equal(manager.acquireControl(session, second.client, {}), false);
+  assert.equal(session.state.dragging, false);
+  assert.deepEqual([...session.holders.keys()], [first.client.id]);
+  assert.equal(session.state.controllerId, null);
+
+  assert.equal(manager.acquireControl(session, second.client, {}), true);
+  assert.equal(session.state.dragging, true);
   assert.equal(session.state.controllerId, first.client.id);
+  assert.deepEqual([...session.holders.keys()], [
+    first.client.id,
+    second.client.id,
+  ]);
+
+  manager.moveControl(session, first.client, { x: 480, y: 1900 });
+  manager.moveControl(session, second.client, { x: 520, y: 1800 });
+  assert.equal(session.state.x, 500);
+  assert.equal(session.state.y, 1850);
 
   manager.releaseControl(session, first.client, { vx: 0, vy: 0 });
-  assert.equal(manager.acquireControl(session, second.client, {}), true);
-  assert.equal(session.state.controllerId, second.client.id);
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.controllerId, null);
+  assert.deepEqual([...session.holders.keys()], [second.client.id]);
 });
 
 test("указатель участника синхронизируется и исчезает при отключении", () => {
@@ -200,6 +220,7 @@ test("указатель участника синхронизируется и 
     y: 1750,
     mode: "grab",
     visible: true,
+    skin: "primary",
     serverTime: 0,
   });
 
@@ -336,23 +357,22 @@ test("подключение после grace не воскрешает удал
   assert.equal(manager.sessions.has(session.id), false);
 });
 
-test("разрыв соединения освобождает камень после grace-периода", () => {
-  const { clock, manager } = setup();
+test("разрыв соединения сразу убирает участника из держателей камня", () => {
+  const { manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, y: Physics.WORLD_HEIGHT },
   });
-  const connected = connect(manager, session, "client-drop-00001");
-  manager.acquireControl(session, connected.client, {});
-  manager.disconnectClient(session, connected.client.id, connected.socket);
-
-  clock.value = DISCONNECT_GRACE_MS - 1;
-  manager.tick();
+  const first = connect(manager, session, "client-drop-00001");
+  const second = connect(manager, session, "client-drop-00002");
+  manager.acquireControl(session, first.client, {});
+  manager.acquireControl(session, second.client, {});
   assert.equal(session.state.dragging, true);
 
-  clock.value = DISCONNECT_GRACE_MS + 1;
-  manager.tick();
+  manager.disconnectClient(session, first.client.id, first.socket);
+
   assert.equal(session.state.dragging, false);
   assert.equal(session.state.controllerId, null);
+  assert.deepEqual([...session.holders.keys()], [second.client.id]);
 });
 
 test("неактивная сессия удаляется по TTL", () => {
@@ -394,7 +414,8 @@ test("первый scroll сохраняет отпечаток без фикс�
   const session = manager.createSession({
     state: { phase: Physics.PHASES.INTRO, x: 500, y: 700 },
   });
-  const { client } = connect(manager, session, "client-win-000001");
+  const first = connect(manager, session, "client-win-000001");
+  const second = connect(manager, session, "client-win-000002");
   manager.startSession(session, {
     imprint: { toleranceX: 40, toleranceY: 30 },
   });
@@ -405,19 +426,27 @@ test("первый scroll сохраняет отпечаток без фикс�
     toleranceY: 30,
   });
   session.state.phase = Physics.PHASES.PLAY;
-  manager.acquireControl(session, client, { x: 541, y: 700 });
-  manager.moveControl(session, client, { x: 541, y: 700 });
+  manager.acquireControl(session, first.client, { x: 541, y: 700 });
+  manager.acquireControl(session, second.client, { x: 541, y: 700 });
+  manager.moveControl(session, first.client, { x: 541, y: 700 });
+  manager.moveControl(session, second.client, { x: 541, y: 700 });
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.dragging, true);
 
-  manager.moveControl(session, client, { x: 539, y: 700 });
+  manager.moveControl(session, first.client, { x: 539, y: 700 });
+  manager.moveControl(session, second.client, { x: 539, y: 700 });
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.x, 539);
   assert.equal(session.state.y, 700);
   assert.equal(session.state.dragging, true);
-  assert.equal(session.state.controllerId, client.id);
+  assert.equal(session.state.controllerId, first.client.id);
 
-  manager.releaseControl(session, client, { x: 539, y: 700, vx: 0, vy: -2000 });
+  manager.releaseControl(session, first.client, {
+    x: 539,
+    y: 700,
+    vx: 0,
+    vy: -2000,
+  });
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.x, 539);
   assert.equal(session.state.y, 700);
@@ -432,83 +461,80 @@ test("первый scroll сохраняет отпечаток без фикс�
   assert.ok(session.state.y > 700);
 });
 
-test("удержание в отпечатке отключает авто-выскальзывание из руки", () => {
-  const { clock, manager } = setup();
+test("каждый захват получает случайное окно соскальзывания 0.5–2 секунды", () => {
+  const { manager } = setup({ random: () => 0.5 });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
+  });
+  const first = connect(manager, session, "client-slip-range1");
+  const second = connect(manager, session, "client-slip-range2");
+
+  manager.acquireControl(session, first.client, { x: 500, y: 900 });
+  manager.acquireControl(session, second.client, { x: 500, y: 900 });
+
+  const slipTimes = [...session.holders.values()].map((holder) => holder.slipAt);
+  assert.deepEqual(slipTimes, [1250, 1250]);
+  assert.equal(session.holdReleaseAt, 1250);
+  assert.equal(REQUIRED_HOLDERS, 2);
+  assert.equal(SLIP_DELAY_MIN_MS, 500);
+  assert.equal(SLIP_DELAY_MAX_MS, 2000);
+  assert.equal(session.state.dragging, true);
+});
+
+test("соскальзывание одной руки роняет камень, но оставляет возможность подхвата", () => {
+  const randomValues = [0, 1, 1];
+  const { clock, manager } = setup({
+    random: () => randomValues.shift() ?? 1,
+  });
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
-    imprint: { x: 500, y: 700, toleranceX: 40, toleranceY: 30 },
+    physics: { gravity: 0.45, turbulence: 0, bounce: 0 },
   });
-  const { client } = connect(manager, session, "client-imprint-hold");
+  const first = connect(manager, session, "client-slip-catch1");
+  const second = connect(manager, session, "client-slip-catch2");
+  manager.acquireControl(session, first.client, { x: 500, y: 700 });
+  manager.acquireControl(session, second.client, { x: 500, y: 700 });
 
-  assert.equal(manager.acquireControl(session, client, { x: 500, y: 700 }), true);
-  assert.equal(session.holdReleaseAt, null);
-
-  clock.value = Physics.maxHoldMs(session.physics) + 1000;
+  clock.value = SLIP_DELAY_MIN_MS + 1;
   manager.tick();
-  assert.equal(session.state.dragging, true);
-  assert.equal(session.state.controllerId, client.id);
 
-  manager.moveControl(session, client, { x: 545, y: 700, vx: 0, vy: 0 });
-  assert.ok(session.holdReleaseAt > clock.value);
-  const holdReleaseAt = session.holdReleaseAt;
-
-  clock.value = holdReleaseAt - 1;
-  manager.tick();
-  assert.equal(session.state.dragging, true);
-
-  clock.value = holdReleaseAt + 1;
-  manager.tick();
   assert.equal(session.state.dragging, false);
   assert.equal(session.state.controllerId, null);
-});
+  assert.deepEqual([...session.holders.keys()], [second.client.id]);
+  assert.equal(
+    first.socket.messages.findLast(
+      (message) => message.type === "control.slipped"
+    ).payload.reason,
+    "slipped"
+  );
 
-test("авто-выскальзывание получает свежий импульс по направлению руки", () => {
-  const { clock, manager } = setup();
-  const session = manager.createSession({
-    state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
-    physics: { inertia: 100, turbulence: 0 },
-  });
-  const { client } = connect(manager, session, "client-fresh-drop1");
-  manager.acquireControl(session, client, { x: 500, y: 700 });
-
-  clock.value = session.holdReleaseAt - 50;
-  manager.moveControl(session, client, { x: 520, y: 680, vx: 600, vy: -800 });
-  clock.value = session.holdReleaseAt + 1;
+  clock.value += 100;
   manager.tick();
+  assert.ok(session.state.y > 700);
 
-  assert.equal(session.state.dragging, false);
-  assert.ok(session.state.vx > 0);
-  assert.ok(session.state.vy < 0);
-});
-
-test("авто-выскальзывание не использует устаревшую скорость руки", () => {
-  const { clock, manager } = setup();
-  const session = manager.createSession({
-    state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
-    physics: { inertia: 100, turbulence: 0 },
+  manager.acquireControl(session, first.client, {
+    x: session.state.x,
+    y: session.state.y,
   });
-  const { client } = connect(manager, session, "client-stale-drop1");
-  manager.acquireControl(session, client, { x: 500, y: 700 });
-  manager.moveControl(session, client, { x: 520, y: 680, vx: 600, vy: -800 });
-
-  clock.value = session.holdReleaseAt + 1;
-  manager.tick();
-
-  assert.equal(session.state.dragging, false);
-  assert.equal(session.state.vx, 0);
-  assert.ok(session.state.vy > 0);
+  assert.equal(session.state.dragging, true);
+  assert.deepEqual([...session.holders.keys()], [
+    second.client.id,
+    first.client.id,
+  ]);
 });
 
 test("брошенный камень не останавливается при попадании в отпечаток", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
-    physics: { mass: 1, handForce: 10, gravity: 1, turbulence: 0 },
+    physics: { mass: 1, handForce: 10, gravity: 0.45, turbulence: 0 },
     imprint: { x: 500, y: 800, toleranceX: 40, toleranceY: 20 },
   });
-  const { client } = connect(manager, session, "client-throw-win-01");
-  manager.acquireControl(session, client, { x: 500, y: 900 });
-  manager.releaseControl(session, client, {
+  const first = connect(manager, session, "client-throw-win-01");
+  const second = connect(manager, session, "client-throw-win-02");
+  manager.acquireControl(session, first.client, { x: 500, y: 900 });
+  manager.acquireControl(session, second.client, { x: 500, y: 900 });
+  manager.releaseControl(session, first.client, {
     vy: -4000,
   });
 

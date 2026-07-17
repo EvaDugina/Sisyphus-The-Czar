@@ -25,7 +25,7 @@
   const FIXED_STEP_SECONDS = 1 / 60;
   const FIRST_FALL_DELAY_MS = 400;
   const GRAVITY_UNITS = 1260;
-  const PHYSICS_VERSION = 3;
+  const PHYSICS_VERSION = 4;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
@@ -38,7 +38,7 @@
 
   const PHYSICS_LIMITS = Object.freeze({
     mass: [1, 100],
-    gravity: [1, 10],
+    gravity: [0.2, 10],
     handForce: [1, 10],
     pointerInfluence: [0, 2],
     bounce: [0, 1],
@@ -49,7 +49,7 @@
 
   const DEFAULT_PHYSICS = Object.freeze({
     mass: 4,
-    gravity: 1,
+    gravity: 0.45,
     handForce: 5,
     pointerInfluence: 1,
     bounce: 0.35,

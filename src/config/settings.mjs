@@ -1,6 +1,6 @@
 import { MIX_BLEND_MODES } from "../lib/settingsModel.mjs";
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v4";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v5";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
   "sisyphus-czar-settings-v3",
   "sisyphus-czar-settings-v2",
@@ -45,11 +45,11 @@ export const SETTINGS_GROUPS = [
         name: "gravity",
         label: "Тяготение",
         type: "range",
-        min: 1,
+        min: 0.2,
         max: 10,
-        step: 0.1,
-        defaultValue: 1,
-        output: "1.0",
+        step: 0.05,
+        defaultValue: 0.45,
+        output: "0.45",
         hint: "Сила притяжения к земле. Больше значение — камень падает быстрее и медленнее поднимается.",
       },
       {

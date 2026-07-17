@@ -45,9 +45,11 @@ test("session status сохраняет публичные тексты упра
       hasControl: false,
       pendingControl: false,
       remoteControllerId: "other",
+      holderIds: ["other"],
+      requiredHolders: 2,
     }),
     {
-      text: "В сессии: 2 · камень держит другой участник",
+      text: "В сессии: 2 · камень держат 1/2",
       state: "online",
     },
   );
@@ -151,7 +153,7 @@ test("настройка инерции отображает целочисле�
     (control) => control.name === "inertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v4");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v5");
   assert.deepEqual(
     {
       min: inertia.min,
@@ -160,6 +162,22 @@ test("настройка инерции отображает целочисле�
       defaultValue: inertia.defaultValue,
     },
     { min: 0, max: 100, step: 1, defaultValue: 90 }
+  );
+});
+
+test("настройка тяготения позволяет замедлить падение через UI", () => {
+  const gravity = SETTINGS_GROUPS.flatMap((group) => group.controls).find(
+    (control) => control.name === "gravity"
+  );
+
+  assert.deepEqual(
+    {
+      min: gravity.min,
+      max: gravity.max,
+      step: gravity.step,
+      defaultValue: gravity.defaultValue,
+    },
+    { min: 0.2, max: 10, step: 0.05, defaultValue: 0.45 }
   );
 });
 

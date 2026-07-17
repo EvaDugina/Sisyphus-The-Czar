@@ -11,15 +11,25 @@ export function deriveSessionStatus(session) {
   if (!session.connected) {
     return { text: "Переподключение…", state: "connecting" };
   }
+  const holderIds = Array.isArray(session.holderIds) ? session.holderIds : [];
+  const requiredHolders = Math.max(1, Number(session.requiredHolders) || 2);
+  const holderCount = holderIds.length;
+  const holdersLabel = `${holderCount}/${requiredHolders}`;
   if (session.hasControl || session.pendingControl) {
+    if (holderCount >= requiredHolders) {
+      return {
+        text: `В сессии: ${session.participants} · тащите вместе ${holdersLabel}`,
+        state: "online",
+      };
+    }
     return {
-      text: `В сессии: ${session.participants} · камень у вас`,
+      text: `В сессии: ${session.participants} · вы держите ${holdersLabel}, нужен второй`,
       state: "online",
     };
   }
-  if (session.remoteControllerId) {
+  if (holderCount > 0 || session.remoteControllerId) {
     return {
-      text: `В сессии: ${session.participants} · камень держит другой участник`,
+      text: `В сессии: ${session.participants} · камень держат ${holdersLabel}`,
       state: "online",
     };
   }

@@ -84,6 +84,8 @@ test("два WebSocket-клиента делят состояние и пере�
     first.waitFor("session.snapshot"),
     second.waitFor("session.snapshot"),
   ]);
+  assert.equal(firstSnapshot.payload.clientSkin, "primary");
+  assert.equal(secondSnapshot.payload.clientSkin, "partner");
 
   first.socket.send(
     JSON.stringify({
@@ -103,6 +105,7 @@ test("два WebSocket-клиента делят состояние и пере�
     (payload) => payload.clientId === "integration-client-a" && payload.mode === "grab"
   );
   assert.equal(sharedPointer.payload.x, 480);
+  assert.equal(sharedPointer.payload.skin, "primary");
 
   first.socket.send(
     JSON.stringify({
@@ -132,16 +135,49 @@ test("два WebSocket-клиента делят состояние и пере�
       v: 1,
       type: "control.acquire",
       seq: 1,
-      payload: { x: 500, y: Physics.WORLD_HEIGHT },
+      payload: {
+        x: 500,
+        y: Physics.WORLD_HEIGHT,
+        pointer: {
+          x: 500,
+          y: Physics.WORLD_HEIGHT - 100,
+          mode: "grabbing",
+          visible: true,
+        },
+      },
     })
   );
-  await second.waitFor("control.denied", (payload) => payload.reason === "busy");
+  await second.waitFor("control.granted");
+  const cooperativeSession = service.manager.getSession(sessionId);
+  assert.equal(cooperativeSession.state.dragging, true);
+  assert.equal(cooperativeSession.state.controllerId, "integration-client-a");
+  assert.deepEqual([...cooperativeSession.holders.keys()], [
+    "integration-client-a",
+    "integration-client-b",
+  ]);
+
+  first.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "control.move",
+      seq: 3,
+      payload: { x: 505, y: Physics.WORLD_HEIGHT, vx: 0, vy: 0 },
+    })
+  );
+  second.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "control.move",
+      seq: 2,
+      payload: { x: 505, y: Physics.WORLD_HEIGHT, vx: 0, vy: 0 },
+    })
+  );
 
   first.socket.send(
     JSON.stringify({
       v: 1,
       type: "control.release",
-      seq: 3,
+      seq: 4,
       payload: {
         x: 505,
         y: Physics.WORLD_HEIGHT,
@@ -161,19 +197,21 @@ test("два WebSocket-клиента делят состояние и пере�
     (payload) =>
       payload.dragging === false &&
       payload.controllerId === null &&
-      payload.x === 505
+      payload.holderIds?.length === 1 &&
+      payload.holderIds.includes("integration-client-b") &&
+      !payload.holderIds.includes("integration-client-a")
   );
-  assert.equal(released.payload.x, 505);
+  assert.equal(released.payload.holderIds[0], "integration-client-b");
 
-  second.socket.send(
+  first.socket.send(
     JSON.stringify({
       v: 1,
       type: "control.acquire",
-      seq: 2,
+      seq: 5,
       payload: { x: 500, y: Physics.WORLD_HEIGHT },
     })
   );
-  await second.waitFor("control.granted");
+  await first.waitFor("control.granted");
 
   second.socket.send(
     JSON.stringify({
@@ -193,7 +231,7 @@ test("два WebSocket-клиента делят состояние и пере�
     JSON.stringify({
       v: 1,
       type: "session.restart",
-      seq: 4,
+      seq: 6,
       payload: { x: 321, y: 654 },
     })
   );
@@ -207,6 +245,7 @@ test("два WebSocket-клиента делят состояние и пере�
   assert.equal(restarted.payload.y, 654);
   assert.equal(restarted.payload.dragging, false);
   assert.equal(restarted.payload.controllerId, null);
+  assert.deepEqual(restarted.payload.holderIds, []);
   assert.equal(restarted.payload.physics.gravity, 10);
   assert.deepEqual(restarted.payload.trail, []);
   assert.equal(restarted.payload.imprint, null);
@@ -228,7 +267,7 @@ test("два WebSocket-клиента делят состояние и пере�
     JSON.stringify({
       v: 1,
       type: "session.start",
-      seq: 5,
+      seq: 7,
       payload: { imprint: { toleranceX: 45, toleranceY: 35 } },
     })
   );

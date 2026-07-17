@@ -80,13 +80,13 @@
   left: 0;
   top: 0;
   z-index: 6;
-  width: clamp(440px, 84vmin, 1040px);
+  width: clamp(220px, 42vmin, 520px);
   height: auto;
   cursor: grab;
   touch-action: none;
   -webkit-user-drag: none;
   user-drag: none;
-  filter: drop-shadow(0 2.1rem 2.2rem var(--shadow));
+  filter: drop-shadow(0 1.05rem 1.1rem var(--shadow));
   transform: translate3d(var(--rock-x), var(--rock-y), 0) scale(var(--rock-scale));
   transform-origin: center;
   transition:
@@ -103,7 +103,7 @@
   left: 0;
   top: 0;
   z-index: 4;
-  width: clamp(440px, 84vmin, 1040px);
+  width: clamp(220px, 42vmin, 520px);
   height: auto;
   opacity: 0;
   pointer-events: none;
@@ -121,11 +121,11 @@
 .rock.is-dragging {
   --rock-scale: 1;
   cursor: grabbing;
-  filter: drop-shadow(0 2.7rem 2.6rem var(--shadow));
+  filter: drop-shadow(0 1.35rem 1.3rem var(--shadow));
 }
 
 .rock.is-falling {
-  filter: drop-shadow(0 3rem 2.8rem var(--shadow));
+  filter: drop-shadow(0 1.5rem 1.4rem var(--shadow));
 }
 
 body.state-intro .rock,
@@ -138,7 +138,7 @@ body.state-fallingToBottom .rock {
 body.state-won .rock {
   --rock-scale: 1;
   cursor: default;
-  filter: drop-shadow(0 1.6rem 1.8rem rgba(43, 34, 17, 0.24));
+  filter: drop-shadow(0 0.8rem 0.9rem rgba(43, 34, 17, 0.24));
 }
 
 .weather-rain {
@@ -241,10 +241,10 @@ body.theme-light .weather-rain__canvas--fallback {
 .hand-cursor {
   --cursor-x: -999px;
   --cursor-y: -999px;
-  --cursor-width: 552px;
-  --cursor-height: 732px;
-  --hotspot-x: 276px;
-  --hotspot-y: 252px;
+  --cursor-width: 184px;
+  --cursor-height: 244px;
+  --hotspot-x: 92px;
+  --hotspot-y: 84px;
 
   position: fixed;
   left: 0;
@@ -284,13 +284,13 @@ body.theme-light .weather-rain__canvas--fallback {
 }
 
 .hand-cursor.is-alternate {
-  --hotspot-y: 216px;
+  --hotspot-y: 72px;
 
   background-image: url("../../assets/cursor-grabbing.webp");
 }
 
 .hand-cursor.is-grabbing {
-  --hotspot-y: 216px;
+  --hotspot-y: 72px;
 
   background-image: url("../../assets/cursor-grabbing.webp");
   filter: drop-shadow(0 1.25rem 1.35rem rgba(0, 0, 0, 0.62));
@@ -300,6 +300,15 @@ body.theme-light .weather-rain__canvas--fallback {
       0
     )
     scale(1.04);
+}
+
+.hand-cursor.is-partner {
+  background-image: url("../../assets/cursor-partner-grab.webp");
+}
+
+.hand-cursor.is-partner.is-alternate,
+.hand-cursor.is-partner.is-grabbing {
+  background-image: url("../../assets/cursor-partner-grabbing.webp");
 }
 
 .hand-cursor.is-remote {
@@ -366,22 +375,22 @@ body.state-fallingToBottom .hand-cursor {
 
   .rock,
   .rock-imprint {
-    width: clamp(300px, 90vw, 520px);
+    width: clamp(150px, 45vw, 260px);
   }
 
   .hand-cursor {
-    --cursor-width: 432px;
-    --cursor-height: 570px;
-    --hotspot-x: 216px;
-    --hotspot-y: 198px;
+    --cursor-width: 144px;
+    --cursor-height: 190px;
+    --hotspot-x: 72px;
+    --hotspot-y: 66px;
   }
 
   .hand-cursor.is-grabbing {
-    --hotspot-y: 168px;
+    --hotspot-y: 56px;
   }
 
   .hand-cursor.is-alternate {
-    --hotspot-y: 168px;
+    --hotspot-y: 56px;
   }
 
 }

@@ -90,7 +90,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   const params = {
     mass: 4,
-    gravity: 1,
+    gravity: 0.45,
     handForce: 5,
     pointerInfluence: 1,
     bounce: 0.35,
@@ -228,6 +228,9 @@ export function createSisyphusRuntime(elements = {}) {
     hasControl: false,
     pendingControl: false,
     releasePending: false,
+    clientSkin: "primary",
+    holderIds: new Set(),
+    requiredHolders: 2,
     remoteControllerId: null,
     participants: 1,
     applyingRemotePhysics: false,
@@ -822,7 +825,7 @@ export function createSisyphusRuntime(elements = {}) {
   function updateControlOutputs() {
     const outputs = {
       mass: params.mass.toFixed(0),
-      gravity: params.gravity.toFixed(1),
+      gravity: params.gravity.toFixed(2),
       handForce: params.handForce.toFixed(0),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
@@ -1176,7 +1179,10 @@ export function createSisyphusRuntime(elements = {}) {
     sessionShareToggle.setAttribute("aria-label", "Скопировать ссылку");
     sessionShareToggle.title = "Скопировать ссылку";
     sessionShareToggle.dataset.state = collab.connected ? "online" : "local";
-    const status = deriveSessionStatus(collab);
+    const status = deriveSessionStatus({
+      ...collab,
+      holderIds: [...collab.holderIds],
+    });
     setSessionStatus(status.text, status.state);
   }
 
@@ -1244,6 +1250,46 @@ export function createSisyphusRuntime(elements = {}) {
     return target === rock || rock.contains(target);
   }
 
+  function normalizeHolderIds(holderIds) {
+    return Array.isArray(holderIds)
+      ? holderIds
+          .map((clientId) => String(clientId || ""))
+          .filter(Boolean)
+      : [];
+  }
+
+  function updateSharedHolders(holderIds, requiredHolders) {
+    collab.holderIds = new Set(normalizeHolderIds(holderIds));
+    const nextRequired = Number(requiredHolders);
+    if (Number.isFinite(nextRequired) && nextRequired >= 1) {
+      collab.requiredHolders = Math.round(nextRequired);
+    }
+  }
+
+  function localIsHolder() {
+    return collab.holderIds.has(collab.clientId);
+  }
+
+  function cooperativeDragActive() {
+    return (
+      localIsHolder() &&
+      collab.holderIds.size >= collab.requiredHolders
+    );
+  }
+
+  function pointerSkin(value) {
+    return value === "partner" ? "partner" : "primary";
+  }
+
+  function applyCursorSkin(element, skin) {
+    element.classList.toggle("is-partner", pointerSkin(skin) === "partner");
+  }
+
+  function setLocalCursorSkin(skin) {
+    collab.clientSkin = pointerSkin(skin);
+    applyCursorSkin(handCursor, collab.clientSkin);
+  }
+
   function updateLocalSharedPointer(event, mode, visible) {
     if (event) {
       const position = pointerEventToCanonical(event);
@@ -1291,6 +1337,7 @@ export function createSisyphusRuntime(elements = {}) {
     const x = Number(payload.x);
     const y = Number(payload.y);
     const mode = payload.mode;
+    const skin = pointerSkin(payload.skin);
     if (
       !clientId ||
       !Number.isFinite(x) ||
@@ -1318,6 +1365,7 @@ export function createSisyphusRuntime(elements = {}) {
       pointer = { element, x, y, targetX: x, targetY: y };
       collab.remotePointers.set(clientId, pointer);
     }
+    applyCursorSkin(pointer.element, skin);
     pointer.targetX = x;
     pointer.targetY = y;
     pointer.element.classList.toggle("is-grabbing", mode === "grabbing");
@@ -1753,6 +1801,8 @@ export function createSisyphusRuntime(elements = {}) {
     collab.hasControl = false;
     collab.pendingControl = false;
     collab.releasePending = false;
+    collab.holderIds.clear();
+    collab.requiredHolders = 2;
     collab.remoteControllerId = null;
     rock.classList.remove("is-dragging", "is-falling");
     releasePointerCapture(pointerId);
@@ -1874,6 +1924,7 @@ export function createSisyphusRuntime(elements = {}) {
       collab.hasControl = false;
       collab.pendingControl = false;
       collab.releasePending = false;
+      collab.holderIds.clear();
       cancelSharedLocalDrag();
       updateLocalSharedPointer(null, "grab", false);
       hideHandCursor();
@@ -1899,15 +1950,24 @@ export function createSisyphusRuntime(elements = {}) {
     } else if (message.type === "control.granted") {
       collab.pendingControl = false;
       collab.hasControl = true;
-      collab.remoteControllerId = collab.clientId;
+      updateSharedHolders(payload.holderIds, payload.requiredHolders);
+      collab.remoteControllerId = payload.holderId || collab.clientId;
+      updateSessionStatus();
+    } else if (message.type === "control.slipped") {
+      collab.pendingControl = false;
+      collab.hasControl = false;
+      collab.releasePending = false;
+      updateSharedHolders(payload.holderIds, payload.requiredHolders);
+      cancelSharedLocalDrag();
       updateSessionStatus();
     } else if (message.type === "control.denied") {
       collab.pendingControl = false;
       collab.hasControl = false;
-        cancelSharedLocalDrag();
+      cancelSharedLocalDrag();
       updateSessionStatus();
     } else if (message.type === "presence.update") {
       collab.participants = Math.max(1, Number(payload.participants) || 1);
+      updateSharedHolders(payload.holderIds, payload.requiredHolders);
       collab.remoteControllerId = payload.controllerId || null;
       syncRemotePointers(payload.pointers);
       updateSessionStatus();
@@ -1936,6 +1996,9 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       collab.leaveToken = payload.leaveToken;
     }
+    if (typeof payload.clientSkin === "string") {
+      setLocalCursorSkin(payload.clientSkin);
+    }
 
     const revision = Number(payload.revision);
     if (!Number.isSafeInteger(revision) || revision <= collab.lastRevision) {
@@ -1953,6 +2016,8 @@ export function createSisyphusRuntime(elements = {}) {
       : offsetSample;
     collab.clockOffsetReady = true;
     applySharedPhysics(payload.physics);
+    const holderIds = normalizeHolderIds(payload.holderIds);
+    updateSharedHolders(holderIds, payload.requiredHolders);
 
     collab.imprint = SharedPhysics.sanitizeImprint(payload.imprint);
     renderImprint();
@@ -1976,25 +2041,27 @@ export function createSisyphusRuntime(elements = {}) {
       vy: Number(payload.vy) || 0,
       dragging: Boolean(payload.dragging),
       controllerId: payload.controllerId || null,
+      holderIds,
+      requiredHolders: collab.requiredHolders,
       revision,
       serverTime: Number(payload.serverTime) || Date.now(),
     };
+    const ownsHold = holderIds.includes(collab.clientId);
     if (
       collab.releasePending &&
-      snapshot.dragging &&
-      snapshot.controllerId === collab.clientId
+      ownsHold
     ) {
       return;
     }
     if (
       collab.releasePending &&
-      (!snapshot.dragging || snapshot.controllerId !== collab.clientId)
+      !ownsHold
     ) {
       collab.releasePending = false;
     }
     const localControlWasEnding =
       (collab.hasControl || collab.pendingControl || motion.dragging) &&
-      (!snapshot.dragging || snapshot.controllerId !== collab.clientId) &&
+      !ownsHold &&
       snapshot.phase !== PHASES.INTRO &&
       snapshot.phase !== PHASES.WON;
     if (localControlWasEnding) {
@@ -2007,18 +2074,18 @@ export function createSisyphusRuntime(elements = {}) {
       collab.snapshots.splice(0, collab.snapshots.length - 12);
     }
 
-    const ownsControl =
-      snapshot.dragging && snapshot.controllerId === collab.clientId;
+    const ownsControl = ownsHold;
     collab.remoteControllerId = snapshot.controllerId;
     if (ownsControl) {
       collab.hasControl = true;
       collab.pendingControl = false;
       collab.releasePending = false;
-      clearSharedReleaseHandoff();
+      if (cooperativeDragActive()) {
+        clearSharedReleaseHandoff();
+      }
     } else if (
       collab.hasControl ||
-      collab.pendingControl ||
-      (snapshot.controllerId && snapshot.controllerId !== collab.clientId)
+      collab.pendingControl
     ) {
       collab.hasControl = false;
       collab.pendingControl = false;
@@ -2094,7 +2161,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function applySharedFrame(snapshot) {
-    if (!snapshot || (motion.dragging && (collab.hasControl || collab.pendingControl))) {
+    if (!snapshot || (motion.dragging && collab.pendingControl)) {
       return;
     }
     const local = canonicalToLocal(snapshot.x, snapshot.y);
@@ -2105,7 +2172,9 @@ export function createSisyphusRuntime(elements = {}) {
     motion.vy = velocity.vy;
     motion.turbTime = 0;
 
-    const visiblyDragging = Boolean(snapshot.dragging);
+    const visiblyDragging =
+      Boolean(snapshot.dragging) &&
+      snapshot.holderIds.length >= snapshot.requiredHolders;
     const visiblyFalling =
       !visiblyDragging &&
       snapshot.phase !== PHASES.INTRO &&
@@ -2127,7 +2196,7 @@ export function createSisyphusRuntime(elements = {}) {
     );
     collab.lastRenderAt = now;
 
-    if (!motion.dragging && collab.snapshots.length > 0) {
+    if (collab.snapshots.length > 0) {
       const targetServerTime =
         Date.now() - collab.clockOffset - SNAPSHOT_DELAY_MS;
       while (
@@ -2198,13 +2267,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (motion.phase !== PHASES.PLAY) {
       return;
     }
-    if (
-      collab.remoteControllerId &&
-      collab.remoteControllerId !== collab.clientId
-    ) {
-      updateSessionStatus();
-      return;
-    }
 
     event.preventDefault();
     if (params.trailReset) {
@@ -2255,8 +2317,11 @@ export function createSisyphusRuntime(elements = {}) {
     event.preventDefault();
     recordPointerVelocity(event);
     setDragTargetFromPointer(event);
-    applyDragTargetMovement(MAX_FRAME_SECONDS);
-    syncReturnTheme();
+    const activeTogether = cooperativeDragActive();
+    if (activeTogether) {
+      applyDragTargetMovement(MAX_FRAME_SECONDS);
+      syncReturnTheme();
+    }
 
     const now = performance.now();
     const reachedImprint =
@@ -2269,10 +2334,9 @@ export function createSisyphusRuntime(elements = {}) {
     }
     collab.lastMoveSentAt = now;
     const position = localToCanonical(motion.x, motion.y);
-    const velocity = localVelocityToCanonical(
-      motion.pointerVx,
-      motion.pointerVy
-    );
+    const velocity = activeTogether
+      ? localVelocityToCanonical(motion.pointerVx, motion.pointerVy)
+      : { vx: 0, vy: 0 };
     sendShared("control.move", {
       ...position,
       ...velocity,
@@ -2294,7 +2358,9 @@ export function createSisyphusRuntime(elements = {}) {
     const pointerVisible =
       event.type !== "pointercancel" && pointerIsOverRock(event);
     const pointer = updateLocalSharedPointer(event, "grab", pointerVisible);
-    startSharedReleaseHandoff();
+    if (cooperativeDragActive()) {
+      startSharedReleaseHandoff();
+    }
     collab.releasePending = true;
     collab.snapshots = [];
     sendShared("control.release", {
@@ -2327,7 +2393,9 @@ export function createSisyphusRuntime(elements = {}) {
       "grab",
       hidePointer ? false : collab.localPointer.visible
     );
-    startSharedReleaseHandoff();
+    if (cooperativeDragActive()) {
+      startSharedReleaseHandoff();
+    }
     collab.releasePending = true;
     collab.snapshots = [];
     sendShared("control.release", {
