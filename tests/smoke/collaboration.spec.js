@@ -21,6 +21,24 @@ async function setCheckbox(page, name, checked) {
   }, checked);
 }
 
+async function watchAudioPlayCalls(page, filename) {
+  await page.addInitScript((targetFilename) => {
+    window.__watchedAudioPlayCount = 0;
+    HTMLMediaElement.prototype.play = function play() {
+      let decodedSrc = this.currentSrc || this.src || "";
+      try {
+        decodedSrc = decodeURIComponent(decodedSrc);
+      } catch {
+        /* URL может быть уже декодирован. */
+      }
+      if (decodedSrc.includes(targetFilename)) {
+        window.__watchedAudioPlayCount += 1;
+      }
+      return Promise.resolve();
+    };
+  }, filename);
+}
+
 async function openControlGroup(page, summaryText) {
   const opened = await page.evaluate((text) => {
     const summary = Array.from(
@@ -165,6 +183,7 @@ test("вход на корень перенаправляет в рабочую 
   const context = await browser.newContext();
   const page = await context.newPage();
   const documentRequests = [];
+  await watchAudioPlayCalls(page, "Камень");
   page.on("request", (request) => {
     if (request.resourceType() === "document") {
       const url = new URL(request.url());
@@ -300,6 +319,9 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page.locator("body")).toHaveClass(/state-play/, {
     timeout: 45_000,
   });
+  await expect
+    .poll(() => page.evaluate(() => window.__watchedAudioPlayCount))
+    .toBeGreaterThan(0);
   await scrollToRock(page);
 
   await expect

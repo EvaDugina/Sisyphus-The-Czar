@@ -1,4 +1,5 @@
 import "../../shared/physics.js";
+import rockImpactAudioUrl from "../../assets/audio/Камень.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import {
   canonicalToLocalPosition,
@@ -79,6 +80,10 @@ export function createSisyphusRuntime(elements = {}) {
   const INTRO_FALL_DELAY_MS = SharedPhysics.FIRST_FALL_DELAY_MS;
   const FLOOR_INSET = 0;
   const MAX_FRAME_SECONDS = 0.032;
+  const GROUND_CONTACT_EPSILON = 0.01;
+  const SHARED_GROUND_CONTACT_TOLERANCE = 24;
+  const ROCK_IMPACT_AUDIO_POOL_SIZE = 4;
+  const ROCK_IMPACT_AUDIO_VOLUME = 0.76;
   const RAIN_VENDOR_SRC = rainVendorUrl;
   const RAIN_SCRIPT_ID = "sisyphus-raindrop-fx";
   const DEFAULT_RAIN_ENTER_EASING = "cubic-bezier(0.2, 0, 0, 1)";
@@ -280,10 +285,64 @@ export function createSisyphusRuntime(elements = {}) {
     resizeHandler: null,
   };
 
+  const rockImpactAudio = {
+    elements: [],
+    nextIndex: 0,
+  };
+
   let rainFxScriptPromise = null;
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
+  }
+
+  function createRockImpactAudio() {
+    const audio = new Audio(rockImpactAudioUrl);
+    audio.preload = "auto";
+    audio.volume = ROCK_IMPACT_AUDIO_VOLUME;
+    return audio;
+  }
+
+  function playRockImpactSound() {
+    if (typeof Audio !== "function") {
+      return;
+    }
+
+    const index = rockImpactAudio.nextIndex;
+    let audio = rockImpactAudio.elements[index];
+    if (!audio) {
+      audio = createRockImpactAudio();
+      rockImpactAudio.elements[index] = audio;
+    }
+    rockImpactAudio.nextIndex =
+      (rockImpactAudio.nextIndex + 1) % ROCK_IMPACT_AUDIO_POOL_SIZE;
+
+    audio.currentTime = 0;
+    const promise = audio.play();
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(() => {});
+    }
+  }
+
+  function groundContactStarted(previousState, nextState) {
+    if (!previousState || !nextState) {
+      return false;
+    }
+
+    const wasAirborne =
+      previousState.phase !== PHASES.INTRO &&
+      previousState.phase !== PHASES.WON &&
+      nextState.phase !== PHASES.INTRO &&
+      previousState.y < SharedPhysics.WORLD_HEIGHT - GROUND_CONTACT_EPSILON;
+    const reachedGround =
+      nextState.y >= SharedPhysics.WORLD_HEIGHT - GROUND_CONTACT_EPSILON;
+    const bouncedNearGround =
+      previousState.vy > 0 &&
+      nextState.vy <= 0 &&
+      Math.max(previousState.y, nextState.y) >=
+        SharedPhysics.WORLD_HEIGHT - SHARED_GROUND_CONTACT_TOLERANCE;
+
+    return wasAirborne && (reachedGround || bouncedNearGround);
   }
 
   function getRainFxConstructor() {
@@ -2239,6 +2298,14 @@ export function createSisyphusRuntime(elements = {}) {
     if (!snapshot || (motion.dragging && collab.pendingControl)) {
       return;
     }
+    const previousState = SharedPhysics.sanitizeState(currentSharedState());
+    const nextState = SharedPhysics.sanitizeState({
+      phase: snapshot.phase,
+      x: snapshot.x,
+      y: snapshot.y,
+      vx: snapshot.vx,
+      vy: snapshot.vy,
+    });
     const local = canonicalToLocal(snapshot.x, snapshot.y);
     const velocity = canonicalVelocityToLocal(snapshot.vx, snapshot.vy);
     const position = applySharedReleaseHandoff(local, snapshot.phase);
@@ -2246,6 +2313,9 @@ export function createSisyphusRuntime(elements = {}) {
     motion.vx = velocity.vx;
     motion.vy = velocity.vy;
     motion.turbTime = 0;
+    if (groundContactStarted(previousState, nextState)) {
+      playRockImpactSound();
+    }
 
     const visiblyDragging =
       Boolean(snapshot.dragging) &&
@@ -2942,10 +3012,14 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     const state = SharedPhysics.sanitizeState(currentSharedState());
+    const previousState = { ...state };
     const previousPhase = state.phase;
     state.turbTime = motion.turbTime;
     SharedPhysics.stepState(state, SharedPhysics.sanitizePhysics(params), deltaSeconds);
     applyCanonicalMotion(state);
+    if (groundContactStarted(previousState, state)) {
+      playRockImpactSound();
+    }
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
       enterPlayPhase();
     } else {
