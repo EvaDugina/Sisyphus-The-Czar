@@ -31,7 +31,7 @@
     maxSpeed: 2800,
     loadFloor: 0.1,
   });
-  const PHYSICS_VERSION = 5;
+  const PHYSICS_VERSION = 6;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
@@ -44,7 +44,7 @@
   const PHYSICS_LIMITS = Object.freeze({
     mass: [0.1, 10],
     gravity: [0.1, 10],
-    handForce: [0.1, 10],
+    handForce: [1, 100],
     pointerInfluence: [0, 2],
     bounce: [0, 1],
     inertia: [0, 100],
@@ -55,7 +55,7 @@
   const DEFAULT_PHYSICS = Object.freeze({
     mass: 1,
     gravity: 9.8,
-    handForce: 5,
+    handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
     inertia: 90,
@@ -108,6 +108,15 @@
     ) {
       source.inertia = inertia * 100;
     }
+    const handForce = Number(source.handForce);
+    if (
+      sourceVersion < 6 &&
+      Number.isFinite(handForce) &&
+      handForce >= 0.1 &&
+      handForce <= 10
+    ) {
+      source.handForce = handForce * 10;
+    }
     return source;
   }
 
@@ -139,9 +148,14 @@
     return gravityForce(params) / params.mass;
   }
 
+  function effectiveHandForce(physics) {
+    const params = sanitizePhysics(physics);
+    return params.handForce;
+  }
+
   function handAcceleration(physics) {
     const params = sanitizePhysics(physics);
-    return params.handForce / params.mass;
+    return effectiveHandForce(params) / params.mass;
   }
 
   function groundFrictionAcceleration(physics) {
@@ -153,7 +167,7 @@
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
     return clamp(
-      (3000 * params.handForce) / (load * 5),
+      (3000 * effectiveHandForce(params)) / (load * 5),
       500,
       3000
     );
@@ -163,7 +177,7 @@
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
     return clamp(
-      DRAG_LIFT.baseSpeed + (DRAG_LIFT.forceSpeed * params.handForce) / load,
+      DRAG_LIFT.baseSpeed + (DRAG_LIFT.forceSpeed * effectiveHandForce(params)) / load,
       DRAG_LIFT.minSpeed,
       DRAG_LIFT.maxSpeed
     );
@@ -213,18 +227,16 @@
     );
   }
 
-  function beginFirstFall(state, physics, pointerVx, pointerVy) {
+  function beginFirstFall(state) {
     if (state.phase !== PHASES.INTRO) {
       return false;
     }
 
     state.phase = PHASES.FALLING;
-    applyReleaseImpulse(
-      state,
-      sanitizePhysics(physics),
-      pointerVx,
-      pointerVy
-    );
+    state.vx = 0;
+    state.vy = 0;
+    state.dragging = false;
+    state.controllerId = null;
     return true;
   }
 
@@ -363,6 +375,7 @@
     sanitizeState,
     gravityForce,
     gravityAcceleration,
+    effectiveHandForce,
     handAcceleration,
     groundFrictionAcceleration,
     maxHoldMs,

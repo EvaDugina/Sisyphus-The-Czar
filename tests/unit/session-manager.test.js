@@ -527,7 +527,7 @@ test("брошенный камень не останавливается при
   const { clock, manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
-    physics: { mass: 1, handForce: 10, gravity: 0.45, turbulence: 0 },
+    physics: { mass: 1, handForce: 100, gravity: 0.45, turbulence: 0 },
     imprint: { x: 500, y: 800, toleranceX: 40, toleranceY: 20 },
   });
   const first = connect(manager, session, "client-throw-win-01");

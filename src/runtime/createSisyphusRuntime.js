@@ -96,7 +96,7 @@ export function createSisyphusRuntime(elements = {}) {
   const params = {
     mass: SharedPhysics.DEFAULT_PHYSICS.mass,
     gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
-    handForce: 5,
+    handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
     inertia: 90,
@@ -790,6 +790,14 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     if (migratedLegacySettings) {
+      const legacyHandForce = Number(stored.handForce);
+      if (
+        Number.isFinite(legacyHandForce) &&
+        legacyHandForce >= 0.1 &&
+        legacyHandForce <= 10
+      ) {
+        stored = { ...stored, handForce: legacyHandForce * 10 };
+      }
       const legacyInertia = Number(stored.inertia);
       if (
         Number.isFinite(legacyInertia) &&
@@ -828,7 +836,7 @@ export function createSisyphusRuntime(elements = {}) {
     const outputs = {
       mass: params.mass.toFixed(1),
       gravity: params.gravity.toFixed(2),
-      handForce: params.handForce.toFixed(1),
+      handForce: params.handForce.toFixed(0),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
       inertia: params.inertia.toFixed(0),

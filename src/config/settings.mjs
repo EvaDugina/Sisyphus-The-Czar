@@ -6,8 +6,9 @@ import {
 } from "../lib/rockScale.mjs";
 import { MIX_BLEND_MODES } from "../lib/settingsModel.mjs";
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v6";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v7";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v6",
   "sisyphus-czar-settings-v5",
   "sisyphus-czar-settings-v3",
   "sisyphus-czar-settings-v2",
@@ -119,12 +120,12 @@ export const SETTINGS_GROUPS = [
         name: "handForce",
         label: "Сила",
         type: "range",
-        min: 0.1,
-        max: 10,
-        step: 0.1,
-        defaultValue: 5,
-        output: "5",
-        hint: "Сила руки при броске. Больше — камень летит выше и дальше.",
+        min: 1,
+        max: 100,
+        step: 1,
+        defaultValue: 50,
+        output: "50",
+        hint: "Сила руки при броске в шкале от 1 до 100. Больше — камень летит выше и дальше.",
         formulas: PHYSICS_FORMULAS.handForce,
       },
       {
