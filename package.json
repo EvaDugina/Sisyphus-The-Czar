@@ -7,8 +7,10 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "concurrently --kill-others --names server,client \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:container": "concurrently --kill-others --names server,client \"npm:dev:server\" \"npm:dev:client:watch\"",
     "dev:server": "cross-env PORT=8081 DEBUG=true nodemon --legacy-watch --delay 100ms --watch server --watch shared --ext js --exec node server/index.js",
     "dev:client": "vite",
+    "dev:client:watch": "nodemon --legacy-watch --delay 100ms --watch vite.config.mjs --watch index.html --watch package.json --watch package-lock.json --ext js,mjs,json,html --exec \"npm run dev:client\"",
     "build": "vite build",
     "lint": "npm run lint:server && npm run lint:frontend",
     "lint:server": "node --check server/index.js && node --check server/session-manager.js && node --check server/session-store.js && node --check shared/physics.js",
