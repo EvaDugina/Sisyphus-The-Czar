@@ -24,7 +24,14 @@
   const MAX_IMPRINT_TOLERANCE_Y = 1000;
   const FIXED_STEP_SECONDS = 1 / 60;
   const FIRST_FALL_DELAY_MS = 400;
-  const GRAVITY_UNITS = 1260;
+  const FALL_ACCELERATION_UNITS = 1260;
+  const DRAG_LIFT = Object.freeze({
+    baseSpeed: 420,
+    forceSpeed: 880,
+    minSpeed: 220,
+    maxSpeed: 2800,
+    loadFloor: 0.1,
+  });
   const PHYSICS_VERSION = 4;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const AIR_RETENTION_PER_SECOND = 0.9305;
@@ -37,9 +44,9 @@
   const TURB_ACCEL = 1600;
 
   const PHYSICS_LIMITS = Object.freeze({
-    mass: [1, 100],
-    gravity: [0.2, 10],
-    handForce: [1, 10],
+    mass: [0.1, 100],
+    gravity: [0.1, 10],
+    handForce: [0.1, 10],
     pointerInfluence: [0, 2],
     bounce: [0, 1],
     inertia: [0, 100],
@@ -129,6 +136,16 @@
       (3000 * physics.handForce) / (physics.mass * physics.gravity * 5),
       500,
       3000
+    );
+  }
+
+  function dragLiftSpeed(physics) {
+    const params = sanitizePhysics(physics);
+    const load = Math.max(params.mass * params.gravity, DRAG_LIFT.loadFloor);
+    return clamp(
+      DRAG_LIFT.baseSpeed + (DRAG_LIFT.forceSpeed * params.handForce) / load,
+      DRAG_LIFT.minSpeed,
+      DRAG_LIFT.maxSpeed
     );
   }
 
@@ -226,7 +243,7 @@
 
     const slowdown =
       physics.groundFriction *
-      GRAVITY_UNITS *
+      FALL_ACCELERATION_UNITS *
       physics.gravity *
       GROUND_FRICTION_ACCELERATION_SCALE *
       dt;
@@ -252,7 +269,7 @@
       return false;
     }
 
-    state.vy += GRAVITY_UNITS * physics.gravity * dt;
+    state.vy += FALL_ACCELERATION_UNITS * physics.gravity * dt;
 
     if (physics.turbulence > 0 && state.y < WORLD_HEIGHT - 1) {
       state.turbTime += dt;
@@ -319,6 +336,8 @@
     WORLD_WIDTH,
     WORLD_HEIGHT,
     PHYSICS_VERSION,
+    FALL_ACCELERATION_UNITS,
+    DRAG_LIFT,
     IMPRINT_TOLERANCE_FRACTION,
     FIXED_STEP_SECONDS,
     FIRST_FALL_DELAY_MS,
@@ -329,6 +348,7 @@
     migratePhysics,
     sanitizeState,
     maxHoldMs,
+    dragLiftSpeed,
     sanitizeImprint,
     createImprintAtState,
     stateInsideImprint,

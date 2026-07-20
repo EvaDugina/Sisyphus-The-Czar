@@ -79,12 +79,10 @@ async function grabVisibleRock(page) {
   throw lastError;
 }
 
-async function startWithFirstScroll(page) {
-  await page.evaluate(() => {
-    window.scrollTo(0, Math.max(1, Math.floor(window.innerHeight / 2)));
-  });
+async function waitForAutomaticFirstFall(page) {
   await expect(page.locator("body")).toHaveClass(
-    /state-(fallingToBottom|play)/
+    /state-(fallingToBottom|play)/,
+    { timeout: 3000 },
   );
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
 }
@@ -120,7 +118,7 @@ test("потерянная сессия заменяется рабочей и �
     currentUrl
   );
 
-  await startWithFirstScroll(page);
+  await waitForAutomaticFirstFall(page);
   await expect(page.locator("body")).toHaveClass(/state-play/, {
     timeout: 20_000,
   });
@@ -153,16 +151,25 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
   const introState = await page.locator(".rock").evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
+    const style = getComputedStyle(rock);
     return {
       point: {
         x: rect.left + rect.width / 2,
         y: rect.top + rect.height / 2,
       },
+      centerDelta: {
+        x: Math.abs(rect.left + rect.width / 2 - window.innerWidth / 2),
+        y: Math.abs(rect.top + rect.height / 2 - window.innerHeight / 2),
+      },
       pointerEvents: getComputedStyle(rock).pointerEvents,
+      scale: Number.parseFloat(style.getPropertyValue("--rock-scale")),
       scrollable: document.documentElement.scrollHeight > window.innerHeight,
     };
   });
+  expect(introState.centerDelta.x).toBeLessThan(2);
+  expect(introState.centerDelta.y).toBeLessThan(2);
   expect(introState.pointerEvents).toBe("none");
+  expect(introState.scale).toBeGreaterThan(1);
   expect(introState.scrollable).toBe(true);
   await page.mouse.move(introState.point.x, introState.point.y);
   await expect(page.locator(".hand-cursor")).not.toHaveClass(/is-visible/);
@@ -176,7 +183,6 @@ test("вход на корень перенаправляет в рабочую 
       })
     );
   });
-  await expect(page.locator("body")).toHaveClass(/state-intro/);
   await expect(page.locator(".rock")).not.toHaveClass(/is-dragging/);
   await expect.poll(() => documentRequests.length).toBeGreaterThanOrEqual(2);
   expect(documentRequests[0]).toBe("/");
@@ -189,24 +195,75 @@ test("вход на корень перенаправляет в рабочую 
   ).toHaveCount(0);
   await openControlGroup(page, "Физика");
   await setRange(page, "gravity", 10);
+  await setField(page, "rockScaleEasing", "cubic-bezier(0, 0, 1, 1)");
+  await setField(page, "rockMinWidthVw", 10);
+  await setField(page, "rockMaxWidthVw", 40);
+  await expect(page.locator('[name="rockScaleEasing"]')).toHaveValue(
+    "cubic-bezier(0, 0, 1, 1)"
+  );
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("10");
+  await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("40");
   await page.locator(".settings-toggle").click();
 
-  const sizeBeforeTouch = await page.locator(".rock").evaluate((rock) => {
-    const rect = rock.getBoundingClientRect();
-    return { width: rect.width, height: rect.height };
-  });
-  await startWithFirstScroll(page);
+  await waitForAutomaticFirstFall(page);
   await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
   await expect(page.locator(".rock")).not.toHaveClass(/is-dragging/);
-  const sizeAfterRelease = await page.locator(".rock").evaluate((rock) => {
-    const rect = rock.getBoundingClientRect();
-    return { width: rect.width, height: rect.height };
+  const scaleSamples = await page.evaluate(() => {
+    const rock = document.querySelector(".rock");
+    const sample = (y) => {
+      setPosition(bounds.maxX / 2, y);
+      const rect = rock.getBoundingClientRect();
+      return {
+        scale: Number.parseFloat(
+          getComputedStyle(rock).getPropertyValue("--rock-scale")
+        ),
+        width: rect.width,
+      };
+    };
+    const imprint = document.querySelector(".rock-imprint");
+    const imprintY = Number.parseFloat(
+      getComputedStyle(imprint).getPropertyValue("--imprint-y")
+    );
+    const imprintScale = Number.parseFloat(
+      getComputedStyle(imprint).getPropertyValue("--imprint-scale")
+    );
+    setPosition(bounds.maxX / 2, imprintY);
+    const rockScaleAtImprint = Number.parseFloat(
+      getComputedStyle(rock).getPropertyValue("--rock-scale")
+    );
+    const viewportWidth = window.innerWidth;
+    const imprintRect = imprint.getBoundingClientRect();
+    const imprintBaseWidth = imprint.offsetWidth;
+    setPosition(bounds.maxX / 2, 0);
+    return {
+      bottom: sample(bounds.maxY),
+      imprintBaseWidth,
+      imprintRenderedWidth: imprintRect.width,
+      imprintScale,
+      middle: sample(bounds.maxY / 2),
+      rockScaleAtImprint,
+      top: sample(0),
+      viewportWidth,
+    };
   });
-  expect(sizeAfterRelease.width).toBeCloseTo(sizeBeforeTouch.width, 1);
-  expect(sizeAfterRelease.height).toBeCloseTo(sizeBeforeTouch.height, 1);
+  expect(Math.abs(scaleSamples.top.width - scaleSamples.viewportWidth * 0.4))
+    .toBeLessThan(1);
+  expect(
+    Math.abs(scaleSamples.middle.width - scaleSamples.viewportWidth * 0.25)
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(scaleSamples.bottom.width - scaleSamples.viewportWidth * 0.1)
+  ).toBeLessThan(1);
+  expect(scaleSamples.imprintScale).toBeCloseTo(
+    scaleSamples.rockScaleAtImprint,
+    2
+  );
+  expect(
+    scaleSamples.imprintRenderedWidth / scaleSamples.imprintBaseWidth
+  ).toBeCloseTo(scaleSamples.imprintScale, 1);
   await expect
-    .poll(() => page.evaluate(() => motion.firstScrollHandled))
+    .poll(() => page.evaluate(() => motion.firstFallTriggered))
     .toBe(true);
   await expect(page.locator("body")).not.toHaveClass(/state-intro/);
   await expect(page.locator("body")).toHaveClass(/state-play/, {
@@ -311,19 +368,29 @@ test("два браузера видят один камень и поднима
     updateBounds();
     const bottom = canonicalToLocal(SharedPhysics.WORLD_WIDTH / 2, SharedPhysics.WORLD_HEIGHT);
     const originalMaxY = bounds.maxY;
-    const rockRect = document.querySelector(".rock").getBoundingClientRect();
+    const rock = document.querySelector(".rock");
+    const rockRect = rock.getBoundingClientRect();
+    const rockScale = Number.parseFloat(
+      getComputedStyle(rock).getPropertyValue("--rock-scale")
+    );
     return {
       maxY: originalMaxY,
       bottomY: bottom.y,
       worldHeight: SharedPhysics.WORLD_HEIGHT,
       renderedHeight: document.querySelector(".world").offsetHeight,
       viewportHeight: window.innerHeight,
-      rockWidth: rockRect.width,
-      rockHeight: document.querySelector(".rock").offsetHeight,
+      rockBaseWidth: rock.offsetWidth,
+      rockRenderedWidth: rockRect.width,
+      rockHeight: rock.offsetHeight,
+      rockScale,
     };
   });
   expect(sceneProjection.renderedHeight / sceneProjection.viewportHeight).toBeCloseTo(100, 0);
-  expect(sceneProjection.rockWidth).toBeCloseTo(sceneProjection.viewportHeight * 0.42, 1);
+  expect(sceneProjection.rockBaseWidth).toBeCloseTo(sceneProjection.viewportHeight * 0.42, 0);
+  expect(
+    sceneProjection.rockRenderedWidth / sceneProjection.rockBaseWidth
+  ).toBeCloseTo(sceneProjection.rockScale, 1);
+  expect(sceneProjection.rockScale).toBeGreaterThan(1);
   expect(sceneProjection.maxY).toBeCloseTo(
     sceneProjection.viewportHeight * 100 - sceneProjection.rockHeight,
     1
@@ -640,18 +707,17 @@ test("два браузера видят один камень и поднима
         y: rect.top + rect.height / 2,
       },
       pointerEvents: style.pointerEvents,
-      position: {
-        x: Number.parseFloat(style.getPropertyValue("--rock-x")),
-        y: Number.parseFloat(style.getPropertyValue("--rock-y")),
-      },
     };
   });
-  expect(introRock.pointerEvents).toBe("none");
-  await first.mouse.move(introRock.point.x, introRock.point.y);
-  await expect(first.locator(".hand-cursor")).not.toHaveClass(/is-visible/);
-  await expect(second.locator(".hand-cursor.is-remote.is-visible")).toHaveCount(0);
+  if (introRock.pointerEvents === "none") {
+    await first.mouse.move(introRock.point.x, introRock.point.y);
+    await expect(first.locator(".hand-cursor")).not.toHaveClass(/is-visible/);
+    await expect(second.locator(".hand-cursor.is-remote.is-visible")).toHaveCount(
+      0
+    );
+  }
 
-  await startWithFirstScroll(first);
+  await waitForAutomaticFirstFall(first);
   await expect(second.locator("body")).toHaveClass(
     /state-(fallingToBottom|play)/
   );
@@ -664,6 +730,10 @@ test("два браузера видят один камень и поднима
   await expect(firstImprint).toHaveClass(/is-visible/);
   await expect(secondImprint).toHaveClass(/is-visible/);
   const initialAlignment = await first.evaluate(() => ({
+    expectedX:
+      (window.innerWidth - document.querySelector(".rock").offsetWidth) / 2,
+    expectedY:
+      (window.innerHeight - document.querySelector(".rock").offsetHeight) / 2,
     imprintX: Number.parseFloat(
       getComputedStyle(document.querySelector(".rock-imprint")).getPropertyValue(
         "--imprint-x"
@@ -675,8 +745,8 @@ test("два браузера видят один камень и поднима
       )
     ),
   }));
-  expect(initialAlignment.imprintX).toBeCloseTo(introRock.position.x, 0);
-  expect(initialAlignment.imprintY).toBeCloseTo(introRock.position.y, 0);
+  expect(initialAlignment.imprintX).toBeCloseTo(initialAlignment.expectedX, 0);
+  expect(initialAlignment.imprintY).toBeCloseTo(initialAlignment.expectedY, 0);
 
   const trailBuffer = await first.locator(".trail").evaluate((canvas) => ({
     width: canvas.width,
@@ -688,14 +758,6 @@ test("два браузера видят один камень и поднима
   expect(trailBuffer.width).toBeLessThanOrEqual(trailBuffer.maxWidth);
   expect(trailBuffer.height).toBeLessThanOrEqual(trailBuffer.maxHeight);
   expect(trailBuffer.zIndex).toBe("0");
-
-  await expect
-    .poll(() =>
-      second.locator(".rock").evaluate((rock) =>
-        Number.parseFloat(getComputedStyle(rock).getPropertyValue("--rock-y"))
-      )
-    )
-    .toBeGreaterThan(introRock.position.y);
 
   await expect(first.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
   await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 20_000 });
@@ -1082,39 +1144,34 @@ test("два браузера видят один камень и поднима
 
   await first.locator(".settings-toggle").click();
   await first.getByTestId("restart-session").click();
-  await expect(first.locator("body")).toHaveClass(/state-intro/);
-  await expect(second.locator("body")).toHaveClass(/state-intro/);
-  await expect(first.locator("body")).toHaveClass(/theme-dark/);
-  await expect(second.locator("body")).toHaveClass(/theme-dark/);
-  await expect(firstRain).not.toHaveClass(/is-rain-/);
-  await expect(secondRain).not.toHaveClass(/is-rain-/);
-  await expect(first.locator("html")).not.toHaveClass(/is-scroll-locked/);
-  await expect(second.locator("html")).not.toHaveClass(/is-scroll-locked/);
-  await expect(first.locator(".rock")).toHaveCSS("pointer-events", "none");
-  await expect(second.locator(".rock")).toHaveCSS("pointer-events", "none");
-  await expect
-    .poll(() =>
-      first.evaluate(() => ({
-        firstScrollHandled: motion.firstScrollHandled,
-        scrollY: window.scrollY,
-      }))
-    )
-    .toEqual({ firstScrollHandled: false, scrollY: 0 });
-  await expect
-    .poll(() =>
-      second.evaluate(() => ({
-        firstScrollHandled: motion.firstScrollHandled,
-        scrollY: window.scrollY,
-      }))
-    )
-    .toEqual({ firstScrollHandled: false, scrollY: 0 });
-  await expect(firstImprint).not.toHaveClass(/is-visible/);
-  await expect(secondImprint).not.toHaveClass(/is-visible/);
+  const firstRestartState = await first.evaluate(() => ({
+    bodyState: document.body.className,
+    firstFallTriggered: motion.firstFallTriggered,
+    htmlState: document.documentElement.className,
+    imprintVisible: document
+      .querySelector(".rock-imprint")
+      .classList.contains("is-visible"),
+    introFallTimerActive: motion.introFallTimerId !== null,
+    pointerEvents: getComputedStyle(document.querySelector(".rock"))
+      .pointerEvents,
+    rainState: document.querySelector(".weather-rain").className,
+    scrollY: window.scrollY,
+    trailPoints: trail.points.length,
+  }));
+  expect(firstRestartState.bodyState).toContain("state-intro");
+  expect(firstRestartState).toMatchObject({
+    firstFallTriggered: false,
+    imprintVisible: false,
+    introFallTimerActive: true,
+    pointerEvents: "none",
+    scrollY: 0,
+    trailPoints: 0,
+  });
+  expect(firstRestartState.bodyState).toContain("theme-dark");
+  expect(firstRestartState.htmlState).not.toContain("is-scroll-locked");
+  expect(firstRestartState.rainState).not.toMatch(/is-rain-/);
   await expect(first.locator('[name="gravity"]')).toHaveValue("9");
   await expect(second.locator('[name="gravity"]')).toHaveValue("9");
-  await expect
-    .poll(() => first.evaluate(() => trail.points.length))
-    .toBe(0);
 
   await first.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false }));

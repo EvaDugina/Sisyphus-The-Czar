@@ -1,3 +1,11 @@
+import {
+  DEFAULT_ROCK_SCALE_EASING,
+  DEFAULT_ROCK_MAX_WIDTH_VW,
+  DEFAULT_ROCK_MIN_WIDTH_VW,
+  normalizeRockWidthVwRange,
+  normalizeRockScaleEasing,
+} from "./rockScale.mjs";
+
 function finiteNumber(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -99,6 +107,27 @@ export function normalizeRainSettings(raw, options) {
     ),
     rainExitMs: Math.round(
       clamp(finiteNumber(raw.rainExitMs, defaults.rainExitMs), 0, 10000),
+    ),
+  };
+}
+
+export function normalizeRockScaleSettings(raw, options = {}) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const defaults = {
+    rockMinWidthVw:
+      options.defaults?.rockMinWidthVw || DEFAULT_ROCK_MIN_WIDTH_VW,
+    rockMaxWidthVw:
+      options.defaults?.rockMaxWidthVw || DEFAULT_ROCK_MAX_WIDTH_VW,
+    rockScaleEasing:
+      options.defaults?.rockScaleEasing || DEFAULT_ROCK_SCALE_EASING,
+  };
+  const sizeRange = normalizeRockWidthVwRange(source, defaults);
+
+  return {
+    ...sizeRange,
+    rockScaleEasing: normalizeRockScaleEasing(
+      source.rockScaleEasing,
+      defaults.rockScaleEasing,
     ),
   };
 }

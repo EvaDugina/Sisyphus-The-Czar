@@ -98,6 +98,7 @@
 .rock-imprint {
   --imprint-x: 0px;
   --imprint-y: 0px;
+  --imprint-scale: 1;
 
   position: absolute;
   left: 0;
@@ -108,7 +109,8 @@
   opacity: 0;
   pointer-events: none;
   filter: grayscale(1) contrast(0.72);
-  transform: translate3d(var(--imprint-x), var(--imprint-y), 0);
+  transform: translate3d(var(--imprint-x), var(--imprint-y), 0) scale(var(--imprint-scale));
+  transform-origin: center;
   transition: opacity 220ms ease;
   user-select: none;
   will-change: transform, opacity;
@@ -119,7 +121,6 @@
 }
 
 .rock.is-dragging {
-  --rock-scale: 1;
   cursor: grabbing;
   filter: drop-shadow(0 1.35rem 1.3rem var(--shadow));
 }
@@ -136,7 +137,6 @@ body.state-fallingToBottom .rock {
 }
 
 body.state-won .rock {
-  --rock-scale: 1;
   cursor: default;
   filter: drop-shadow(0 0.8rem 0.9rem rgba(43, 34, 17, 0.24));
 }

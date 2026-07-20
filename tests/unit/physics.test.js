@@ -4,16 +4,44 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Physics = require("../../shared/physics");
 
-test("масса поддерживает значения до 100", () => {
+test("масса ограничивается диапазоном от 0.1 до 100", () => {
+  assert.equal(Physics.sanitizePhysics({ mass: 0 }).mass, 0.1);
+  assert.equal(Physics.sanitizePhysics({ mass: 0.1 }).mass, 0.1);
   assert.equal(Physics.sanitizePhysics({ mass: 100 }).mass, 100);
   assert.equal(Physics.sanitizePhysics({ mass: 101 }).mass, 100);
 });
 
-test("тяготение ограничивается диапазоном от 0.2 до 10", () => {
-  assert.equal(Physics.sanitizePhysics({ gravity: 0.1 }).gravity, 0.2);
+test("тяготение ограничивается диапазоном от 0.1 до 10", () => {
+  assert.equal(Physics.sanitizePhysics({ gravity: 0 }).gravity, 0.1);
+  assert.equal(Physics.sanitizePhysics({ gravity: 0.1 }).gravity, 0.1);
   assert.equal(Physics.sanitizePhysics({ gravity: 0.45 }).gravity, 0.45);
   assert.equal(Physics.sanitizePhysics({ gravity: 10 }).gravity, 10);
   assert.equal(Physics.sanitizePhysics({ gravity: 11 }).gravity, 10);
+});
+
+test("сила руки ограничивается диапазоном от 0.1 до 10", () => {
+  assert.equal(Physics.sanitizePhysics({ handForce: 0 }).handForce, 0.1);
+  assert.equal(Physics.sanitizePhysics({ handForce: 0.1 }).handForce, 0.1);
+  assert.equal(Physics.sanitizePhysics({ handForce: 10 }).handForce, 10);
+  assert.equal(Physics.sanitizePhysics({ handForce: 11 }).handForce, 10);
+});
+
+test("скорость подъёма считается общей функцией физики", () => {
+  const normal = Physics.dragLiftSpeed(Physics.DEFAULT_PHYSICS);
+  const slow = Physics.dragLiftSpeed({
+    mass: 100,
+    gravity: 10,
+    handForce: 0.1,
+  });
+  const fast = Physics.dragLiftSpeed({
+    mass: 0.1,
+    gravity: 0.1,
+    handForce: 10,
+  });
+
+  assert.ok(slow < normal);
+  assert.ok(slow >= Physics.DRAG_LIFT.minSpeed);
+  assert.equal(fast, Physics.DRAG_LIFT.maxSpeed);
 });
 
 test("уменьшенное тяготение замедляет падение камня", () => {

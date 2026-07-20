@@ -10,7 +10,16 @@ import {
 } from "../lib/rainProfile.mjs";
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
-import { normalizeRainSettings } from "../lib/settingsModel.mjs";
+import {
+  normalizeRainSettings,
+  normalizeRockScaleSettings,
+} from "../lib/settingsModel.mjs";
+import {
+  DEFAULT_ROCK_MAX_WIDTH_VW,
+  DEFAULT_ROCK_MIN_WIDTH_VW,
+  DEFAULT_ROCK_SCALE_EASING,
+  rockScaleForY,
+} from "../lib/rockScale.mjs";
 import {
   LEGACY_SETTINGS_STORAGE_KEYS,
   SETTINGS_STORAGE_KEY,
@@ -67,12 +76,8 @@ export function createSisyphusRuntime(elements = {}) {
   // DOM-сцена 10000vh равна 100 высотам viewport. Камень падает до этого
   // фактического низа, но стартовая позиция остаётся в первом экране.
   const SCENE_VIEWPORT_HEIGHTS = 100;
-  const INTRO_CANONICAL_Y = SharedPhysics.WORLD_HEIGHT * 0.0021;
+  const INTRO_FALL_DELAY_MS = SharedPhysics.FIRST_FALL_DELAY_MS;
   const FLOOR_INSET = 0;
-  const DRAG_LIFT_BASE_SPEED = 420;
-  const DRAG_LIFT_FORCE_SPEED = 880;
-  const DRAG_LIFT_MIN_SPEED = 220;
-  const DRAG_LIFT_MAX_SPEED = 2800;
   const MAX_FRAME_SECONDS = 0.032;
   const RAIN_VENDOR_SRC = rainVendorUrl;
   const RAIN_SCRIPT_ID = "sisyphus-raindrop-fx";
@@ -97,6 +102,9 @@ export function createSisyphusRuntime(elements = {}) {
     inertia: 90,
     groundFriction: 0.35,
     turbulence: 0.4,
+    rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
+    rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
+    rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
 
     // Дождь
     rainEnabled: false,
@@ -159,9 +167,10 @@ export function createSisyphusRuntime(elements = {}) {
     dragging: false,
     activePointerId: null,
     holdTimerId: null,
-    firstScrollHandled: false,
-    introScrollBaselineY: 0,
+    firstFallTriggered: false,
+    introFallTimerId: null,
     sceneReady: false,
+    rockScale: 1,
     animationId: null,
     lastFrameAt: null,
     lastPointerX: 0,
@@ -753,12 +762,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function dragLiftSpeed() {
-    const load = Math.max(params.mass * params.gravity, 0.1);
-    return clamp(
-      DRAG_LIFT_BASE_SPEED + (DRAG_LIFT_FORCE_SPEED * params.handForce) / load,
-      DRAG_LIFT_MIN_SPEED,
-      DRAG_LIFT_MAX_SPEED
-    );
+    return SharedPhysics.dragLiftSpeed(params);
   }
 
   const STORAGE_KEY = SETTINGS_STORAGE_KEY;
@@ -824,14 +828,16 @@ export function createSisyphusRuntime(elements = {}) {
 
   function updateControlOutputs() {
     const outputs = {
-      mass: params.mass.toFixed(0),
+      mass: params.mass.toFixed(1),
       gravity: params.gravity.toFixed(2),
-      handForce: params.handForce.toFixed(0),
+      handForce: params.handForce.toFixed(1),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
       inertia: params.inertia.toFixed(0),
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
+      rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
+      rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
       rainBackgroundBlurSteps: params.rainBackgroundBlurSteps.toFixed(0),
       rainBlurPx: `${params.rainBlurPx.toFixed(0)} px`,
@@ -873,6 +879,23 @@ export function createSisyphusRuntime(elements = {}) {
     params.inertia = num("inertia");
     params.groundFriction = num("groundFriction");
     params.turbulence = num("turbulence");
+    Object.assign(
+      params,
+      normalizeRockScaleSettings(
+        {
+          rockMinWidthVw: num("rockMinWidthVw"),
+          rockMaxWidthVw: num("rockMaxWidthVw"),
+          rockScaleEasing: str("rockScaleEasing"),
+        },
+        {
+          defaults: {
+            rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
+            rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
+            rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
+          },
+        },
+      ),
+    );
     params.rainEnabled = bool("rainEnabled");
 
     Object.assign(
@@ -954,6 +977,12 @@ export function createSisyphusRuntime(elements = {}) {
     settingsPanel.querySelector('[name="rainExitEasing"]').value = params.rainExitEasing;
     settingsPanel.querySelector('[name="rainEnterMs"]').value = params.rainEnterMs;
     settingsPanel.querySelector('[name="rainExitMs"]').value = params.rainExitMs;
+    settingsPanel.querySelector('[name="rockScaleEasing"]').value =
+      params.rockScaleEasing;
+    settingsPanel.querySelector('[name="rockMinWidthVw"]').value =
+      params.rockMinWidthVw;
+    settingsPanel.querySelector('[name="rockMaxWidthVw"]').value =
+      params.rockMaxWidthVw;
     applyRainSettings({
       restartIfActive:
         changedKey === "rainStrength" ||
@@ -980,6 +1009,8 @@ export function createSisyphusRuntime(elements = {}) {
     saveSettings();
     trail.dirty = true;
     drawTrail();
+    applyRockScale();
+    renderImprint();
     if (
       collab.enabled &&
       !collab.applyingRemotePhysics &&
@@ -1046,12 +1077,31 @@ export function createSisyphusRuntime(elements = {}) {
     bounds.maxY = Math.max(0, bounds.worldHeight - bounds.rockHeight - FLOOR_INSET);
   }
 
+  function scaleForLocalY(y) {
+    return rockScaleForY(y, bounds.maxY, {
+      easing: params.rockScaleEasing,
+      minWidthVw: params.rockMinWidthVw,
+      maxWidthVw: params.rockMaxWidthVw,
+      baseWidthPx: bounds.rockWidth,
+      viewportWidthPx: bounds.worldWidth,
+    });
+  }
+
+  function applyRockScale() {
+    updateBounds();
+    const scale = scaleForLocalY(motion.y);
+    const roundedScale = Math.round(scale * 10000) / 10000;
+    motion.rockScale = scale;
+    rock.style.setProperty("--rock-scale", `${roundedScale}`);
+  }
+
   function setPosition(x, y) {
     updateBounds();
     motion.x = clamp(x, 0, bounds.maxX);
     motion.y = clamp(y, 0, bounds.maxY);
     rock.style.setProperty("--rock-x", `${motion.x}px`);
     rock.style.setProperty("--rock-y", `${motion.y}px`);
+    applyRockScale();
   }
 
   function localImprintToCanonical(imprint) {
@@ -1102,23 +1152,32 @@ export function createSisyphusRuntime(elements = {}) {
       const position = canonicalToLocal(imprint.x, imprint.y);
       return {
         ...position,
+        scale: scaleForLocalY(position.y),
         toleranceX:
           (imprint.toleranceX / SharedPhysics.WORLD_WIDTH) * bounds.maxX,
         toleranceY:
           (imprint.toleranceY / SharedPhysics.WORLD_HEIGHT) * bounds.maxY,
       };
     }
-    return motion.imprint;
+    return motion.imprint
+      ? {
+          ...motion.imprint,
+          scale: scaleForLocalY(motion.imprint.y),
+        }
+      : null;
   }
 
   function renderImprint() {
     const imprint = activeLocalImprint();
     rockImprint.classList.toggle("is-visible", Boolean(imprint));
     if (!imprint) {
+      rockImprint.style.setProperty("--imprint-scale", "1");
       return;
     }
     rockImprint.style.setProperty("--imprint-x", `${imprint.x}px`);
     rockImprint.style.setProperty("--imprint-y", `${imprint.y}px`);
+    const roundedScale = Math.round(imprint.scale * 10000) / 10000;
+    rockImprint.style.setProperty("--imprint-scale", `${roundedScale}`);
   }
 
   function createLocalImprint() {
@@ -1159,10 +1218,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function initialLocalPosition() {
     updateBounds();
-    return canonicalToLocal(
-      SharedPhysics.WORLD_WIDTH / 2,
-      INTRO_CANONICAL_Y
-    );
+    return {
+      x: bounds.maxX / 2,
+      y: Math.max(0, (window.innerHeight - bounds.rockHeight) / 2),
+    };
   }
 
   function centerIntroRock() {
@@ -1816,7 +1875,7 @@ export function createSisyphusRuntime(elements = {}) {
     resetTrail();
     renderImprint();
     centerIntroRock();
-    resetFirstScrollTrigger({ scrollToTop: true });
+    resetFirstFallTrigger({ scrollToTop: true, schedule: true });
     updateSessionStatus();
   }
 
@@ -1899,6 +1958,7 @@ export function createSisyphusRuntime(elements = {}) {
       );
       scheduleSharedPhysicsUpdate();
       updateSessionStatus();
+      requestSharedFirstFall();
     });
 
     socket.addEventListener("message", (event) => {
@@ -2097,7 +2157,7 @@ export function createSisyphusRuntime(elements = {}) {
     setTheme(sharedSnapshotTheme(snapshot));
     if (snapshot.phase === PHASES.INTRO) {
       if (previousPhase !== PHASES.INTRO) {
-        resetFirstScrollTrigger({ scrollToTop: true });
+        resetFirstFallTrigger({ scrollToTop: true, schedule: true });
       }
       hideReturnRain({ immediate: true });
     } else {
@@ -2712,19 +2772,29 @@ export function createSisyphusRuntime(elements = {}) {
     rock.classList.remove("is-falling");
   }
 
-  function resetFirstScrollTrigger({ scrollToTop = false } = {}) {
-    motion.firstScrollHandled = false;
-    motion.introScrollBaselineY = 0;
+  function clearFirstFallTimer() {
+    if (motion.introFallTimerId !== null) {
+      window.clearTimeout(motion.introFallTimerId);
+      motion.introFallTimerId = null;
+    }
+  }
+
+  function resetFirstFallTrigger({ scrollToTop = false, schedule = false } = {}) {
+    clearFirstFallTimer();
+    motion.firstFallTriggered = false;
     collab.firstFallRequestSent = false;
     if (scrollToTop && window.scrollY !== 0) {
       window.scrollTo(0, 0);
+    }
+    if (schedule) {
+      scheduleFirstFall();
     }
   }
 
   function requestSharedFirstFall() {
     if (
       !motion.sceneReady ||
-      !motion.firstScrollHandled ||
+      !motion.firstFallTriggered ||
       motion.phase !== PHASES.INTRO ||
       !collab.enabled ||
       !collab.connected ||
@@ -2771,10 +2841,10 @@ export function createSisyphusRuntime(elements = {}) {
     return true;
   }
 
-  function continueFirstFallFromScroll() {
+  function continueFirstFallFromTimer() {
     if (
       !motion.sceneReady ||
-      !motion.firstScrollHandled ||
+      !motion.firstFallTriggered ||
       motion.phase !== PHASES.INTRO
     ) {
       return false;
@@ -2786,16 +2856,34 @@ export function createSisyphusRuntime(elements = {}) {
     return beginFirstFall();
   }
 
-  function handleFirstScroll() {
+  function triggerFirstFall() {
     if (
-      motion.firstScrollHandled ||
-      motion.phase !== PHASES.INTRO ||
-      window.scrollY === motion.introScrollBaselineY
+      disposed ||
+      motion.firstFallTriggered ||
+      motion.phase !== PHASES.INTRO
     ) {
       return false;
     }
-    motion.firstScrollHandled = true;
-    continueFirstFallFromScroll();
+    clearFirstFallTimer();
+    motion.firstFallTriggered = true;
+    continueFirstFallFromTimer();
+    return true;
+  }
+
+  function scheduleFirstFall() {
+    if (
+      disposed ||
+      !motion.sceneReady ||
+      motion.phase !== PHASES.INTRO ||
+      motion.firstFallTriggered ||
+      motion.introFallTimerId !== null
+    ) {
+      return false;
+    }
+    motion.introFallTimerId = window.setTimeout(
+      triggerFirstFall,
+      INTRO_FALL_DELAY_MS,
+    );
     return true;
   }
 
@@ -3125,7 +3213,6 @@ export function createSisyphusRuntime(elements = {}) {
     window,
     "scroll",
     () => {
-      handleFirstScroll();
       trail.dirty = true;
       drawTrail();
     },
@@ -3154,7 +3241,7 @@ export function createSisyphusRuntime(elements = {}) {
     } else {
       createSharedSession();
     }
-    continueFirstFallFromScroll();
+    scheduleFirstFall();
   }
 
   const testApi = {
@@ -3207,6 +3294,7 @@ export function createSisyphusRuntime(elements = {}) {
       stopLoop();
       stopRainRenderers();
       clearHoldTimer();
+      clearFirstFallTimer();
       clearSharedConnectionTimers();
       clearSharedReleaseHandoff();
       window.clearTimeout(collab.copyFeedbackTimerId);
