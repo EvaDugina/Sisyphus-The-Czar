@@ -23,8 +23,7 @@
   const DEFAULT_IMPRINT_TOLERANCE_Y = 80;
   const MAX_IMPRINT_TOLERANCE_Y = 1000;
   const FIXED_STEP_SECONDS = 1 / 60;
-  const FIRST_FALL_DELAY_MS = 400;
-  const FALL_ACCELERATION_UNITS = 1260;
+  const FIRST_FALL_DELAY_MS = 2000;
   const DRAG_LIFT = Object.freeze({
     baseSpeed: 420,
     forceSpeed: 880,
@@ -32,19 +31,18 @@
     maxSpeed: 2800,
     loadFloor: 0.1,
   });
-  const PHYSICS_VERSION = 4;
+  const PHYSICS_VERSION = 5;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
   const MAX_RELEASE_UPWARD_SPEED = 1800;
   const MAX_RELEASE_DOWNWARD_SPEED = 900;
-  const GROUND_FRICTION_ACCELERATION_SCALE = 3.2;
   const BOUNCE_MIN_VELOCITY = 120;
   const BOUNCE_IMPACT_CAP = 900;
   const TURB_ACCEL = 1600;
 
   const PHYSICS_LIMITS = Object.freeze({
-    mass: [0.1, 100],
+    mass: [0.1, 10],
     gravity: [0.1, 10],
     handForce: [0.1, 10],
     pointerInfluence: [0, 2],
@@ -55,8 +53,8 @@
   });
 
   const DEFAULT_PHYSICS = Object.freeze({
-    mass: 4,
-    gravity: 0.45,
+    mass: 1,
+    gravity: 9.8,
     handForce: 5,
     pointerInfluence: 1,
     bounce: 0.35,
@@ -131,9 +129,31 @@
     };
   }
 
+  function gravityForce(physics) {
+    const params = sanitizePhysics(physics);
+    return params.mass * params.gravity;
+  }
+
+  function gravityAcceleration(physics) {
+    const params = sanitizePhysics(physics);
+    return gravityForce(params) / params.mass;
+  }
+
+  function handAcceleration(physics) {
+    const params = sanitizePhysics(physics);
+    return params.handForce / params.mass;
+  }
+
+  function groundFrictionAcceleration(physics) {
+    const params = sanitizePhysics(physics);
+    return (params.groundFriction * gravityForce(params)) / params.mass;
+  }
+
   function maxHoldMs(physics) {
+    const params = sanitizePhysics(physics);
+    const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
     return clamp(
-      (3000 * physics.handForce) / (physics.mass * physics.gravity * 5),
+      (3000 * params.handForce) / (load * 5),
       500,
       3000
     );
@@ -141,7 +161,7 @@
 
   function dragLiftSpeed(physics) {
     const params = sanitizePhysics(physics);
-    const load = Math.max(params.mass * params.gravity, DRAG_LIFT.loadFloor);
+    const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
     return clamp(
       DRAG_LIFT.baseSpeed + (DRAG_LIFT.forceSpeed * params.handForce) / load,
       DRAG_LIFT.minSpeed,
@@ -211,7 +231,7 @@
   function applyReleaseImpulse(state, physics, pointerVx, pointerVy) {
     const safeVx = clamp(finiteNumber(pointerVx, 0), -4000, 4000);
     const safeVy = clamp(finiteNumber(pointerVy, 0), -9000, 9000);
-    const strength = physics.handForce / physics.mass;
+    const strength = handAcceleration(physics);
     const influence = physics.pointerInfluence;
     const inertiaFraction = physics.inertia / 100;
     const transfer =
@@ -241,12 +261,7 @@
       return;
     }
 
-    const slowdown =
-      physics.groundFriction *
-      FALL_ACCELERATION_UNITS *
-      physics.gravity *
-      GROUND_FRICTION_ACCELERATION_SCALE *
-      dt;
+    const slowdown = groundFrictionAcceleration(physics) * dt;
     if (Math.abs(state.vx) <= slowdown) {
       state.vx = 0;
       return;
@@ -269,7 +284,7 @@
       return false;
     }
 
-    state.vy += FALL_ACCELERATION_UNITS * physics.gravity * dt;
+    state.vy += gravityAcceleration(physics) * dt;
 
     if (physics.turbulence > 0 && state.y < WORLD_HEIGHT - 1) {
       state.turbTime += dt;
@@ -336,7 +351,6 @@
     WORLD_WIDTH,
     WORLD_HEIGHT,
     PHYSICS_VERSION,
-    FALL_ACCELERATION_UNITS,
     DRAG_LIFT,
     IMPRINT_TOLERANCE_FRACTION,
     FIXED_STEP_SECONDS,
@@ -347,6 +361,10 @@
     sanitizePhysics,
     migratePhysics,
     sanitizeState,
+    gravityForce,
+    gravityAcceleration,
+    handAcceleration,
+    groundFrictionAcceleration,
     maxHoldMs,
     dragLiftSpeed,
     sanitizeImprint,

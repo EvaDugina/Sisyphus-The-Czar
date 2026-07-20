@@ -6,8 +6,9 @@ import {
 } from "../lib/rockScale.mjs";
 import { MIX_BLEND_MODES } from "../lib/settingsModel.mjs";
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v5";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v6";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v5",
   "sisyphus-czar-settings-v3",
   "sisyphus-czar-settings-v2",
 ];
@@ -32,6 +33,60 @@ const RAIN_MIX_BLEND_OPTIONS = MIX_BLEND_MODES.map((value) => [
   MIX_BLEND_LABELS[value],
 ]);
 
+const PHYSICS_FORMULAS = {
+  mass: [
+    "F_g = m \\cdot g",
+    "a_g = \\frac{F_g}{m}",
+    "a_{hand} = \\frac{F_{hand}}{m}",
+    "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k",
+    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hand}}{5 \\cdot F_g}, 500, 3000\\right)",
+    "v_{lift} = clamp\\left(v_0 + k_{lift} \\cdot \\frac{F_{hand}}{F_g}, v_{min}, v_{max}\\right)",
+  ],
+  gravity: [
+    "F_g = m \\cdot g",
+    "a_g = \\frac{F_g}{m} = g",
+    "F_f = \\mu \\cdot F_g",
+    "a_f = \\frac{F_f}{m}",
+    "v_y' = v_y + a_g \\cdot \\Delta t",
+  ],
+  handForce: [
+    "a_{hand} = \\frac{F_{hand}}{m}",
+    "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k",
+    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hand}}{5 \\cdot F_g}, 500, 3000\\right)",
+    "v_{lift} = clamp\\left(v_0 + k_{lift} \\cdot \\frac{F_{hand}}{F_g}, v_{min}, v_{max}\\right)",
+  ],
+  pointerInfluence: [
+    "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
+  ],
+  bounce: [
+    "v_y' = -min(v_y, v_{impactMax}) \\cdot b",
+  ],
+  inertia: [
+    "I = \\frac{inertia}{100}",
+    "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
+  ],
+  groundFriction: [
+    "F_f = \\mu \\cdot F_g",
+    "a_f = \\frac{F_f}{m}",
+    "v_x' = v_x - sign(v_x) \\cdot a_f \\cdot \\Delta t",
+  ],
+  turbulence: [
+    "v_x' = v_x + T \\cdot (sin(5.3t) + 0.6sin(11.7t + 1.3)) \\cdot \\Delta t",
+    "v_y' = v_y + 0.35T \\cdot sin(4.1t + 2.6) \\cdot \\Delta t",
+  ],
+  rockScaleEasing: [
+    "h = 1 - \\frac{y}{y_{max}}",
+    "s = bezier(h)",
+    "w = w_{min} + (w_{max} - w_{min}) \\cdot s",
+  ],
+  rockMinWidthVw: [
+    "w = w_{min} + (w_{max} - w_{min}) \\cdot bezier(h)",
+  ],
+  rockMaxWidthVw: [
+    "w = w_{min} + (w_{max} - w_{min}) \\cdot bezier(h)",
+  ],
+};
+
 export const SETTINGS_GROUPS = [
   {
     title: "Физика",
@@ -41,11 +96,12 @@ export const SETTINGS_GROUPS = [
         label: "Масса",
         type: "range",
         min: 0.1,
-        max: 100,
+        max: 10,
         step: 0.1,
-        defaultValue: 4,
-        output: "4",
-        hint: "Масса камня. Чем тяжелее — тем медленнее подъём, медленнее разгон и слабее бросок.",
+        defaultValue: 1,
+        output: "1",
+        hint: "Масса камня. Участвует в силе тяжести, ускорении от руки и передаче импульса.",
+        formulas: PHYSICS_FORMULAS.mass,
       },
       {
         name: "gravity",
@@ -54,9 +110,10 @@ export const SETTINGS_GROUPS = [
         min: 0.1,
         max: 10,
         step: 0.05,
-        defaultValue: 0.45,
-        output: "0.45",
-        hint: "Сила притяжения к земле. Больше значение — камень падает быстрее и медленнее поднимается.",
+        defaultValue: 9.8,
+        output: "9.80",
+        hint: "Ускорение свободного падения g. По умолчанию близко к земному значению 9.8.",
+        formulas: PHYSICS_FORMULAS.gravity,
       },
       {
         name: "handForce",
@@ -68,6 +125,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: 5,
         output: "5",
         hint: "Сила руки при броске. Больше — камень летит выше и дальше.",
+        formulas: PHYSICS_FORMULAS.handForce,
       },
       {
         name: "pointerInfluence",
@@ -79,6 +137,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: 1,
         output: "1.0",
         hint: "Насколько скорость движения мыши влияет на силу броска. Ноль — рывок не учитывается.",
+        formulas: PHYSICS_FORMULAS.pointerInfluence,
       },
       {
         name: "bounce",
@@ -90,6 +149,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: 0.35,
         output: "0.35",
         hint: "Сила пружинистого подпрыгивания камня при ударе о низ. Ноль — камень просто останавливается без отскока.",
+        formulas: PHYSICS_FORMULAS.bounce,
       },
       {
         name: "inertia",
@@ -101,6 +161,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: 90,
         output: "90",
         hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 100 — максимальная передача с учётом массы, силы и влияния рывка.",
+        formulas: PHYSICS_FORMULAS.inertia,
       },
       {
         name: "groundFriction",
@@ -112,6 +173,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: 0.35,
         output: "0.35",
         hint: "Сила трения на нижней земле. Больше значение — камень быстрее гасит инерцию после падения на дно.",
+        formulas: PHYSICS_FORMULAS.groundFriction,
       },
       {
         name: "turbulence",
@@ -123,6 +185,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: 0.4,
         output: "0.40",
         hint: "Сила воздушной турбулентности при падении: камень покачивается и рыскает в стороны, а не летит по ровной дуге. Ноль — без турбулентности.",
+        formulas: PHYSICS_FORMULAS.turbulence,
       },
       {
         name: "rockScaleEasing",
@@ -131,6 +194,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROCK_SCALE_EASING,
         spellCheck: false,
         hint: "cubic-bezier кривая масштаба камня от нижнего положения к верхнему. Невалидное значение заменяется стандартной кривой.",
+        formulas: PHYSICS_FORMULAS.rockScaleEasing,
       },
       {
         name: "rockMinWidthVw",
@@ -142,6 +206,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROCK_MIN_WIDTH_VW,
         output: `${DEFAULT_ROCK_MIN_WIDTH_VW}%`,
         hint: "Минимальная ширина камня в процентах от ширины экрана. Высота меняется пропорционально.",
+        formulas: PHYSICS_FORMULAS.rockMinWidthVw,
       },
       {
         name: "rockMaxWidthVw",
@@ -153,6 +218,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROCK_MAX_WIDTH_VW,
         output: `${DEFAULT_ROCK_MAX_WIDTH_VW}%`,
         hint: "Максимальная ширина камня в процентах от ширины экрана. Высота меняется пропорционально.",
+        formulas: PHYSICS_FORMULAS.rockMaxWidthVw,
       },
     ],
   },

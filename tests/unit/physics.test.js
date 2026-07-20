@@ -4,19 +4,35 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 const Physics = require("../../shared/physics");
 
-test("масса ограничивается диапазоном от 0.1 до 100", () => {
+test("масса ограничивается диапазоном от 0.1 до 10", () => {
+  assert.equal(Physics.DEFAULT_PHYSICS.mass, 1);
   assert.equal(Physics.sanitizePhysics({ mass: 0 }).mass, 0.1);
   assert.equal(Physics.sanitizePhysics({ mass: 0.1 }).mass, 0.1);
-  assert.equal(Physics.sanitizePhysics({ mass: 100 }).mass, 100);
-  assert.equal(Physics.sanitizePhysics({ mass: 101 }).mass, 100);
+  assert.equal(Physics.sanitizePhysics({ mass: 10 }).mass, 10);
+  assert.equal(Physics.sanitizePhysics({ mass: 11 }).mass, 10);
 });
 
 test("тяготение ограничивается диапазоном от 0.1 до 10", () => {
+  assert.equal(Physics.DEFAULT_PHYSICS.gravity, 9.8);
   assert.equal(Physics.sanitizePhysics({ gravity: 0 }).gravity, 0.1);
   assert.equal(Physics.sanitizePhysics({ gravity: 0.1 }).gravity, 0.1);
   assert.equal(Physics.sanitizePhysics({ gravity: 0.45 }).gravity, 0.45);
   assert.equal(Physics.sanitizePhysics({ gravity: 10 }).gravity, 10);
   assert.equal(Physics.sanitizePhysics({ gravity: 11 }).gravity, 10);
+});
+
+test("сила тяжести и ускорения считаются из массы и g", () => {
+  const physics = Physics.sanitizePhysics({
+    mass: 2,
+    gravity: 9.8,
+    groundFriction: 0.5,
+    handForce: 6,
+  });
+
+  assert.equal(Math.round(Physics.gravityForce(physics) * 100) / 100, 19.6);
+  assert.equal(Physics.gravityAcceleration(physics), 9.8);
+  assert.equal(Physics.handAcceleration(physics), 3);
+  assert.equal(Physics.groundFrictionAcceleration(physics), 4.9);
 });
 
 test("сила руки ограничивается диапазоном от 0.1 до 10", () => {
@@ -29,7 +45,7 @@ test("сила руки ограничивается диапазоном от 0
 test("скорость подъёма считается общей функцией физики", () => {
   const normal = Physics.dragLiftSpeed(Physics.DEFAULT_PHYSICS);
   const slow = Physics.dragLiftSpeed({
-    mass: 100,
+    mass: 10,
     gravity: 10,
     handForce: 0.1,
   });
@@ -120,7 +136,7 @@ test("камень доходит до пола и переходит в игр�
   });
   const physics = Physics.sanitizePhysics({ bounce: 0, turbulence: 0 });
 
-  for (let index = 0; index < 1200 && state.phase !== Physics.PHASES.PLAY; index += 1) {
+  for (let index = 0; index < 1500 && state.phase !== Physics.PHASES.PLAY; index += 1) {
     Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS);
   }
 

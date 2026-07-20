@@ -293,7 +293,7 @@ input[type="range"] {
 .hint {
   position: fixed;
   z-index: 40;
-  max-width: 15rem;
+  max-width: min(27rem, calc(100vw - 2rem));
   padding: 0.5rem 0.65rem;
   border: 1px solid var(--line);
   border-radius: 6px;
@@ -309,6 +309,44 @@ input[type="range"] {
   transition:
     opacity 120ms ease,
     transform 120ms ease;
+}
+
+.hint__text {
+  max-width: 22rem;
+}
+
+.hint__formulas {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.hint__formulas-title {
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.hint__formulas ul {
+  display: grid;
+  gap: 0.3rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.hint__formulas code {
+  display: block;
+  overflow-wrap: anywhere;
+  padding: 0.22rem 0.28rem;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--ink);
+  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+  font-size: 0.72rem;
+  line-height: 1.35;
 }
 
 .hint.is-visible {

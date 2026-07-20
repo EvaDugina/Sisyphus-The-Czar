@@ -362,7 +362,7 @@ test("сессия переживает restart сервиса с тем же х
           vx: 0,
           vy: 0,
         },
-        physics: { mass: 77, gravity: 8, turbulence: 0 },
+        physics: { mass: 10, gravity: 8, turbulence: 0 },
         imprint: { x: 300, y: 700, toleranceX: 40, toleranceY: 30 },
         trail: [[10, 20], [30, 40]],
       }),
@@ -394,7 +394,7 @@ test("сессия переживает restart сервиса с тем же х
   assert.equal(snapshot.payload.phase, Physics.PHASES.PLAY);
   assert.equal(snapshot.payload.x, 321);
   assert.equal(snapshot.payload.y, Physics.WORLD_HEIGHT);
-  assert.equal(snapshot.payload.physics.mass, 77);
+  assert.equal(snapshot.payload.physics.mass, 10);
   assert.equal(snapshot.payload.physics.gravity, 8);
   assert.equal(snapshot.payload.imprint.x, 300);
   assert.deepEqual(snapshot.payload.trail, [[10, 20], [30, 40]]);

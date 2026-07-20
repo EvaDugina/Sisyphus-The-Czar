@@ -94,8 +94,8 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
 
   const params = {
-    mass: 4,
-    gravity: 0.45,
+    mass: SharedPhysics.DEFAULT_PHYSICS.mass,
+    gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
     handForce: 5,
     pointerInfluence: 1,
     bounce: 0.35,
@@ -754,11 +754,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function maxHoldMs() {
-    return clamp(
-      (3000 * params.handForce) / (params.mass * params.gravity * 5),
-      500,
-      3000
-    );
+    return SharedPhysics.maxHoldMs(params);
   }
 
   function dragLiftSpeed() {
@@ -802,6 +798,8 @@ export function createSisyphusRuntime(elements = {}) {
       ) {
         stored = { ...stored, inertia: legacyInertia * 100 };
       }
+      delete stored.mass;
+      delete stored.gravity;
     }
     if (
       !Object.hasOwn(stored, "groundFriction") &&
@@ -1070,11 +1068,20 @@ export function createSisyphusRuntime(elements = {}) {
     bounds.rockWidth = rock.offsetWidth;
     bounds.rockHeight = rock.offsetHeight;
     bounds.maxX = Math.max(0, bounds.worldWidth - bounds.rockWidth);
+    const bottomScale = rockScaleForY(1, 1, {
+      easing: params.rockScaleEasing,
+      minWidthVw: params.rockMinWidthVw,
+      maxWidthVw: params.rockMaxWidthVw,
+      baseWidthPx: bounds.rockWidth,
+      viewportWidthPx: bounds.worldWidth,
+    });
+    const visualBottomOffset =
+      (bounds.rockHeight * (1 + bottomScale)) / 2 + FLOOR_INSET;
     bounds.worldHeight = Math.max(
       window.innerHeight * SCENE_VIEWPORT_HEIGHTS,
-      bounds.rockHeight + FLOOR_INSET
+      visualBottomOffset
     );
-    bounds.maxY = Math.max(0, bounds.worldHeight - bounds.rockHeight - FLOOR_INSET);
+    bounds.maxY = Math.max(0, bounds.worldHeight - visualBottomOffset);
   }
 
   function scaleForLocalY(y) {
@@ -2668,11 +2675,45 @@ export function createSisyphusRuntime(elements = {}) {
 
   function showHint(target) {
     const text = target.getAttribute("data-hint");
-    if (!text) {
+    let formulas;
+    try {
+      const rawFormulas = target.getAttribute("data-formulas");
+      formulas = rawFormulas ? JSON.parse(rawFormulas) : [];
+    } catch {
+      formulas = [];
+    }
+    formulas = Array.isArray(formulas)
+      ? formulas.filter((formula) => typeof formula === "string" && formula.trim())
+      : [];
+
+    if (!text && formulas.length === 0) {
       return;
     }
 
-    hintEl.textContent = text;
+    hintEl.replaceChildren();
+    if (text) {
+      const description = document.createElement("div");
+      description.className = "hint__text";
+      description.textContent = text;
+      hintEl.append(description);
+    }
+    if (formulas.length > 0) {
+      const formulaBlock = document.createElement("div");
+      formulaBlock.className = "hint__formulas";
+      const title = document.createElement("div");
+      title.className = "hint__formulas-title";
+      title.textContent = "Формулы";
+      const list = document.createElement("ul");
+      formulas.forEach((formula) => {
+        const item = document.createElement("li");
+        const code = document.createElement("code");
+        code.textContent = formula;
+        item.append(code);
+        list.append(item);
+      });
+      formulaBlock.append(title, list);
+      hintEl.append(formulaBlock);
+    }
     hintEl.classList.add("is-visible");
 
     const panelRect = settingsPanel.getBoundingClientRect();
