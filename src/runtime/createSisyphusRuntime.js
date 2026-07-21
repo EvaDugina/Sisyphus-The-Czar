@@ -2610,17 +2610,18 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    recordPointerVelocity(event);
-    const pointerVelocity = currentPointerVelocity();
-    const velocity = localVelocityToCanonical(
-      pointerVelocity.vx,
-      pointerVelocity.vy
-    );
+    const canReleaseWithImpulse = cooperativeDragActive();
+    const pointerVelocity = canReleaseWithImpulse
+      ? currentPointerVelocity()
+      : { vx: 0, vy: 0 };
+    const velocity = canReleaseWithImpulse
+      ? localVelocityToCanonical(pointerVelocity.vx, pointerVelocity.vy)
+      : { vx: 0, vy: 0 };
     const position = localToCanonical(motion.x, motion.y);
     const pointerVisible =
       event.type !== "pointercancel" && pointerIsOverRock(event);
     const pointer = updateLocalSharedPointer(event, "grab", pointerVisible);
-    if (cooperativeDragActive()) {
+    if (canReleaseWithImpulse) {
       startSharedReleaseHandoff();
     }
     collab.releasePending = true;
@@ -2644,18 +2645,20 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    const pointerVelocity = currentPointerVelocity();
-    const velocity = localVelocityToCanonical(
-      pointerVelocity.vx,
-      pointerVelocity.vy
-    );
+    const canReleaseWithImpulse = cooperativeDragActive();
+    const pointerVelocity = canReleaseWithImpulse
+      ? currentPointerVelocity()
+      : { vx: 0, vy: 0 };
+    const velocity = canReleaseWithImpulse
+      ? localVelocityToCanonical(pointerVelocity.vx, pointerVelocity.vy)
+      : { vx: 0, vy: 0 };
     const position = localToCanonical(motion.x, motion.y);
     const pointer = updateLocalSharedPointer(
       null,
       "grab",
       hidePointer ? false : collab.localPointer.visible
     );
-    if (cooperativeDragActive()) {
+    if (canReleaseWithImpulse) {
       startSharedReleaseHandoff();
     }
     collab.releasePending = true;
@@ -3212,9 +3215,13 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function applyReleaseImpulse() {
+  function applyReleaseImpulse(pointerVelocity = currentPointerVelocity()) {
     const state = SharedPhysics.sanitizeState(currentSharedState());
-    const pointerVelocity = currentPointerVelocity();
+    if (!SharedPhysics.canLift(params, activeHandCount())) {
+      motion.vx = 0;
+      motion.vy = 0;
+      return;
+    }
     const velocity = localVelocityToCanonical(
       pointerVelocity.vx,
       pointerVelocity.vy
@@ -3348,13 +3355,13 @@ export function createSisyphusRuntime(elements = {}) {
     rock.classList.remove("is-dragging");
     setGrabbingCursor(false);
     releasePointerCapture(event.pointerId);
-    recordPointerVelocity(event);
+    const pointerVelocity = currentPointerVelocity();
 
     if (releasedInImprint) {
       motion.vx = 0;
       motion.vy = 0;
     } else {
-      applyReleaseImpulse();
+      applyReleaseImpulse(pointerVelocity);
     }
     setHandToGrab();
     rock.classList.add("is-falling");
