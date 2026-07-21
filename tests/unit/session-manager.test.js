@@ -128,6 +128,7 @@ test("общие визуальные настройки комнаты норм
   const session = manager.createSession({
     roomSettings: {
       handWidthVw: 120,
+      slaveHandWidthPx: 200,
       rainDropColor: "bad",
       rainHighlightColor: "#ABCDEF",
     },
@@ -135,6 +136,7 @@ test("общие визуальные настройки комнаты норм
   const first = connect(manager, session, "client-room-settings-a1");
 
   assert.equal(session.roomSettings.handWidthVw, 90);
+  assert.equal(session.roomSettings.slaveHandWidthPx, 96);
   assert.equal(
     session.roomSettings.rainDropColor,
     RoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor
@@ -167,6 +169,7 @@ test("roomSettings.update синхронизирует размер руки и 
     seq: 1,
     payload: {
       handWidthVw: 42.5,
+      slaveHandWidthPx: 40,
       rainDropColor: "#123456",
       rainHighlightColor: "#fedcba",
     },
@@ -174,6 +177,7 @@ test("roomSettings.update синхронизирует размер руки и 
 
   assert.deepEqual(session.roomSettings, {
     handWidthVw: 42.5,
+    slaveHandWidthPx: 40,
     rainDropColor: "#123456",
     rainHighlightColor: "#fedcba",
   });

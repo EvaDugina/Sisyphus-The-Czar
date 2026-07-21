@@ -124,6 +124,8 @@ export function createSisyphusRuntime(elements = {}) {
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     handWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
+    slaveHandWidthPx:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
 
     // Дождь
     rainEnabled: false,
@@ -646,6 +648,10 @@ export function createSisyphusRuntime(elements = {}) {
       "--hand-width-vw",
       `${params.handWidthVw}vw`
     );
+    document.documentElement.style.setProperty(
+      "--slave-hand-width-px",
+      `${params.slaveHandWidthPx}px`
+    );
   }
 
   function getRainExitDurationMs() {
@@ -1053,6 +1059,7 @@ export function createSisyphusRuntime(elements = {}) {
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
+      slaveHandWidthPx: `${params.slaveHandWidthPx.toFixed(0)}px`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
       rainBackgroundBlurSteps: params.rainBackgroundBlurSteps.toFixed(0),
       rainBlurPx: `${params.rainBlurPx.toFixed(0)} px`,
@@ -1117,6 +1124,7 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.sanitizeRoomSettings(
         {
           handWidthVw: num("handWidthVw"),
+          slaveHandWidthPx: num("slaveHandWidthPx"),
           rainDropColor: str("rainDropColor"),
           rainHighlightColor: str("rainHighlightColor"),
         },
@@ -1216,6 +1224,8 @@ export function createSisyphusRuntime(elements = {}) {
       params.rockMaxWidthVw;
     settingsPanel.querySelector('[name="handWidthVw"]').value =
       params.handWidthVw;
+    settingsPanel.querySelector('[name="slaveHandWidthPx"]').value =
+      params.slaveHandWidthPx;
     applyRainSettings({
       restartIfActive:
         changedKey === "rainStrength" ||
@@ -1916,7 +1926,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function roomSettingValueEqual(key, left, right) {
-    if (key === "handWidthVw") {
+    if (key === "handWidthVw" || key === "slaveHandWidthPx") {
       return Math.abs(Number(left) - Number(right)) < 1e-9;
     }
     return String(left || "").toLowerCase() === String(right || "").toLowerCase();

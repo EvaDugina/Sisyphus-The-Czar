@@ -932,7 +932,9 @@ test("два браузера видят один камень и поднима
   await setRange(first, "groundFriction", 0.2);
   await setRange(first, "turbulence", 0.3);
   await setRange(first, "handWidthVw", 40);
+  await setRange(first, "slaveHandWidthPx", 36);
   await expect(first.locator('[data-output="handWidthVw"]')).toHaveText("40.0vw");
+  await expect(first.locator('[data-output="slaveHandWidthPx"]')).toHaveText("36px");
   await expect
     .poll(() =>
       first.evaluate(() => Object.keys(collab.pendingRoomSettingsChanges).length)
@@ -952,6 +954,7 @@ test("два браузера видят один камень и поднима
   await expect(second.locator('[name="rainBlendMode"]')).toHaveValue("multiply");
   await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue("normal");
   await expect(second.locator('[name="handWidthVw"]')).toHaveValue("40");
+  await expect(second.locator('[name="slaveHandWidthPx"]')).toHaveValue("36");
   await setField(second, "rainExitMs", 700);
   await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("700");
   await expect(first.getByTestId("session-status")).toContainText("2");
@@ -973,6 +976,7 @@ test("два браузера видят один камень и поднима
     .poll(() => second.evaluate(() => getRoomSettings()))
     .toEqual({
       handWidthVw: 40,
+      slaveHandWidthPx: 36,
       rainDropColor: "#336699",
       rainHighlightColor: "#ffcc00",
     });
@@ -1132,7 +1136,7 @@ test("два браузера видят один камень и поднима
   await expect(localGrabbingCursor).toHaveClass(/is-slave/);
   await expect(localGrabbingCursor).toHaveCSS(
     "background-image",
-    /cursor-partner-grabbing(?:-[A-Za-z0-9_-]+)?\.webp/
+    /hand_close(?:-[A-Za-z0-9_-]+)?\.png/
   );
   const grabbingCursorSize = await localGrabbingCursor.evaluate((cursor) => {
     const style = getComputedStyle(cursor);
@@ -1141,7 +1145,7 @@ test("два браузера видят один камень и поднима
       height: Math.round(Number.parseFloat(style.height)),
     };
   });
-  expect(grabbingCursorSize).toEqual({ height: 679, width: 512 });
+  expect(grabbingCursorSize).toEqual({ height: 36, width: 36 });
   const remoteGrabbingCursor = first.locator(
     ".hand-cursor.is-remote.is-visible"
   );
@@ -1149,8 +1153,18 @@ test("два браузера видят один камень и поднима
   await expect(remoteGrabbingCursor).toHaveClass(/is-slave/);
   await expect(remoteGrabbingCursor).toHaveCSS(
     "background-image",
-    /cursor-partner-grabbing(?:-[A-Za-z0-9_-]+)?\.webp/
+    /hand_close(?:-[A-Za-z0-9_-]+)?\.png/
   );
+  const remoteGrabbingCursorSize = await remoteGrabbingCursor.evaluate(
+    (cursor) => {
+      const style = getComputedStyle(cursor);
+      return {
+        width: Math.round(Number.parseFloat(style.width)),
+        height: Math.round(Number.parseFloat(style.height)),
+      };
+    }
+  );
+  expect(remoteGrabbingCursorSize).toEqual({ height: 36, width: 36 });
   const secondRain = second.getByTestId("weather-rain");
   await expect(first.locator("body")).not.toHaveClass(/state-won/);
   await expect(second.locator("body")).not.toHaveClass(/state-won/);

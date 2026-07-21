@@ -103,6 +103,7 @@ const PHYSICS_FORMULAS = {
   handWidthVw: [
     "w_{hand} = viewportWidth \\cdot \\frac{handWidthVw}{100}",
   ],
+  slaveHandWidthPx: ["w_{slaveHand} = slaveHandWidthPx"],
 };
 
 export const SETTINGS_GROUPS = [
@@ -252,15 +253,27 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "handWidthVw",
-        label: "Размер руки, vw",
+        label: "Размер master-руки, vw",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handWidthVw[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handWidthVw[1],
         step: 0.5,
         defaultValue: DEFAULT_ROOM_SETTINGS.handWidthVw,
         output: `${DEFAULT_ROOM_SETTINGS.handWidthVw.toFixed(1)}vw`,
-        hint: "Общая ширина фото-руки в процентах от ширины экрана. Меняется у всех участников комнаты.",
+        hint: "Общая ширина большой master-руки в процентах от ширины экрана. Меняется у всех участников комнаты.",
         formulas: PHYSICS_FORMULAS.handWidthVw,
+      },
+      {
+        name: "slaveHandWidthPx",
+        label: "Размер slave-руки, px",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.slaveHandWidthPx[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.slaveHandWidthPx[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
+        output: `${DEFAULT_ROOM_SETTINGS.slaveHandWidthPx.toFixed(0)}px`,
+        hint: "Общая ширина маленькой slave-руки в пикселях. Меняется у всех участников комнаты.",
+        formulas: PHYSICS_FORMULAS.slaveHandWidthPx,
       },
     ],
   },

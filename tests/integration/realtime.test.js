@@ -8,6 +8,7 @@ const path = require("node:path");
 const WebSocket = require("ws");
 const { createService } = require("../../server");
 const Physics = require("../../shared/physics");
+const RoomSettings = require("../../shared/room-settings");
 
 function connect(url) {
   const socket = new WebSocket(url);
@@ -73,9 +74,11 @@ test("два WebSocket-клиента делят состояние и пере�
       state: { phase: Physics.PHASES.PLAY, x: 500, y: Physics.WORLD_HEIGHT },
       physics: { gravity: 1, bounce: 0 },
       roomSettings: {
-        handWidthVw: 57.5,
-        rainDropColor: "#8c8c8c",
-        rainHighlightColor: "#ffffff",
+        handWidthVw: RoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
+        slaveHandWidthPx: RoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
+        rainDropColor: RoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor,
+        rainHighlightColor:
+          RoomSettings.DEFAULT_ROOM_SETTINGS.rainHighlightColor,
       },
     }),
   });
@@ -96,7 +99,14 @@ test("два WebSocket-клиента делят состояние и пере�
   ]);
   assert.equal(firstSnapshot.payload.clientRole, "master");
   assert.equal(secondSnapshot.payload.clientRole, "slave");
-  assert.equal(firstSnapshot.payload.roomSettings.handWidthVw, 57.5);
+  assert.equal(
+    firstSnapshot.payload.roomSettings.handWidthVw,
+    RoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw
+  );
+  assert.equal(
+    firstSnapshot.payload.roomSettings.slaveHandWidthPx,
+    RoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx
+  );
 
   first.socket.send(
     JSON.stringify({
@@ -245,6 +255,7 @@ test("два WebSocket-клиента делят состояние и пере�
       seq: 4,
       payload: {
         handWidthVw: 42.5,
+        slaveHandWidthPx: 48,
         rainDropColor: "#123456",
         rainHighlightColor: "#fedcba",
       },
@@ -255,6 +266,7 @@ test("два WebSocket-клиента делят состояние и пере�
     (payload) =>
       payload.roomSettings &&
       payload.roomSettings.handWidthVw === 42.5 &&
+      payload.roomSettings.slaveHandWidthPx === 48 &&
       payload.roomSettings.rainDropColor === "#123456" &&
       payload.roomSettings.rainHighlightColor === "#fedcba"
   );
@@ -281,6 +293,7 @@ test("два WebSocket-клиента делят состояние и пере�
   assert.equal(restarted.payload.physics.gravity, 10);
   assert.deepEqual(restarted.payload.roomSettings, {
     handWidthVw: 42.5,
+    slaveHandWidthPx: 48,
     rainDropColor: "#123456",
     rainHighlightColor: "#fedcba",
   });
@@ -386,6 +399,7 @@ test("сессия переживает restart сервиса с тем же х
         physics: { mass: 10, gravity: 8, turbulence: 0 },
         roomSettings: {
           handWidthVw: 38,
+          slaveHandWidthPx: 44,
           rainDropColor: "#234567",
           rainHighlightColor: "#abcdef",
         },
@@ -424,6 +438,7 @@ test("сессия переживает restart сервиса с тем же х
   assert.equal(snapshot.payload.physics.gravity, 8);
   assert.deepEqual(snapshot.payload.roomSettings, {
     handWidthVw: 38,
+    slaveHandWidthPx: 44,
     rainDropColor: "#234567",
     rainHighlightColor: "#abcdef",
   });

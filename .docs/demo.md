@@ -69,7 +69,8 @@
   "imprint": null,
   "masterClientId": "client-master-0001",
   "roomSettings": {
-    "handWidthVw": 57.5,
+    "handWidthVw": 28.75,
+    "slaveHandWidthPx": 32,
     "rainDropColor": "#8c8c8c",
     "rainHighlightColor": "#ffffff"
   },
