@@ -3,6 +3,7 @@ import "../../shared/room-settings.js";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import rockImpactAudioUrl from "../../assets/audio/Камень.mp3?url";
+import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import {
   canonicalToLocalPosition,
@@ -98,6 +99,7 @@ export function createSisyphusRuntime(elements = {}) {
   const FIRST_FALL_TOUCH_SCROLL_THRESHOLD_PX = 8;
   const ROCK_IMPACT_AUDIO_POOL_SIZE = 4;
   const ROCK_IMPACT_AUDIO_VOLUME = 0.76;
+  const RAIN_AUDIO_VOLUME = 0.42;
   const RAIN_VENDOR_SRC = rainVendorUrl;
   const RAIN_SCRIPT_ID = "sisyphus-raindrop-fx";
   const DEFAULT_RAIN_ENTER_EASING = "cubic-bezier(0.2, 0, 0, 1)";
@@ -320,6 +322,10 @@ export function createSisyphusRuntime(elements = {}) {
     elements: [],
     lastPlayedIndex: -1,
   };
+  const rainLoopAudio = {
+    element: null,
+    playing: false,
+  };
 
   let rainFxScriptPromise = null;
 
@@ -402,6 +408,59 @@ export function createSisyphusRuntime(elements = {}) {
     if (promise && typeof promise.catch === "function") {
       promise.catch(() => {});
     }
+  }
+
+  function createRainLoopAudio() {
+    const audio = new Audio(rainAudioUrl);
+    audio.loop = true;
+    audio.preload = "auto";
+    audio.volume = RAIN_AUDIO_VOLUME;
+    return audio;
+  }
+
+  function playRainLoopSound() {
+    if (typeof Audio !== "function") {
+      return;
+    }
+
+    if (!rainLoopAudio.element) {
+      rainLoopAudio.element = createRainLoopAudio();
+    }
+    const audio = rainLoopAudio.element;
+    if (rainLoopAudio.playing) {
+      return;
+    }
+
+    try {
+      if (!rainLoopAudio.playing) {
+        audio.currentTime = 0;
+      }
+    } catch {
+      /* currentTime может быть недоступен до загрузки audio metadata. */
+    }
+    rainLoopAudio.playing = true;
+    const promise = audio.play();
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(() => {
+        rainLoopAudio.playing = false;
+      });
+    }
+  }
+
+  function stopRainLoopSound() {
+    const audio = rainLoopAudio.element;
+    if (!audio) {
+      rainLoopAudio.playing = false;
+      return;
+    }
+
+    audio.pause();
+    try {
+      audio.currentTime = 0;
+    } catch {
+      /* currentTime может быть недоступен до загрузки audio metadata. */
+    }
+    rainLoopAudio.playing = false;
   }
 
   function firstFallGroundContactStarted(previousState, nextState) {
@@ -530,6 +589,71 @@ export function createSisyphusRuntime(elements = {}) {
     return body.classList.contains("theme-dark") ? "dark" : "light";
   }
 
+  function createRainProfile(theme = currentRainTheme()) {
+    return getRainVisualProfile({
+      rainStrength: params.rainStrength,
+      theme,
+      backgroundBlurSteps:
+        theme === "dark" ? params.rainBackgroundBlurSteps : undefined,
+      rainDropColor: params.rainDropColor,
+      rainHighlightColor: params.rainHighlightColor,
+    });
+  }
+
+  function rainFxOptionsForProfile(rainProfile) {
+    return {
+      dropletsPerSecond: rainProfile.dropletsPerSecond,
+      dropletsPerSeconds: rainProfile.dropletsPerSecond,
+      spawnInterval: rainProfile.spawnInterval,
+      spawnSize: rainProfile.spawnSize,
+      spawnLimit: rainProfile.spawnLimit,
+      mist: true,
+      mistColor: rainProfile.mistColor,
+      backgroundBlurSteps: rainProfile.backgroundBlurSteps,
+      raindropCompose: rainProfile.raindropCompose,
+      raindropDiffuseLight: rainProfile.raindropDiffuseLight,
+      raindropSpecularLight: rainProfile.raindropSpecularLight,
+    };
+  }
+
+  function syncActiveRainProfile({ updateBackground = false } = {}) {
+    if (!rain.active) {
+      return;
+    }
+
+    let rainProfile = createRainProfile();
+    rain.lastProfile = rainProfile;
+    rain.fallback?.setProfile?.(rainProfile);
+    setRainOpacity(rainFxCanvas, rainProfile.fxOpacity);
+    setRainOpacity(
+      rainFallbackCanvas,
+      rain.fallback ? rainProfile.fallbackOpacity : 0
+    );
+
+    if (!rain.rainFx?.options) {
+      return;
+    }
+
+    Object.assign(rain.rainFx.options, rainFxOptionsForProfile(rainProfile));
+    if (!updateBackground || typeof rain.rainFx.setBackground !== "function") {
+      return;
+    }
+
+    const token = rain.renderToken;
+    const background = createRainBackground(rainFxCanvas);
+    const promise = rain.rainFx.setBackground(background);
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(() => {});
+    }
+    if (promise && typeof promise.then === "function") {
+      promise.then(() => {
+        if (token !== rain.renderToken) {
+          background.remove?.();
+        }
+      });
+    }
+  }
+
   function restartRainRenderers() {
     if (!rain.active) {
       return;
@@ -565,8 +689,7 @@ export function createSisyphusRuntime(elements = {}) {
     );
 
     if (restartIfActive && rain.active) {
-      stopRainRenderers();
-      startRainRenderers();
+      restartRainRenderers();
     }
   }
 
@@ -701,15 +824,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const theme = currentRainTheme();
-    const rainProfile = getRainVisualProfile({
-      rainStrength: params.rainStrength,
-      theme,
-      backgroundBlurSteps:
-        theme === "dark" ? params.rainBackgroundBlurSteps : undefined,
-      rainDropColor: params.rainDropColor,
-      rainHighlightColor: params.rainHighlightColor,
-    });
+    let rainProfile = createRainProfile();
     rain.lastProfile = rainProfile;
     rain.active = true;
     const token = ++rain.renderToken;
@@ -739,21 +854,13 @@ export function createSisyphusRuntime(elements = {}) {
           throw new Error("RaindropFX constructor is unavailable");
         }
 
+        rainProfile = createRainProfile();
+        rain.lastProfile = rainProfile;
         resizeCanvasToCssPixels(rainFxCanvas);
         const instance = new RaindropFX({
           canvas: rainFxCanvas,
           background: createRainBackground(rainFxCanvas),
-          dropletsPerSecond: rainProfile.dropletsPerSecond,
-          dropletsPerSeconds: rainProfile.dropletsPerSecond,
-          spawnInterval: rainProfile.spawnInterval,
-          spawnSize: rainProfile.spawnSize,
-          spawnLimit: rainProfile.spawnLimit,
-          mist: true,
-          mistColor: rainProfile.mistColor,
-          backgroundBlurSteps: rainProfile.backgroundBlurSteps,
-          raindropCompose: rainProfile.raindropCompose,
-          raindropDiffuseLight: rainProfile.raindropDiffuseLight,
-          raindropSpecularLight: rainProfile.raindropSpecularLight,
+          ...rainFxOptionsForProfile(rainProfile),
         });
         rain.rainFx = instance;
 
@@ -802,6 +909,7 @@ export function createSisyphusRuntime(elements = {}) {
     rain.hideTimerId = null;
     rainLayer.classList.remove("is-rain-hiding");
     rainLayer.classList.add("is-rain-visible");
+    playRainLoopSound();
     startRainRenderers();
   }
 
@@ -814,6 +922,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(rain.hideTimerId);
       rain.hideTimerId = null;
       rainLayer.classList.remove("is-rain-visible", "is-rain-hiding");
+      stopRainLoopSound();
       stopRainRenderers();
       return;
     }
@@ -837,6 +946,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
       rainLayer.classList.remove("is-rain-hiding");
       rain.hideTimerId = null;
+      stopRainLoopSound();
       stopRainRenderers();
     }, getRainExitDurationMs());
   }
@@ -872,7 +982,7 @@ export function createSisyphusRuntime(elements = {}) {
     body.classList.toggle("theme-light", theme === "light");
     body.classList.toggle("theme-dark", theme === "dark");
     if (currentRainTheme() !== previousRainTheme) {
-      restartRainRenderers();
+      syncActiveRainProfile({ updateBackground: true });
     }
   }
 
@@ -3742,6 +3852,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(collab.statusResetTimerId);
       window.clearTimeout(collab.physicsTimerId);
       window.clearTimeout(collab.roomSettingsTimerId);
+      stopRainLoopSound();
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {

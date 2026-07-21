@@ -577,6 +577,8 @@ test("два браузера видят один камень и поднима
   const secondContext = await browser.newContext();
   const first = await firstContext.newPage();
   const second = await secondContext.newPage();
+  await watchAudioPlayCalls(first, "Дождь");
+  await watchAudioPlayCalls(second, "Дождь");
 
   await first.goto("/");
   await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
@@ -802,6 +804,11 @@ test("два браузера видят один камень и поднима
   await expect(first.locator('[name="rainEnabled"]')).not.toBeChecked();
   await setCheckbox(first, "rainEnabled", true);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
+  await expect
+    .poll(() =>
+      first.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
+    )
+    .toBe(1);
   await expect(firstRain.locator(".weather-rain__blur")).toHaveCount(1);
   await expect
     .poll(() => first.evaluate(() => getLastRainRendererProfile()))
@@ -1161,6 +1168,16 @@ test("два браузера видят один камень и поднима
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   await expect(secondRain).toHaveClass(/is-rain-visible/);
   await expect
+    .poll(() =>
+      first.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
+    )
+    .toBe(2);
+  await expect
+    .poll(() =>
+      second.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
+    )
+    .toBe(1);
+  await expect
     .poll(() => second.evaluate(() => getLastRainRendererProfile()))
     .toMatchObject({
       theme: "light",
@@ -1309,9 +1326,14 @@ test("два браузера видят один камень и поднима
   await first.mouse.up();
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  expect(await second.evaluate(() => getRainRenderToken())).toBe(
+    lightThemeRainRenderToken
+  );
   await expect
-    .poll(() => second.evaluate(() => getRainRenderToken()))
-    .toBeGreaterThan(lightThemeRainRenderToken);
+    .poll(() =>
+      second.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
+    )
+    .toBe(1);
   await expect
     .poll(() => second.evaluate(() => getLastRainRendererProfile()))
     .toMatchObject({
