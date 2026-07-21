@@ -91,6 +91,42 @@ test("сессия без явного state стартует в нижнем pl
   assert.equal(session.state.vy, 0);
 });
 
+test("подвешенный play-старт не двигается до первого захвата", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: 500,
+      y: 1800,
+      suspended: true,
+    },
+    physics: { gravity: 100, handForce: 200, turbulence: 0, bounce: 0 },
+  });
+
+  clock.value += 1000;
+  manager.tick(clock.value);
+
+  assert.equal(session.state.y, 1800);
+  assert.equal(session.state.vy, 0);
+  assert.equal(session.state.suspended, true);
+
+  const first = connect(manager, session, "client-suspended-a1");
+  const snapshot = first.socket.messages.findLast(
+    (message) => message.type === "session.snapshot"
+  );
+  assert.equal(
+    snapshot.payload.suspended,
+    true
+  );
+
+  assert.equal(
+    manager.acquireControl(session, first.client, { x: 500, y: 1800 }),
+    true
+  );
+  assert.equal(session.state.suspended, false);
+  assert.equal(session.state.dragging, true);
+});
+
 test("master сохраняется после restore, leave и новых подключений", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
@@ -543,7 +579,7 @@ test("session.restart возвращает общую комнату в игро
     v: 1,
     type: "session.restart",
     seq: 1,
-    payload: { x: 321, y: 654 },
+    payload: { x: 321, y: 654, suspended: true },
   });
 
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
@@ -553,6 +589,7 @@ test("session.restart возвращает общую комнату в игро
   assert.equal(session.state.vy, 0);
   assert.equal(session.state.dragging, false);
   assert.equal(session.state.controllerId, null);
+  assert.equal(session.state.suspended, true);
   assert.equal(session.physics.gravity, 7);
   assert.deepEqual(session.trail, []);
   assert.equal(session.imprint, null);
@@ -562,6 +599,7 @@ test("session.restart возвращает общую комнату в игро
     (message) => message.type === "session.snapshot"
   );
   assert.equal(snapshot.payload.phase, Physics.PHASES.PLAY);
+  assert.equal(snapshot.payload.suspended, true);
   assert.deepEqual(snapshot.payload.trail, []);
   assert.equal(snapshot.payload.imprint, null);
 });

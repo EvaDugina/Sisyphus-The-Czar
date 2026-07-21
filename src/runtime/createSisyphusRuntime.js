@@ -190,6 +190,7 @@ export function createSisyphusRuntime(elements = {}) {
     dragTargetX: 0,
     dragTargetY: 0,
     dragging: false,
+    suspended: false,
     activePointerId: null,
     holdTimerId: null,
     firstFallTriggered: false,
@@ -1535,9 +1536,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function initialLocalPosition() {
     updateBounds();
+    const viewportCenterY = bounds.worldHeight - window.innerHeight / 2;
     return {
       x: bounds.maxX / 2,
-      y: bounds.maxY,
+      y: clamp(viewportCenterY - bounds.rockHeight / 2, 0, bounds.maxY),
     };
   }
 
@@ -1835,16 +1837,20 @@ export function createSisyphusRuntime(elements = {}) {
       y: position.y,
       vx: velocity.vx,
       vy: velocity.vy,
+      suspended: motion.suspended,
       turbTime: motion.turbTime,
     };
   }
 
   function applyCanonicalMotion(state) {
-    const position = canonicalToLocal(state.x, state.y);
+    const position = state.suspended
+      ? initialLocalPosition()
+      : canonicalToLocal(state.x, state.y);
     const velocity = canonicalVelocityToLocal(state.vx, state.vy);
     setPosition(position.x, position.y);
     motion.vx = velocity.vx;
     motion.vy = velocity.vy;
+    motion.suspended = Boolean(state.suspended);
     motion.turbTime = state.turbTime;
   }
 
@@ -1857,6 +1863,7 @@ export function createSisyphusRuntime(elements = {}) {
       y: canonical.y,
       vx: 0,
       vy: 0,
+      suspended: true,
       turbTime: 0,
     };
   }
@@ -2273,6 +2280,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.activePointerId = null;
     motion.vx = 0;
     motion.vy = 0;
+    motion.suspended = true;
     motion.pointerVx = 0;
     motion.pointerVy = 0;
     motion.turbTime = 0;
@@ -2531,6 +2539,7 @@ export function createSisyphusRuntime(elements = {}) {
       vy: Number(payload.vy) || 0,
       dragging: Boolean(payload.dragging),
       controllerId: payload.controllerId || null,
+      suspended: Boolean(payload.suspended),
       holderIds,
       requiredHolders: collab.requiredHolders,
       revision,
@@ -2659,12 +2668,20 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       return;
     }
-    const local = canonicalToLocal(snapshot.x, snapshot.y);
+    const local = snapshot.suspended
+      ? initialLocalPosition()
+      : canonicalToLocal(snapshot.x, snapshot.y);
     const velocity = canonicalVelocityToLocal(snapshot.vx, snapshot.vy);
-    const position = applySharedReleaseHandoff(local, snapshot.phase);
+    if (snapshot.suspended) {
+      clearSharedReleaseHandoff();
+    }
+    const position = snapshot.suspended
+      ? local
+      : applySharedReleaseHandoff(local, snapshot.phase);
     setPosition(position.x, position.y);
     motion.vx = velocity.vx;
     motion.vy = velocity.vy;
+    motion.suspended = Boolean(snapshot.suspended);
     motion.turbTime = 0;
 
     const visiblyDragging =
@@ -2672,6 +2689,7 @@ export function createSisyphusRuntime(elements = {}) {
       SharedPhysics.canLift(params, snapshot.holderIds.length);
     const visiblyFalling =
       !visiblyDragging &&
+      !motion.suspended &&
       snapshot.phase !== PHASES.INTRO &&
       snapshot.phase !== PHASES.WON &&
       (snapshot.phase === PHASES.FALLING ||
@@ -2772,6 +2790,7 @@ export function createSisyphusRuntime(elements = {}) {
     toggleHandVariant();
     updateBounds();
     const position = localToCanonical(motion.x, motion.y);
+    motion.suspended = false;
     motion.dragging = true;
     motion.activePointerId = event.pointerId;
     setGrabPointFromPointer(event);
@@ -3013,6 +3032,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function shouldRecordTrailPoint() {
+    if (motion.suspended) {
+      return false;
+    }
     return (
       motion.dragging ||
       motion.phase === PHASES.FALLING ||
@@ -3359,6 +3381,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (!SharedPhysics.canLift(params, activeHandCount())) {
       motion.vx = 0;
       motion.vy = 0;
+      motion.suspended = false;
       return;
     }
     const velocity = localVelocityToCanonical(
@@ -3374,6 +3397,7 @@ export function createSisyphusRuntime(elements = {}) {
     const localVelocity = canonicalVelocityToLocal(state.vx, state.vy);
     motion.vx = localVelocity.vx;
     motion.vy = localVelocity.vy;
+    motion.suspended = false;
   }
 
   function forceReleaseRock({ pauseInsideImprint = false } = {}) {
@@ -3439,6 +3463,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     toggleHandVariant();
     updateBounds();
+    motion.suspended = false;
     motion.dragging = true;
     motion.activePointerId = event.pointerId;
     setGrabPointFromPointer(event);
@@ -3613,7 +3638,7 @@ export function createSisyphusRuntime(elements = {}) {
     resizeTrailCanvas();
     if (collab.enabled && collab.snapshots.length > 0) {
       applySharedFrame(collab.snapshots.at(-1));
-    } else if (motion.phase === PHASES.INTRO) {
+    } else if (motion.phase === PHASES.INTRO || motion.suspended) {
       centerIntroRock();
     } else {
       setPosition(motion.x, motion.y);
@@ -3624,6 +3649,7 @@ export function createSisyphusRuntime(elements = {}) {
   function initScene() {
     centerIntroRock();
     setPhase(PHASES.PLAY);
+    motion.suspended = true;
     setTheme("dark");
     hideReturnRain({ immediate: true });
     motion.sceneReady = true;

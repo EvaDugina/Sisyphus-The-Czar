@@ -702,6 +702,7 @@ class SessionManager {
     }
 
     const now = this.now();
+    state.suspended = false;
     session.holders.set(client.id, {
       x: Physics.clamp(finite(payload.x, state.x), 0, Physics.WORLD_WIDTH),
       y: Physics.clamp(finite(payload.y, state.y), 0, Physics.WORLD_HEIGHT),
@@ -813,6 +814,7 @@ class SessionManager {
       y: payload.y ?? Physics.WORLD_HEIGHT,
       vx: 0,
       vy: 0,
+      suspended: Boolean(payload.suspended),
       turbTime: 0,
     });
     if (state.phase === Physics.PHASES.INTRO || state.phase === Physics.PHASES.WON) {
@@ -822,6 +824,7 @@ class SessionManager {
     state.vy = 0;
     state.dragging = false;
     state.controllerId = null;
+    state.suspended = state.phase === Physics.PHASES.PLAY && state.suspended;
     state.turbTime = 0;
 
     session.state = state;

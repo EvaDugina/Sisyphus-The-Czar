@@ -162,7 +162,6 @@ async function waitForRockSettledInPlay(page) {
 }
 
 async function grabVisibleRock(page) {
-  const status = page.getByTestId("session-status");
   let lastError = null;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     await scrollToRock(page);
@@ -170,9 +169,17 @@ async function grabVisibleRock(page) {
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
     try {
-      await expect(status).toContainText(/держите|тяните/, {
-        timeout: 1500,
-      });
+      await expect
+        .poll(
+          () =>
+            page.evaluate(
+              () =>
+                motion.dragging &&
+                (!collab.enabled || collab.hasControl || collab.pendingControl)
+            ),
+          { timeout: 1500 }
+        )
+        .toBe(true);
       return point;
     } catch (error) {
       lastError = error;
@@ -222,6 +229,7 @@ async function expectReadyAtBottom(page) {
         const rect = rock.getBoundingClientRect();
         return {
           phase: motion.phase,
+          suspended: motion.suspended,
           y: motion.y,
           maxY: bounds.maxY,
           scrollY: window.scrollY,
@@ -237,6 +245,7 @@ async function expectReadyAtBottom(page) {
     )
     .toMatchObject({
       phase: "play",
+      suspended: true,
       pointerEvents: "auto",
       imprintVisible: false,
       rockVisible: true,
@@ -246,8 +255,16 @@ async function expectReadyAtBottom(page) {
     maxY: bounds.maxY,
     scrollY: window.scrollY,
     maxScroll: document.documentElement.scrollHeight - window.innerHeight,
+    rockCenterY: (() => {
+      const rect = document.querySelector(".rock").getBoundingClientRect();
+      return rect.top + rect.height / 2;
+    })(),
+    viewportCenterY: window.innerHeight / 2,
   }));
-  expect(position.y).toBeCloseTo(position.maxY, 0);
+  expect(position.y).toBeLessThan(position.maxY);
+  expect(
+    Math.abs(position.rockCenterY - position.viewportCenterY)
+  ).toBeLessThanOrEqual(3);
   expect(position.scrollY).toBeGreaterThanOrEqual(position.maxScroll - 2);
 }
 
@@ -259,6 +276,7 @@ async function expectScrollDoesNotAffectPhysics(page) {
     y: motion.y,
     vx: motion.vx,
     vy: motion.vy,
+    suspended: motion.suspended,
   }));
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.mouse.wheel(0, 500);
@@ -269,6 +287,7 @@ async function expectScrollDoesNotAffectPhysics(page) {
     y: motion.y,
     vx: motion.vx,
     vy: motion.vy,
+    suspended: motion.suspended,
     firstFallTriggered: motion.firstFallTriggered,
   }));
   expect(after).toMatchObject({
@@ -277,6 +296,7 @@ async function expectScrollDoesNotAffectPhysics(page) {
     y: before.y,
     vx: before.vx,
     vy: before.vy,
+    suspended: true,
     firstFallTriggered: false,
   });
   await scrollToRock(page);
@@ -316,7 +336,6 @@ test("потерянная сессия заменяется рабочей и �
   );
 
   await expectScrollDoesNotAffectPhysics(page);
-  await waitForRockSettledInPlay(page);
   await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("тяните");
   await page.mouse.up();
@@ -356,7 +375,7 @@ test("вход на корень перенаправляет в рабочую 
       },
       centerDelta: {
         x: Math.abs(rect.left + rect.width / 2 - window.innerWidth / 2),
-        bottom: Math.abs(rect.bottom - window.innerHeight),
+        y: Math.abs(rect.top + rect.height / 2 - window.innerHeight / 2),
       },
       pointerEvents: getComputedStyle(rock).pointerEvents,
       scale: Number.parseFloat(style.getPropertyValue("--rock-scale")),
@@ -364,7 +383,7 @@ test("вход на корень перенаправляет в рабочую 
     };
   });
   expect(startState.centerDelta.x).toBeLessThan(2);
-  expect(startState.centerDelta.bottom).toBeLessThan(2);
+  expect(startState.centerDelta.y).toBeLessThan(3);
   expect(startState.pointerEvents).toBe("auto");
   expect(startState.scale).toBeGreaterThan(0);
   expect(startState.scrollable).toBe(true);
@@ -412,6 +431,9 @@ test("вход на корень перенаправляет в рабочую 
     const bottom = sample(bounds.maxY);
     const middle = sample(bounds.maxY / 2);
     const top = sample(0);
+    motion.suspended = false;
+    motion.vx = 0;
+    motion.vy = 0;
     setPosition(bounds.maxX / 2, bounds.maxY);
     return {
       bottom,
@@ -432,7 +454,6 @@ test("вход на корень перенаправляет в рабочую 
     .poll(() => page.evaluate(() => motion.firstFallTriggered))
     .toBe(false);
   await expect(page.locator("body")).not.toHaveClass(/state-intro/);
-  await waitForRockSettledInPlay(page);
   await expect
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Камень"] || 0)
@@ -562,6 +583,7 @@ test("падение компенсируется при изменении вы
         y: SharedPhysics.WORLD_HEIGHT / 2,
         vx: 0,
         vy: 0,
+        suspended: false,
         turbTime: 0,
       };
 
@@ -575,6 +597,7 @@ test("падение компенсируется при изменении вы
       const local = canonicalToLocal(initial.x, initial.y);
       setPosition(local.x, local.y);
       motion.phase = SharedPhysics.PHASES.PLAY;
+      motion.suspended = false;
       motion.vx = 0;
       motion.vy = 0;
       motion.turbTime = 0;
@@ -627,6 +650,7 @@ test("падение компенсируется при изменении вы
         y: SharedPhysics.WORLD_HEIGHT / 2,
         vx: 0,
         vy: 0,
+        suspended: false,
         turbTime: 0,
       };
 
@@ -640,6 +664,7 @@ test("падение компенсируется при изменении вы
       const local = canonicalToLocal(initial.x, initial.y);
       setPosition(local.x, local.y);
       motion.phase = SharedPhysics.PHASES.PLAY;
+      motion.suspended = false;
       motion.vx = 0;
       motion.vy = 0;
       motion.turbTime = 0;
@@ -709,6 +734,9 @@ test("два браузера видят один камень и поднима
       viewportHeight: window.innerHeight,
       rockBaseWidth: rock.offsetWidth,
       rockRenderedWidth: rockRect.width,
+      initialRockCenterY: rockRect.top + rockRect.height / 2,
+      initialY: motion.y,
+      suspended: motion.suspended,
       rockHeight: rock.offsetHeight,
       rockScale,
     };
@@ -718,7 +746,9 @@ test("два браузера видят один камень и поднима
   expect(
     sceneProjection.rockRenderedWidth / sceneProjection.rockBaseWidth
   ).toBeCloseTo(sceneProjection.rockScale, 1);
-  expect(sceneProjection.rockScale).toBeCloseTo(sceneProjection.bottomScale, 1);
+  expect(sceneProjection.rockScale).toBeGreaterThanOrEqual(
+    sceneProjection.bottomScale
+  );
   expect(sceneProjection.maxY).toBeCloseTo(
     sceneProjection.renderedHeight -
       (sceneProjection.rockHeight * (1 + sceneProjection.bottomScale)) / 2,
@@ -729,6 +759,12 @@ test("два браузера видят один камень и поднима
     1
   );
   expect(sceneProjection.bottomY).toBeCloseTo(sceneProjection.maxY, 1);
+  expect(sceneProjection.initialY).toBeLessThan(sceneProjection.maxY);
+  expect(sceneProjection.suspended).toBe(true);
+  expect(sceneProjection.initialRockCenterY).toBeCloseTo(
+    sceneProjection.viewportHeight / 2,
+    0
+  );
   const sharedUrl = first.url();
 
   const shareToggle = first.getByTestId("share-session-top");
@@ -1439,6 +1475,7 @@ test("два браузера видят один камень и поднима
     rainState: document.querySelector(".weather-rain").className,
     scrollY: window.scrollY,
     maxScroll: document.documentElement.scrollHeight - window.innerHeight,
+    suspended: motion.suspended,
     trailPoints: trail.points.length,
   }));
   expect(firstRestartState.bodyState).toContain("state-play");
@@ -1447,6 +1484,7 @@ test("два браузера видят один камень и поднима
     imprintVisible: false,
     introFallTimerActive: false,
     pointerEvents: "auto",
+    suspended: true,
     trailPoints: 0,
   });
   expect(firstRestartState.scrollY).toBeGreaterThanOrEqual(

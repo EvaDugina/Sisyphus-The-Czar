@@ -150,6 +150,7 @@
       vy: clamp(finiteNumber(source.vy, 0), -9000, 9000),
       dragging: false,
       controllerId: null,
+      suspended: phase === PHASES.PLAY && Boolean(source.suspended),
       turbTime: clamp(finiteNumber(source.turbTime, 0), 0, 1_000_000),
     };
   }
@@ -293,6 +294,7 @@
     state.vy = params.firstFallVelocity * motionScale(options);
     state.dragging = false;
     state.controllerId = null;
+    state.suspended = false;
     return true;
   }
 
@@ -322,6 +324,7 @@
     state.vy = releaseVy === 0 ? 0 : releaseVy * limitScale;
     state.dragging = false;
     state.controllerId = null;
+    state.suspended = false;
   }
 
   function applyGroundFriction(state, physics, dt) {
@@ -341,6 +344,7 @@
   function stepState(state, physics, deltaSeconds, options) {
     if (
       state.dragging ||
+      state.suspended ||
       state.phase === PHASES.INTRO ||
       state.phase === PHASES.WON
     ) {
@@ -401,6 +405,9 @@
   }
 
   function isMoving(state) {
+    if (state.suspended) {
+      return false;
+    }
     if (state.dragging || state.phase === PHASES.FALLING) {
       return true;
     }
