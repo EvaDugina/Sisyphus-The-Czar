@@ -3,6 +3,7 @@
 const crypto = require("node:crypto");
 const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
+const GachiSounds = require("../shared/gachi-sounds");
 
 const SNAPSHOT_INTERVAL_MS = 1000 / 20;
 const DISCONNECT_GRACE_MS = 500;
@@ -119,8 +120,10 @@ class SessionManager {
       options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS;
     this.now = options.now || Date.now;
     this.random = options.random || Math.random;
+    this.soundRandom = options.soundRandom || Math.random;
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
+    this.slaveSoundAssignments = new Map();
   }
 
   createSession(payload = {}) {
@@ -147,7 +150,9 @@ class SessionManager {
       physics,
       roomSettings,
       trail: sanitizeTrail(payload.trail),
-      imprint: Physics.sanitizeImprint(payload.imprint),
+      imprint:
+        Physics.sanitizeImprint(payload.imprint) ||
+        Physics.createSummitImprint(),
       masterClientId: normalizeClientId(
         payload.creatorClientId || payload.masterClientId
       ),
@@ -228,7 +233,10 @@ class SessionManager {
         Physics.migratePhysics(record.physics, record.physicsVersion)
       );
       const roomSettings = RoomSettings.sanitizeRoomSettings(
-        record.roomSettings
+        RoomSettings.migrateRoomSettings(
+          record.roomSettings,
+          record.roomSettingsVersion
+        )
       );
       const lastPointer = {
         vx: finite(record.lastPointer?.vx, 0),
@@ -262,7 +270,9 @@ class SessionManager {
         physics,
         roomSettings,
         trail: sanitizeTrail(record.trail),
-        imprint: Physics.sanitizeImprint(record.imprint),
+        imprint:
+          Physics.sanitizeImprint(record.imprint) ||
+          Physics.createSummitImprint(),
         masterClientId: normalizeClientId(record.masterClientId),
         clients: new Map(),
         holders: new Map(),
@@ -358,6 +368,24 @@ class SessionManager {
   assignClientRole(session, clientId) {
     this.ensureMasterClientId(session, clientId);
     return session.masterClientId === clientId ? "master" : "slave";
+  }
+
+  assignSlaveSound(clientId) {
+    const existing = this.slaveSoundAssignments.get(clientId);
+    if (existing) {
+      return existing;
+    }
+    const filenames = GachiSounds.GACHI_SOUND_FILENAMES;
+    if (filenames.length === 0) {
+      return null;
+    }
+    const index = Math.min(
+      filenames.length - 1,
+      Math.floor(Math.max(0, this.soundRandom()) * filenames.length)
+    );
+    const filename = filenames[index];
+    this.slaveSoundAssignments.set(clientId, filename);
+    return filename;
   }
 
   slipDelayMs() {
@@ -509,6 +537,8 @@ class SessionManager {
     };
 
     client.role = this.assignClientRole(session, clientId);
+    client.gachiSoundFilename =
+      client.role === "slave" ? this.assignSlaveSound(clientId) : null;
     client.socket = socket;
     client.lastSeq = -1;
     client.disconnectedAt = null;
@@ -529,6 +559,7 @@ class SessionManager {
       ...this.snapshot(session, true),
       leaveToken: client.leaveToken,
       clientRole: client.role,
+      gachiSoundFilename: client.gachiSoundFilename,
     });
     this.broadcastPresence(session);
     this.logger("client_connected", {
@@ -671,7 +702,7 @@ class SessionManager {
       return false;
     }
 
-    session.imprint = Physics.createImprintAtState(state, payload.imprint);
+    session.imprint = Physics.createSummitImprint(payload.imprint);
     if (payload.physics && typeof payload.physics === "object") {
       session.physics = Physics.sanitizePhysics(
         { ...session.physics, ...payload.physics },
@@ -829,7 +860,7 @@ class SessionManager {
 
     session.state = state;
     session.trail = [];
-    session.imprint = null;
+    session.imprint = Physics.createSummitImprint(payload.imprint);
     session.holders.clear();
     session.firstFallAt = null;
     session.holdReleaseAt = null;

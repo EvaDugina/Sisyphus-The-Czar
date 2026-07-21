@@ -2,8 +2,11 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const fs = require("node:fs");
+const path = require("node:path");
 const Physics = require("../../shared/physics");
 const RoomSettings = require("../../shared/room-settings");
+const GachiSounds = require("../../shared/gachi-sounds");
 const {
   SessionManager,
   DISCONNECTED_CLIENT_TTL_MS,
@@ -35,6 +38,7 @@ function setup(options = {}) {
     emptyGraceMs: options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS,
     now: () => clock.value,
     random: options.random || (() => 0.5),
+    soundRandom: options.soundRandom || (() => 0.5),
   });
   return { clock, manager };
 }
@@ -44,6 +48,16 @@ function connect(manager, session, id) {
   const client = manager.connectClient(session, id, socket);
   return { socket, client };
 }
+
+test("реестр gachi-звуков совпадает с файлами ассетов", () => {
+  const directory = path.resolve(__dirname, "../../assets/audio/gachi");
+  const filenames = fs
+    .readdirSync(directory)
+    .filter((filename) => filename.toLowerCase().endsWith(".mp3"))
+    .sort();
+
+  assert.deepEqual(filenames, [...GachiSounds.GACHI_SOUND_FILENAMES]);
+});
 
 test("создатель комнаты закрепляется как master, остальные получают slave", () => {
   const { manager } = setup();
@@ -56,6 +70,10 @@ test("создатель комнаты закрепляется как master, 
   assert.equal(session.masterClientId, "client-master-0001");
   assert.equal(master.client.role, "master");
   assert.equal(slave.client.role, "slave");
+  assert.equal(master.client.gachiSoundFilename, null);
+  assert.ok(
+    GachiSounds.isGachiSoundFilename(slave.client.gachiSoundFilename)
+  );
   assert.equal(
     master.socket.messages.findLast((message) => message.type === "session.snapshot")
       .payload.clientRole,
@@ -66,7 +84,40 @@ test("создатель комнаты закрепляется как master, 
       .payload.clientRole,
     "slave"
   );
+  assert.equal(
+    slave.socket.messages.findLast((message) => message.type === "session.snapshot")
+      .payload.gachiSoundFilename,
+    slave.client.gachiSoundFilename
+  );
   assert.equal(manager.serializeSessions()[0].masterClientId, "client-master-0001");
+  assert.equal(
+    Object.hasOwn(manager.serializeSessions()[0], "slaveSoundAssignments"),
+    false
+  );
+});
+
+test("gachi-звук slave стабилен во всех комнатах текущего процесса", () => {
+  const { manager } = setup({ soundRandom: () => 0.5 });
+  const firstSession = manager.createSession({
+    creatorClientId: "client-master-sound1",
+  });
+  const secondSession = manager.createSession({
+    creatorClientId: "client-master-sound2",
+  });
+
+  const first = connect(manager, firstSession, "client-slave-sound1");
+  const second = connect(manager, secondSession, "client-slave-sound1");
+
+  assert.equal(first.client.role, "slave");
+  assert.equal(second.client.role, "slave");
+  assert.equal(
+    first.client.gachiSoundFilename,
+    second.client.gachiSoundFilename
+  );
+  assert.ok(
+    GachiSounds.isGachiSoundFilename(first.client.gachiSoundFilename)
+  );
+  assert.equal(manager.slaveSoundAssignments.size, 1);
 });
 
 test("старая комната без master получает fallback по первому подключению", () => {
@@ -267,7 +318,7 @@ test("session.start сохраняет отпечаток и запускает 
   assert.equal(session.state.vy, 0);
   assert.deepEqual(session.imprint, {
     x: 500,
-    y: 700,
+    y: 20,
     toleranceX: 40,
     toleranceY: 30,
   });
@@ -320,7 +371,7 @@ test("control.acquire запрещён до достижения камнем н
   assert.equal(manager.acquireControl(session, client, { x: 500, y: 700 }), false);
   assert.equal(session.state.phase, Physics.PHASES.INTRO);
   assert.equal(session.state.dragging, false);
-  assert.equal(session.imprint, null);
+  assert.deepEqual(session.imprint, Physics.createSummitImprint());
   assert.equal(
     socket.messages.findLast((message) => message.type === "control.denied")
       .payload.reason,
@@ -592,7 +643,7 @@ test("session.restart возвращает общую комнату в игро
   assert.equal(session.state.suspended, true);
   assert.equal(session.physics.gravity, 7);
   assert.deepEqual(session.trail, []);
-  assert.equal(session.imprint, null);
+  assert.deepEqual(session.imprint, Physics.createSummitImprint());
   assert.equal(first.client.pointer.mode, "grab");
 
   const snapshot = first.socket.messages.findLast(
@@ -601,7 +652,7 @@ test("session.restart возвращает общую комнату в игро
   assert.equal(snapshot.payload.phase, Physics.PHASES.PLAY);
   assert.equal(snapshot.payload.suspended, true);
   assert.deepEqual(snapshot.payload.trail, []);
-  assert.equal(snapshot.payload.imprint, null);
+  assert.deepEqual(snapshot.payload.imprint, Physics.createSummitImprint());
 });
 
 test("явный выход последнего участника удаляет сессию после grace-периода", () => {
@@ -737,7 +788,7 @@ test("первый старт сохраняет отпечаток без фи�
   });
   assert.deepEqual(session.imprint, {
     x: 500,
-    y: 700,
+    y: 20,
     toleranceX: 40,
     toleranceY: 30,
   });

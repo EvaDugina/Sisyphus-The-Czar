@@ -18,6 +18,7 @@
 
   const WORLD_WIDTH = 1000;
   const WORLD_HEIGHT = 2000;
+  const SUMMIT_IMPRINT_Y = WORLD_HEIGHT * 0.01;
   const IMPRINT_TOLERANCE_FRACTION = 0.12;
   const DEFAULT_IMPRINT_TOLERANCE_X = 100;
   const DEFAULT_IMPRINT_TOLERANCE_Y = 80;
@@ -273,6 +274,15 @@
     });
   }
 
+  function createSummitImprint(input = {}) {
+    return sanitizeImprint({
+      x: WORLD_WIDTH / 2,
+      y: SUMMIT_IMPRINT_Y,
+      toleranceX: input.toleranceX,
+      toleranceY: input.toleranceY,
+    });
+  }
+
   function stateInsideImprint(state, imprint) {
     const target = sanitizeImprint(imprint);
     return Boolean(
@@ -450,6 +460,7 @@
     dragVerticalSpeed,
     sanitizeImprint,
     createImprintAtState,
+    createSummitImprint,
     stateInsideImprint,
     beginFirstFall,
     applyReleaseImpulse,

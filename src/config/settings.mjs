@@ -10,8 +10,9 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v9";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v10";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v9",
   "sisyphus-czar-settings-v8",
   "sisyphus-czar-settings-v7",
   "sisyphus-czar-settings-v6",
@@ -58,9 +59,6 @@ const PHYSICS_FORMULAS = {
     "F_f = \\mu \\cdot F_g",
     "a_f = \\frac{F_f}{m}",
     "v_y' = v_y + a_g \\cdot \\Delta t",
-  ],
-  firstFallVelocity: [
-    "v_{y0} = v_{firstFall}",
   ],
   handForce: [
     "a_{hand} = \\frac{F_{hand}}{m}",
@@ -138,18 +136,6 @@ export const SETTINGS_GROUPS = [
         output: "9.80",
         hint: "Ускорение свободного падения g. По умолчанию близко к земному значению 9.8.",
         formulas: PHYSICS_FORMULAS.gravity,
-      },
-      {
-        name: "firstFallVelocity",
-        label: "Начальная скорость",
-        type: "range",
-        min: -10,
-        max: 10,
-        step: 1,
-        defaultValue: 0,
-        output: "0",
-        hint: "Начальная вертикальная скорость первого падения: плюс — вниз, минус — вверх.",
-        formulas: PHYSICS_FORMULAS.firstFallVelocity,
       },
       {
         name: "handForce",
@@ -274,7 +260,7 @@ export const SETTINGS_GROUPS = [
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handWidthVw[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handWidthVw[1],
-        step: 0.5,
+        step: 0.125,
         defaultValue: DEFAULT_ROOM_SETTINGS.handWidthVw,
         output: `${DEFAULT_ROOM_SETTINGS.handWidthVw.toFixed(1)}vw`,
         hint: "Общая ширина большой master-руки в процентах от ширины экрана. Меняется у всех участников комнаты.",

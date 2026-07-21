@@ -1,4 +1,9 @@
 const { test, expect } = require("@playwright/test");
+const GachiSounds = require("../../shared/gachi-sounds");
+
+const GACHI_AUDIO_TARGETS = GachiSounds.GACHI_SOUND_FILENAMES.map((filename) =>
+  filename.replace(/\.mp3$/i, "")
+);
 
 async function setRange(page, name, value) {
   await page.locator(`[name="${name}"]`).evaluate((input, next) => {
@@ -247,7 +252,7 @@ async function expectReadyAtBottom(page) {
       phase: "play",
       suspended: true,
       pointerEvents: "auto",
-      imprintVisible: false,
+      imprintVisible: true,
       rockVisible: true,
     });
   const position = await page.evaluate(() => ({
@@ -412,7 +417,7 @@ test("вход на корень перенаправляет в рабочую 
   await closeSettingsPanel(page);
 
   await expectScrollDoesNotAffectPhysics(page);
-  await expect(page.getByTestId("rock-imprint")).not.toHaveClass(/is-visible/);
+  await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
   await expect(page.locator(".rock")).not.toHaveClass(/is-dragging/);
   const scaleSamples = await page.evaluate(() => {
@@ -507,6 +512,14 @@ test("вход на корень перенаправляет в рабочую 
   await page.mouse.move(1, 1);
   await page.mouse.move(playablePoint.x, playablePoint.y);
   await expect(page.locator(".hand-cursor")).toHaveClass(/is-visible/);
+  const masterHandSize = await page.locator(".hand-cursor").evaluate((hand) => {
+    const rect = hand.getBoundingClientRect();
+    return { viewportWidth: window.innerWidth, width: rect.width };
+  });
+  expect(masterHandSize.width).toBeCloseTo(
+    masterHandSize.viewportWidth * 0.14375,
+    0,
+  );
   await expect
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
@@ -549,6 +562,14 @@ test("вход на корень перенаправляет в рабочую 
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
     )
     .toBe(chainSoundCountAfterEnter);
+  await page.locator(".rock").evaluate((rock) => {
+    rock.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
+    )
+    .toBe(chainSoundCountAfterEnter + 1);
   await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("тяните");
   await page.mouse.up();
@@ -558,7 +579,7 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page).toHaveURL(urlBeforeReload);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(page.locator("body")).not.toHaveClass(/state-intro/);
-  await expect(page.getByTestId("rock-imprint")).not.toHaveClass(/is-visible/);
+  await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
   await expect(page.locator('[name="gravity"]')).toHaveValue("10");
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
 
@@ -706,7 +727,11 @@ test("два браузера видят один камень и поднима
   const first = await firstContext.newPage();
   const second = await secondContext.newPage();
   await watchAudioPlayCalls(first, "Дождь");
-  await watchAudioPlayCalls(second, "Дождь");
+  await watchAudioPlayCalls(second, [
+    "Дождь",
+    "Кандалы",
+    ...GACHI_AUDIO_TARGETS,
+  ]);
 
   await first.goto("/");
   await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
@@ -821,7 +846,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -856,7 +881,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -965,7 +990,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -1000,7 +1025,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1011,7 +1036,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1032,7 +1057,6 @@ test("два браузера видят один камень и поднима
   await openControlGroup(first, "Физика");
   await setRange(first, "mass", 10);
   await setRange(first, "gravity", 10);
-  await setRange(first, "firstFallVelocity", -4);
   await setRange(first, "handForce", 500);
   await setRange(first, "pointerInfluence", 1.8);
   await setRange(first, "bounce", 0.1);
@@ -1069,7 +1093,6 @@ test("два браузера видят один камень и поднима
   const expectedPhysics = {
     mass: "10",
     gravity: "10",
-    firstFallVelocity: "-4",
     handForce: "500",
     pointerInfluence: "1.8",
     bounce: "0.1",
@@ -1122,8 +1145,8 @@ test("два браузера видят один камень и поднима
   await expect(second.locator(".rock")).not.toHaveClass(/is-dragging/);
   const firstImprint = first.getByTestId("rock-imprint");
   const secondImprint = second.getByTestId("rock-imprint");
-  await expect(firstImprint).not.toHaveClass(/is-visible/);
-  await expect(secondImprint).not.toHaveClass(/is-visible/);
+  await expect(firstImprint).toHaveClass(/is-visible/);
+  await expect(secondImprint).toHaveClass(/is-visible/);
 
   const trailBuffer = await first.locator(".trail").evaluate((canvas) => ({
     width: canvas.width,
@@ -1135,6 +1158,7 @@ test("два браузера видят один камень и поднима
   expect(trailBuffer.width).toBeLessThanOrEqual(trailBuffer.maxWidth);
   expect(trailBuffer.height).toBeLessThanOrEqual(trailBuffer.maxHeight);
   expect(trailBuffer.zIndex).toBe("0");
+  await expect(first.locator(".trail")).toHaveCSS("mix-blend-mode", "normal");
 
   await expect(first.locator("body")).toHaveClass(/state-play/, { timeout: 45_000 });
   await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 45_000 });
@@ -1177,6 +1201,40 @@ test("два браузера видят один камень и поднима
   await expect(remoteCursor).toHaveCount(0);
 
   await scrollToRock(second);
+  const assignedGachiTarget = await second.evaluate(() =>
+    collab.gachiSoundFilename.replace(/\.mp3$/i, "")
+  );
+  expect(GACHI_AUDIO_TARGETS).toContain(assignedGachiTarget);
+  const slaveRockPoint = await visibleRockPoint(second);
+  const slaveAudioBefore = await second.evaluate((gachiTarget) => ({
+    chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
+    gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
+  }), assignedGachiTarget);
+  await second.mouse.move(1, 1);
+  await second.mouse.move(slaveRockPoint.x, slaveRockPoint.y);
+  await second.waitForTimeout(100);
+  await expect
+    .poll(() =>
+      second.evaluate((gachiTarget) => ({
+        chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
+        gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
+      }), assignedGachiTarget)
+    )
+    .toEqual(slaveAudioBefore);
+  await second.locator(".rock").evaluate((rock) => {
+    rock.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+  await expect
+    .poll(() =>
+      second.evaluate((gachiTarget) => ({
+        chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
+        gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
+      }), assignedGachiTarget)
+    )
+    .toEqual({
+      chains: slaveAudioBefore.chains,
+      gachi: slaveAudioBefore.gachi + 1,
+    });
   await expect.poll(() => trailHasVisiblePixels(second)).toBe(false);
   await second.locator(".settings-toggle").click();
   await openControlGroup(second, "След");
@@ -1481,7 +1539,7 @@ test("два браузера видят один камень и поднима
   expect(firstRestartState.bodyState).toContain("state-play");
   expect(firstRestartState).toMatchObject({
     firstFallTriggered: false,
-    imprintVisible: false,
+    imprintVisible: true,
     introFallTimerActive: false,
     pointerEvents: "auto",
     suspended: true,

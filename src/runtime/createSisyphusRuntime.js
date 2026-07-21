@@ -1,5 +1,6 @@
 import "../../shared/physics.js";
 import "../../shared/room-settings.js";
+import "../../shared/gachi-sounds.js";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
@@ -40,6 +41,21 @@ const chainHoverAudioModules = import.meta.glob(
 const CHAIN_HOVER_AUDIO_URLS = Object.values(chainHoverAudioModules).filter(
   (url) => typeof url === "string",
 );
+const gachiAudioModules = import.meta.glob(
+  "../../assets/audio/gachi/*.mp3",
+  {
+    eager: true,
+    import: "default",
+    query: "?url",
+  },
+);
+const GACHI_AUDIO_URLS_BY_FILENAME = new Map(
+  Object.entries(gachiAudioModules).flatMap(([modulePath, url]) =>
+    typeof url === "string"
+      ? [[modulePath.split("/").at(-1), url]]
+      : [],
+  ),
+);
 
 export function createSisyphusRuntime(elements = {}) {
   // При обновлении страницы всегда открываем заданную игровую позицию сами:
@@ -68,6 +84,7 @@ export function createSisyphusRuntime(elements = {}) {
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
   const SharedRoomSettings = window.SisyphusRoomSettings;
+  const SharedGachiSounds = window.SisyphusGachiSounds;
   const listenerDisposers = [];
   let disposed = false;
 
@@ -267,6 +284,7 @@ export function createSisyphusRuntime(elements = {}) {
     pendingControl: false,
     releasePending: false,
     clientRole: "master",
+    gachiSoundFilename: null,
     holderIds: new Set(),
     requiredHolders: 1,
     remoteControllerId: null,
@@ -316,6 +334,10 @@ export function createSisyphusRuntime(elements = {}) {
   const chainHoverAudio = {
     elements: [],
     lastPlayedIndex: -1,
+  };
+  const slaveClickAudio = {
+    filename: null,
+    element: null,
   };
   const rainLoopAudio = {
     element: null,
@@ -367,6 +389,50 @@ export function createSisyphusRuntime(elements = {}) {
     if (promise && typeof promise.catch === "function") {
       promise.catch(() => {});
     }
+  }
+
+  function setSlaveClickSound(filename) {
+    const nextFilename = SharedGachiSounds.isGachiSoundFilename(filename)
+      ? filename
+      : null;
+    collab.gachiSoundFilename = nextFilename;
+    if (slaveClickAudio.filename === nextFilename) {
+      return;
+    }
+    slaveClickAudio.element?.pause();
+    slaveClickAudio.filename = nextFilename;
+    slaveClickAudio.element = null;
+  }
+
+  function playSlaveClickSound() {
+    if (
+      typeof Audio !== "function" ||
+      motion.phase !== PHASES.PLAY ||
+      !slaveClickAudio.filename
+    ) {
+      return;
+    }
+    const url = GACHI_AUDIO_URLS_BY_FILENAME.get(slaveClickAudio.filename);
+    if (!url) {
+      return;
+    }
+    if (!slaveClickAudio.element) {
+      slaveClickAudio.element = new Audio(url);
+      slaveClickAudio.element.preload = "auto";
+    }
+    slaveClickAudio.element.currentTime = 0;
+    const promise = slaveClickAudio.element.play();
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(() => {});
+    }
+  }
+
+  function playRockClickSound() {
+    if (pointerRole(collab.clientRole) === "slave") {
+      playSlaveClickSound();
+      return;
+    }
+    playChainHoverSound();
   }
 
   function createRainLoopAudio() {
@@ -950,6 +1016,8 @@ export function createSisyphusRuntime(elements = {}) {
     const previousRainTheme = currentRainTheme();
     body.classList.toggle("theme-light", theme === "light");
     body.classList.toggle("theme-dark", theme === "dark");
+    applyTrailBlendMode();
+    trail.dirty = true;
     if (currentRainTheme() !== previousRainTheme) {
       syncActiveRainProfile({ updateBackground: true });
     }
@@ -1045,6 +1113,12 @@ export function createSisyphusRuntime(elements = {}) {
     if (migratedLegacySettings) {
       stored = { ...stored };
       delete stored.trailEnabled;
+      if (Number.isFinite(Number(stored.handWidthVw))) {
+        stored.handWidthVw = Number(stored.handWidthVw) / 2;
+      }
+      if (Number.isFinite(Number(stored.slaveHandWidthPx))) {
+        stored.slaveHandWidthPx = Number(stored.slaveHandWidthPx) / 2;
+      }
     }
 
     settingsPanel.querySelectorAll("input, select").forEach((el) => {
@@ -1064,7 +1138,6 @@ export function createSisyphusRuntime(elements = {}) {
     const outputs = {
       mass: params.mass.toFixed(1),
       gravity: params.gravity.toFixed(2),
-      firstFallVelocity: params.firstFallVelocity.toFixed(0),
       handForce: params.handForce.toFixed(0),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
@@ -1123,7 +1196,6 @@ export function createSisyphusRuntime(elements = {}) {
 
     params.mass = num("mass");
     params.gravity = num("gravity");
-    params.firstFallVelocity = num("firstFallVelocity");
     params.handForce = num("handForce");
     params.pointerInfluence = num("pointerInfluence");
     params.bounce = num("bounce");
@@ -1276,7 +1348,7 @@ export function createSisyphusRuntime(elements = {}) {
       });
     }
 
-    trailCanvas.style.mixBlendMode = params.blendMode;
+    applyTrailBlendMode();
 
     const trailLengthInput = settingsPanel.querySelector(
       '[name="trailMaxPoints"]'
@@ -1467,6 +1539,7 @@ export function createSisyphusRuntime(elements = {}) {
     rockImprint.style.setProperty("--imprint-y", `${imprint.y}px`);
     const roundedScale = Math.round(imprint.scale * 10000) / 10000;
     rockImprint.style.setProperty("--imprint-scale", `${roundedScale}`);
+    rockImprint.classList.add("is-visible");
   }
 
   function setGrabPointFromPointer(event) {
@@ -2285,7 +2358,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.pointerVy = 0;
     motion.turbTime = 0;
     motion.imprint = null;
-    collab.imprint = null;
+    collab.imprint = SharedPhysics.createSummitImprint();
     collab.snapshots = [];
     clearSharedReleaseHandoff();
     collab.hasControl = false;
@@ -2495,6 +2568,9 @@ export function createSisyphusRuntime(elements = {}) {
     const incomingRole = payload.clientRole || payload.clientSkin;
     if (typeof incomingRole === "string") {
       setLocalCursorRole(incomingRole);
+    }
+    if (Object.hasOwn(payload, "gachiSoundFilename")) {
+      setSlaveClickSound(payload.gachiSoundFilename);
     }
 
     const revision = Number(payload.revision);
@@ -2962,6 +3038,12 @@ export function createSisyphusRuntime(elements = {}) {
   function resizeTrailCanvas() {
     trail.dirty = true;
     drawTrail();
+  }
+
+  function applyTrailBlendMode() {
+    trailCanvas.style.mixBlendMode = body.classList.contains("theme-dark")
+      ? "normal"
+      : params.blendMode;
   }
 
   function resetTrail() {
@@ -3538,7 +3620,9 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    playChainHoverSound();
+    if (pointerRole(collab.clientRole) !== "slave") {
+      playChainHoverSound();
+    }
     showHandCursor(event);
     if (collab.enabled) {
       sendSharedPointer(event, "grab", true, true);
@@ -3610,6 +3694,7 @@ export function createSisyphusRuntime(elements = {}) {
   listen(sessionShareToggle, "click", copyCurrentSessionLink);
   listen(rock, "pointerenter", enterRock);
   listen(rock, "pointerleave", leaveRock);
+  listen(rock, "click", playRockClickSound);
   listen(rock, "pointerdown", startDrag);
   listen(rock, "pointermove", moveDrag);
   listen(rock, "pointerup", stopDrag);
@@ -3648,6 +3733,8 @@ export function createSisyphusRuntime(elements = {}) {
 
   function initScene() {
     centerIntroRock();
+    collab.imprint = SharedPhysics.createSummitImprint();
+    renderImprint();
     setPhase(PHASES.PLAY);
     motion.suspended = true;
     setTheme("dark");
@@ -3725,6 +3812,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(collab.physicsTimerId);
       window.clearTimeout(collab.roomSettingsTimerId);
       stopRainLoopSound();
+      slaveClickAudio.element?.pause();
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {

@@ -9,6 +9,7 @@ const WebSocket = require("ws");
 const { createService } = require("../../server");
 const Physics = require("../../shared/physics");
 const RoomSettings = require("../../shared/room-settings");
+const GachiSounds = require("../../shared/gachi-sounds");
 
 function connect(url) {
   const socket = new WebSocket(url);
@@ -101,6 +102,12 @@ test("два WebSocket-клиента делят состояние и пере�
   ]);
   assert.equal(firstSnapshot.payload.clientRole, "master");
   assert.equal(secondSnapshot.payload.clientRole, "slave");
+  assert.equal(firstSnapshot.payload.gachiSoundFilename, null);
+  assert.ok(
+    GachiSounds.isGachiSoundFilename(
+      secondSnapshot.payload.gachiSoundFilename
+    )
+  );
   assert.equal(
     firstSnapshot.payload.roomSettings.sceneHeightScreens,
     RoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens
@@ -307,7 +314,10 @@ test("два WebSocket-клиента делят состояние и пере�
     rainHighlightColor: "#fedcba",
   });
   assert.deepEqual(restarted.payload.trail, []);
-  assert.equal(restarted.payload.imprint, null);
+  assert.deepEqual(
+    restarted.payload.imprint,
+    Physics.createSummitImprint()
+  );
 
   second.socket.send(
     JSON.stringify({
@@ -327,7 +337,10 @@ test("два WebSocket-клиента делят состояние и пере�
       payload.holderIds?.includes("integration-client-b")
   );
   assert.equal(acquiredAfterRestart.payload.controllerId, "integration-client-b");
-  assert.equal(acquiredAfterRestart.payload.imprint, null);
+  assert.deepEqual(
+    acquiredAfterRestart.payload.imprint,
+    Physics.createSummitImprint()
+  );
 
   const invalidLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
     method: "POST",

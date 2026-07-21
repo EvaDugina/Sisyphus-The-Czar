@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 3;
+  const ROOM_SETTINGS_VERSION = 4;
   const ROOM_SETTINGS_KEYS = Object.freeze([
     "sceneHeightScreens",
     "handWidthVw",
@@ -23,14 +23,14 @@
 
   const ROOM_SETTINGS_LIMITS = Object.freeze({
     sceneHeightScreens: [5, 100],
-    handWidthVw: [20, 90],
-    slaveHandWidthPx: [16, 96],
+    handWidthVw: [10, 90],
+    slaveHandWidthPx: [8, 96],
   });
 
   const DEFAULT_ROOM_SETTINGS = Object.freeze({
     sceneHeightScreens: DEFAULT_SCENE_HEIGHT_SCREENS,
-    handWidthVw: 28.75,
-    slaveHandWidthPx: 32,
+    handWidthVw: 14.375,
+    slaveHandWidthPx: 16,
     rainDropColor: "#8c8c8c",
     rainHighlightColor: "#ffffff",
   });
@@ -107,6 +107,19 @@
     };
   }
 
+  function migrateRoomSettings(input, version = 1) {
+    const source = input && typeof input === "object" ? { ...input } : {};
+    if (finiteNumber(version, 1) < ROOM_SETTINGS_VERSION) {
+      if (Number.isFinite(Number(source.handWidthVw))) {
+        source.handWidthVw = Number(source.handWidthVw) / 2;
+      }
+      if (Number.isFinite(Number(source.slaveHandWidthPx))) {
+        source.slaveHandWidthPx = Number(source.slaveHandWidthPx) / 2;
+      }
+    }
+    return source;
+  }
+
   function sceneMotionMultiplier(settings) {
     const clean = sanitizeRoomSettings(settings);
     return (
@@ -124,6 +137,7 @@
     ROOM_SETTINGS_LIMITS,
     DEFAULT_ROOM_SETTINGS,
     normalizeHexColor,
+    migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,
   });

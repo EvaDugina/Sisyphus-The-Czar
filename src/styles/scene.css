@@ -118,7 +118,15 @@
 }
 
 .rock-imprint.is-visible {
-  opacity: 0.22;
+  opacity: 0.28;
+}
+
+body.theme-dark .rock-imprint {
+  filter:
+    grayscale(1)
+    sepia(0.24)
+    brightness(1.7)
+    drop-shadow(0 0 0.65rem rgba(240, 223, 170, 0.34));
 }
 
 .rock.is-dragging {
@@ -242,7 +250,7 @@ body.theme-light .weather-rain__canvas--fallback {
 .hand-cursor {
   --cursor-x: -999px;
   --cursor-y: -999px;
-  --cursor-width: var(--hand-width-vw, 28.75vw);
+  --cursor-width: var(--hand-width-vw, 14.375vw);
   --cursor-height: calc(var(--cursor-width) * 1.326087);
   --hotspot-x: calc(var(--cursor-width) * 0.5);
   --hotspot-y: calc(var(--cursor-width) * 0.456522);
@@ -304,7 +312,7 @@ body.theme-light .weather-rain__canvas--fallback {
 }
 
 .hand-cursor.is-slave {
-  --cursor-width: var(--slave-hand-width-px, 32px);
+  --cursor-width: var(--slave-hand-width-px, 16px);
   --cursor-height: var(--cursor-width);
   --hotspot-x: calc(var(--cursor-width) * 0.5);
   --hotspot-y: calc(var(--cursor-width) * 0.5);
@@ -354,7 +362,7 @@ body.state-fallingToBottom .hand-cursor {
   width: 100vw;
   height: 100vh;
   pointer-events: none;
-  mix-blend-mode: difference;
+  mix-blend-mode: normal;
 }
 
 @media (pointer: fine) {
