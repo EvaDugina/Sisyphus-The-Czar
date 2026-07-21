@@ -1328,9 +1328,49 @@ export function createSisyphusRuntime(elements = {}) {
     return motion.imprint;
   }
 
+  function setGrabPointFromPointer(event) {
+    updateBounds();
+    const rect = rock.getBoundingClientRect();
+    const scaleX =
+      bounds.rockWidth > 0 && rect.width > 0 ? rect.width / bounds.rockWidth : 1;
+    const scaleY =
+      bounds.rockHeight > 0 && rect.height > 0 ? rect.height / bounds.rockHeight : 1;
+    motion.grabX = clamp(
+      (event.clientX - rect.left) / scaleX,
+      0,
+      bounds.rockWidth
+    );
+    motion.grabY = clamp(
+      (event.clientY - rect.top) / scaleY,
+      0,
+      bounds.rockHeight
+    );
+  }
+
   function setDragTargetFromPointer(event) {
-    motion.dragTargetX = event.clientX + window.scrollX - motion.grabX;
-    motion.dragTargetY = event.clientY + window.scrollY - motion.grabY;
+    updateBounds();
+    const targetPointX = event.clientX + window.scrollX;
+    const targetPointY = event.clientY + window.scrollY;
+    let targetY = motion.dragTargetY;
+
+    for (let index = 0; index < 5; index += 1) {
+      const scale = scaleForLocalY(targetY);
+      const scaledOffsetY = (bounds.rockHeight * (1 - scale)) / 2;
+      targetY = clamp(
+        targetPointY - scaledOffsetY - motion.grabY * scale,
+        0,
+        bounds.maxY
+      );
+    }
+
+    const scale = scaleForLocalY(targetY);
+    const scaledOffsetX = (bounds.rockWidth * (1 - scale)) / 2;
+    motion.dragTargetX = clamp(
+      targetPointX - scaledOffsetX - motion.grabX * scale,
+      0,
+      bounds.maxX
+    );
+    motion.dragTargetY = targetY;
   }
 
   function applyDragTargetMovement(deltaSeconds, handCount = activeHandCount()) {
@@ -2368,7 +2408,10 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function applySharedFrame(snapshot, options = {}) {
-    if (!snapshot || (motion.dragging && collab.pendingControl)) {
+    if (
+      !snapshot ||
+      (motion.dragging && (collab.pendingControl || collab.hasControl))
+    ) {
       return;
     }
     const previousState = SharedPhysics.sanitizeState({
@@ -2498,11 +2541,9 @@ export function createSisyphusRuntime(elements = {}) {
     toggleHandVariant();
     updateBounds();
     const position = localToCanonical(motion.x, motion.y);
-    const rect = rock.getBoundingClientRect();
     motion.dragging = true;
     motion.activePointerId = event.pointerId;
-    motion.grabX = event.clientX - rect.left;
-    motion.grabY = event.clientY - rect.top;
+    setGrabPointFromPointer(event);
     motion.dragTargetX = motion.x;
     motion.dragTargetY = motion.y;
     motion.pointerVx = 0;
@@ -3249,11 +3290,9 @@ export function createSisyphusRuntime(elements = {}) {
     }
     toggleHandVariant();
     updateBounds();
-    const rect = rock.getBoundingClientRect();
     motion.dragging = true;
     motion.activePointerId = event.pointerId;
-    motion.grabX = event.clientX - rect.left;
-    motion.grabY = event.clientY - rect.top;
+    setGrabPointFromPointer(event);
     motion.dragTargetX = motion.x;
     motion.dragTargetY = motion.y;
     motion.pointerVx = 0;

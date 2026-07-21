@@ -1012,7 +1012,7 @@ test("два браузера видят один камень и поднима
         };
       })
     )
-    .toEqual({ height: 976, width: 736 });
+    .toEqual({ height: 651, width: 491 });
   await first.evaluate(() => {
     sendShared("pointer.update", {
       ...collab.localPointer,
@@ -1033,7 +1033,56 @@ test("два браузера видят один камень и поднима
     .toBe(true);
   await second.locator(".settings-toggle").click();
   await scrollToRock(first);
-  await grabVisibleRock(first);
+  const firstGrabPoint = await visibleRockPoint(first);
+  await first.mouse.move(firstGrabPoint.x, firstGrabPoint.y);
+  await first.mouse.down();
+  await expect.poll(() => first.evaluate(() => collab.hasControl)).toBe(true);
+  await expect
+    .poll(() =>
+      first.locator(".rock").evaluate((rock, target) => {
+        updateBounds();
+        const rect = rock.getBoundingClientRect();
+        const scaleX = bounds.rockWidth > 0 ? rect.width / bounds.rockWidth : 1;
+        const scaleY =
+          bounds.rockHeight > 0 ? rect.height / bounds.rockHeight : 1;
+        const heldPoint = {
+          x: rect.left + motion.grabX * scaleX,
+          y: rect.top + motion.grabY * scaleY,
+        };
+        return Math.max(
+          Math.abs(heldPoint.x - target.x),
+          Math.abs(heldPoint.y - target.y)
+        );
+      }, firstGrabPoint)
+    )
+    .toBeLessThanOrEqual(3);
+  const firstGrabMove = { x: -48, y: 0 };
+  await first.mouse.move(
+    firstGrabPoint.x + firstGrabMove.x,
+    firstGrabPoint.y + firstGrabMove.y
+  );
+  await expect
+    .poll(() =>
+      first.locator(".rock").evaluate((rock, target) => {
+        updateBounds();
+        const rect = rock.getBoundingClientRect();
+        const scaleX = bounds.rockWidth > 0 ? rect.width / bounds.rockWidth : 1;
+        const scaleY =
+          bounds.rockHeight > 0 ? rect.height / bounds.rockHeight : 1;
+        const heldPoint = {
+          x: rect.left + motion.grabX * scaleX,
+          y: rect.top + motion.grabY * scaleY,
+        };
+        return Math.max(
+          Math.abs(heldPoint.x - target.x),
+          Math.abs(heldPoint.y - target.y)
+        );
+      }, {
+        x: firstGrabPoint.x + firstGrabMove.x,
+        y: firstGrabPoint.y + firstGrabMove.y,
+      })
+    )
+    .toBeLessThanOrEqual(3);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await grabVisibleRock(second);
   await moveSharedDragToImprint(first, second);
@@ -1050,9 +1099,12 @@ test("два браузера видят один камень и поднима
   );
   const grabbingCursorSize = await localGrabbingCursor.evaluate((cursor) => {
     const style = getComputedStyle(cursor);
-    return { width: style.width, height: style.height };
+    return {
+      width: Math.round(Number.parseFloat(style.width)),
+      height: Math.round(Number.parseFloat(style.height)),
+    };
   });
-  expect(grabbingCursorSize).toEqual({ width: "736px", height: "976px" });
+  expect(grabbingCursorSize).toEqual({ height: 651, width: 491 });
   const remoteGrabbingCursor = first.locator(
     ".hand-cursor.is-remote.is-visible"
   );

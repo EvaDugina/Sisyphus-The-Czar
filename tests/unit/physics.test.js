@@ -306,6 +306,37 @@ test("первое падение отскакивает от земли по п
   assert.ok(state.vy < 0);
 });
 
+test("значение пружинистости меняет отскок при одинаковом ударе", () => {
+  const resting = Physics.sanitizeState({
+    phase: Physics.PHASES.FALLING,
+    x: 500,
+    y: Physics.WORLD_HEIGHT - 1,
+    vx: 0,
+    vy: 300,
+  });
+  const bouncing = Physics.sanitizeState({
+    phase: Physics.PHASES.FALLING,
+    x: 500,
+    y: Physics.WORLD_HEIGHT - 1,
+    vx: 0,
+    vy: 300,
+  });
+
+  Physics.stepState(
+    resting,
+    Physics.sanitizePhysics({ bounce: 0, turbulence: 0 }),
+    Physics.FIXED_STEP_SECONDS,
+  );
+  Physics.stepState(
+    bouncing,
+    Physics.sanitizePhysics({ bounce: 0.75, turbulence: 0 }),
+    Physics.FIXED_STEP_SECONDS,
+  );
+
+  assert.equal(resting.vy, 0);
+  assert.ok(bouncing.vy < resting.vy);
+});
+
 test("отпечаток распознаётся без остановки камня", () => {
   const imprint = {
     x: 500,
