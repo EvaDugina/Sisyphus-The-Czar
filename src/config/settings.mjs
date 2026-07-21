@@ -153,7 +153,7 @@ export const SETTINGS_GROUPS = [
         label: "Влияние рывка",
         type: "range",
         min: 0,
-        max: 2,
+        max: 10,
         step: 0.1,
         defaultValue: 1,
         output: "1.0",

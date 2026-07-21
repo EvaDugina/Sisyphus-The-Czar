@@ -46,7 +46,7 @@
     gravity: [0.1, 100],
     firstFallVelocity: [-10, 10],
     handForce: [1, 100],
-    pointerInfluence: [0, 2],
+    pointerInfluence: [0, 10],
     bounce: [0, 1],
     inertia: [0, 100],
     groundFriction: [0, 1],
