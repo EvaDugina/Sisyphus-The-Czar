@@ -98,7 +98,6 @@ export function createSisyphusRuntime(elements = {}) {
   const SHARED_GROUND_CONTACT_TOLERANCE = 24;
   const ROCK_IMPACT_AUDIO_POOL_SIZE = 4;
   const ROCK_IMPACT_AUDIO_VOLUME = 0.76;
-  const CHAIN_HOVER_AUDIO_COOLDOWN_MS = 800;
   const RAIN_VENDOR_SRC = rainVendorUrl;
   const RAIN_SCRIPT_ID = "sisyphus-raindrop-fx";
   const DEFAULT_RAIN_ENTER_EASING = "cubic-bezier(0.2, 0, 0, 1)";
@@ -309,7 +308,6 @@ export function createSisyphusRuntime(elements = {}) {
   };
   const chainHoverAudio = {
     elements: [],
-    lastPlayedAt: -Infinity,
     lastPlayedIndex: -1,
   };
 
@@ -368,11 +366,6 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const now = performance.now();
-    if (now - chainHoverAudio.lastPlayedAt < CHAIN_HOVER_AUDIO_COOLDOWN_MS) {
-      return;
-    }
-
     const index = chooseChainHoverAudioIndex();
     if (index < 0) {
       return;
@@ -384,7 +377,6 @@ export function createSisyphusRuntime(elements = {}) {
       audio.preload = "auto";
       chainHoverAudio.elements[index] = audio;
     }
-    chainHoverAudio.lastPlayedAt = now;
     chainHoverAudio.lastPlayedIndex = index;
 
     audio.currentTime = 0;
@@ -3279,8 +3271,6 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function moveDrag(event) {
-    playChainHoverSound();
-
     if (collab.enabled) {
       moveSharedDrag(event);
       return;

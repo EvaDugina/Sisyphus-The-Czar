@@ -463,7 +463,17 @@ test("вход на корень перенаправляет в рабочую 
   const chainSoundCountAfterEnter = await page.evaluate(
     () => window.__watchedAudioPlayCounts["Кандалы"] || 0
   );
-  await page.mouse.move(playablePoint.x + 3, playablePoint.y + 3);
+  await page.locator(".rock").evaluate((rock, point) => {
+    rock.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        clientX: point.x + 3,
+        clientY: point.y + 3,
+        pointerId: 1,
+        pointerType: "mouse",
+      })
+    );
+  }, playablePoint);
   await page.waitForTimeout(150);
   await expect
     .poll(() =>
@@ -471,12 +481,22 @@ test("вход на корень перенаправляет в рабочую 
     )
     .toBe(chainSoundCountAfterEnter);
   await page.waitForTimeout(850);
-  await page.mouse.move(playablePoint.x - 3, playablePoint.y - 3);
+  await page.locator(".rock").evaluate((rock, point) => {
+    rock.dispatchEvent(
+      new PointerEvent("pointermove", {
+        bubbles: true,
+        clientX: point.x - 3,
+        clientY: point.y - 3,
+        pointerId: 1,
+        pointerType: "mouse",
+      })
+    );
+  }, playablePoint);
   await expect
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
     )
-    .toBeGreaterThan(chainSoundCountAfterEnter);
+    .toBe(chainSoundCountAfterEnter);
   await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("тяните");
   await page.mouse.up();
