@@ -44,6 +44,73 @@ function connect(manager, session, id) {
   return { socket, client };
 }
 
+test("создатель комнаты закрепляется как master, остальные получают slave", () => {
+  const { manager } = setup();
+  const session = manager.createSession({
+    creatorClientId: "client-master-0001",
+  });
+  const master = connect(manager, session, "client-master-0001");
+  const slave = connect(manager, session, "client-slave-0001");
+
+  assert.equal(session.masterClientId, "client-master-0001");
+  assert.equal(master.client.role, "master");
+  assert.equal(slave.client.role, "slave");
+  assert.equal(
+    master.socket.messages.findLast((message) => message.type === "session.snapshot")
+      .payload.clientRole,
+    "master"
+  );
+  assert.equal(
+    slave.socket.messages.findLast((message) => message.type === "session.snapshot")
+      .payload.clientRole,
+    "slave"
+  );
+  assert.equal(manager.serializeSessions()[0].masterClientId, "client-master-0001");
+});
+
+test("старая комната без master получает fallback по первому подключению", () => {
+  const { manager } = setup();
+  const session = manager.createSession();
+  const first = connect(manager, session, "client-fallback-01");
+  const second = connect(manager, session, "client-fallback-02");
+
+  assert.equal(session.masterClientId, first.client.id);
+  assert.equal(first.client.role, "master");
+  assert.equal(second.client.role, "slave");
+});
+
+test("master сохраняется после restore, leave и новых подключений", () => {
+  const { manager } = setup();
+  const restored = manager.restoreSessions([
+    {
+      id: "cccccccccccccccccccccc",
+      state: { phase: Physics.PHASES.PLAY },
+      masterClientId: "client-master-keep",
+      expiresAt: 5000,
+      emptyDeleteAt: null,
+    },
+  ]);
+  assert.equal(restored, 1);
+
+  const session = manager.getSession("cccccccccccccccccccccc");
+  const slave = connect(manager, session, "client-restore-slave");
+  const master = connect(manager, session, "client-master-keep");
+
+  assert.equal(slave.client.role, "slave");
+  assert.equal(master.client.role, "master");
+  assert.equal(session.masterClientId, "client-master-keep");
+
+  assert.equal(
+    manager.leaveClient(session, master.client.id, master.client.leaveToken),
+    true
+  );
+  const next = connect(manager, session, "client-next-slave");
+
+  assert.equal(session.masterClientId, "client-master-keep");
+  assert.equal(next.client.role, "slave");
+  assert.equal(manager.serializeSessions()[0].masterClientId, "client-master-keep");
+});
+
 test("session.start сохраняет отпечаток и запускает первое падение один раз", () => {
   const { manager } = setup();
   const session = manager.createSession({
@@ -235,7 +302,7 @@ test("указатель участника синхронизируется и 
     y: 1750,
     mode: "grab",
     visible: true,
-    skin: "primary",
+    role: "master",
     serverTime: 0,
   });
 

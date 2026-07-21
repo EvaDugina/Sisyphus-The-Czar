@@ -10,8 +10,9 @@ const DEFAULT_EMPTY_SESSION_GRACE_MS = 10_000;
 const POINTER_VELOCITY_MAX_AGE_MS = 150;
 const MAX_TRAIL_POINTS = 1000;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
-const POINTER_SKINS = new Set(["primary", "partner"]);
+const CLIENT_ROLES = new Set(["master", "slave"]);
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const REQUIRED_HOLDERS = 1;
 const SLIP_DELAY_MIN_MS = 500;
 const SLIP_DELAY_MAX_MS = 2000;
@@ -48,8 +49,19 @@ function tokensMatch(actual, expected) {
   );
 }
 
-function pointerSkin(value) {
-  return POINTER_SKINS.has(value) ? value : "primary";
+function normalizeClientId(value) {
+  const clientId = String(value || "");
+  return CLIENT_ID_PATTERN.test(clientId) ? clientId : null;
+}
+
+function clientRole(value) {
+  if (value === "primary") {
+    return "master";
+  }
+  if (value === "partner") {
+    return "slave";
+  }
+  return CLIENT_ROLES.has(value) ? value : "slave";
 }
 
 function sanitizeTrail(input) {
@@ -103,6 +115,9 @@ class SessionManager {
       physics,
       trail: sanitizeTrail(payload.trail),
       imprint: Physics.sanitizeImprint(payload.imprint),
+      masterClientId: normalizeClientId(
+        payload.creatorClientId || payload.masterClientId
+      ),
       clients: new Map(),
       holders: new Map(),
       revision: 1,
@@ -134,6 +149,7 @@ class SessionManager {
       physicsVersion: Physics.PHYSICS_VERSION,
       trail: session.trail.map((point) => [...point]),
       imprint: session.imprint ? { ...session.imprint } : null,
+      masterClientId: session.masterClientId,
       revision: session.revision,
       createdAt: session.createdAt,
       lastActivityAt: session.lastActivityAt,
@@ -211,6 +227,7 @@ class SessionManager {
         physics,
         trail: sanitizeTrail(record.trail),
         imprint: Physics.sanitizeImprint(record.imprint),
+        masterClientId: normalizeClientId(record.masterClientId),
         clients: new Map(),
         holders: new Map(),
         revision: Number.isSafeInteger(record.revision)
@@ -293,11 +310,18 @@ class SessionManager {
     });
   }
 
-  assignClientSkin(session, clientId) {
-    const primaryTaken = [...session.clients.values()].some(
-      (client) => client.id !== clientId && client.skin === "primary"
-    );
-    return primaryTaken ? "partner" : "primary";
+  ensureMasterClientId(session, clientId) {
+    const normalizedClientId = normalizeClientId(clientId);
+    if (!session.masterClientId && normalizedClientId) {
+      session.masterClientId = normalizedClientId;
+      this.markChanged(session);
+    }
+    return session.masterClientId;
+  }
+
+  assignClientRole(session, clientId) {
+    this.ensureMasterClientId(session, clientId);
+    return session.masterClientId === clientId ? "master" : "slave";
   }
 
   slipDelayMs() {
@@ -441,10 +465,10 @@ class SessionManager {
       lastSeq: -1,
       connectedAt: now,
       disconnectedAt: null,
-      skin: null,
+      role: null,
     };
 
-    client.skin = pointerSkin(client.skin || this.assignClientSkin(session, clientId));
+    client.role = this.assignClientRole(session, clientId);
     client.socket = socket;
     client.lastSeq = -1;
     client.disconnectedAt = null;
@@ -464,7 +488,7 @@ class SessionManager {
     this.sendTo(client, "session.snapshot", {
       ...this.snapshot(session, true),
       leaveToken: client.leaveToken,
-      clientSkin: client.skin,
+      clientRole: client.role,
     });
     this.broadcastPresence(session);
     this.logger("client_connected", {
@@ -912,6 +936,7 @@ class SessionManager {
       imprint: session.imprint ? { ...session.imprint } : null,
       holderIds: this.holderIds(session),
       requiredHolders: REQUIRED_HOLDERS,
+      masterClientId: session.masterClientId,
       revision: session.revision,
       serverTime: this.now(),
       expiresAt: session.expiresAt,
@@ -952,7 +977,7 @@ class SessionManager {
       y: client.pointer.y,
       mode: client.pointer.mode,
       visible: client.pointer.visible,
-      skin: pointerSkin(client.skin),
+      role: clientRole(client.role),
       serverTime: this.now(),
     };
   }

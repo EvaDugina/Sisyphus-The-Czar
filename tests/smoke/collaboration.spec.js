@@ -883,6 +883,8 @@ test("два браузера видят один камень и поднима
   await second.goto(sharedUrl);
   await second.locator(".settings-toggle").click();
   await expect(second.getByTestId("session-status")).toContainText("В сессии");
+  await expect.poll(() => first.evaluate(() => collab.clientRole)).toBe("master");
+  await expect.poll(() => second.evaluate(() => collab.clientRole)).toBe("slave");
   await openControlGroup(second, "Дождь");
   await expect(second.locator('[name="rainBlendMode"]')).toHaveValue("multiply");
   await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue("normal");
@@ -914,6 +916,7 @@ test("два браузера видят один камень и поднима
   await expect(first.locator('[name="gravity"]')).toHaveValue("8", {
     timeout: 5000,
   });
+  await expect.poll(() => second.evaluate(() => collab.clientRole)).toBe("slave");
 
   await first.locator(".settings-toggle").click();
   await second.locator(".settings-toggle").click();
@@ -993,6 +996,7 @@ test("два браузера видят один камень и поднима
   await expect(remoteCursor).toHaveClass(/is-visible/);
   await expect(remoteCursor).toBeVisible();
   await expect(remoteCursor).not.toHaveClass(/is-grabbing/);
+  await expect(remoteCursor).not.toHaveClass(/is-slave/);
   await expect(remoteCursor).toHaveCSS("opacity", "1");
   await expect(remoteCursor).toHaveCSS(
     "background-image",
@@ -1039,9 +1043,10 @@ test("два браузера видят один камень и поднима
     ".hand-cursor:not(.is-remote).is-visible"
   );
   await expect(localGrabbingCursor).toHaveClass(/is-grabbing/);
+  await expect(localGrabbingCursor).toHaveClass(/is-slave/);
   await expect(localGrabbingCursor).toHaveCSS(
     "background-image",
-    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.png/
+    /cursor-partner-grabbing(?:-[A-Za-z0-9_-]+)?\.webp/
   );
   const grabbingCursorSize = await localGrabbingCursor.evaluate((cursor) => {
     const style = getComputedStyle(cursor);
@@ -1052,9 +1057,10 @@ test("два браузера видят один камень и поднима
     ".hand-cursor.is-remote.is-visible"
   );
   await expect(remoteGrabbingCursor).toHaveClass(/is-grabbing/);
+  await expect(remoteGrabbingCursor).toHaveClass(/is-slave/);
   await expect(remoteGrabbingCursor).toHaveCSS(
     "background-image",
-    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.png/
+    /cursor-partner-grabbing(?:-[A-Za-z0-9_-]+)?\.webp/
   );
   await expect(first.locator("body")).toHaveClass(/theme-light/);
   await expect(second.locator("body")).toHaveClass(/theme-light/);

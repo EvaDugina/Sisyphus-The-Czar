@@ -257,7 +257,7 @@ export function createSisyphusRuntime(elements = {}) {
     hasControl: false,
     pendingControl: false,
     releasePending: false,
-    clientSkin: "primary",
+    clientRole: "master",
     holderIds: new Set(),
     requiredHolders: 1,
     remoteControllerId: null,
@@ -1475,17 +1475,20 @@ export function createSisyphusRuntime(elements = {}) {
     return localIsHolder() && SharedPhysics.canLift(params, collab.holderIds.size);
   }
 
-  function pointerSkin(value) {
-    return value === "partner" ? "partner" : "primary";
+  function pointerRole(value) {
+    if (value === "slave" || value === "partner") {
+      return "slave";
+    }
+    return "master";
   }
 
-  function applyCursorSkin(element, skin) {
-    element.classList.toggle("is-partner", pointerSkin(skin) === "partner");
+  function applyCursorRole(element, role) {
+    element.classList.toggle("is-slave", pointerRole(role) === "slave");
   }
 
-  function setLocalCursorSkin(skin) {
-    collab.clientSkin = pointerSkin(skin);
-    applyCursorSkin(handCursor, collab.clientSkin);
+  function setLocalCursorRole(role) {
+    collab.clientRole = pointerRole(role);
+    applyCursorRole(handCursor, collab.clientRole);
   }
 
   function updateLocalSharedPointer(event, mode, visible) {
@@ -1535,7 +1538,7 @@ export function createSisyphusRuntime(elements = {}) {
     const x = Number(payload.x);
     const y = Number(payload.y);
     const mode = payload.mode;
-    const skin = pointerSkin(payload.skin);
+    const role = pointerRole(payload.role || payload.skin);
     if (
       !clientId ||
       !Number.isFinite(x) ||
@@ -1563,7 +1566,7 @@ export function createSisyphusRuntime(elements = {}) {
       pointer = { element, x, y, targetX: x, targetY: y };
       collab.remotePointers.set(clientId, pointer);
     }
-    applyCursorSkin(pointer.element, skin);
+    applyCursorRole(pointer.element, role);
     pointer.targetX = x;
     pointer.targetY = y;
     pointer.element.classList.toggle("is-grabbing", mode === "grabbing");
@@ -1859,6 +1862,7 @@ export function createSisyphusRuntime(elements = {}) {
         headers: { "Content-Type": "application/json" },
         signal: abortController.signal,
         body: JSON.stringify({
+          creatorClientId: collab.clientId,
           state: currentSharedState(),
           physics: sharedPhysicsPayload(),
           trail: currentSharedTrail(),
@@ -2195,8 +2199,9 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       collab.leaveToken = payload.leaveToken;
     }
-    if (typeof payload.clientSkin === "string") {
-      setLocalCursorSkin(payload.clientSkin);
+    const incomingRole = payload.clientRole || payload.clientSkin;
+    if (typeof incomingRole === "string") {
+      setLocalCursorRole(incomingRole);
     }
 
     const revision = Number(payload.revision);

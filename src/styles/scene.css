@@ -302,13 +302,13 @@ body.theme-light .weather-rain__canvas--fallback {
     scale(1.04);
 }
 
-.hand-cursor.is-partner {
-  background-image: url("../../assets/cursor-grab.png");
+.hand-cursor.is-slave {
+  background-image: url("../../assets/cursor-partner-grab.webp");
 }
 
-.hand-cursor.is-partner.is-alternate,
-.hand-cursor.is-partner.is-grabbing {
-  background-image: url("../../assets/cursor-grabbing.png");
+.hand-cursor.is-slave.is-alternate,
+.hand-cursor.is-slave.is-grabbing {
+  background-image: url("../../assets/cursor-partner-grabbing.webp");
 }
 
 .hand-cursor.is-remote {
