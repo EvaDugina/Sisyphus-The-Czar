@@ -192,9 +192,12 @@
     return effectiveHandForce(params) / params.mass;
   }
 
-  function groundFrictionAcceleration(physics) {
+  function groundFrictionAcceleration(physics, options) {
     const params = sanitizePhysics(physics);
-    return (params.groundFriction * gravityForce(params)) / params.mass;
+    return (
+      ((params.groundFriction * gravityForce(params)) / params.mass) *
+      motionScale(options)
+    );
   }
 
   function maxHoldMs(physics, handCount = 1) {
@@ -337,12 +340,12 @@
     state.suspended = false;
   }
 
-  function applyGroundFriction(state, physics, dt) {
+  function applyGroundFriction(state, physics, dt, options) {
     if (physics.groundFriction <= 0 || state.vx === 0) {
       return;
     }
 
-    const slowdown = groundFrictionAcceleration(physics) * dt;
+    const slowdown = groundFrictionAcceleration(physics, options) * dt;
     if (Math.abs(state.vx) <= slowdown) {
       state.vx = 0;
       return;
@@ -388,7 +391,7 @@
 
     if (state.y >= WORLD_HEIGHT) {
       state.y = WORLD_HEIGHT;
-      applyGroundFriction(state, physics, dt);
+      applyGroundFriction(state, physics, dt, options);
 
       if (state.phase === PHASES.FALLING) {
         state.phase = PHASES.PLAY;

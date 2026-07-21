@@ -56,6 +56,11 @@ test("сила тяжести и ускорения считаются из ма
   assert.equal(Math.round(Physics.liftForceSurplus(physics, 1) * 100) / 100, 40.4);
   assert.equal(Physics.handAcceleration(physics), 30);
   assert.equal(Physics.groundFrictionAcceleration(physics), 4.9);
+  assert.ok(
+    Math.abs(
+      Physics.groundFrictionAcceleration(physics, { motionScale: 100 }) - 490
+    ) < 1e-9
+  );
 });
 
 test("сила руки ограничивается диапазоном от 1 до 1000", () => {
@@ -542,35 +547,114 @@ test("инерция масштабирует импульс и сохраняе
   assert.equal(none.vy, 0);
 });
 
-test("трение земли уравновешивает инерцию на нижней земле", () => {
-  const icy = Physics.sanitizeState({
+test("трение земли заметно и монотонно гасит инерцию", () => {
+  function simulateGroundFriction(groundFriction, seconds) {
+    const state = Physics.sanitizeState({
+      phase: Physics.PHASES.PLAY,
+      x: 50,
+      y: Physics.WORLD_HEIGHT,
+      vx: 900,
+      vy: 0,
+    });
+    const physics = Physics.sanitizePhysics({
+      groundFriction,
+      turbulence: 0,
+      bounce: 0,
+    });
+    const steps = Math.round(seconds / Physics.FIXED_STEP_SECONDS);
+
+    for (let index = 0; index < steps; index += 1) {
+      Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS, {
+        motionScale: 100,
+      });
+    }
+    return state;
+  }
+
+  const icy = simulateGroundFriction(0, 1);
+  const medium = simulateGroundFriction(0.5, 1);
+  const rough = simulateGroundFriction(1, 1);
+  const stopped = simulateGroundFriction(1, 2);
+
+  assert.ok(icy.vx > 800);
+  assert.ok(medium.vx < icy.vx * 0.6);
+  assert.ok(medium.vx > rough.vx);
+  assert.equal(rough.vx, 0);
+  assert.equal(stopped.vx, 0);
+});
+
+test("трение земли не действует в воздухе или во время удержания", () => {
+  const physicsWithoutFriction = Physics.sanitizePhysics({
+    groundFriction: 0,
+    turbulence: 0,
+    bounce: 0,
+  });
+  const physicsWithFriction = Physics.sanitizePhysics({
+    groundFriction: 1,
+    turbulence: 0,
+    bounce: 0,
+  });
+  const airborneWithoutFriction = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 500,
+    y: 500,
+    vx: 300,
+    vy: 0,
+  });
+  const airborneWithFriction = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 500,
+    y: 500,
+    vx: 300,
+    vy: 0,
+  });
+  const dragging = Physics.sanitizeState({
     phase: Physics.PHASES.PLAY,
     x: 500,
     y: Physics.WORLD_HEIGHT,
-    vx: 900,
+    vx: 300,
     vy: 0,
   });
-  const rough = Physics.sanitizeState({
+  dragging.dragging = true;
+  dragging.controllerId = "master";
+  const suspended = Physics.sanitizeState({
     phase: Physics.PHASES.PLAY,
     x: 500,
     y: Physics.WORLD_HEIGHT,
-    vx: 900,
+    vx: 300,
     vy: 0,
+    suspended: true,
   });
+  const options = { motionScale: 100 };
 
   Physics.stepState(
-    icy,
-    Physics.sanitizePhysics({ groundFriction: 0, turbulence: 0, bounce: 0 }),
-    Physics.FIXED_STEP_SECONDS
+    airborneWithoutFriction,
+    physicsWithoutFriction,
+    Physics.FIXED_STEP_SECONDS,
+    options
   );
   Physics.stepState(
-    rough,
-    Physics.sanitizePhysics({ groundFriction: 1, turbulence: 0, bounce: 0 }),
-    Physics.FIXED_STEP_SECONDS
+    airborneWithFriction,
+    physicsWithFriction,
+    Physics.FIXED_STEP_SECONDS,
+    options
+  );
+  Physics.stepState(
+    dragging,
+    physicsWithFriction,
+    Physics.FIXED_STEP_SECONDS,
+    options
+  );
+  Physics.stepState(
+    suspended,
+    physicsWithFriction,
+    Physics.FIXED_STEP_SECONDS,
+    options
   );
 
-  assert.ok(icy.vx > rough.vx);
-  assert.ok(rough.vx < 900);
+  assert.equal(airborneWithFriction.vx, airborneWithoutFriction.vx);
+  assert.equal(dragging.vx, 300);
+  assert.equal(suspended.vx, 300);
 });
 
 test("фиксированный шаг даёт одинаковый результат независимо от кадров рендера", () => {

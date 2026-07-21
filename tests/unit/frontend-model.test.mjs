@@ -438,6 +438,9 @@ test("настройка трения земли заменяет скольже
     },
     { min: 0, max: 1, step: 0.05, defaultValue: 0.35 }
   );
+  assert.ok(
+    groundFriction.formulas.some((formula) => formula.includes("k_{scene}"))
+  );
 });
 
 test("группа дождя содержит локальный toggle и blur тёмной темы", () => {

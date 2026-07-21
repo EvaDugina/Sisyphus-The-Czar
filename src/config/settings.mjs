@@ -81,7 +81,7 @@ const PHYSICS_FORMULAS = {
   ],
   groundFriction: [
     "F_f = \\mu \\cdot F_g",
-    "a_f = \\frac{F_f}{m}",
+    "a_f = \\frac{F_f}{m} \\cdot k_{scene}",
     "v_x' = v_x - sign(v_x) \\cdot a_f \\cdot \\Delta t",
   ],
   turbulence: [
