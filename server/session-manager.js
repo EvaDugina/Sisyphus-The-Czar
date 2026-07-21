@@ -102,7 +102,13 @@ class SessionManager {
   createSession(payload = {}) {
     const now = this.now();
     const id = crypto.randomBytes(16).toString("base64url");
-    const state = Physics.sanitizeState(payload.state);
+    const state = Physics.sanitizeState(
+      payload.state ?? {
+        phase: Physics.PHASES.PLAY,
+        x: Physics.WORLD_WIDTH / 2,
+        y: Physics.WORLD_HEIGHT,
+      }
+    );
     const physics = Physics.sanitizePhysics(payload.physics);
     const roomSettings = RoomSettings.sanitizeRoomSettings(payload.roomSettings);
 
@@ -774,14 +780,16 @@ class SessionManager {
 
   restartSession(session, payload = {}) {
     const state = Physics.sanitizeState({
-      phase: Physics.PHASES.INTRO,
-      x: payload.x,
-      y: payload.y,
+      phase: payload.phase || Physics.PHASES.PLAY,
+      x: payload.x ?? Physics.WORLD_WIDTH / 2,
+      y: payload.y ?? Physics.WORLD_HEIGHT,
       vx: 0,
       vy: 0,
       turbTime: 0,
     });
-    state.phase = Physics.PHASES.INTRO;
+    if (state.phase === Physics.PHASES.INTRO || state.phase === Physics.PHASES.WON) {
+      state.phase = Physics.PHASES.PLAY;
+    }
     state.vx = 0;
     state.vy = 0;
     state.dragging = false;

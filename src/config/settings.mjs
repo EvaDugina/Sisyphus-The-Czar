@@ -10,8 +10,9 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v8";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v9";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v8",
   "sisyphus-czar-settings-v7",
   "sisyphus-czar-settings-v6",
   "sisyphus-czar-settings-v5",
@@ -270,7 +271,7 @@ export const SETTINGS_GROUPS = [
         name: "trailEnabled",
         label: "Показывать след",
         type: "checkbox",
-        defaultChecked: false,
+        defaultChecked: true,
         hint: "Включает или выключает отрисовку следа за камнем.",
       },
       {

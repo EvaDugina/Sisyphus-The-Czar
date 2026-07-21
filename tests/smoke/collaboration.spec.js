@@ -182,13 +182,13 @@ async function grabVisibleRock(page) {
   throw lastError;
 }
 
-async function moveSharedDragToImprint(...pages) {
+async function moveSharedDragToBottom(...pages) {
   await Promise.all(pages.map((page) => page.evaluate(() => {
-    const imprint = collab.imprint;
-    if (!imprint) {
-      throw new Error("Сервер не прислал отпечаток камня");
-    }
-    const local = canonicalToLocal(imprint.x, imprint.y);
+    const target = {
+      x: SharedPhysics.WORLD_WIDTH / 2,
+      y: SharedPhysics.WORLD_HEIGHT,
+    };
+    const local = canonicalToLocal(target.x, target.y);
     setPosition(local.x, local.y);
     motion.dragTargetX = local.x;
     motion.dragTargetY = local.y;
@@ -196,14 +196,14 @@ async function moveSharedDragToImprint(...pages) {
     motion.pointerVy = 0;
     syncReturnTheme();
     sendShared("control.move", {
-      x: imprint.x,
-      y: imprint.y,
+      x: target.x,
+      y: target.y,
       vx: 0,
       vy: 0,
       pointer: {
         ...collab.localPointer,
-        x: imprint.x,
-        y: imprint.y,
+        x: target.x,
+        y: target.y,
         mode: "grabbing",
         visible: true,
       },
@@ -211,16 +211,75 @@ async function moveSharedDragToImprint(...pages) {
   })));
 }
 
-async function triggerFirstFallWithScrollDown(page) {
-  await expect(page.locator("body")).toHaveClass(/state-intro/);
+async function expectReadyAtBottom(page) {
+  await expect(page.locator("body")).toHaveClass(/state-play/);
+  await expect(page.locator("body")).toHaveClass(/theme-dark/);
   await expect
-    .poll(() => page.evaluate(() => motion.firstFallTriggered))
-    .toBe(false);
+    .poll(() =>
+      page.evaluate(() => {
+        updateBounds();
+        const rock = document.querySelector(".rock");
+        const rect = rock.getBoundingClientRect();
+        return {
+          phase: motion.phase,
+          y: motion.y,
+          maxY: bounds.maxY,
+          scrollY: window.scrollY,
+          maxScroll:
+            document.documentElement.scrollHeight - window.innerHeight,
+          pointerEvents: getComputedStyle(rock).pointerEvents,
+          imprintVisible: document
+            .querySelector(".rock-imprint")
+            .classList.contains("is-visible"),
+          rockVisible: rect.bottom > 0 && rect.top < window.innerHeight,
+        };
+      })
+    )
+    .toMatchObject({
+      phase: "play",
+      pointerEvents: "auto",
+      imprintVisible: false,
+      rockVisible: true,
+    });
+  const position = await page.evaluate(() => ({
+    y: motion.y,
+    maxY: bounds.maxY,
+    scrollY: window.scrollY,
+    maxScroll: document.documentElement.scrollHeight - window.innerHeight,
+  }));
+  expect(position.y).toBeCloseTo(position.maxY, 0);
+  expect(position.scrollY).toBeGreaterThanOrEqual(position.maxScroll - 2);
+}
+
+async function expectScrollDoesNotAffectPhysics(page) {
+  await expectReadyAtBottom(page);
+  const before = await page.evaluate(() => ({
+    phase: motion.phase,
+    x: motion.x,
+    y: motion.y,
+    vx: motion.vx,
+    vy: motion.vy,
+  }));
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.mouse.wheel(0, 500);
-  await expect(page.locator("body")).toHaveClass(
-    /state-(fallingToBottom|play)/,
-    { timeout: 3000 },
-  );
+  await page.waitForTimeout(120);
+  const after = await page.evaluate(() => ({
+    phase: motion.phase,
+    x: motion.x,
+    y: motion.y,
+    vx: motion.vx,
+    vy: motion.vy,
+    firstFallTriggered: motion.firstFallTriggered,
+  }));
+  expect(after).toMatchObject({
+    phase: before.phase,
+    x: before.x,
+    y: before.y,
+    vx: before.vx,
+    vy: before.vy,
+    firstFallTriggered: false,
+  });
+  await scrollToRock(page);
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
 }
 
@@ -256,7 +315,7 @@ test("потерянная сессия заменяется рабочей и �
     currentUrl
   );
 
-  await triggerFirstFallWithScrollDown(page);
+  await expectScrollDoesNotAffectPhysics(page);
   await waitForRockSettledInPlay(page);
   await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("тяните");
@@ -286,7 +345,8 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
-  const introState = await page.locator(".rock").evaluate((rock) => {
+  await expectReadyAtBottom(page);
+  const startState = await page.locator(".rock").evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
     const style = getComputedStyle(rock);
     return {
@@ -296,31 +356,18 @@ test("вход на корень перенаправляет в рабочую 
       },
       centerDelta: {
         x: Math.abs(rect.left + rect.width / 2 - window.innerWidth / 2),
-        y: Math.abs(rect.top + rect.height / 2 - window.innerHeight / 2),
+        bottom: Math.abs(rect.bottom - window.innerHeight),
       },
       pointerEvents: getComputedStyle(rock).pointerEvents,
       scale: Number.parseFloat(style.getPropertyValue("--rock-scale")),
       scrollable: document.documentElement.scrollHeight > window.innerHeight,
     };
   });
-  expect(introState.centerDelta.x).toBeLessThan(2);
-  expect(introState.centerDelta.y).toBeLessThan(2);
-  expect(introState.pointerEvents).toBe("none");
-  expect(introState.scale).toBeGreaterThan(1);
-  expect(introState.scrollable).toBe(true);
-  await page.mouse.move(introState.point.x, introState.point.y);
-  await expect(page.locator(".hand-cursor")).not.toHaveClass(/is-visible/);
-  await page.locator(".rock").evaluate((rock) => {
-    rock.dispatchEvent(
-      new PointerEvent("pointerdown", {
-        bubbles: true,
-        button: 0,
-        pointerId: 1,
-        pointerType: "mouse",
-      })
-    );
-  });
-  await expect(page.locator(".rock")).not.toHaveClass(/is-dragging/);
+  expect(startState.centerDelta.x).toBeLessThan(2);
+  expect(startState.centerDelta.bottom).toBeLessThan(2);
+  expect(startState.pointerEvents).toBe("auto");
+  expect(startState.scale).toBeGreaterThan(0);
+  expect(startState.scrollable).toBe(true);
   await expect.poll(() => documentRequests.length).toBeGreaterThanOrEqual(2);
   expect(documentRequests[0]).toBe("/");
   expect(documentRequests.at(-1)).toMatch(/^\/\?session=[A-Za-z0-9_-]{22}$/);
@@ -345,8 +392,8 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("40");
   await closeSettingsPanel(page);
 
-  await triggerFirstFallWithScrollDown(page);
-  await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
+  await expectScrollDoesNotAffectPhysics(page);
+  await expect(page.getByTestId("rock-imprint")).not.toHaveClass(/is-visible/);
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
   await expect(page.locator(".rock")).not.toHaveClass(/is-dragging/);
   const scaleSamples = await page.evaluate(() => {
@@ -361,29 +408,15 @@ test("вход на корень перенаправляет в рабочую 
         width: rect.width,
       };
     };
-    const imprint = document.querySelector(".rock-imprint");
-    const imprintY = Number.parseFloat(
-      getComputedStyle(imprint).getPropertyValue("--imprint-y")
-    );
-    const imprintScale = Number.parseFloat(
-      getComputedStyle(imprint).getPropertyValue("--imprint-scale")
-    );
-    setPosition(bounds.maxX / 2, imprintY);
-    const rockScaleAtImprint = Number.parseFloat(
-      getComputedStyle(rock).getPropertyValue("--rock-scale")
-    );
     const viewportWidth = window.innerWidth;
-    const imprintRect = imprint.getBoundingClientRect();
-    const imprintBaseWidth = imprint.offsetWidth;
-    setPosition(bounds.maxX / 2, 0);
+    const bottom = sample(bounds.maxY);
+    const middle = sample(bounds.maxY / 2);
+    const top = sample(0);
+    setPosition(bounds.maxX / 2, bounds.maxY);
     return {
-      bottom: sample(bounds.maxY),
-      imprintBaseWidth,
-      imprintRenderedWidth: imprintRect.width,
-      imprintScale,
-      middle: sample(bounds.maxY / 2),
-      rockScaleAtImprint,
-      top: sample(0),
+      bottom,
+      middle,
+      top,
       viewportWidth,
     };
   });
@@ -395,23 +428,16 @@ test("вход на корень перенаправляет в рабочую 
   expect(
     Math.abs(scaleSamples.bottom.width - scaleSamples.viewportWidth * 0.1)
   ).toBeLessThan(1);
-  expect(scaleSamples.imprintScale).toBeCloseTo(
-    scaleSamples.rockScaleAtImprint,
-    2
-  );
-  expect(
-    scaleSamples.imprintRenderedWidth / scaleSamples.imprintBaseWidth
-  ).toBeCloseTo(scaleSamples.imprintScale, 1);
   await expect
     .poll(() => page.evaluate(() => motion.firstFallTriggered))
-    .toBe(true);
+    .toBe(false);
   await expect(page.locator("body")).not.toHaveClass(/state-intro/);
   await waitForRockSettledInPlay(page);
   await expect
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Камень"] || 0)
     )
-    .toBeGreaterThan(0);
+    .toBe(0);
   const firstImpactSoundCount = await page.evaluate(
     () => window.__watchedAudioPlayCounts["Камень"] || 0
   );
@@ -432,15 +458,20 @@ test("вход на корень перенаправляет в рабочую 
     .toBe(firstImpactSoundCount);
   await scrollToRock(page);
 
+  const trailPoint = await visibleRockPoint(page);
+  await page.mouse.move(trailPoint.x, trailPoint.y);
+  await page.mouse.down();
+  await page.mouse.move(trailPoint.x - 24, trailPoint.y - 6);
+  await page.mouse.up();
+  await waitForRockSettledInPlay(page);
+  await scrollToRock(page);
   await expect
     .poll(() => page.evaluate(() => trail.points.length))
     .toBeGreaterThan(0);
-  await expect.poll(() => trailHasVisiblePixels(page)).toBe(false);
   await openSettingsPanel(page);
   await openControlGroup(page, "След");
   const trailEnabled = page.locator('[name="trailEnabled"]');
-  await expect(trailEnabled).not.toBeChecked();
-  await trailEnabled.check();
+  await expect(trailEnabled).toBeChecked();
   await expect
     .poll(() => trailHasVisiblePixels(page))
     .toBe(true);
@@ -506,7 +537,7 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page).toHaveURL(urlBeforeReload);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(page.locator("body")).not.toHaveClass(/state-intro/);
-  await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
+  await expect(page.getByTestId("rock-imprint")).not.toHaveClass(/is-visible/);
   await expect(page.locator('[name="gravity"]')).toHaveValue("10");
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
 
@@ -583,6 +614,7 @@ test("два браузера видят один камень и поднима
   await first.goto("/");
   await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
   await expect(first.getByTestId("session-status")).toContainText("В сессии");
+  await expectReadyAtBottom(first);
   const sceneProjection = await first.evaluate(() => {
     updateBounds();
     const bottom = canonicalToLocal(SharedPhysics.WORLD_WIDTH / 2, SharedPhysics.WORLD_HEIGHT);
@@ -614,7 +646,7 @@ test("два браузера видят один камень и поднима
   expect(
     sceneProjection.rockRenderedWidth / sceneProjection.rockBaseWidth
   ).toBeCloseTo(sceneProjection.rockScale, 1);
-  expect(sceneProjection.rockScale).toBeGreaterThan(1);
+  expect(sceneProjection.rockScale).toBeCloseTo(sceneProjection.bottomScale, 1);
   expect(sceneProjection.maxY).toBeCloseTo(
     sceneProjection.renderedHeight -
       (sceneProjection.rockHeight * (1 + sceneProjection.bottomScale)) / 2,
@@ -654,8 +686,6 @@ test("два браузера видят один камень и поднима
   const trailEnabled = first.locator('[name="trailEnabled"]');
   const trailLength = first.locator('[name="trailMaxPoints"]');
   const trailUnlimited = first.locator('[name="trailUnlimited"]');
-  await expect(trailEnabled).not.toBeChecked();
-  await setCheckbox(first, "trailEnabled", true);
   await expect(trailEnabled).toBeChecked();
   await setRange(first, "trailMaxPoints", 20);
   await trailUnlimited.check();
@@ -683,7 +713,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -718,7 +748,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -827,7 +857,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -862,7 +892,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -873,7 +903,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v9") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -915,6 +945,7 @@ test("два браузера видят один камень и поднима
   await second.goto(sharedUrl);
   await second.locator(".settings-toggle").click();
   await expect(second.getByTestId("session-status")).toContainText("В сессии");
+  await expectReadyAtBottom(second);
   await expect.poll(() => first.evaluate(() => collab.clientRole)).toBe("master");
   await expect.poll(() => second.evaluate(() => collab.clientRole)).toBe("slave");
   await openControlGroup(second, "Дождь");
@@ -969,55 +1000,17 @@ test("два браузера видят один камень и поднима
   await first.locator(".settings-toggle").click();
   await second.locator(".settings-toggle").click();
   const remoteCursor = second.getByTestId("remote-cursor");
-  const introRock = await first.locator(".rock").evaluate((rock) => {
-    const rect = rock.getBoundingClientRect();
-    const style = getComputedStyle(rock);
-    return {
-      point: {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      },
-      pointerEvents: style.pointerEvents,
-    };
-  });
-  if (introRock.pointerEvents === "none") {
-    await first.mouse.move(introRock.point.x, introRock.point.y);
-    await expect(first.locator(".hand-cursor")).not.toHaveClass(/is-visible/);
-    await expect(second.locator(".hand-cursor.is-remote.is-visible")).toHaveCount(
-      0
-    );
-  }
 
-  await triggerFirstFallWithScrollDown(first);
-  await expect(second.locator("body")).toHaveClass(
-    /state-(fallingToBottom|play)/
-  );
+  await expectScrollDoesNotAffectPhysics(first);
+  await expect(second.locator("body")).toHaveClass(/state-play/);
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
   await expect(first.locator(".rock")).not.toHaveClass(/is-dragging/);
   await expect(second.locator(".rock")).not.toHaveClass(/is-dragging/);
   const firstImprint = first.getByTestId("rock-imprint");
   const secondImprint = second.getByTestId("rock-imprint");
-  await expect(firstImprint).toHaveClass(/is-visible/);
-  await expect(secondImprint).toHaveClass(/is-visible/);
-  const initialAlignment = await first.evaluate(() => ({
-    expectedX:
-      (window.innerWidth - document.querySelector(".rock").offsetWidth) / 2,
-    expectedY:
-      (window.innerHeight - document.querySelector(".rock").offsetHeight) / 2,
-    imprintX: Number.parseFloat(
-      getComputedStyle(document.querySelector(".rock-imprint")).getPropertyValue(
-        "--imprint-x"
-      )
-    ),
-    imprintY: Number.parseFloat(
-      getComputedStyle(document.querySelector(".rock-imprint")).getPropertyValue(
-        "--imprint-y"
-      )
-    ),
-  }));
-  expect(initialAlignment.imprintX).toBeCloseTo(initialAlignment.expectedX, 0);
-  expect(initialAlignment.imprintY).toBeCloseTo(initialAlignment.expectedY, 0);
+  await expect(firstImprint).not.toHaveClass(/is-visible/);
+  await expect(secondImprint).not.toHaveClass(/is-visible/);
 
   const trailBuffer = await first.locator(".trail").evaluate((canvas) => ({
     width: canvas.width,
@@ -1074,11 +1067,7 @@ test("два браузера видят один камень и поднима
   await expect.poll(() => trailHasVisiblePixels(second)).toBe(false);
   await second.locator(".settings-toggle").click();
   await openControlGroup(second, "След");
-  await expect(second.locator('[name="trailEnabled"]')).not.toBeChecked();
-  await setCheckbox(second, "trailEnabled", true);
-  await expect
-    .poll(() => trailHasVisiblePixels(second))
-    .toBe(true);
+  await expect(second.locator('[name="trailEnabled"]')).toBeChecked();
   await second.locator(".settings-toggle").click();
   await scrollToRock(first);
   const firstGrabPoint = await visibleRockPoint(first);
@@ -1133,7 +1122,7 @@ test("два браузера видят один камень и поднима
     .toBeLessThanOrEqual(3);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await grabVisibleRock(second);
-  await moveSharedDragToImprint(first, second);
+  await moveSharedDragToBottom(first, second);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await expect(second.getByTestId("session-status")).toContainText("силы хватает");
   const localGrabbingCursor = second.locator(
@@ -1162,116 +1151,15 @@ test("два браузера видят один камень и поднима
     "background-image",
     /cursor-partner-grabbing(?:-[A-Za-z0-9_-]+)?\.webp/
   );
-  await expect(first.locator("body")).toHaveClass(/theme-light/);
-  await expect(second.locator("body")).toHaveClass(/theme-light/);
   const secondRain = second.getByTestId("weather-rain");
-  await expect(firstRain).toHaveClass(/is-rain-visible/);
-  await expect(secondRain).toHaveClass(/is-rain-visible/);
-  await expect
-    .poll(() =>
-      first.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
-    )
-    .toBe(2);
-  await expect
-    .poll(() =>
-      second.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
-    )
-    .toBe(1);
-  await expect
-    .poll(() => second.evaluate(() => getLastRainRendererProfile()))
-    .toMatchObject({
-      theme: "light",
-      fallbackColor: [51, 102, 153],
-      raindropDiffuseLight: [0.2, 0.4, 0.6],
-      raindropSpecularLight: [1, 0.8, 0],
-    });
-  const lightThemeRainRenderToken = await second.evaluate(() =>
-    getRainRenderToken()
-  );
-  const rainLayering = await second.evaluate(() => {
-    const rainLayer = document.querySelector(".weather-rain");
-    const summit = document.querySelector(".summit");
-    const title = document.querySelector(".title");
-    const title2 = document.querySelector(".title2");
-    return {
-      followsSummit: Boolean(
-        summit.compareDocumentPosition(rainLayer) & Node.DOCUMENT_POSITION_FOLLOWING
-      ),
-      rainZIndex: Number.parseInt(getComputedStyle(rainLayer).zIndex, 10),
-      titleZIndexes: [
-        Number.parseInt(getComputedStyle(title).zIndex, 10),
-        Number.parseInt(getComputedStyle(title2).zIndex, 10),
-      ],
-    };
-  });
-  expect(rainLayering.followsSummit).toBe(true);
-  expect(rainLayering.titleZIndexes.every(
-    (titleZIndex) => rainLayering.rainZIndex > titleZIndex
-  )).toBe(true);
-  await expect
-    .poll(() =>
-      secondRain.locator("canvas").evaluateAll((canvases) =>
-        Math.max(
-          ...canvases.map((canvas) =>
-            Number.parseFloat(
-              canvas.style.getPropertyValue("--rain-fx-opacity") || "0"
-            )
-          )
-        )
-      )
-    )
-    .toBeGreaterThan(0);
   await expect(first.locator("body")).not.toHaveClass(/state-won/);
   await expect(second.locator("body")).not.toHaveClass(/state-won/);
   await expect(first.locator(".rock")).toHaveClass(/is-dragging/);
   await expect(second.locator(".rock")).toHaveClass(/is-dragging/);
-  await expect(first.locator("body")).toHaveClass(/theme-light/);
-  await expect(second.locator("body")).toHaveClass(/theme-light/);
-  await expect(firstRain).toHaveClass(/is-rain-visible/);
-  await expect(secondRain).toHaveClass(/is-rain-visible/);
-  await expect
-    .poll(() =>
-      secondRain.evaluate((layer) =>
-        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
-      )
-    )
-    .toBe("normal");
-  await expect
-    .poll(() =>
-      secondRain.evaluate((layer) =>
-        getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
-          .opacity
-      )
-    )
-    .toBe("0");
-  await Promise.all([first, second].map((page) => page.evaluate(() => {
-    const imprint = collab.imprint;
-    const outsideYCandidate = imprint.y + imprint.toleranceY + 10;
-    const outsideY =
-      outsideYCandidate <= SharedPhysics.WORLD_HEIGHT
-        ? outsideYCandidate
-        : imprint.y - imprint.toleranceY - 10;
-    const local = canonicalToLocal(imprint.x, outsideY);
-    setPosition(local.x, local.y);
-    motion.dragTargetX = local.x;
-    motion.dragTargetY = local.y;
-    syncReturnTheme();
-    sendShared("control.move", {
-      x: imprint.x,
-      y: outsideY,
-      vx: 0,
-      vy: 0,
-      pointer: {
-        ...collab.localPointer,
-        x: imprint.x,
-        y: outsideY,
-        mode: "grabbing",
-        visible: true,
-      },
-    });
-  })));
-  await expect(firstRain).toHaveClass(/is-rain-hiding/);
-  await expect(secondRain).toHaveClass(/is-rain-hiding/);
+  await expect(first.locator("body")).toHaveClass(/theme-dark/);
+  await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  await expect(firstRain).not.toHaveClass(/is-rain-visible/);
+  await expect(secondRain).not.toHaveClass(/is-rain-visible/);
   await expect
     .poll(() =>
       firstRain.evaluate((layer) => {
@@ -1307,50 +1195,17 @@ test("два браузера видят один камень и поднима
       radius: "18px",
       saturation: "1.25",
     });
-  await expect
-    .poll(() =>
-      secondRain.evaluate((layer) =>
-        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
-      )
-    )
-    .toBe("multiply");
-  await expect
-    .poll(() =>
-      secondRain.evaluate((layer) =>
-        getComputedStyle(layer.querySelector(".weather-rain__canvas--fallback"))
-          .opacity
-      )
-    )
-    .toBe("0");
   await second.mouse.up();
   await first.mouse.up();
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
-  expect(await second.evaluate(() => getRainRenderToken())).toBe(
-    lightThemeRainRenderToken
-  );
   await expect
     .poll(() =>
       second.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
     )
-    .toBe(1);
-  await expect
-    .poll(() => second.evaluate(() => getLastRainRendererProfile()))
-    .toMatchObject({
-      theme: "dark",
-      fallbackColor: [51, 102, 153],
-      raindropDiffuseLight: [0.2, 0.4, 0.6],
-      raindropSpecularLight: [1, 0.8, 0],
-    });
+    .toBe(0);
   await expect(firstRain).not.toHaveClass(/is-rain-visible/);
   await expect(secondRain).not.toHaveClass(/is-rain-visible/);
-  await expect
-    .poll(() =>
-      secondRain.evaluate((layer) =>
-        getComputedStyle(layer.querySelector(".weather-rain__canvas")).mixBlendMode
-      )
-    )
-    .toBe("multiply");
   await expect
     .poll(() =>
       firstRain.evaluate((layer) =>
@@ -1475,6 +1330,15 @@ test("два браузера видят один камень и поднима
 
   await first.locator(".settings-toggle").click();
   await first.getByTestId("restart-session").click();
+  await expect
+    .poll(() =>
+      first.evaluate(
+        () =>
+          window.scrollY >=
+          document.documentElement.scrollHeight - window.innerHeight - 2
+      )
+    )
+    .toBe(true);
   const firstRestartState = await first.evaluate(() => ({
     bodyState: document.body.className,
     firstFallTriggered: motion.firstFallTriggered,
@@ -1487,17 +1351,20 @@ test("два браузера видят один камень и поднима
       .pointerEvents,
     rainState: document.querySelector(".weather-rain").className,
     scrollY: window.scrollY,
+    maxScroll: document.documentElement.scrollHeight - window.innerHeight,
     trailPoints: trail.points.length,
   }));
-  expect(firstRestartState.bodyState).toContain("state-intro");
+  expect(firstRestartState.bodyState).toContain("state-play");
   expect(firstRestartState).toMatchObject({
     firstFallTriggered: false,
     imprintVisible: false,
     introFallTimerActive: false,
-    pointerEvents: "none",
-    scrollY: 0,
+    pointerEvents: "auto",
     trailPoints: 0,
   });
+  expect(firstRestartState.scrollY).toBeGreaterThanOrEqual(
+    firstRestartState.maxScroll - 2
+  );
   expect(firstRestartState.bodyState).toContain("theme-dark");
   expect(firstRestartState.htmlState).not.toContain("is-scroll-locked");
   expect(firstRestartState.rainState).not.toMatch(/is-rain-/);
