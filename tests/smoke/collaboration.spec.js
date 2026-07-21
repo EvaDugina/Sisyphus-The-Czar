@@ -157,7 +157,7 @@ async function grabVisibleRock(page) {
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
     try {
-      await expect(status).toContainText(/держите|тащите вместе/, {
+      await expect(status).toContainText(/держите|тяните/, {
         timeout: 1500,
       });
       return point;
@@ -246,7 +246,7 @@ test("потерянная сессия заменяется рабочей и �
   await triggerFirstFallWithScrollDown(page);
   await waitForRockSettledInPlay(page);
   await grabVisibleRock(page);
-  await expect(page.getByTestId("session-status")).toContainText("держите");
+  await expect(page.getByTestId("session-status")).toContainText("тяните");
   await page.mouse.up();
 
   await context.close();
@@ -419,7 +419,7 @@ test("вход на корень перенаправляет в рабочую 
   await page.mouse.move(playablePoint.x, playablePoint.y);
   await expect(page.locator(".hand-cursor")).toHaveClass(/is-visible/);
   await page.mouse.down();
-  await expect(page.getByTestId("session-status")).toContainText("держите");
+  await expect(page.getByTestId("session-status")).toContainText("тяните");
   await page.mouse.up();
 
   const urlBeforeReload = page.url();
@@ -829,8 +829,8 @@ test("два браузера видят один камень и поднима
 
   await second.evaluate(() => collab.socket.close(4100, "test_reconnect"));
   await expect(second.getByTestId("session-status")).toContainText("Переподключение");
-  await setRange(second, "gravity", 9);
-  await expect(first.locator('[name="gravity"]')).toHaveValue("9", {
+  await setRange(second, "gravity", 8);
+  await expect(first.locator('[name="gravity"]')).toHaveValue("8", {
     timeout: 5000,
   });
 
@@ -901,22 +901,40 @@ test("два браузера видят один камень и поднима
   await expect(first.locator("body")).toHaveClass(/state-play/, { timeout: 45_000 });
   await expect(second.locator("body")).toHaveClass(/state-play/, { timeout: 45_000 });
   await scrollToRock(first);
-  const enabledFirstPoint = await visibleRockPoint(first);
-  await first.mouse.move(enabledFirstPoint.x, enabledFirstPoint.y);
+  await first.evaluate(() => {
+    sendShared("pointer.update", {
+      x: SharedPhysics.WORLD_WIDTH / 2,
+      y: SharedPhysics.WORLD_HEIGHT / 2,
+      mode: "grab",
+      visible: true,
+    });
+  });
   await expect(remoteCursor).toHaveClass(/is-visible/);
+  await expect(remoteCursor).toBeVisible();
   await expect(remoteCursor).not.toHaveClass(/is-grabbing/);
   await expect(remoteCursor).toHaveCSS("opacity", "1");
   await expect(remoteCursor).toHaveCSS(
     "background-image",
     /cursor-grab(?:-[A-Za-z0-9_-]+)?\.(?:png|webp)/
   );
-  const cursorSize = await remoteCursor.evaluate((cursor) => {
-    const rect = cursor.getBoundingClientRect();
-    return { width: rect.width, height: rect.height };
+  await expect
+    .poll(() =>
+      remoteCursor.evaluate((cursor) => {
+        const rect = cursor.getBoundingClientRect();
+        return {
+          height: Math.round(rect.height),
+          width: Math.round(rect.width),
+        };
+      })
+    )
+    .toEqual({ height: 976, width: 736 });
+  await first.evaluate(() => {
+    sendShared("pointer.update", {
+      ...collab.localPointer,
+      mode: "grab",
+      visible: false,
+    });
   });
-  expect(cursorSize.width).toBeCloseTo(184, 1);
-  expect(cursorSize.height).toBeCloseTo(244, 1);
-  await first.mouse.move(0, 0);
   await expect(remoteCursor).toHaveCount(0);
 
   await scrollToRock(second);
@@ -931,11 +949,11 @@ test("два браузера видят один камень и поднима
   await second.locator(".settings-toggle").click();
   await scrollToRock(first);
   await grabVisibleRock(first);
-  await expect(first.getByTestId("session-status")).toContainText("держите 1/2");
+  await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await grabVisibleRock(second);
   await moveSharedDragToImprint(first, second);
-  await expect(first.getByTestId("session-status")).toContainText("тащите вместе");
-  await expect(second.getByTestId("session-status")).toContainText("тащите вместе");
+  await expect(first.getByTestId("session-status")).toContainText("силы хватает");
+  await expect(second.getByTestId("session-status")).toContainText("силы хватает");
   const localGrabbingCursor = second.locator(
     ".hand-cursor:not(.is-remote).is-visible"
   );
@@ -948,7 +966,7 @@ test("два браузера видят один камень и поднима
     const style = getComputedStyle(cursor);
     return { width: style.width, height: style.height };
   });
-  expect(grabbingCursorSize).toEqual({ width: "184px", height: "244px" });
+  expect(grabbingCursorSize).toEqual({ width: "736px", height: "976px" });
   const remoteGrabbingCursor = first.locator(
     ".hand-cursor.is-remote.is-visible"
   );
@@ -1279,8 +1297,8 @@ test("два браузера видят один камень и поднима
   expect(firstRestartState.bodyState).toContain("theme-dark");
   expect(firstRestartState.htmlState).not.toContain("is-scroll-locked");
   expect(firstRestartState.rainState).not.toMatch(/is-rain-/);
-  await expect(first.locator('[name="gravity"]')).toHaveValue("9");
-  await expect(second.locator('[name="gravity"]')).toHaveValue("9");
+  await expect(first.locator('[name="gravity"]')).toHaveValue("8");
+  await expect(second.locator('[name="gravity"]')).toHaveValue("8");
 
   await first.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false }));

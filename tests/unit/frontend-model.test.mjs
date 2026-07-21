@@ -56,10 +56,11 @@ test("session status сохраняет публичные тексты упра
       pendingControl: false,
       remoteControllerId: "other",
       holderIds: ["other"],
-      requiredHolders: 2,
+      requiredHolders: 1,
+      liftReady: false,
     }),
     {
-      text: "В сессии: 2 · камень держат 1/2",
+      text: "В сессии: 2 · камень держат (1 рука)",
       state: "online",
     },
   );

@@ -41,7 +41,7 @@ async function grabVisibleRock(page) {
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
     try {
-      await expect(status).toContainText(/держите|тащите вместе/, {
+      await expect(status).toContainText(/держите|тяните/, {
         timeout: 1500,
       });
       return;
@@ -88,7 +88,7 @@ test("два браузера работают 10 минут без зависш
     const observer = pages[(iteration + 1) % pages.length];
     await scrollToRock(actor);
     await grabVisibleRock(actor);
-    await expect(actor.getByTestId("session-status")).toContainText(/держите|тащите вместе/);
+    await expect(actor.getByTestId("session-status")).toContainText(/держите|тяните/);
     await expect(observer.getByTestId("session-status")).toContainText("другой участник");
     await actor.mouse.up();
     await expect(actor.getByTestId("session-status")).toContainText("камень свободен");

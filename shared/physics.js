@@ -153,6 +153,22 @@
     return params.handForce;
   }
 
+  function normalizeHandCount(handCount) {
+    return Math.max(0, Math.floor(finiteNumber(handCount, 1)));
+  }
+
+  function totalHandForce(physics, handCount = 1) {
+    return effectiveHandForce(physics) * normalizeHandCount(handCount);
+  }
+
+  function liftForceSurplus(physics, handCount = 1) {
+    return totalHandForce(physics, handCount) - gravityForce(physics);
+  }
+
+  function canLift(physics, handCount = 1) {
+    return liftForceSurplus(physics, handCount) > 0;
+  }
+
   function handAcceleration(physics) {
     const params = sanitizePhysics(physics);
     return effectiveHandForce(params) / params.mass;
@@ -163,24 +179,45 @@
     return (params.groundFriction * gravityForce(params)) / params.mass;
   }
 
-  function maxHoldMs(physics) {
+  function maxHoldMs(physics, handCount = 1) {
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
     return clamp(
-      (3000 * effectiveHandForce(params)) / (load * 5),
+      (3000 * totalHandForce(params, handCount)) / (load * 5),
       500,
       3000
     );
   }
 
-  function dragLiftSpeed(physics) {
+  function dragLiftSpeed(physics, handCount = 1) {
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
+    const surplus = liftForceSurplus(params, handCount);
+    if (surplus <= 0) {
+      return 0;
+    }
     return clamp(
-      DRAG_LIFT.baseSpeed + (DRAG_LIFT.forceSpeed * effectiveHandForce(params)) / load,
+      DRAG_LIFT.minSpeed + (DRAG_LIFT.forceSpeed * surplus) / (load * 5),
       DRAG_LIFT.minSpeed,
       DRAG_LIFT.maxSpeed
     );
+  }
+
+  function dragDropSpeed(physics, handCount = 1) {
+    const params = sanitizePhysics(physics);
+    const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
+    const deficit = Math.max(0, -liftForceSurplus(params, handCount));
+    return clamp(
+      DRAG_LIFT.minSpeed + (DRAG_LIFT.forceSpeed * deficit) / (load * 5),
+      DRAG_LIFT.minSpeed,
+      DRAG_LIFT.maxSpeed
+    );
+  }
+
+  function dragVerticalSpeed(physics, handCount = 1) {
+    return canLift(physics, handCount)
+      ? -dragLiftSpeed(physics, handCount)
+      : dragDropSpeed(physics, handCount);
   }
 
   function sanitizeImprint(input) {
@@ -376,10 +413,15 @@
     gravityForce,
     gravityAcceleration,
     effectiveHandForce,
+    totalHandForce,
+    liftForceSurplus,
+    canLift,
     handAcceleration,
     groundFrictionAcceleration,
     maxHoldMs,
     dragLiftSpeed,
+    dragDropSpeed,
+    dragVerticalSpeed,
     sanitizeImprint,
     createImprintAtState,
     stateInsideImprint,

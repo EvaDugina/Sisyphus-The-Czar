@@ -12,7 +12,7 @@ const MAX_TRAIL_POINTS = 1000;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
 const POINTER_SKINS = new Set(["primary", "partner"]);
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
-const REQUIRED_HOLDERS = 2;
+const REQUIRED_HOLDERS = 1;
 const SLIP_DELAY_MIN_MS = 500;
 const SLIP_DELAY_MAX_MS = 2000;
 
@@ -338,11 +338,16 @@ class SessionManager {
       return earliest === null ? holder.slipAt : Math.min(earliest, holder.slipAt);
     }, null);
 
-    if (holderIds.length < REQUIRED_HOLDERS) {
+    if (!Physics.canLift(session.physics, holderIds.length)) {
       state.dragging = false;
       state.controllerId = null;
-      if (wasDragging && state.phase === Physics.PHASES.PLAY) {
+      if (holderIds.length > 0 && state.phase === Physics.PHASES.PLAY) {
         state.vx = 0;
+        state.vy = Math.max(
+          state.vy,
+          Physics.dragDropSpeed(session.physics, holderIds.length)
+        );
+      } else if (wasDragging && state.phase === Physics.PHASES.PLAY) {
         state.vy = Math.max(0, state.vy);
       }
       return;
@@ -382,16 +387,34 @@ class SessionManager {
       return false;
     }
 
+    const now = this.now();
+    const wasDragging = session.state.dragging;
+    const releaseVelocity = options.applyReleaseImpulse
+      ? this.holderVelocity(session, holder, now)
+      : { vx: 0, vy: 0 };
     const notify = options.notify !== false;
     const reason = options.reason || "released";
     const client = session.clients.get(clientId);
     session.holders.delete(clientId);
     if (client?.pointer) {
       client.pointer.mode = "grab";
-      client.pointer.updatedAt = this.now();
+      client.pointer.updatedAt = now;
       this.broadcastPointer(session, client);
     }
-    this.syncCooperativeDrag(session);
+    this.syncCooperativeDrag(session, now);
+    if (
+      options.applyReleaseImpulse &&
+      wasDragging &&
+      !session.state.dragging &&
+      session.state.phase === Physics.PHASES.PLAY
+    ) {
+      Physics.applyReleaseImpulse(
+        session.state,
+        session.physics,
+        releaseVelocity.vx,
+        releaseVelocity.vy
+      );
+    }
     this.markChanged(session);
     this.broadcastSnapshot(session);
     this.broadcastPresence(session);
@@ -667,6 +690,7 @@ class SessionManager {
     }
     this.syncCooperativeDrag(session);
     return this.removeHolder(session, client.id, {
+      applyReleaseImpulse: true,
       notify: false,
       reason: "released",
     });
@@ -684,6 +708,7 @@ class SessionManager {
       { ...session.physics, ...nextPayload },
       session.physics
     );
+    this.syncCooperativeDrag(session);
     this.markChanged(session);
     this.broadcastSnapshot(session);
   }

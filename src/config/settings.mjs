@@ -39,9 +39,12 @@ const PHYSICS_FORMULAS = {
     "F_g = m \\cdot g",
     "a_g = \\frac{F_g}{m}",
     "a_{hand} = \\frac{F_{hand}}{m}",
+    "F_{hands} = n \\cdot F_{hand}",
+    "F_{surplus} = F_{hands} - F_g",
     "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k",
-    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hand}}{5 \\cdot F_g}, 500, 3000\\right)",
-    "v_{lift} = clamp\\left(v_0 + k_{lift} \\cdot \\frac{F_{hand}}{F_g}, v_{min}, v_{max}\\right)",
+    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
+    "v_y = F_{surplus} > 0 ? -v_{lift} : v_{drop}",
+    "v_{lift/drop} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{|F_{surplus}|}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
   ],
   gravity: [
     "F_g = m \\cdot g",
@@ -52,9 +55,12 @@ const PHYSICS_FORMULAS = {
   ],
   handForce: [
     "a_{hand} = \\frac{F_{hand}}{m}",
+    "F_{hands} = n \\cdot F_{hand}",
+    "F_{surplus} = F_{hands} - F_g",
     "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k",
-    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hand}}{5 \\cdot F_g}, 500, 3000\\right)",
-    "v_{lift} = clamp\\left(v_0 + k_{lift} \\cdot \\frac{F_{hand}}{F_g}, v_{min}, v_{max}\\right)",
+    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
+    "v_y = F_{surplus} > 0 ? -v_{lift} : v_{drop}",
+    "v_{lift/drop} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{|F_{surplus}|}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
   ],
   pointerInfluence: [
     "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
@@ -124,7 +130,7 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: 50,
         output: "50",
-        hint: "Сила руки при броске в шкале от 1 до 100. Больше — камень летит выше и дальше.",
+        hint: "Сила одной руки в шкале от 1 до 100. Руки суммируются: камень поднимается только когда их суммарная сила больше тяжести, а избыток силы ускоряет подъём.",
         formulas: PHYSICS_FORMULAS.handForce,
       },
       {

@@ -247,7 +247,7 @@ export function createSisyphusRuntime(elements = {}) {
     releasePending: false,
     clientSkin: "primary",
     holderIds: new Set(),
-    requiredHolders: 2,
+    requiredHolders: 1,
     remoteControllerId: null,
     participants: 1,
     applyingRemotePhysics: false,
@@ -819,8 +819,8 @@ export function createSisyphusRuntime(elements = {}) {
     return SharedPhysics.maxHoldMs(params);
   }
 
-  function dragLiftSpeed() {
-    return SharedPhysics.dragLiftSpeed(params);
+  function activeHandCount() {
+    return collab.enabled ? collab.holderIds.size : 1;
   }
 
   const STORAGE_KEY = SETTINGS_STORAGE_KEY;
@@ -1279,16 +1279,19 @@ export function createSisyphusRuntime(elements = {}) {
     motion.dragTargetY = event.clientY + window.scrollY - motion.grabY;
   }
 
-  function applyDragTargetMovement(deltaSeconds) {
+  function applyDragTargetMovement(deltaSeconds, handCount = activeHandCount()) {
     if (!motion.dragging) {
       return;
     }
 
-    const maxLiftDistance = dragLiftSpeed() * deltaSeconds;
-    const nextY =
-      motion.dragTargetY < motion.y
-        ? Math.max(motion.dragTargetY, motion.y - maxLiftDistance)
-        : motion.dragTargetY;
+    const verticalSpeed = SharedPhysics.dragVerticalSpeed(params, handCount);
+    let nextY = motion.dragTargetY;
+    if (motion.dragTargetY < motion.y) {
+      nextY =
+        verticalSpeed < 0
+          ? Math.max(motion.dragTargetY, motion.y + verticalSpeed * deltaSeconds)
+          : Math.min(bounds.maxY, motion.y + verticalSpeed * deltaSeconds);
+    }
 
     setPosition(motion.dragTargetX, nextY);
   }
@@ -1315,9 +1318,12 @@ export function createSisyphusRuntime(elements = {}) {
     sessionShareToggle.setAttribute("aria-label", "Скопировать ссылку");
     sessionShareToggle.title = "Скопировать ссылку";
     sessionShareToggle.dataset.state = collab.connected ? "online" : "local";
+    const holderCount = collab.holderIds.size;
     const status = deriveSessionStatus({
       ...collab,
       holderIds: [...collab.holderIds],
+      liftReady:
+        holderCount > 0 && SharedPhysics.canLift(params, holderCount),
     });
     setSessionStatus(status.text, status.state);
   }
@@ -1407,10 +1413,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function cooperativeDragActive() {
-    return (
-      localIsHolder() &&
-      collab.holderIds.size >= collab.requiredHolders
-    );
+    return localIsHolder() && SharedPhysics.canLift(params, collab.holderIds.size);
   }
 
   function pointerSkin(value) {
@@ -1938,7 +1941,7 @@ export function createSisyphusRuntime(elements = {}) {
     collab.pendingControl = false;
     collab.releasePending = false;
     collab.holderIds.clear();
-    collab.requiredHolders = 2;
+    collab.requiredHolders = 1;
     collab.remoteControllerId = null;
     rock.classList.remove("is-dragging", "is-falling");
     releasePointerCapture(pointerId);
@@ -2322,7 +2325,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     const visiblyDragging =
       Boolean(snapshot.dragging) &&
-      snapshot.holderIds.length >= snapshot.requiredHolders;
+      SharedPhysics.canLift(params, snapshot.holderIds.length);
     const visiblyFalling =
       !visiblyDragging &&
       snapshot.phase !== PHASES.INTRO &&
@@ -2467,7 +2470,7 @@ export function createSisyphusRuntime(elements = {}) {
     setDragTargetFromPointer(event);
     const activeTogether = cooperativeDragActive();
     if (activeTogether) {
-      applyDragTargetMovement(MAX_FRAME_SECONDS);
+      applyDragTargetMovement(MAX_FRAME_SECONDS, collab.holderIds.size);
       syncReturnTheme();
     }
 
