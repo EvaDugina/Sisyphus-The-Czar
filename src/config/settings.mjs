@@ -102,7 +102,7 @@ const PHYSICS_FORMULAS = {
   ],
   sceneHeightScreens: [
     "H_{page} = sceneHeightScreens \\cdot 100vh",
-    "k_{scene} = \\frac{100}{sceneHeightScreens}",
+    "k_{scene} = \\frac{100}{sceneHeightScreens} \\cdot 10",
     "a_y' = a_y \\cdot k_{scene}",
   ],
   handWidthVw: [

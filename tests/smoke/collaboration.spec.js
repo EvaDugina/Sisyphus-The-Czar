@@ -687,8 +687,8 @@ test("падение компенсируется при изменении вы
 
   const compact = await profileForSceneHeight(10);
   const legacy = await profileForSceneHeight(100);
-  expect(compact.motionScale).toBeCloseTo(10, 6);
-  expect(legacy.motionScale).toBeCloseTo(1, 6);
+  expect(compact.motionScale).toBeCloseTo(100, 6);
+  expect(legacy.motionScale).toBeCloseTo(10, 6);
   expect(compact.sceneMaxY).toBeLessThan(legacy.sceneMaxY);
   expect(compact.after.y).toBeGreaterThan(legacy.after.y);
   expect(compact.localDeltaY).toBeGreaterThan(0);

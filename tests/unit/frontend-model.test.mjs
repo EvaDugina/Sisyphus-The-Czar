@@ -371,11 +371,11 @@ test("общие визуальные настройки комнаты есть
   );
   assert.equal(
     SharedRoomSettings.sceneMotionMultiplier({ sceneHeightScreens: 10 }),
-    10
+    100
   );
   assert.equal(
     SharedRoomSettings.sceneMotionMultiplier({ sceneHeightScreens: 100 }),
-    1
+    10
   );
   assert.deepEqual(
     {

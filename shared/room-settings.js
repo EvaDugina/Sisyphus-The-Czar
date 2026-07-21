@@ -11,6 +11,7 @@
 
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
+  const SCENE_MOTION_COMPENSATION_BOOST = 10;
   const ROOM_SETTINGS_VERSION = 3;
   const ROOM_SETTINGS_KEYS = Object.freeze([
     "sceneHeightScreens",
@@ -108,12 +109,16 @@
 
   function sceneMotionMultiplier(settings) {
     const clean = sanitizeRoomSettings(settings);
-    return SCENE_MOTION_REFERENCE_SCREENS / clean.sceneHeightScreens;
+    return (
+      (SCENE_MOTION_REFERENCE_SCREENS / clean.sceneHeightScreens) *
+      SCENE_MOTION_COMPENSATION_BOOST
+    );
   }
 
   return Object.freeze({
     DEFAULT_SCENE_HEIGHT_SCREENS,
     SCENE_MOTION_REFERENCE_SCREENS,
+    SCENE_MOTION_COMPENSATION_BOOST,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,
