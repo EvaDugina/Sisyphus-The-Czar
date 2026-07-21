@@ -629,6 +629,12 @@ class SessionManager {
     }
 
     session.imprint = Physics.createImprintAtState(state, payload.imprint);
+    if (payload.physics && typeof payload.physics === "object") {
+      session.physics = Physics.sanitizePhysics(
+        { ...session.physics, ...payload.physics },
+        session.physics
+      );
+    }
     session.firstFallAt = null;
     session.holdReleaseAt = null;
     session.lastPointer = { vx: 0, vy: 0 };

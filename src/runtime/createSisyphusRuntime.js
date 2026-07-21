@@ -3052,7 +3052,10 @@ export function createSisyphusRuntime(elements = {}) {
     const proposedImprint = collab.imprint || sharedImprintAt(position);
     collab.imprint = proposedImprint;
     renderImprint();
-    const sent = sendShared("session.start", { imprint: proposedImprint });
+    const sent = sendShared("session.start", {
+      imprint: proposedImprint,
+      physics: sharedPhysicsPayload(),
+    });
     collab.firstFallRequestSent = sent;
     return sent;
   }

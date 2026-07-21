@@ -146,6 +146,32 @@ test("session.start сохраняет отпечаток и запускает 
   assert.equal(session.state.phase, Physics.PHASES.FALLING);
 });
 
+test("session.start применяет актуальную физику до первого падения", () => {
+  const { manager } = setup();
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.INTRO, x: 500, y: 700 },
+    physics: { bounce: 0, firstFallVelocity: 0 },
+  });
+  const { client } = connect(manager, session, "client-start-physics");
+
+  manager.handleMessage(session, client, {
+    v: 1,
+    type: "session.start",
+    seq: 1,
+    payload: {
+      physics: {
+        bounce: 1,
+        firstFallVelocity: -4,
+      },
+    },
+  });
+
+  assert.equal(session.physics.bounce, 1);
+  assert.equal(session.physics.firstFallVelocity, -4);
+  assert.equal(session.state.phase, Physics.PHASES.FALLING);
+  assert.equal(session.state.vy, -4);
+});
+
 test("control.acquire запрещён до достижения камнем низа", () => {
   const { manager } = setup();
   const session = manager.createSession({ state: { phase: Physics.PHASES.INTRO } });

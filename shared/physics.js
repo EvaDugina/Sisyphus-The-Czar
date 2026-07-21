@@ -42,8 +42,8 @@
   const TURB_ACCEL = 1600;
 
   const PHYSICS_LIMITS = Object.freeze({
-    mass: [0.1, 10],
-    gravity: [0.1, 10],
+    mass: [0.1, 100],
+    gravity: [0.1, 100],
     firstFallVelocity: [-10, 10],
     handForce: [1, 100],
     pointerInfluence: [0, 2],
