@@ -28,6 +28,18 @@ import {
   SETTINGS_STORAGE_KEY,
 } from "../config/settings.mjs";
 
+const chainHoverAudioModules = import.meta.glob(
+  "../../assets/audio/Кандалы_*.mp3",
+  {
+    eager: true,
+    import: "default",
+    query: "?url",
+  },
+);
+const CHAIN_HOVER_AUDIO_URLS = Object.values(chainHoverAudioModules).filter(
+  (url) => typeof url === "string",
+);
+
 export function createSisyphusRuntime(elements = {}) {
   // При обновлении страницы всегда открываем её сверху: запрещаем браузеру
   // восстанавливать прежнюю позицию прокрутки (во время игры это не скроллит).
@@ -86,6 +98,7 @@ export function createSisyphusRuntime(elements = {}) {
   const SHARED_GROUND_CONTACT_TOLERANCE = 24;
   const ROCK_IMPACT_AUDIO_POOL_SIZE = 4;
   const ROCK_IMPACT_AUDIO_VOLUME = 0.76;
+  const CHAIN_HOVER_AUDIO_COOLDOWN_MS = 800;
   const RAIN_VENDOR_SRC = rainVendorUrl;
   const RAIN_SCRIPT_ID = "sisyphus-raindrop-fx";
   const DEFAULT_RAIN_ENTER_EASING = "cubic-bezier(0.2, 0, 0, 1)";
@@ -294,6 +307,11 @@ export function createSisyphusRuntime(elements = {}) {
     elements: [],
     nextIndex: 0,
   };
+  const chainHoverAudio = {
+    elements: [],
+    lastPlayedAt: -Infinity,
+    lastPlayedIndex: -1,
+  };
 
   let rainFxScriptPromise = null;
 
@@ -321,6 +339,53 @@ export function createSisyphusRuntime(elements = {}) {
     }
     rockImpactAudio.nextIndex =
       (rockImpactAudio.nextIndex + 1) % ROCK_IMPACT_AUDIO_POOL_SIZE;
+
+    audio.currentTime = 0;
+    const promise = audio.play();
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(() => {});
+    }
+  }
+
+  function chooseChainHoverAudioIndex() {
+    const count = CHAIN_HOVER_AUDIO_URLS.length;
+    if (count === 0) {
+      return -1;
+    }
+    if (count === 1 || chainHoverAudio.lastPlayedIndex < 0) {
+      return Math.floor(Math.random() * count);
+    }
+    const offset = 1 + Math.floor(Math.random() * (count - 1));
+    return (chainHoverAudio.lastPlayedIndex + offset) % count;
+  }
+
+  function playChainHoverSound() {
+    if (
+      typeof Audio !== "function" ||
+      motion.phase !== PHASES.PLAY ||
+      motion.dragging
+    ) {
+      return;
+    }
+
+    const now = performance.now();
+    if (now - chainHoverAudio.lastPlayedAt < CHAIN_HOVER_AUDIO_COOLDOWN_MS) {
+      return;
+    }
+
+    const index = chooseChainHoverAudioIndex();
+    if (index < 0) {
+      return;
+    }
+
+    let audio = chainHoverAudio.elements[index];
+    if (!audio) {
+      audio = new Audio(CHAIN_HOVER_AUDIO_URLS[index]);
+      audio.preload = "auto";
+      chainHoverAudio.elements[index] = audio;
+    }
+    chainHoverAudio.lastPlayedAt = now;
+    chainHoverAudio.lastPlayedIndex = index;
 
     audio.currentTime = 0;
     const promise = audio.play();
@@ -3214,6 +3279,8 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function moveDrag(event) {
+    playChainHoverSound();
+
     if (collab.enabled) {
       moveSharedDrag(event);
       return;
@@ -3268,6 +3335,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    playChainHoverSound();
     showHandCursor(event);
     if (collab.enabled) {
       sendSharedPointer(event, "grab", true, true);

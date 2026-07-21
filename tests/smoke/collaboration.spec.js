@@ -22,8 +22,14 @@ async function setCheckbox(page, name, checked) {
 }
 
 async function watchAudioPlayCalls(page, filename) {
-  await page.addInitScript((targetFilename) => {
+  await page.addInitScript((targetFilenames) => {
+    const targets = Array.isArray(targetFilenames)
+      ? targetFilenames
+      : [targetFilenames];
     window.__watchedAudioPlayCount = 0;
+    window.__watchedAudioPlayCounts = Object.fromEntries(
+      targets.map((target) => [target, 0])
+    );
     HTMLMediaElement.prototype.play = function play() {
       let decodedSrc = this.currentSrc || this.src || "";
       try {
@@ -31,7 +37,14 @@ async function watchAudioPlayCalls(page, filename) {
       } catch {
         /* URL может быть уже декодирован. */
       }
-      if (decodedSrc.includes(targetFilename)) {
+      let matched = false;
+      targets.forEach((target) => {
+        if (decodedSrc.includes(target)) {
+          window.__watchedAudioPlayCounts[target] += 1;
+          matched = true;
+        }
+      });
+      if (matched) {
         window.__watchedAudioPlayCount += 1;
       }
       return Promise.resolve();
@@ -257,7 +270,7 @@ test("вход на корень перенаправляет в рабочую 
   const context = await browser.newContext();
   const page = await context.newPage();
   const documentRequests = [];
-  await watchAudioPlayCalls(page, "Камень");
+  await watchAudioPlayCalls(page, ["Камень", "Кандалы"]);
   page.on("request", (request) => {
     if (request.resourceType() === "document") {
       const url = new URL(request.url());
@@ -395,10 +408,12 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page.locator("body")).not.toHaveClass(/state-intro/);
   await waitForRockSettledInPlay(page);
   await expect
-    .poll(() => page.evaluate(() => window.__watchedAudioPlayCount))
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Камень"] || 0)
+    )
     .toBeGreaterThan(0);
   const firstImpactSoundCount = await page.evaluate(
-    () => window.__watchedAudioPlayCount
+    () => window.__watchedAudioPlayCounts["Камень"] || 0
   );
   await page.evaluate(() => {
     updateBounds();
@@ -411,7 +426,9 @@ test("вход на корень перенаправляет в рабочую 
     motion.dragging = false;
   });
   await expect
-    .poll(() => page.evaluate(() => window.__watchedAudioPlayCount))
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Камень"] || 0)
+    )
     .toBeGreaterThan(firstImpactSoundCount);
   await scrollToRock(page);
 
@@ -432,9 +449,35 @@ test("вход на корень перенаправляет в рабочую 
 
   await expect(page.locator(".rock")).toHaveCSS("pointer-events", "auto");
   const playablePoint = await visibleRockPoint(page);
+  const chainSoundCountBeforeHover = await page.evaluate(
+    () => window.__watchedAudioPlayCounts["Кандалы"] || 0
+  );
+  await page.mouse.move(1, 1);
   await page.mouse.move(playablePoint.x, playablePoint.y);
   await expect(page.locator(".hand-cursor")).toHaveClass(/is-visible/);
-  await page.mouse.down();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
+    )
+    .toBeGreaterThan(chainSoundCountBeforeHover);
+  const chainSoundCountAfterEnter = await page.evaluate(
+    () => window.__watchedAudioPlayCounts["Кандалы"] || 0
+  );
+  await page.mouse.move(playablePoint.x + 3, playablePoint.y + 3);
+  await page.waitForTimeout(150);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
+    )
+    .toBe(chainSoundCountAfterEnter);
+  await page.waitForTimeout(850);
+  await page.mouse.move(playablePoint.x - 3, playablePoint.y - 3);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
+    )
+    .toBeGreaterThan(chainSoundCountAfterEnter);
+  await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("тяните");
   await page.mouse.up();
 
@@ -933,7 +976,7 @@ test("два браузера видят один камень и поднима
   await expect(remoteCursor).toHaveCSS("opacity", "1");
   await expect(remoteCursor).toHaveCSS(
     "background-image",
-    /cursor-grab(?:-[A-Za-z0-9_-]+)?\.(?:png|webp)/
+    /cursor-grab(?:-[A-Za-z0-9_-]+)?\.png/
   );
   await expect
     .poll(() =>
@@ -978,7 +1021,7 @@ test("два браузера видят один камень и поднима
   await expect(localGrabbingCursor).toHaveClass(/is-grabbing/);
   await expect(localGrabbingCursor).toHaveCSS(
     "background-image",
-    /cursor-partner-grabbing(?:-[A-Za-z0-9_-]+)?\.(?:png|webp)/
+    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.png/
   );
   const grabbingCursorSize = await localGrabbingCursor.evaluate((cursor) => {
     const style = getComputedStyle(cursor);
@@ -991,7 +1034,7 @@ test("два браузера видят один камень и поднима
   await expect(remoteGrabbingCursor).toHaveClass(/is-grabbing/);
   await expect(remoteGrabbingCursor).toHaveCSS(
     "background-image",
-    /cursor-partner-grabbing(?:-[A-Za-z0-9_-]+)?\.(?:png|webp)/
+    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.png/
   );
   await expect(first.locator("body")).toHaveClass(/theme-light/);
   await expect(second.locator("body")).toHaveClass(/theme-light/);

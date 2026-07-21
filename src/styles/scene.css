@@ -253,7 +253,7 @@ body.theme-light .weather-rain__canvas--fallback {
   display: none;
   width: var(--cursor-width);
   height: var(--cursor-height);
-  background-image: url("../../assets/cursor-grab.webp");
+  background-image: url("../../assets/cursor-grab.png");
   background-position: center top;
   background-repeat: no-repeat;
   background-size: contain;
@@ -286,13 +286,13 @@ body.theme-light .weather-rain__canvas--fallback {
 .hand-cursor.is-alternate {
   --hotspot-y: 288px;
 
-  background-image: url("../../assets/cursor-grabbing.webp");
+  background-image: url("../../assets/cursor-grabbing.png");
 }
 
 .hand-cursor.is-grabbing {
   --hotspot-y: 288px;
 
-  background-image: url("../../assets/cursor-grabbing.webp");
+  background-image: url("../../assets/cursor-grabbing.png");
   filter: drop-shadow(0 1.25rem 1.35rem rgba(0, 0, 0, 0.62));
   transform: translate3d(
       calc(var(--cursor-x) - var(--hotspot-x)),
@@ -303,12 +303,12 @@ body.theme-light .weather-rain__canvas--fallback {
 }
 
 .hand-cursor.is-partner {
-  background-image: url("../../assets/cursor-partner-grab.webp");
+  background-image: url("../../assets/cursor-grab.png");
 }
 
 .hand-cursor.is-partner.is-alternate,
 .hand-cursor.is-partner.is-grabbing {
-  background-image: url("../../assets/cursor-partner-grabbing.webp");
+  background-image: url("../../assets/cursor-grabbing.png");
 }
 
 .hand-cursor.is-remote {
