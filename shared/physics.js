@@ -44,6 +44,7 @@
   const PHYSICS_LIMITS = Object.freeze({
     mass: [0.1, 10],
     gravity: [0.1, 10],
+    firstFallVelocity: [-10, 10],
     handForce: [1, 100],
     pointerInfluence: [0, 2],
     bounce: [0, 1],
@@ -55,6 +56,7 @@
   const DEFAULT_PHYSICS = Object.freeze({
     mass: 1,
     gravity: 9.8,
+    firstFallVelocity: 0,
     handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
@@ -264,14 +266,15 @@
     );
   }
 
-  function beginFirstFall(state) {
+  function beginFirstFall(state, physics = DEFAULT_PHYSICS) {
     if (state.phase !== PHASES.INTRO) {
       return false;
     }
 
+    const params = sanitizePhysics(physics);
     state.phase = PHASES.FALLING;
     state.vx = 0;
-    state.vy = 0;
+    state.vy = params.firstFallVelocity;
     state.dragging = false;
     state.controllerId = null;
     return true;

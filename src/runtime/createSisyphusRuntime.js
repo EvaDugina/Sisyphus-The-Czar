@@ -103,6 +103,7 @@ export function createSisyphusRuntime(elements = {}) {
   const params = {
     mass: SharedPhysics.DEFAULT_PHYSICS.mass,
     gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
+    firstFallVelocity: SharedPhysics.DEFAULT_PHYSICS.firstFallVelocity,
     handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
@@ -194,6 +195,7 @@ export function createSisyphusRuntime(elements = {}) {
   const SHARED_PHYSICS_KEYS = [
     "mass",
     "gravity",
+    "firstFallVelocity",
     "handForce",
     "pointerInfluence",
     "bounce",
@@ -332,12 +334,17 @@ export function createSisyphusRuntime(elements = {}) {
       return false;
     }
 
-    const wasAirborne =
+    const canCollide =
       previousState.phase !== PHASES.INTRO &&
       previousState.phase !== PHASES.WON &&
       nextState.phase !== PHASES.INTRO &&
-      previousState.y < SharedPhysics.WORLD_HEIGHT - GROUND_CONTACT_EPSILON;
+      nextState.phase !== PHASES.WON;
+    if (!canCollide) {
+      return false;
+    }
+
     const reachedGround =
+      previousState.y < SharedPhysics.WORLD_HEIGHT - GROUND_CONTACT_EPSILON &&
       nextState.y >= SharedPhysics.WORLD_HEIGHT - GROUND_CONTACT_EPSILON;
     const bouncedNearGround =
       previousState.vy > 0 &&
@@ -345,7 +352,7 @@ export function createSisyphusRuntime(elements = {}) {
       Math.max(previousState.y, nextState.y) >=
         SharedPhysics.WORLD_HEIGHT - SHARED_GROUND_CONTACT_TOLERANCE;
 
-    return wasAirborne && (reachedGround || bouncedNearGround);
+    return reachedGround || bouncedNearGround;
   }
 
   function getRainFxConstructor() {
@@ -898,6 +905,7 @@ export function createSisyphusRuntime(elements = {}) {
     const outputs = {
       mass: params.mass.toFixed(1),
       gravity: params.gravity.toFixed(2),
+      firstFallVelocity: params.firstFallVelocity.toFixed(0),
       handForce: params.handForce.toFixed(0),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
@@ -941,6 +949,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     params.mass = num("mass");
     params.gravity = num("gravity");
+    params.firstFallVelocity = num("firstFallVelocity");
     params.handForce = num("handForce");
     params.pointerInfluence = num("pointerInfluence");
     params.bounce = num("bounce");
@@ -1284,6 +1293,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    const previousState = SharedPhysics.sanitizeState(currentSharedState());
     const verticalSpeed = SharedPhysics.dragVerticalSpeed(params, handCount);
     let nextY = motion.dragTargetY;
     if (motion.dragTargetY < motion.y) {
@@ -1294,6 +1304,10 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     setPosition(motion.dragTargetX, nextY);
+    const nextState = SharedPhysics.sanitizeState(currentSharedState());
+    if (groundContactStarted(previousState, nextState)) {
+      playRockImpactSound();
+    }
   }
 
   function initialLocalPosition() {
@@ -3412,6 +3426,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   const testApi = {
     SharedPhysics,
+    applyDragTargetMovement,
     bounds,
     canonicalToLocal,
     collab,

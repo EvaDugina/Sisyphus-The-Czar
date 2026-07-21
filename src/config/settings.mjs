@@ -53,6 +53,9 @@ const PHYSICS_FORMULAS = {
     "a_f = \\frac{F_f}{m}",
     "v_y' = v_y + a_g \\cdot \\Delta t",
   ],
+  firstFallVelocity: [
+    "v_{y0} = v_{firstFall}",
+  ],
   handForce: [
     "a_{hand} = \\frac{F_{hand}}{m}",
     "F_{hands} = n \\cdot F_{hand}",
@@ -120,6 +123,18 @@ export const SETTINGS_GROUPS = [
         output: "9.80",
         hint: "Ускорение свободного падения g. По умолчанию близко к земному значению 9.8.",
         formulas: PHYSICS_FORMULAS.gravity,
+      },
+      {
+        name: "firstFallVelocity",
+        label: "Начальная скорость",
+        type: "range",
+        min: -10,
+        max: 10,
+        step: 1,
+        defaultValue: 0,
+        output: "0",
+        hint: "Начальная вертикальная скорость первого падения: плюс — вниз, минус — вверх.",
+        formulas: PHYSICS_FORMULAS.firstFallVelocity,
       },
       {
         name: "handForce",

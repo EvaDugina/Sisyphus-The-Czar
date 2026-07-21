@@ -397,6 +397,22 @@ test("вход на корень перенаправляет в рабочую 
   await expect
     .poll(() => page.evaluate(() => window.__watchedAudioPlayCount))
     .toBeGreaterThan(0);
+  const firstImpactSoundCount = await page.evaluate(
+    () => window.__watchedAudioPlayCount
+  );
+  await page.evaluate(() => {
+    updateBounds();
+    motion.phase = SharedPhysics.PHASES.PLAY;
+    motion.dragging = true;
+    motion.dragTargetX = motion.x;
+    motion.dragTargetY = bounds.maxY;
+    setPosition(motion.x, Math.max(0, bounds.maxY - 20));
+    window.__sisyphusTestApi.applyDragTargetMovement(1, 0);
+    motion.dragging = false;
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__watchedAudioPlayCount))
+    .toBeGreaterThan(firstImpactSoundCount);
   await scrollToRock(page);
 
   await expect
@@ -790,6 +806,7 @@ test("два браузера видят один камень и поднима
   await openControlGroup(first, "Физика");
   await setRange(first, "mass", 10);
   await setRange(first, "gravity", 10);
+  await setRange(first, "firstFallVelocity", -4);
   await setRange(first, "handForce", 90);
   await setRange(first, "pointerInfluence", 1.8);
   await setRange(first, "bounce", 0.1);
@@ -812,6 +829,7 @@ test("два браузера видят один камень и поднима
   const expectedPhysics = {
     mass: "10",
     gravity: "10",
+    firstFallVelocity: "-4",
     handForce: "90",
     pointerInfluence: "1.8",
     bounce: "0.1",
