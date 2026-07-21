@@ -5,9 +5,14 @@ import {
   ROCK_WIDTH_VW_LIMITS,
 } from "../lib/rockScale.mjs";
 import { MIX_BLEND_MODES } from "../lib/settingsModel.mjs";
+import "../../shared/room-settings.js";
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v7";
+const SharedRoomSettings = globalThis.SisyphusRoomSettings;
+const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
+
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v8";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v7",
   "sisyphus-czar-settings-v6",
   "sisyphus-czar-settings-v5",
   "sisyphus-czar-settings-v3",
@@ -72,7 +77,7 @@ const PHYSICS_FORMULAS = {
     "v_y' = -min(v_y, v_{impactMax}) \\cdot b",
   ],
   inertia: [
-    "I = \\frac{inertia}{100}",
+    "I = \\frac{inertia}{10}",
     "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
   ],
   groundFriction: [
@@ -93,6 +98,9 @@ const PHYSICS_FORMULAS = {
   ],
   rockMaxWidthVw: [
     "w = w_{min} + (w_{max} - w_{min}) \\cdot bezier(h)",
+  ],
+  handWidthVw: [
+    "w_{hand} = viewportWidth \\cdot \\frac{handWidthVw}{100}",
   ],
 };
 
@@ -141,11 +149,11 @@ export const SETTINGS_GROUPS = [
         label: "Сила",
         type: "range",
         min: 1,
-        max: 100,
+        max: 1000,
         step: 1,
         defaultValue: 50,
         output: "50",
-        hint: "Сила одной руки в шкале от 1 до 100. Руки суммируются: камень поднимается только когда их суммарная сила больше тяжести, а избыток силы ускоряет подъём.",
+        hint: "Сила одной руки в шкале от 1 до 1000. Руки суммируются: камень поднимается только когда их суммарная сила больше тяжести, а избыток силы ускоряет подъём.",
         formulas: PHYSICS_FORMULAS.handForce,
       },
       {
@@ -177,11 +185,11 @@ export const SETTINGS_GROUPS = [
         label: "Инерция",
         type: "range",
         min: 0,
-        max: 100,
+        max: 10,
         step: 1,
-        defaultValue: 90,
-        output: "90",
-        hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 100 — максимальная передача с учётом массы, силы и влияния рывка.",
+        defaultValue: 9,
+        output: "9",
+        hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 10 — максимальная передача с учётом массы, силы и влияния рывка.",
         formulas: PHYSICS_FORMULAS.inertia,
       },
       {
@@ -240,6 +248,18 @@ export const SETTINGS_GROUPS = [
         output: `${DEFAULT_ROCK_MAX_WIDTH_VW}%`,
         hint: "Максимальная ширина камня в процентах от ширины экрана. Высота меняется пропорционально.",
         formulas: PHYSICS_FORMULAS.rockMaxWidthVw,
+      },
+      {
+        name: "handWidthVw",
+        label: "Размер руки, vw",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handWidthVw[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handWidthVw[1],
+        step: 0.5,
+        defaultValue: DEFAULT_ROOM_SETTINGS.handWidthVw,
+        output: `${DEFAULT_ROOM_SETTINGS.handWidthVw.toFixed(1)}vw`,
+        hint: "Общая ширина фото-руки в процентах от ширины экрана. Меняется у всех участников комнаты.",
+        formulas: PHYSICS_FORMULAS.handWidthVw,
       },
     ],
   },
@@ -343,6 +363,20 @@ export const SETTINGS_GROUPS = [
         defaultValue: "multiply",
         options: RAIN_MIX_BLEND_OPTIONS,
         hint: "Как дождь смешивается со сценой: через rain-layer на светлой теме и через canvas на тёмной.",
+      },
+      {
+        name: "rainDropColor",
+        label: "Цвет капель",
+        type: "color",
+        defaultValue: DEFAULT_ROOM_SETTINGS.rainDropColor,
+        hint: "Общий цвет тела капель дождя для всех участников комнаты.",
+      },
+      {
+        name: "rainHighlightColor",
+        label: "Цвет блика",
+        type: "color",
+        defaultValue: DEFAULT_ROOM_SETTINGS.rainHighlightColor,
+        hint: "Общий цвет блика и specular-части дождя для всех участников комнаты.",
       },
       {
         name: "rainBlurBlendMode",

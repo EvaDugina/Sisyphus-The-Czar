@@ -1,4 +1,5 @@
 import "../../shared/physics.js";
+import "../../shared/room-settings.js";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import rockImpactAudioUrl from "../../assets/audio/Камень.mp3?url";
@@ -66,6 +67,7 @@ export function createSisyphusRuntime(elements = {}) {
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
+  const SharedRoomSettings = window.SisyphusRoomSettings;
   const listenerDisposers = [];
   let disposed = false;
 
@@ -88,9 +90,9 @@ export function createSisyphusRuntime(elements = {}) {
 
   const PHASES = SharedPhysics.PHASES;
 
-  // DOM-сцена 10000vh равна 100 высотам viewport. Камень падает до этого
+  // DOM-сцена 1000vh равна 10 высотам viewport. Камень падает до этого
   // фактического низа, но стартовая позиция остаётся в первом экране.
-  const SCENE_VIEWPORT_HEIGHTS = 100;
+  const SCENE_VIEWPORT_HEIGHTS = 10;
   const FLOOR_INSET = 0;
   const MAX_FRAME_SECONDS = 0.032;
   const FIRST_FALL_TOUCH_SCROLL_THRESHOLD_PX = 8;
@@ -117,16 +119,20 @@ export function createSisyphusRuntime(elements = {}) {
     handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
-    inertia: 90,
+    inertia: 9,
     groundFriction: 0.35,
     turbulence: 0.4,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
+    handWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
 
     // Дождь
     rainEnabled: false,
     rainStrength: 1,
+    rainDropColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor,
+    rainHighlightColor:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainHighlightColor,
     rainBlendMode: DEFAULT_RAIN_BLEND_MODE,
     rainBlurBlendMode: DEFAULT_RAIN_BLUR_BLEND_MODE,
     rainBackgroundBlurSteps: DEFAULT_RAIN_BACKGROUND_BLUR_STEPS,
@@ -213,6 +219,7 @@ export function createSisyphusRuntime(elements = {}) {
     "groundFriction",
     "turbulence",
   ];
+  const SHARED_ROOM_SETTING_KEYS = SharedRoomSettings.ROOM_SETTINGS_KEYS;
   const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
   const SNAPSHOT_DELAY_MS = 90;
   const POINTER_SEND_INTERVAL_MS = 1000 / 30;
@@ -266,6 +273,10 @@ export function createSisyphusRuntime(elements = {}) {
     physicsTimerId: null,
     physicsSignature: "",
     pendingPhysicsChanges: Object.create(null),
+    applyingRemoteRoomSettings: false,
+    roomSettingsTimerId: null,
+    roomSettingsSignature: "",
+    pendingRoomSettingsChanges: Object.create(null),
     sessionCreateInFlight: false,
     sessionCreateAbortController: null,
     firstFallRequestSent: false,
@@ -559,6 +570,13 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function applyHandSize() {
+    document.documentElement.style.setProperty(
+      "--hand-width-vw",
+      `${params.handWidthVw}vw`
+    );
+  }
+
   function getRainExitDurationMs() {
     return reducedMotion.matches ? 0 : params.rainExitMs;
   }
@@ -689,6 +707,8 @@ export function createSisyphusRuntime(elements = {}) {
       theme,
       backgroundBlurSteps:
         theme === "dark" ? params.rainBackgroundBlurSteps : undefined,
+      rainDropColor: params.rainDropColor,
+      rainHighlightColor: params.rainHighlightColor,
     });
     rain.lastProfile = rainProfile;
     rain.active = true;
@@ -888,12 +908,15 @@ export function createSisyphusRuntime(elements = {}) {
   function loadSettings() {
     let stored = null;
     let migratedLegacySettings = false;
+    let legacyKey = null;
     try {
       const current = localStorage.getItem(STORAGE_KEY);
-      const legacy = LEGACY_SETTINGS_STORAGE_KEYS.map((key) =>
-        localStorage.getItem(key)
-      ).find((value) => value !== null);
-      const raw = current ?? legacy;
+      const legacyEntry = LEGACY_SETTINGS_STORAGE_KEYS.map((key) => [
+        key,
+        localStorage.getItem(key),
+      ]).find(([, value]) => value !== null);
+      legacyKey = legacyEntry?.[0] ?? null;
+      const raw = current ?? legacyEntry?.[1];
       migratedLegacySettings = current === null && raw !== null;
       stored = JSON.parse(raw || "null");
     } catch {
@@ -903,7 +926,9 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    if (migratedLegacySettings) {
+    const migratedPreV7Settings =
+      migratedLegacySettings && legacyKey !== "sisyphus-czar-settings-v7";
+    if (migratedPreV7Settings) {
       const legacyHandForce = Number(stored.handForce);
       if (
         Number.isFinite(legacyHandForce) &&
@@ -918,10 +943,19 @@ export function createSisyphusRuntime(elements = {}) {
         legacyInertia >= 0 &&
         legacyInertia <= 1
       ) {
-        stored = { ...stored, inertia: legacyInertia * 100 };
+        stored = { ...stored, inertia: legacyInertia * 10 };
       }
       delete stored.mass;
       delete stored.gravity;
+    }
+    const storedInertia = Number(stored.inertia);
+    if (
+      migratedLegacySettings &&
+      Number.isFinite(storedInertia) &&
+      storedInertia > 10 &&
+      storedInertia <= 100
+    ) {
+      stored = { ...stored, inertia: storedInertia / 10 };
     }
     if (
       !Object.hasOwn(stored, "groundFriction") &&
@@ -929,7 +963,7 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       stored = { ...stored, groundFriction: stored.sliding };
     }
-    if (migratedLegacySettings) {
+    if (migratedPreV7Settings) {
       stored = { ...stored, trailEnabled: false };
     }
 
@@ -959,6 +993,7 @@ export function createSisyphusRuntime(elements = {}) {
       turbulence: params.turbulence.toFixed(2),
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
+      handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
       rainBackgroundBlurSteps: params.rainBackgroundBlurSteps.toFixed(0),
       rainBlurPx: `${params.rainBlurPx.toFixed(0)} px`,
@@ -1016,6 +1051,17 @@ export function createSisyphusRuntime(elements = {}) {
             rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
           },
         },
+      ),
+    );
+    Object.assign(
+      params,
+      SharedRoomSettings.sanitizeRoomSettings(
+        {
+          handWidthVw: num("handWidthVw"),
+          rainDropColor: str("rainDropColor"),
+          rainHighlightColor: str("rainHighlightColor"),
+        },
+        params,
       ),
     );
     params.rainEnabled = bool("rainEnabled");
@@ -1083,6 +1129,10 @@ export function createSisyphusRuntime(elements = {}) {
     params.glowColor = str("glowColor");
 
     settingsPanel.querySelector('[name="rainStrength"]').value = params.rainStrength;
+    settingsPanel.querySelector('[name="rainDropColor"]').value =
+      params.rainDropColor;
+    settingsPanel.querySelector('[name="rainHighlightColor"]').value =
+      params.rainHighlightColor;
     settingsPanel.querySelector('[name="rainBlendMode"]').value =
       params.rainBlendMode;
     settingsPanel.querySelector('[name="rainBlurBlendMode"]').value =
@@ -1105,10 +1155,14 @@ export function createSisyphusRuntime(elements = {}) {
       params.rockMinWidthVw;
     settingsPanel.querySelector('[name="rockMaxWidthVw"]').value =
       params.rockMaxWidthVw;
+    settingsPanel.querySelector('[name="handWidthVw"]').value =
+      params.handWidthVw;
     applyRainSettings({
       restartIfActive:
         changedKey === "rainStrength" ||
-        changedKey === "rainBackgroundBlurSteps",
+        changedKey === "rainBackgroundBlurSteps" ||
+        changedKey === "rainDropColor" ||
+        changedKey === "rainHighlightColor",
     });
     if (changedKey === "rainEnabled" || changedKey === "") {
       syncRainVisibility({
@@ -1132,6 +1186,7 @@ export function createSisyphusRuntime(elements = {}) {
     trail.dirty = true;
     drawTrail();
     applyRockScale();
+    applyHandSize();
     renderImprint();
     if (
       collab.enabled &&
@@ -1140,6 +1195,14 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       collab.pendingPhysicsChanges[changedKey] = params[changedKey];
       scheduleSharedPhysicsUpdate();
+    }
+    if (
+      collab.enabled &&
+      !collab.applyingRemoteRoomSettings &&
+      SHARED_ROOM_SETTING_KEYS.includes(changedKey)
+    ) {
+      collab.pendingRoomSettingsChanges[changedKey] = params[changedKey];
+      scheduleSharedRoomSettingsUpdate();
     }
   }
 
@@ -1668,6 +1731,15 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function sharedRoomSettingsPayload() {
+    return SharedRoomSettings.sanitizeRoomSettings(
+      Object.fromEntries(
+        SHARED_ROOM_SETTING_KEYS.map((key) => [key, params[key]])
+      ),
+      params
+    );
+  }
+
   function currentSharedState() {
     const position = localToCanonical(motion.x, motion.y);
     const velocity = localVelocityToCanonical(motion.vx, motion.vy);
@@ -1814,6 +1886,57 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function roomSettingValueEqual(key, left, right) {
+    if (key === "handWidthVw") {
+      return Math.abs(Number(left) - Number(right)) < 1e-9;
+    }
+    return String(left || "").toLowerCase() === String(right || "").toLowerCase();
+  }
+
+  function roomSettingsSignature(settings) {
+    const clean = SharedRoomSettings.sanitizeRoomSettings(settings, params);
+    return SHARED_ROOM_SETTING_KEYS.map((key) => clean[key]).join(":");
+  }
+
+  function applySharedRoomSettings(roomSettings) {
+    if (!roomSettings || typeof roomSettings !== "object") {
+      return;
+    }
+    const clean = SharedRoomSettings.sanitizeRoomSettings(roomSettings, params);
+    collab.roomSettingsSignature = roomSettingsSignature(clean);
+    let controlsChanged = false;
+    SHARED_ROOM_SETTING_KEYS.forEach((key) => {
+      const remoteValue = clean[key];
+      if (Object.hasOwn(collab.pendingRoomSettingsChanges, key)) {
+        if (
+          roomSettingValueEqual(
+            key,
+            collab.pendingRoomSettingsChanges[key],
+            remoteValue
+          )
+        ) {
+          delete collab.pendingRoomSettingsChanges[key];
+        } else {
+          return;
+        }
+      }
+      const input = settingsPanel.querySelector(`[name="${key}"]`);
+      if (input && !roomSettingValueEqual(key, input.value, remoteValue)) {
+        input.value = String(remoteValue);
+        controlsChanged = true;
+      }
+    });
+    if (controlsChanged) {
+      collab.applyingRemoteRoomSettings = true;
+      try {
+        readControls();
+        applyRainSettings({ restartIfActive: true });
+      } finally {
+        collab.applyingRemoteRoomSettings = false;
+      }
+    }
+  }
+
   function scheduleSharedPhysicsUpdate() {
     if (
       !collab.enabled ||
@@ -1830,6 +1953,26 @@ export function createSisyphusRuntime(elements = {}) {
       const payload = { ...collab.pendingPhysicsChanges };
       if (Object.keys(payload).length > 0) {
         sendShared("physics.update", payload);
+      }
+    }, 100);
+  }
+
+  function scheduleSharedRoomSettingsUpdate() {
+    if (
+      !collab.enabled ||
+      collab.applyingRemoteRoomSettings
+    ) {
+      return;
+    }
+    if (!collab.connected) {
+      return;
+    }
+    window.clearTimeout(collab.roomSettingsTimerId);
+    collab.roomSettingsTimerId = window.setTimeout(() => {
+      collab.roomSettingsTimerId = null;
+      const payload = { ...collab.pendingRoomSettingsChanges };
+      if (Object.keys(payload).length > 0) {
+        sendShared("roomSettings.update", payload);
       }
     }, 100);
   }
@@ -1905,6 +2048,7 @@ export function createSisyphusRuntime(elements = {}) {
           creatorClientId: collab.clientId,
           state: currentSharedState(),
           physics: sharedPhysicsPayload(),
+          roomSettings: sharedRoomSettingsPayload(),
           trail: currentSharedTrail(),
           imprint: currentSharedImprint(),
         }),
@@ -2076,8 +2220,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function clearSharedConnectionTimers() {
     window.clearTimeout(collab.reconnectTimerId);
+    window.clearTimeout(collab.roomSettingsTimerId);
     window.clearInterval(collab.pingTimerId);
     collab.reconnectTimerId = null;
+    collab.roomSettingsTimerId = null;
     collab.pingTimerId = null;
   }
 
@@ -2140,6 +2286,7 @@ export function createSisyphusRuntime(elements = {}) {
         true
       );
       scheduleSharedPhysicsUpdate();
+      scheduleSharedRoomSettingsUpdate();
       updateSessionStatus();
       requestSharedFirstFall();
     });
@@ -2260,6 +2407,7 @@ export function createSisyphusRuntime(elements = {}) {
       : offsetSample;
     collab.clockOffsetReady = true;
     applySharedPhysics(payload.physics);
+    applySharedRoomSettings(payload.roomSettings);
     const holderIds = normalizeHolderIds(payload.holderIds);
     updateSharedHolders(holderIds, payload.requiredHolders);
 
@@ -3058,6 +3206,7 @@ export function createSisyphusRuntime(elements = {}) {
     const sent = sendShared("session.start", {
       imprint: proposedImprint,
       physics: sharedPhysicsPayload(),
+      roomSettings: sharedRoomSettingsPayload(),
     });
     collab.firstFallRequestSent = sent;
     return sent;
@@ -3533,10 +3682,12 @@ export function createSisyphusRuntime(elements = {}) {
 
   const testApi = {
     SharedPhysics,
+    applyPhysics,
     applyDragTargetMovement,
     bounds,
     canonicalToLocal,
     collab,
+    currentSharedState,
     initialSharedState,
     motion,
     params,
@@ -3545,11 +3696,13 @@ export function createSisyphusRuntime(elements = {}) {
       return profile
         ? {
             theme: profile.theme,
+            fallbackColor: [...profile.fallbackColor],
             raindropDiffuseLight: [...profile.raindropDiffuseLight],
             raindropSpecularLight: [...profile.raindropSpecularLight],
           }
         : null;
     },
+    getRoomSettings: sharedRoomSettingsPayload,
     getRainRenderToken: () => rain.renderToken,
     resetTrail,
     sendShared,
@@ -3588,6 +3741,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(collab.copyFeedbackTimerId);
       window.clearTimeout(collab.statusResetTimerId);
       window.clearTimeout(collab.physicsTimerId);
+      window.clearTimeout(collab.roomSettingsTimerId);
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {

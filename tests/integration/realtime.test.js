@@ -72,6 +72,11 @@ test("два WebSocket-клиента делят состояние и пере�
       creatorClientId: "integration-client-a",
       state: { phase: Physics.PHASES.PLAY, x: 500, y: Physics.WORLD_HEIGHT },
       physics: { gravity: 1, bounce: 0 },
+      roomSettings: {
+        handWidthVw: 57.5,
+        rainDropColor: "#8c8c8c",
+        rainHighlightColor: "#ffffff",
+      },
     }),
   });
   assert.equal(created.status, 201);
@@ -91,6 +96,7 @@ test("два WebSocket-клиента делят состояние и пере�
   ]);
   assert.equal(firstSnapshot.payload.clientRole, "master");
   assert.equal(secondSnapshot.payload.clientRole, "slave");
+  assert.equal(firstSnapshot.payload.roomSettings.handWidthVw, 57.5);
 
   first.socket.send(
     JSON.stringify({
@@ -232,6 +238,27 @@ test("два WebSocket-клиента делят состояние и пере�
   );
   assert.equal(synced.payload.controllerId, "integration-client-b");
 
+  second.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "roomSettings.update",
+      seq: 4,
+      payload: {
+        handWidthVw: 42.5,
+        rainDropColor: "#123456",
+        rainHighlightColor: "#fedcba",
+      },
+    })
+  );
+  const roomSettingsSynced = await first.waitFor(
+    "session.snapshot",
+    (payload) =>
+      payload.roomSettings &&
+      payload.roomSettings.handWidthVw === 42.5 &&
+      payload.roomSettings.rainDropColor === "#123456" &&
+      payload.roomSettings.rainHighlightColor === "#fedcba"
+  );
+
   first.socket.send(
     JSON.stringify({
       v: 1,
@@ -243,7 +270,7 @@ test("два WebSocket-клиента делят состояние и пере�
   const restarted = await second.waitFor(
     "session.snapshot",
     (payload) =>
-      payload.revision > synced.payload.revision &&
+      payload.revision > roomSettingsSynced.payload.revision &&
       payload.phase === Physics.PHASES.INTRO
   );
   assert.equal(restarted.payload.x, 321);
@@ -252,6 +279,11 @@ test("два WebSocket-клиента делят состояние и пере�
   assert.equal(restarted.payload.controllerId, null);
   assert.deepEqual(restarted.payload.holderIds, []);
   assert.equal(restarted.payload.physics.gravity, 10);
+  assert.deepEqual(restarted.payload.roomSettings, {
+    handWidthVw: 42.5,
+    rainDropColor: "#123456",
+    rainHighlightColor: "#fedcba",
+  });
   assert.deepEqual(restarted.payload.trail, []);
   assert.equal(restarted.payload.imprint, null);
 
@@ -259,7 +291,7 @@ test("два WebSocket-клиента делят состояние и пере�
     JSON.stringify({
       v: 1,
       type: "control.acquire",
-      seq: 4,
+      seq: 5,
       payload: { x: 321, y: 654 },
     })
   );
@@ -368,6 +400,11 @@ test("сессия переживает restart сервиса с тем же х
           vy: 0,
         },
         physics: { mass: 10, gravity: 8, turbulence: 0 },
+        roomSettings: {
+          handWidthVw: 38,
+          rainDropColor: "#234567",
+          rainHighlightColor: "#abcdef",
+        },
         imprint: { x: 300, y: 700, toleranceX: 40, toleranceY: 30 },
         trail: [[10, 20], [30, 40]],
       }),
@@ -401,6 +438,11 @@ test("сессия переживает restart сервиса с тем же х
   assert.equal(snapshot.payload.y, Physics.WORLD_HEIGHT);
   assert.equal(snapshot.payload.physics.mass, 10);
   assert.equal(snapshot.payload.physics.gravity, 8);
+  assert.deepEqual(snapshot.payload.roomSettings, {
+    handWidthVw: 38,
+    rainDropColor: "#234567",
+    rainHighlightColor: "#abcdef",
+  });
   assert.equal(snapshot.payload.imprint.x, 300);
   assert.deepEqual(snapshot.payload.trail, [[10, 20], [30, 40]]);
   restored.socket.close();

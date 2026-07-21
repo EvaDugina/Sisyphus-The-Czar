@@ -513,7 +513,7 @@ test("вход на корень перенаправляет в рабочую 
   await context.close();
 });
 
-test("каноническое падение не зависит от высоты viewport", async ({ browser }) => {
+test("каноническое падение и время не зависят от высоты viewport", async ({ browser }) => {
   async function profileForHeight(height) {
     const context = await browser.newContext({
       viewport: { width: 1280, height },
@@ -523,28 +523,34 @@ test("каноническое падение не зависит от высо�
     await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
     await expect(page.getByTestId("session-status")).toContainText("В сессии");
     const profile = await page.evaluate(() => {
+      const stepCount = 90;
+      const stepSeconds = SharedPhysics.FIXED_STEP_SECONDS;
       const initial = initialSharedState();
-      const state = SharedPhysics.sanitizeState(initial);
-      const physics = SharedPhysics.sanitizePhysics({
+
+      Object.assign(params, SharedPhysics.sanitizePhysics({
+        ...params,
+        firstFallVelocity: 0,
         gravity: 1,
         bounce: 0,
         turbulence: 0,
-      });
-      SharedPhysics.beginFirstFall(state);
-      for (let index = 0; index < 90; index += 1) {
-        SharedPhysics.stepState(state, physics, SharedPhysics.FIXED_STEP_SECONDS);
+      }));
+      const local = canonicalToLocal(initial.x, initial.y);
+      setPosition(local.x, local.y);
+      motion.phase = SharedPhysics.PHASES.FALLING;
+      motion.vx = 0;
+      motion.vy = 0;
+      motion.turbTime = 0;
+
+      for (let index = 0; index < stepCount; index += 1) {
+        applyPhysics(stepSeconds);
       }
       updateBounds();
       return {
+        elapsedSeconds: stepCount * stepSeconds,
         sceneMaxY: bounds.maxY,
+        localAfterY: motion.y,
         initial,
-        after: {
-          phase: state.phase,
-          x: state.x,
-          y: state.y,
-          vx: state.vx,
-          vy: state.vy,
-        },
+        after: currentSharedState(),
       };
     });
     await context.close();
@@ -554,8 +560,11 @@ test("каноническое падение не зависит от высо�
   const low = await profileForHeight(600);
   const high = await profileForHeight(900);
   expect(low.sceneMaxY).not.toBeCloseTo(high.sceneMaxY, 0);
-  expect(low.initial.y).toBeCloseTo(high.initial.y, 2);
-  expect(low.after.y).toBeCloseTo(high.after.y, 2);
+  expect(low.localAfterY).not.toBeCloseTo(high.localAfterY, 0);
+  expect(low.elapsedSeconds).toBeCloseTo(1.5, 6);
+  expect(high.elapsedSeconds).toBeCloseTo(low.elapsedSeconds, 6);
+  expect(Math.abs(low.initial.y - high.initial.y)).toBeLessThan(1);
+  expect(Math.abs(low.after.y - high.after.y)).toBeLessThan(1);
   expect(low.after.vy).toBeCloseTo(high.after.vy, 6);
   expect(low.after.phase).toBe(high.after.phase);
 });
@@ -598,7 +607,7 @@ test("два браузера видят один камень и поднима
       rockScale,
     };
   });
-  expect(sceneProjection.renderedHeight / sceneProjection.viewportHeight).toBeCloseTo(100, 0);
+  expect(sceneProjection.renderedHeight / sceneProjection.viewportHeight).toBeCloseTo(10, 0);
   expect(sceneProjection.rockBaseWidth).toBeCloseTo(sceneProjection.viewportHeight * 0.42, 0);
   expect(
     sceneProjection.rockRenderedWidth / sceneProjection.rockBaseWidth
@@ -672,7 +681,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v7") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -691,6 +700,8 @@ test("два браузера видят один камень и поднима
   await setField(first, "rainEnterMs", 650);
   await setField(first, "rainExitMs", 700);
   await setField(first, "rainZIndex", 9);
+  await setField(first, "rainDropColor", "#336699");
+  await setField(first, "rainHighlightColor", "#ffcc00");
   await expect(first.locator('[data-output="rainStrength"]')).toHaveText("125%");
   await expect(first.locator('[data-output="rainBackgroundBlurSteps"]')).toHaveText("3");
   await expect(first.locator('[data-output="rainBlurPx"]')).toHaveText("18 px");
@@ -705,7 +716,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v7") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -792,6 +803,13 @@ test("два браузера видят один камень и поднима
   await setCheckbox(first, "rainEnabled", true);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   await expect(firstRain.locator(".weather-rain__blur")).toHaveCount(1);
+  await expect
+    .poll(() => first.evaluate(() => getLastRainRendererProfile()))
+    .toMatchObject({
+      fallbackColor: [51, 102, 153],
+      raindropDiffuseLight: [0.2, 0.4, 0.6],
+      raindropSpecularLight: [1, 0.8, 0],
+    });
   const rainRenderToken = await first.evaluate(() => getRainRenderToken());
   await setRange(first, "rainBackgroundBlurSteps", 4);
   await expect(first.locator('[data-output="rainBackgroundBlurSteps"]')).toHaveText("4");
@@ -802,7 +820,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v7") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -837,7 +855,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v7") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -848,7 +866,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v7") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v8") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -870,12 +888,19 @@ test("два браузера видят один камень и поднима
   await setRange(first, "mass", 10);
   await setRange(first, "gravity", 10);
   await setRange(first, "firstFallVelocity", -4);
-  await setRange(first, "handForce", 90);
+  await setRange(first, "handForce", 500);
   await setRange(first, "pointerInfluence", 1.8);
   await setRange(first, "bounce", 0.1);
-  await setRange(first, "inertia", 80);
+  await setRange(first, "inertia", 8);
   await setRange(first, "groundFriction", 0.2);
   await setRange(first, "turbulence", 0.3);
+  await setRange(first, "handWidthVw", 40);
+  await expect(first.locator('[data-output="handWidthVw"]')).toHaveText("40.0vw");
+  await expect
+    .poll(() =>
+      first.evaluate(() => Object.keys(collab.pendingRoomSettingsChanges).length)
+    )
+    .toBe(0);
 
   await second.goto("/");
   await expect(second).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
@@ -888,6 +913,7 @@ test("два браузера видят один камень и поднима
   await openControlGroup(second, "Дождь");
   await expect(second.locator('[name="rainBlendMode"]')).toHaveValue("multiply");
   await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue("normal");
+  await expect(second.locator('[name="handWidthVw"]')).toHaveValue("40");
   await setField(second, "rainExitMs", 700);
   await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("700");
   await expect(first.getByTestId("session-status")).toContainText("2");
@@ -895,16 +921,31 @@ test("два браузера видят один камень и поднима
     mass: "10",
     gravity: "10",
     firstFallVelocity: "-4",
-    handForce: "90",
+    handForce: "500",
     pointerInfluence: "1.8",
     bounce: "0.1",
-    inertia: "80",
+    inertia: "8",
     groundFriction: "0.2",
     turbulence: "0.3",
   };
   for (const [name, value] of Object.entries(expectedPhysics)) {
     await expect(second.locator(`[name="${name}"]`)).toHaveValue(value);
   }
+  await expect
+    .poll(() => second.evaluate(() => getRoomSettings()))
+    .toEqual({
+      handWidthVw: 40,
+      rainDropColor: "#336699",
+      rainHighlightColor: "#ffcc00",
+    });
+  await expect
+    .poll(() =>
+      second.evaluate(() => ({
+        drop: document.querySelector('[name="rainDropColor"]').value,
+        highlight: document.querySelector('[name="rainHighlightColor"]').value,
+      }))
+    )
+    .toEqual({ drop: "#336699", highlight: "#ffcc00" });
   await expect(first.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(second.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
@@ -1012,7 +1053,7 @@ test("два браузера видят один камень и поднима
         };
       })
     )
-    .toEqual({ height: 651, width: 491 });
+    .toEqual({ height: 679, width: 512 });
   await first.evaluate(() => {
     sendShared("pointer.update", {
       ...collab.localPointer,
@@ -1104,7 +1145,7 @@ test("два браузера видят один камень и поднима
       height: Math.round(Number.parseFloat(style.height)),
     };
   });
-  expect(grabbingCursorSize).toEqual({ height: 651, width: 491 });
+  expect(grabbingCursorSize).toEqual({ height: 679, width: 512 });
   const remoteGrabbingCursor = first.locator(
     ".hand-cursor.is-remote.is-visible"
   );
@@ -1121,10 +1162,11 @@ test("два браузера видят один камень и поднима
   await expect(secondRain).toHaveClass(/is-rain-visible/);
   await expect
     .poll(() => second.evaluate(() => getLastRainRendererProfile()))
-    .toEqual({
+    .toMatchObject({
       theme: "light",
-      raindropDiffuseLight: [0.42, 0.42, 0.44],
-      raindropSpecularLight: [0.78, 0.78, 0.8],
+      fallbackColor: [51, 102, 153],
+      raindropDiffuseLight: [0.2, 0.4, 0.6],
+      raindropSpecularLight: [1, 0.8, 0],
     });
   const lightThemeRainRenderToken = await second.evaluate(() =>
     getRainRenderToken()
@@ -1272,10 +1314,11 @@ test("два браузера видят один камень и поднима
     .toBeGreaterThan(lightThemeRainRenderToken);
   await expect
     .poll(() => second.evaluate(() => getLastRainRendererProfile()))
-    .toEqual({
+    .toMatchObject({
       theme: "dark",
-      raindropDiffuseLight: [0.55, 0.55, 0.55],
-      raindropSpecularLight: [1, 1, 1],
+      fallbackColor: [51, 102, 153],
+      raindropDiffuseLight: [0.2, 0.4, 0.6],
+      raindropSpecularLight: [1, 0.8, 0],
     });
   await expect(firstRain).not.toHaveClass(/is-rain-visible/);
   await expect(secondRain).not.toHaveClass(/is-rain-visible/);

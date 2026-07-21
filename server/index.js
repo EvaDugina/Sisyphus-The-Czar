@@ -259,6 +259,15 @@ function createService(options = {}) {
     response.sendFile(path.join(ROOT_DIR, "shared", "physics.js"));
   });
 
+  app.get("/shared/room-settings.js", (_request, response) => {
+    response.type("application/javascript");
+    response.setHeader(
+      "Cache-Control",
+      config.debug ? "no-store" : "public, max-age=3600"
+    );
+    response.sendFile(path.join(ROOT_DIR, "shared", "room-settings.js"));
+  });
+
   const sendIndex = (_request, response) => {
     response.setHeader("Cache-Control", "no-store");
     response.sendFile(path.join(DIST_DIR, "index.html"));

@@ -1,7 +1,7 @@
 .world {
   position: relative;
-  height: 10000vh;
-  min-height: 10000vh;
+  height: 1000vh;
+  min-height: 1000vh;
   overflow: hidden;
   background:
     linear-gradient(180deg, var(--surface) 0%, var(--surface-deep) 48%, var(--surface-low) 100%),
@@ -241,10 +241,10 @@ body.theme-light .weather-rain__canvas--fallback {
 .hand-cursor {
   --cursor-x: -999px;
   --cursor-y: -999px;
-  --cursor-width: 490.667px;
-  --cursor-height: 650.667px;
-  --hotspot-x: 245.333px;
-  --hotspot-y: 224px;
+  --cursor-width: var(--hand-width-vw, 57.5vw);
+  --cursor-height: calc(var(--cursor-width) * 1.326087);
+  --hotspot-x: calc(var(--cursor-width) * 0.5);
+  --hotspot-y: calc(var(--cursor-width) * 0.456522);
 
   position: fixed;
   left: 0;
@@ -284,13 +284,13 @@ body.theme-light .weather-rain__canvas--fallback {
 }
 
 .hand-cursor.is-alternate {
-  --hotspot-y: 192px;
+  --hotspot-y: calc(var(--cursor-width) * 0.391304);
 
   background-image: url("../../assets/cursor-grabbing.png");
 }
 
 .hand-cursor.is-grabbing {
-  --hotspot-y: 192px;
+  --hotspot-y: calc(var(--cursor-width) * 0.391304);
 
   background-image: url("../../assets/cursor-grabbing.png");
   filter: drop-shadow(0 1.25rem 1.35rem rgba(0, 0, 0, 0.62));
@@ -376,21 +376,6 @@ body.state-fallingToBottom .hand-cursor {
   .rock,
   .rock-imprint {
     width: clamp(150px, 45vw, 260px);
-  }
-
-  .hand-cursor {
-    --cursor-width: 384px;
-    --cursor-height: 506.667px;
-    --hotspot-x: 192px;
-    --hotspot-y: 176px;
-  }
-
-  .hand-cursor.is-grabbing {
-    --hotspot-y: 149.333px;
-  }
-
-  .hand-cursor.is-alternate {
-    --hotspot-y: 149.333px;
   }
 
 }

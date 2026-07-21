@@ -2,6 +2,7 @@
 
 const crypto = require("node:crypto");
 const Physics = require("../shared/physics");
+const RoomSettings = require("../shared/room-settings");
 
 const SNAPSHOT_INTERVAL_MS = 1000 / 20;
 const DISCONNECT_GRACE_MS = 500;
@@ -103,6 +104,7 @@ class SessionManager {
     const id = crypto.randomBytes(16).toString("base64url");
     const state = Physics.sanitizeState(payload.state);
     const physics = Physics.sanitizePhysics(payload.physics);
+    const roomSettings = RoomSettings.sanitizeRoomSettings(payload.roomSettings);
 
     if (state.phase === Physics.PHASES.WON) {
       state.vx = 0;
@@ -113,6 +115,7 @@ class SessionManager {
       id,
       state,
       physics,
+      roomSettings,
       trail: sanitizeTrail(payload.trail),
       imprint: Physics.sanitizeImprint(payload.imprint),
       masterClientId: normalizeClientId(
@@ -147,6 +150,8 @@ class SessionManager {
       state: { ...session.state },
       physics: { ...session.physics },
       physicsVersion: Physics.PHYSICS_VERSION,
+      roomSettings: { ...session.roomSettings },
+      roomSettingsVersion: RoomSettings.ROOM_SETTINGS_VERSION,
       trail: session.trail.map((point) => [...point]),
       imprint: session.imprint ? { ...session.imprint } : null,
       masterClientId: session.masterClientId,
@@ -192,6 +197,9 @@ class SessionManager {
       const physics = Physics.sanitizePhysics(
         Physics.migratePhysics(record.physics, record.physicsVersion)
       );
+      const roomSettings = RoomSettings.sanitizeRoomSettings(
+        record.roomSettings
+      );
       const lastPointer = {
         vx: finite(record.lastPointer?.vx, 0),
         vy: finite(record.lastPointer?.vy, 0),
@@ -225,6 +233,7 @@ class SessionManager {
         id: record.id,
         state,
         physics,
+        roomSettings,
         trail: sanitizeTrail(record.trail),
         imprint: Physics.sanitizeImprint(record.imprint),
         masterClientId: normalizeClientId(record.masterClientId),
@@ -601,6 +610,9 @@ class SessionManager {
       case "physics.update":
         this.updatePhysics(session, payload);
         break;
+      case "roomSettings.update":
+        this.updateRoomSettings(session, payload);
+        break;
       case "session.restart":
         this.restartSession(session, payload);
         break;
@@ -633,6 +645,12 @@ class SessionManager {
       session.physics = Physics.sanitizePhysics(
         { ...session.physics, ...payload.physics },
         session.physics
+      );
+    }
+    if (payload.roomSettings && typeof payload.roomSettings === "object") {
+      session.roomSettings = RoomSettings.sanitizeRoomSettings(
+        { ...session.roomSettings, ...payload.roomSettings },
+        session.roomSettings
       );
     }
     session.firstFallAt = null;
@@ -739,6 +757,17 @@ class SessionManager {
       session.physics
     );
     this.syncCooperativeDrag(session);
+    this.markChanged(session);
+    this.broadcastSnapshot(session);
+  }
+
+  updateRoomSettings(session, payload) {
+    const sourcePayload =
+      payload && typeof payload === "object" ? payload : {};
+    session.roomSettings = RoomSettings.sanitizeRoomSettings(
+      { ...session.roomSettings, ...sourcePayload },
+      session.roomSettings
+    );
     this.markChanged(session);
     this.broadcastSnapshot(session);
   }
@@ -939,6 +968,7 @@ class SessionManager {
     const payload = {
       ...session.state,
       physics: { ...session.physics },
+      roomSettings: { ...session.roomSettings },
       imprint: session.imprint ? { ...session.imprint } : null,
       holderIds: this.holderIds(session),
       requiredHolders: REQUIRED_HOLDERS,

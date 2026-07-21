@@ -45,6 +45,22 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function isHexColor(value) {
+  const raw = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(raw);
+}
+
+function hexToRgb255(value) {
+  const normalized = String(value || "").trim();
+  return [1, 3, 5].map((index) =>
+    Number.parseInt(normalized.slice(index, index + 2), 16)
+  );
+}
+
+function rgb255ToUnit(rgb) {
+  return rgb.map((channel) => Number((channel / 255).toFixed(4)));
+}
+
 function scaleRainRange(range, scale) {
   return range.map((value) => Number((value * scale).toFixed(3)));
 }
@@ -57,8 +73,21 @@ export function getRainVisualProfile({
   rainStrength = 1,
   theme = "light",
   backgroundBlurSteps,
+  rainDropColor,
+  rainHighlightColor,
 } = {}) {
   const baseProfile = rainProfileForTheme(theme);
+  const hasDropColor = isHexColor(rainDropColor);
+  const hasHighlightColor = isHexColor(rainHighlightColor);
+  const dropRgb = hasDropColor
+    ? hexToRgb255(rainDropColor)
+    : [...baseProfile.fallbackColor];
+  const diffuseLight = hasDropColor
+    ? rgb255ToUnit(dropRgb)
+    : baseProfile.raindropDiffuseLight;
+  const specularLight = hasHighlightColor
+    ? rgb255ToUnit(hexToRgb255(rainHighlightColor))
+    : baseProfile.raindropSpecularLight;
   const strength = clamp(
     finiteNumber(rainStrength, 1),
     MIN_RAIN_STRENGTH,
@@ -82,7 +111,7 @@ export function getRainVisualProfile({
     fallbackAlpha: baseProfile.fallbackAlpha.map((alpha) =>
       clamp(alpha * opacityScale, 0.04, 0.72)
     ),
-    fallbackColor: [...baseProfile.fallbackColor],
+    fallbackColor: dropRgb,
     fallbackLength: scaleRainRange(baseProfile.fallbackLength, sizeScale),
     fallbackSpeed: scaleRainRange(baseProfile.fallbackSpeed, speedScale),
     fallbackWidth: scaleRainRange(baseProfile.fallbackWidth, widthScale),
@@ -111,7 +140,7 @@ export function getRainVisualProfile({
       ),
     ),
     raindropCompose: baseProfile.raindropCompose,
-    raindropDiffuseLight: baseProfile.raindropDiffuseLight,
-    raindropSpecularLight: baseProfile.raindropSpecularLight,
+    raindropDiffuseLight: diffuseLight,
+    raindropSpecularLight: specularLight,
   };
 }

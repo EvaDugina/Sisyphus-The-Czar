@@ -31,7 +31,7 @@
     maxSpeed: 2800,
     loadFloor: 0.1,
   });
-  const PHYSICS_VERSION = 6;
+  const PHYSICS_VERSION = 7;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
@@ -45,10 +45,10 @@
     mass: [0.1, 100],
     gravity: [0.1, 100],
     firstFallVelocity: [-10, 10],
-    handForce: [1, 100],
+    handForce: [1, 1000],
     pointerInfluence: [0, 10],
     bounce: [0, 1],
-    inertia: [0, 100],
+    inertia: [0, 10],
     groundFriction: [0, 1],
     turbulence: [0, 1],
   });
@@ -60,7 +60,7 @@
     handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
-    inertia: 90,
+    inertia: 9,
     groundFriction: 0.35,
     turbulence: 0.4,
   });
@@ -108,7 +108,14 @@
       inertia >= 0 &&
       inertia <= 1
     ) {
-      source.inertia = inertia * 100;
+      source.inertia = inertia * 10;
+    } else if (
+      sourceVersion < 7 &&
+      Number.isFinite(inertia) &&
+      inertia > 10 &&
+      inertia <= 100
+    ) {
+      source.inertia = inertia / 10;
     }
     const handForce = Number(source.handForce);
     if (
@@ -285,7 +292,7 @@
     const safeVy = clamp(finiteNumber(pointerVy, 0), -9000, 9000);
     const strength = handAcceleration(physics);
     const influence = physics.pointerInfluence;
-    const inertiaFraction = physics.inertia / 100;
+    const inertiaFraction = physics.inertia / 10;
     const transfer =
       strength * influence * inertiaFraction * RELEASE_TRANSFER_SCALE;
     const releaseVx = safeVx * transfer;
