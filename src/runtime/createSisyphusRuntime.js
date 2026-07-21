@@ -94,8 +94,6 @@ export function createSisyphusRuntime(elements = {}) {
   const FLOOR_INSET = 0;
   const MAX_FRAME_SECONDS = 0.032;
   const FIRST_FALL_TOUCH_SCROLL_THRESHOLD_PX = 8;
-  const GROUND_CONTACT_EPSILON = 0.01;
-  const SHARED_GROUND_CONTACT_TOLERANCE = 24;
   const ROCK_IMPACT_AUDIO_POOL_SIZE = 4;
   const ROCK_IMPACT_AUDIO_VOLUME = 0.76;
   const RAIN_VENDOR_SRC = rainVendorUrl;
@@ -304,6 +302,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   const rockImpactAudio = {
     elements: [],
+    firstFallPlayed: false,
     nextIndex: 0,
   };
   const chainHoverAudio = {
@@ -343,6 +342,14 @@ export function createSisyphusRuntime(elements = {}) {
     if (promise && typeof promise.catch === "function") {
       promise.catch(() => {});
     }
+  }
+
+  function playFirstFallRockImpactSound() {
+    if (rockImpactAudio.firstFallPlayed) {
+      return;
+    }
+    rockImpactAudio.firstFallPlayed = true;
+    playRockImpactSound();
   }
 
   function chooseChainHoverAudioIndex() {
@@ -386,30 +393,11 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function groundContactStarted(previousState, nextState) {
-    if (!previousState || !nextState) {
-      return false;
-    }
-
-    const canCollide =
-      previousState.phase !== PHASES.INTRO &&
-      previousState.phase !== PHASES.WON &&
-      nextState.phase !== PHASES.INTRO &&
-      nextState.phase !== PHASES.WON;
-    if (!canCollide) {
-      return false;
-    }
-
-    const reachedGround =
-      previousState.y < SharedPhysics.WORLD_HEIGHT - GROUND_CONTACT_EPSILON &&
-      nextState.y >= SharedPhysics.WORLD_HEIGHT - GROUND_CONTACT_EPSILON;
-    const bouncedNearGround =
-      previousState.vy > 0 &&
-      nextState.vy <= 0 &&
-      Math.max(previousState.y, nextState.y) >=
-        SharedPhysics.WORLD_HEIGHT - SHARED_GROUND_CONTACT_TOLERANCE;
-
-    return reachedGround || bouncedNearGround;
+  function firstFallGroundContactStarted(previousState, nextState) {
+    return (
+      previousState?.phase === PHASES.FALLING &&
+      nextState?.phase === PHASES.PLAY
+    );
   }
 
   function getRainFxConstructor() {
@@ -1362,8 +1350,8 @@ export function createSisyphusRuntime(elements = {}) {
 
     setPosition(motion.dragTargetX, nextY);
     const nextState = SharedPhysics.sanitizeState(currentSharedState());
-    if (groundContactStarted(previousState, nextState)) {
-      playRockImpactSound();
+    if (firstFallGroundContactStarted(previousState, nextState)) {
+      playFirstFallRockImpactSound();
     }
   }
 
@@ -2257,6 +2245,9 @@ export function createSisyphusRuntime(elements = {}) {
       revision,
       serverTime: Number(payload.serverTime) || Date.now(),
     };
+    if (firstFallGroundContactStarted({ phase: previousPhase }, snapshot)) {
+      playFirstFallRockImpactSound();
+    }
     const ownsHold = holderIds.includes(collab.clientId);
     if (
       collab.releasePending &&
@@ -2321,9 +2312,9 @@ export function createSisyphusRuntime(elements = {}) {
       collab.pendingControl = false;
       cancelSharedLocalDrag();
       collab.snapshots = [snapshot];
-      applySharedFrame(snapshot);
+      applySharedFrame(snapshot, { previousPhase });
     } else if (collab.snapshots.length === 1 && !motion.dragging) {
-      applySharedFrame(snapshot);
+      applySharedFrame(snapshot, { previousPhase });
     }
 
     startSharedRenderLoop();
@@ -2371,11 +2362,14 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function applySharedFrame(snapshot) {
+  function applySharedFrame(snapshot, options = {}) {
     if (!snapshot || (motion.dragging && collab.pendingControl)) {
       return;
     }
-    const previousState = SharedPhysics.sanitizeState(currentSharedState());
+    const previousState = SharedPhysics.sanitizeState({
+      ...currentSharedState(),
+      phase: options.previousPhase || motion.phase,
+    });
     const nextState = SharedPhysics.sanitizeState({
       phase: snapshot.phase,
       x: snapshot.x,
@@ -2390,8 +2384,8 @@ export function createSisyphusRuntime(elements = {}) {
     motion.vx = velocity.vx;
     motion.vy = velocity.vy;
     motion.turbTime = 0;
-    if (groundContactStarted(previousState, nextState)) {
-      playRockImpactSound();
+    if (firstFallGroundContactStarted(previousState, nextState)) {
+      playFirstFallRockImpactSound();
     }
 
     const visiblyDragging =
@@ -2987,6 +2981,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.firstFallTriggered = false;
     motion.firstFallTouchY = null;
     collab.firstFallRequestSent = false;
+    rockImpactAudio.firstFallPlayed = false;
     if (scrollToTop && window.scrollY !== 0) {
       window.scrollTo(0, 0);
     }
@@ -3095,8 +3090,8 @@ export function createSisyphusRuntime(elements = {}) {
     state.turbTime = motion.turbTime;
     SharedPhysics.stepState(state, SharedPhysics.sanitizePhysics(params), deltaSeconds);
     applyCanonicalMotion(state);
-    if (groundContactStarted(previousState, state)) {
-      playRockImpactSound();
+    if (firstFallGroundContactStarted(previousState, state)) {
+      playFirstFallRockImpactSound();
     }
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
       enterPlayPhase();

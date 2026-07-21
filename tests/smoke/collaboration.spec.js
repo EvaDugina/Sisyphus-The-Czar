@@ -429,7 +429,7 @@ test("вход на корень перенаправляет в рабочую 
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Камень"] || 0)
     )
-    .toBeGreaterThan(firstImpactSoundCount);
+    .toBe(firstImpactSoundCount);
   await scrollToRock(page);
 
   await expect
