@@ -90,9 +90,8 @@ export function createSisyphusRuntime(elements = {}) {
 
   const PHASES = SharedPhysics.PHASES;
 
-  // DOM-сцена 1000vh равна 10 высотам viewport. Камень стартует внизу
-  // этой сцены; высота страницы не участвует в канонической физике.
-  const SCENE_VIEWPORT_HEIGHTS = 10;
+  // DOM-сцена по умолчанию равна 1000vh, но UI может менять высоту комнаты.
+  // Физика остаётся в каноническом мире, а скорость компенсируется отдельно.
   const FLOOR_INSET = 0;
   const MAX_FRAME_SECONDS = 0.032;
   const RAIN_AUDIO_VOLUME = 0.42;
@@ -123,6 +122,8 @@ export function createSisyphusRuntime(elements = {}) {
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
+    sceneHeightScreens:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
     handWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
     slaveHandWidthPx:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
@@ -654,6 +655,19 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function applySceneHeight() {
+    document.documentElement.style.setProperty(
+      "--scene-height-vh",
+      `${params.sceneHeightScreens * 100}vh`
+    );
+  }
+
+  function sceneMotionOptions() {
+    return {
+      motionScale: SharedRoomSettings.sceneMotionMultiplier(params),
+    };
+  }
+
   function getRainExitDurationMs() {
     return reducedMotion.matches ? 0 : params.rainExitMs;
   }
@@ -1058,6 +1072,7 @@ export function createSisyphusRuntime(elements = {}) {
       turbulence: params.turbulence.toFixed(2),
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
+      sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
       slaveHandWidthPx: `${params.slaveHandWidthPx.toFixed(0)}px`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
@@ -1093,6 +1108,18 @@ export function createSisyphusRuntime(elements = {}) {
       settingsPanel.querySelector(`[name="${name}"]`).checked;
     const changedKey = options.changedKey || "";
 
+    const previousRoomSettings =
+      changedKey === "sceneHeightScreens" ? sharedRoomSettingsPayload() : null;
+    const preservedState =
+      changedKey === "sceneHeightScreens" ? currentSharedState() : null;
+    const preserveBottomScroll =
+      changedKey === "sceneHeightScreens" &&
+      Math.abs(
+        window.scrollY +
+          window.innerHeight -
+          document.documentElement.scrollHeight
+      ) <= 4;
+
     params.mass = num("mass");
     params.gravity = num("gravity");
     params.firstFallVelocity = num("firstFallVelocity");
@@ -1123,6 +1150,7 @@ export function createSisyphusRuntime(elements = {}) {
       params,
       SharedRoomSettings.sanitizeRoomSettings(
         {
+          sceneHeightScreens: num("sceneHeightScreens"),
           handWidthVw: num("handWidthVw"),
           slaveHandWidthPx: num("slaveHandWidthPx"),
           rainDropColor: str("rainDropColor"),
@@ -1131,6 +1159,12 @@ export function createSisyphusRuntime(elements = {}) {
         params,
       ),
     );
+    if (preservedState && previousRoomSettings) {
+      const previousScale =
+        SharedRoomSettings.sceneMotionMultiplier(previousRoomSettings);
+      const nextScale = SharedRoomSettings.sceneMotionMultiplier(params);
+      preservedState.vy *= previousScale > 0 ? nextScale / previousScale : 1;
+    }
     params.rainEnabled = bool("rainEnabled");
 
     Object.assign(
@@ -1222,6 +1256,8 @@ export function createSisyphusRuntime(elements = {}) {
       params.rockMinWidthVw;
     settingsPanel.querySelector('[name="rockMaxWidthVw"]').value =
       params.rockMaxWidthVw;
+    settingsPanel.querySelector('[name="sceneHeightScreens"]').value =
+      params.sceneHeightScreens;
     settingsPanel.querySelector('[name="handWidthVw"]').value =
       params.handWidthVw;
     settingsPanel.querySelector('[name="slaveHandWidthPx"]').value =
@@ -1253,10 +1289,18 @@ export function createSisyphusRuntime(elements = {}) {
     updateControlOutputs();
     saveSettings();
     trail.dirty = true;
-    drawTrail();
-    applyRockScale();
+    applySceneHeight();
+    if (preservedState) {
+      applyCanonicalMotion(preservedState);
+    } else {
+      applyRockScale();
+    }
     applyHandSize();
     renderImprint();
+    drawTrail();
+    if (preserveBottomScroll) {
+      scrollToSceneBottom();
+    }
     if (
       collab.enabled &&
       !collab.applyingRemotePhysics &&
@@ -1334,7 +1378,7 @@ export function createSisyphusRuntime(elements = {}) {
     const visualBottomOffset =
       (bounds.rockHeight * (1 + bottomScale)) / 2 + FLOOR_INSET;
     bounds.worldHeight = Math.max(
-      window.innerHeight * SCENE_VIEWPORT_HEIGHTS,
+      window.innerHeight * params.sceneHeightScreens,
       visualBottomOffset
     );
     bounds.maxY = Math.max(0, bounds.worldHeight - visualBottomOffset);
@@ -1474,7 +1518,10 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const verticalSpeed = SharedPhysics.dragVerticalSpeed(params, handCount);
+    const verticalSpeed =
+      (SharedPhysics.dragVerticalSpeed(params, handCount, sceneMotionOptions()) /
+        SharedPhysics.WORLD_HEIGHT) *
+      bounds.maxY;
     let nextY = motion.dragTargetY;
     if (motion.dragTargetY < motion.y) {
       nextY =
@@ -1926,7 +1973,11 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function roomSettingValueEqual(key, left, right) {
-    if (key === "handWidthVw" || key === "slaveHandWidthPx") {
+    if (
+      key === "sceneHeightScreens" ||
+      key === "handWidthVw" ||
+      key === "slaveHandWidthPx"
+    ) {
       return Math.abs(Number(left) - Number(right)) < 1e-9;
     }
     return String(left || "").toLowerCase() === String(right || "").toLowerCase();
@@ -1944,6 +1995,7 @@ export function createSisyphusRuntime(elements = {}) {
     const clean = SharedRoomSettings.sanitizeRoomSettings(roomSettings, params);
     collab.roomSettingsSignature = roomSettingsSignature(clean);
     let controlsChanged = false;
+    let sceneHeightChanged = false;
     SHARED_ROOM_SETTING_KEYS.forEach((key) => {
       const remoteValue = clean[key];
       if (Object.hasOwn(collab.pendingRoomSettingsChanges, key)) {
@@ -1963,12 +2015,17 @@ export function createSisyphusRuntime(elements = {}) {
       if (input && !roomSettingValueEqual(key, input.value, remoteValue)) {
         input.value = String(remoteValue);
         controlsChanged = true;
+        if (key === "sceneHeightScreens") {
+          sceneHeightChanged = true;
+        }
       }
     });
     if (controlsChanged) {
       collab.applyingRemoteRoomSettings = true;
       try {
-        readControls();
+        readControls({
+          changedKey: sceneHeightChanged ? "sceneHeightScreens" : "",
+        });
         applyRainSettings({ restartIfActive: true });
       } finally {
         collab.applyingRemoteRoomSettings = false;
@@ -3218,7 +3275,12 @@ export function createSisyphusRuntime(elements = {}) {
     const state = SharedPhysics.sanitizeState(currentSharedState());
     const previousPhase = state.phase;
     state.turbTime = motion.turbTime;
-    SharedPhysics.stepState(state, SharedPhysics.sanitizePhysics(params), deltaSeconds);
+    SharedPhysics.stepState(
+      state,
+      SharedPhysics.sanitizePhysics(params),
+      deltaSeconds,
+      sceneMotionOptions()
+    );
     applyCanonicalMotion(state);
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
       enterPlayPhase();

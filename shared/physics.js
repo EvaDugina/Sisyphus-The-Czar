@@ -74,6 +74,13 @@
     return Number.isFinite(number) ? number : fallback;
   }
 
+  function motionScale(options) {
+    if (!options || typeof options !== "object") {
+      return 1;
+    }
+    return Math.max(0, finiteNumber(options.motionScale, 1));
+  }
+
   function hasOwn(source, key) {
     return Object.prototype.hasOwnProperty.call(source, key);
   }
@@ -198,35 +205,37 @@
     );
   }
 
-  function dragLiftSpeed(physics, handCount = 1) {
+  function dragLiftSpeed(physics, handCount = 1, options) {
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
     const surplus = liftForceSurplus(params, handCount);
     if (surplus <= 0) {
       return 0;
     }
-    return clamp(
+    const speed = clamp(
       DRAG_LIFT.minSpeed + (DRAG_LIFT.forceSpeed * surplus) / (load * 5),
       DRAG_LIFT.minSpeed,
       DRAG_LIFT.maxSpeed
     );
+    return speed * motionScale(options);
   }
 
-  function dragDropSpeed(physics, handCount = 1) {
+  function dragDropSpeed(physics, handCount = 1, options) {
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
     const deficit = Math.max(0, -liftForceSurplus(params, handCount));
-    return clamp(
+    const speed = clamp(
       DRAG_LIFT.minSpeed + (DRAG_LIFT.forceSpeed * deficit) / (load * 5),
       DRAG_LIFT.minSpeed,
       DRAG_LIFT.maxSpeed
     );
+    return speed * motionScale(options);
   }
 
-  function dragVerticalSpeed(physics, handCount = 1) {
+  function dragVerticalSpeed(physics, handCount = 1, options) {
     return canLift(physics, handCount)
-      ? -dragLiftSpeed(physics, handCount)
-      : dragDropSpeed(physics, handCount);
+      ? -dragLiftSpeed(physics, handCount, options)
+      : dragDropSpeed(physics, handCount, options);
   }
 
   function sanitizeImprint(input) {
@@ -273,7 +282,7 @@
     );
   }
 
-  function beginFirstFall(state, physics = DEFAULT_PHYSICS) {
+  function beginFirstFall(state, physics = DEFAULT_PHYSICS, options) {
     if (state.phase !== PHASES.INTRO) {
       return false;
     }
@@ -281,7 +290,7 @@
     const params = sanitizePhysics(physics);
     state.phase = PHASES.FALLING;
     state.vx = 0;
-    state.vy = params.firstFallVelocity;
+    state.vy = params.firstFallVelocity * motionScale(options);
     state.dragging = false;
     state.controllerId = null;
     return true;
@@ -329,7 +338,7 @@
     state.vx -= Math.sign(state.vx) * slowdown;
   }
 
-  function stepState(state, physics, deltaSeconds) {
+  function stepState(state, physics, deltaSeconds, options) {
     if (
       state.dragging ||
       state.phase === PHASES.INTRO ||
@@ -343,7 +352,7 @@
       return false;
     }
 
-    state.vy += gravityAcceleration(physics) * dt;
+    state.vy += gravityAcceleration(physics) * motionScale(options) * dt;
 
     if (physics.turbulence > 0 && state.y < WORLD_HEIGHT - 1) {
       state.turbTime += dt;

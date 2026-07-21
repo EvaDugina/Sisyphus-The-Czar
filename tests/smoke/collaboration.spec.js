@@ -544,7 +544,7 @@ test("вход на корень перенаправляет в рабочую 
   await context.close();
 });
 
-test("каноническое падение и время не зависят от высоты viewport", async ({ browser }) => {
+test("падение компенсируется при изменении высоты сцены", async ({ browser }) => {
   async function profileForHeight(height) {
     const context = await browser.newContext({
       viewport: { width: 1280, height },
@@ -556,7 +556,14 @@ test("каноническое падение и время не зависят 
     const profile = await page.evaluate(() => {
       const stepCount = 90;
       const stepSeconds = SharedPhysics.FIXED_STEP_SECONDS;
-      const initial = initialSharedState();
+      const initial = {
+        phase: SharedPhysics.PHASES.PLAY,
+        x: SharedPhysics.WORLD_WIDTH / 2,
+        y: SharedPhysics.WORLD_HEIGHT / 2,
+        vx: 0,
+        vy: 0,
+        turbTime: 0,
+      };
 
       Object.assign(params, SharedPhysics.sanitizePhysics({
         ...params,
@@ -567,7 +574,7 @@ test("каноническое падение и время не зависят 
       }));
       const local = canonicalToLocal(initial.x, initial.y);
       setPosition(local.x, local.y);
-      motion.phase = SharedPhysics.PHASES.FALLING;
+      motion.phase = SharedPhysics.PHASES.PLAY;
       motion.vx = 0;
       motion.vy = 0;
       motion.turbTime = 0;
@@ -579,6 +586,7 @@ test("каноническое падение и время не зависят 
       return {
         elapsedSeconds: stepCount * stepSeconds,
         sceneMaxY: bounds.maxY,
+        localStartY: local.y,
         localAfterY: motion.y,
         initial,
         after: currentSharedState(),
@@ -598,6 +606,70 @@ test("каноническое падение и время не зависят 
   expect(Math.abs(low.after.y - high.after.y)).toBeLessThan(1);
   expect(low.after.vy).toBeCloseTo(high.after.vy, 6);
   expect(low.after.phase).toBe(high.after.phase);
+
+  async function profileForSceneHeight(sceneHeightScreens) {
+    const context = await browser.newContext({
+      viewport: { width: 1280, height: 900 },
+    });
+    const page = await context.newPage();
+    await page.goto("/");
+    await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+    await setRange(page, "sceneHeightScreens", sceneHeightScreens);
+    await expect(page.locator('[data-output="sceneHeightScreens"]')).toHaveText(
+      `${sceneHeightScreens * 100}vh`
+    );
+    const profile = await page.evaluate(() => {
+      const stepCount = 90;
+      const stepSeconds = SharedPhysics.FIXED_STEP_SECONDS;
+      const initial = {
+        phase: SharedPhysics.PHASES.PLAY,
+        x: SharedPhysics.WORLD_WIDTH / 2,
+        y: SharedPhysics.WORLD_HEIGHT / 2,
+        vx: 0,
+        vy: 0,
+        turbTime: 0,
+      };
+
+      Object.assign(params, SharedPhysics.sanitizePhysics({
+        ...params,
+        firstFallVelocity: 0,
+        gravity: 1,
+        bounce: 0,
+        turbulence: 0,
+      }));
+      const local = canonicalToLocal(initial.x, initial.y);
+      setPosition(local.x, local.y);
+      motion.phase = SharedPhysics.PHASES.PLAY;
+      motion.vx = 0;
+      motion.vy = 0;
+      motion.turbTime = 0;
+
+      for (let index = 0; index < stepCount; index += 1) {
+        applyPhysics(stepSeconds);
+      }
+      updateBounds();
+      return {
+        sceneHeightScreens: params.sceneHeightScreens,
+        sceneMaxY: bounds.maxY,
+        motionScale: window.SisyphusRoomSettings.sceneMotionMultiplier(params),
+        localDeltaY: motion.y - local.y,
+        after: currentSharedState(),
+      };
+    });
+    await context.close();
+    return profile;
+  }
+
+  const compact = await profileForSceneHeight(10);
+  const legacy = await profileForSceneHeight(100);
+  expect(compact.motionScale).toBeCloseTo(10, 6);
+  expect(legacy.motionScale).toBeCloseTo(1, 6);
+  expect(compact.sceneMaxY).toBeLessThan(legacy.sceneMaxY);
+  expect(compact.after.y).toBeGreaterThan(legacy.after.y);
+  expect(compact.localDeltaY).toBeGreaterThan(0);
+  expect(legacy.localDeltaY).toBeGreaterThan(0);
+  expect(compact.localDeltaY / legacy.localDeltaY).toBeGreaterThan(0.9);
+  expect(compact.localDeltaY / legacy.localDeltaY).toBeLessThan(1.1);
 });
 
 test("два браузера видят один камень и поднимают его вместе", async ({ browser }) => {
@@ -975,6 +1047,7 @@ test("два браузера видят один камень и поднима
   await expect
     .poll(() => second.evaluate(() => getRoomSettings()))
     .toEqual({
+      sceneHeightScreens: 10,
       handWidthVw: 40,
       slaveHandWidthPx: 36,
       rainDropColor: "#336699",

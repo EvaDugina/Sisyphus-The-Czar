@@ -127,6 +127,7 @@ test("общие визуальные настройки комнаты норм
   const { manager } = setup();
   const session = manager.createSession({
     roomSettings: {
+      sceneHeightScreens: 200,
       handWidthVw: 120,
       slaveHandWidthPx: 200,
       rainDropColor: "bad",
@@ -135,6 +136,7 @@ test("общие визуальные настройки комнаты норм
   });
   const first = connect(manager, session, "client-room-settings-a1");
 
+  assert.equal(session.roomSettings.sceneHeightScreens, 100);
   assert.equal(session.roomSettings.handWidthVw, 90);
   assert.equal(session.roomSettings.slaveHandWidthPx, 96);
   assert.equal(
@@ -162,12 +164,14 @@ test("roomSettings.update синхронизирует размер руки и 
   const session = manager.createSession();
   const first = connect(manager, session, "client-room-settings-b1");
   const second = connect(manager, session, "client-room-settings-b2");
+  session.state.vy = 20;
 
   manager.handleMessage(session, first.client, {
     v: 1,
     type: "roomSettings.update",
     seq: 1,
     payload: {
+      sceneHeightScreens: 50,
       handWidthVw: 42.5,
       slaveHandWidthPx: 40,
       rainDropColor: "#123456",
@@ -175,7 +179,9 @@ test("roomSettings.update синхронизирует размер руки и 
     },
   });
 
+  assert.equal(session.state.vy, 4);
   assert.deepEqual(session.roomSettings, {
+    sceneHeightScreens: 50,
     handWidthVw: 42.5,
     slaveHandWidthPx: 40,
     rainDropColor: "#123456",
@@ -264,7 +270,10 @@ test("session.start применяет актуальную физику до п
   assert.equal(session.physics.bounce, 1);
   assert.equal(session.physics.firstFallVelocity, -4);
   assert.equal(session.state.phase, Physics.PHASES.FALLING);
-  assert.equal(session.state.vy, -4);
+  assert.equal(
+    session.state.vy,
+    -4 * RoomSettings.sceneMotionMultiplier(session.roomSettings)
+  );
 });
 
 test("control.acquire запрещён до достижения камнем низа", () => {

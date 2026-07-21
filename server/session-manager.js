@@ -38,6 +38,30 @@ function pointerVelocityAt(pointer, updatedAt, now) {
   };
 }
 
+function sceneMotionOptions(session) {
+  return {
+    motionScale: RoomSettings.sceneMotionMultiplier(session.roomSettings),
+  };
+}
+
+function rescaleSceneVerticalMotion(
+  session,
+  previousRoomSettings,
+  nextRoomSettings
+) {
+  const previousScale = RoomSettings.sceneMotionMultiplier(previousRoomSettings);
+  const nextScale = RoomSettings.sceneMotionMultiplier(nextRoomSettings);
+  if (previousScale <= 0 || Math.abs(previousScale - nextScale) < 1e-9) {
+    return;
+  }
+  const ratio = nextScale / previousScale;
+  session.state.vy *= ratio;
+  session.lastPointer.vy *= ratio;
+  session.holders.forEach((holder) => {
+    holder.vy *= ratio;
+  });
+}
+
 function tokensMatch(actual, expected) {
   if (typeof actual !== "string" || typeof expected !== "string") {
     return false;
@@ -215,12 +239,9 @@ class SessionManager {
 
       if (record.state?.dragging) {
         if (state.phase === Physics.PHASES.INTRO) {
-          Physics.beginFirstFall(
-            state,
-            physics,
-            releasePointer.vx,
-            releasePointer.vy
-          );
+          Physics.beginFirstFall(state, physics, {
+            motionScale: RoomSettings.sceneMotionMultiplier(roomSettings),
+          });
         } else if (state.phase === Physics.PHASES.PLAY) {
           Physics.applyReleaseImpulse(
             state,
@@ -382,10 +403,14 @@ class SessionManager {
       state.controllerId = null;
       if (holderIds.length > 0 && state.phase === Physics.PHASES.PLAY) {
         state.vx = 0;
-        state.vy = Math.max(
-          state.vy,
-          Physics.dragDropSpeed(session.physics, holderIds.length)
-        );
+          state.vy = Math.max(
+            state.vy,
+            Physics.dragDropSpeed(
+              session.physics,
+              holderIds.length,
+              sceneMotionOptions(session)
+            )
+          );
       } else if (wasDragging && state.phase === Physics.PHASES.PLAY) {
         state.vy = Math.max(0, state.vy);
       }
@@ -663,7 +688,7 @@ class SessionManager {
     session.holdReleaseAt = null;
     session.lastPointer = { vx: 0, vy: 0 };
     session.lastPointerAt = this.now();
-    Physics.beginFirstFall(state, session.physics, 0, 0);
+    Physics.beginFirstFall(state, session.physics, sceneMotionOptions(session));
     this.markChanged(session);
     this.broadcastSnapshot(session);
     return true;
@@ -770,10 +795,13 @@ class SessionManager {
   updateRoomSettings(session, payload) {
     const sourcePayload =
       payload && typeof payload === "object" ? payload : {};
-    session.roomSettings = RoomSettings.sanitizeRoomSettings(
+    const previousRoomSettings = session.roomSettings;
+    const nextRoomSettings = RoomSettings.sanitizeRoomSettings(
       { ...session.roomSettings, ...sourcePayload },
       session.roomSettings
     );
+    rescaleSceneVerticalMotion(session, previousRoomSettings, nextRoomSettings);
+    session.roomSettings = nextRoomSettings;
     this.markChanged(session);
     this.broadcastSnapshot(session);
   }
@@ -949,7 +977,8 @@ class SessionManager {
         Physics.stepState(
           session.state,
           session.physics,
-          Physics.FIXED_STEP_SECONDS
+          Physics.FIXED_STEP_SECONDS,
+          sceneMotionOptions(session)
         );
         session.accumulator -= Physics.FIXED_STEP_SECONDS;
         physicsChanged = true;

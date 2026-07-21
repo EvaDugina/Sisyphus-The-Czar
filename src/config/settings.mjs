@@ -100,6 +100,11 @@ const PHYSICS_FORMULAS = {
   rockMaxWidthVw: [
     "w = w_{min} + (w_{max} - w_{min}) \\cdot bezier(h)",
   ],
+  sceneHeightScreens: [
+    "H_{page} = sceneHeightScreens \\cdot 100vh",
+    "k_{scene} = \\frac{100}{sceneHeightScreens}",
+    "a_y' = a_y \\cdot k_{scene}",
+  ],
   handWidthVw: [
     "w_{hand} = viewportWidth \\cdot \\frac{handWidthVw}{100}",
   ],
@@ -250,6 +255,18 @@ export const SETTINGS_GROUPS = [
         output: `${DEFAULT_ROCK_MAX_WIDTH_VW}%`,
         hint: "Максимальная ширина камня в процентах от ширины экрана. Высота меняется пропорционально.",
         formulas: PHYSICS_FORMULAS.rockMaxWidthVw,
+      },
+      {
+        name: "sceneHeightScreens",
+        label: "Высота страницы",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.sceneHeightScreens[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.sceneHeightScreens[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
+        output: `${DEFAULT_ROOM_SETTINGS.sceneHeightScreens * 100}vh`,
+        hint: "Общая высота сцены в экранах. При изменении автоматически применяется внутренний коэффициент скорости относительно старой длинной сцены 10000vh.",
+        formulas: PHYSICS_FORMULAS.sceneHeightScreens,
       },
       {
         name: "handWidthVw",
