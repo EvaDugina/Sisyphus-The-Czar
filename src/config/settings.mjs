@@ -73,7 +73,6 @@ const PHYSICS_FORMULAS = {
   ],
   turbulence: [
     "v_x' = v_x + T \\cdot (sin(5.3t) + 0.6sin(11.7t + 1.3)) \\cdot \\Delta t",
-    "v_y' = v_y + 0.35T \\cdot sin(4.1t + 2.6) \\cdot \\Delta t",
   ],
   rockScaleEasing: [
     "h = 1 - \\frac{y}{y_{max}}",
@@ -185,7 +184,7 @@ export const SETTINGS_GROUPS = [
         step: 0.05,
         defaultValue: 0.4,
         output: "0.40",
-        hint: "Сила воздушной турбулентности при падении: камень покачивается и рыскает в стороны, а не летит по ровной дуге. Ноль — без турбулентности.",
+        hint: "Сила воздушной турбулентности: камень рыскает в стороны, но вертикальная скорость от турбулентности не меняется. Ноль — без турбулентности.",
         formulas: PHYSICS_FORMULAS.turbulence,
       },
       {

@@ -337,16 +337,19 @@ input[type="range"] {
   list-style: none;
 }
 
-.hint__formulas code {
+.hint__formula-math {
   display: block;
-  overflow-wrap: anywhere;
+  max-width: 100%;
+  overflow-x: auto;
   padding: 0.22rem 0.28rem;
   border-radius: 4px;
   background: color-mix(in srgb, var(--surface) 55%, transparent);
   color: var(--ink);
-  font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
-  font-size: 0.72rem;
   line-height: 1.35;
+}
+
+.hint__formula-math .katex {
+  font-size: 0.88rem;
 }
 
 .hint.is-visible {

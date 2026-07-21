@@ -1,4 +1,6 @@
 import "../../shared/physics.js";
+import katex from "katex";
+import "katex/dist/katex.min.css";
 import rockImpactAudioUrl from "../../assets/audio/Камень.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import {
@@ -77,9 +79,9 @@ export function createSisyphusRuntime(elements = {}) {
   // DOM-сцена 10000vh равна 100 высотам viewport. Камень падает до этого
   // фактического низа, но стартовая позиция остаётся в первом экране.
   const SCENE_VIEWPORT_HEIGHTS = 100;
-  const INTRO_FALL_DELAY_MS = SharedPhysics.FIRST_FALL_DELAY_MS;
   const FLOOR_INSET = 0;
   const MAX_FRAME_SECONDS = 0.032;
+  const FIRST_FALL_TOUCH_SCROLL_THRESHOLD_PX = 8;
   const GROUND_CONTACT_EPSILON = 0.01;
   const SHARED_GROUND_CONTACT_TOLERANCE = 24;
   const ROCK_IMPACT_AUDIO_POOL_SIZE = 4;
@@ -173,6 +175,7 @@ export function createSisyphusRuntime(elements = {}) {
     activePointerId: null,
     holdTimerId: null,
     firstFallTriggered: false,
+    firstFallTouchY: null,
     introFallTimerId: null,
     sceneReady: false,
     rockScale: 1,
@@ -2784,9 +2787,19 @@ export function createSisyphusRuntime(elements = {}) {
       const list = document.createElement("ul");
       formulas.forEach((formula) => {
         const item = document.createElement("li");
-        const code = document.createElement("code");
-        code.textContent = formula;
-        item.append(code);
+        const math = document.createElement("span");
+        math.className = "hint__formula-math";
+        math.setAttribute("aria-label", formula);
+        try {
+          katex.render(formula, math, {
+            displayMode: false,
+            strict: "ignore",
+            throwOnError: false,
+          });
+        } catch {
+          math.textContent = formula;
+        }
+        item.append(math);
         list.append(item);
       });
       formulaBlock.append(title, list);
@@ -2885,9 +2898,6 @@ export function createSisyphusRuntime(elements = {}) {
     setPhase(PHASES.PLAY);
     setTheme("dark");
     hideReturnRain();
-    motion.vx = 0;
-    motion.vy = 0;
-    setPosition(motion.x, bounds.maxY);
     rock.classList.remove("is-falling");
   }
 
@@ -2901,6 +2911,7 @@ export function createSisyphusRuntime(elements = {}) {
   function resetFirstFallTrigger({ scrollToTop = false, schedule = false } = {}) {
     clearFirstFallTimer();
     motion.firstFallTriggered = false;
+    motion.firstFallTouchY = null;
     collab.firstFallRequestSent = false;
     if (scrollToTop && window.scrollY !== 0) {
       window.scrollTo(0, 0);
@@ -2960,7 +2971,7 @@ export function createSisyphusRuntime(elements = {}) {
     return true;
   }
 
-  function continueFirstFallFromTimer() {
+  function continueFirstFallFromTrigger() {
     if (
       !motion.sceneReady ||
       !motion.firstFallTriggered ||
@@ -2985,25 +2996,18 @@ export function createSisyphusRuntime(elements = {}) {
     }
     clearFirstFallTimer();
     motion.firstFallTriggered = true;
-    continueFirstFallFromTimer();
+    motion.firstFallTouchY = null;
+    continueFirstFallFromTrigger();
     return true;
   }
 
   function scheduleFirstFall() {
-    if (
-      disposed ||
-      !motion.sceneReady ||
-      motion.phase !== PHASES.INTRO ||
-      motion.firstFallTriggered ||
-      motion.introFallTimerId !== null
-    ) {
-      return false;
-    }
-    motion.introFallTimerId = window.setTimeout(
-      triggerFirstFall,
-      INTRO_FALL_DELAY_MS,
+    return Boolean(
+      !disposed &&
+        motion.sceneReady &&
+        motion.phase === PHASES.INTRO &&
+        !motion.firstFallTriggered
     );
-    return true;
   }
 
   function applyPhysics(deltaSeconds) {
@@ -3280,6 +3284,37 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function handleFirstFallWheel(event) {
+    if (event.deltaY > 0) {
+      triggerFirstFall();
+    }
+  }
+
+  function handleFirstFallTouchStart(event) {
+    const touch = event.touches?.[0];
+    motion.firstFallTouchY = touch ? touch.clientY : null;
+  }
+
+  function handleFirstFallTouchMove(event) {
+    const touch = event.touches?.[0];
+    if (!touch) {
+      motion.firstFallTouchY = null;
+      return;
+    }
+
+    if (
+      motion.firstFallTouchY !== null &&
+      motion.firstFallTouchY - touch.clientY >= FIRST_FALL_TOUCH_SCROLL_THRESHOLD_PX
+    ) {
+      triggerFirstFall();
+    }
+    motion.firstFallTouchY = touch.clientY;
+  }
+
+  function clearFirstFallTouch() {
+    motion.firstFallTouchY = null;
+  }
+
   settingsPanel.querySelectorAll("input, select").forEach((el) => {
     const handleControlChange = () =>
       readControls({ changedKey: el.name });
@@ -3332,6 +3367,11 @@ export function createSisyphusRuntime(elements = {}) {
   listen(window, "pointercancel", stopDrag);
   listen(window, "blur", cancelDragAndCursor);
   listen(window, "pagehide", leaveSharedSession);
+  listen(window, "wheel", handleFirstFallWheel, { passive: true });
+  listen(window, "touchstart", handleFirstFallTouchStart, { passive: true });
+  listen(window, "touchmove", handleFirstFallTouchMove, { passive: true });
+  listen(window, "touchend", clearFirstFallTouch, { passive: true });
+  listen(window, "touchcancel", clearFirstFallTouch, { passive: true });
   listen(
     window,
     "scroll",

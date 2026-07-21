@@ -304,7 +304,6 @@
       const strength = physics.turbulence * TURB_ACCEL;
       state.vx +=
         strength * (Math.sin(t * 5.3) + 0.6 * Math.sin(t * 11.7 + 1.3)) * dt;
-      state.vy += strength * 0.35 * Math.sin(t * 4.1 + 2.6) * dt;
     }
 
     state.x += state.vx * dt;
@@ -321,14 +320,15 @@
       state.y = WORLD_HEIGHT;
       applyGroundFriction(state, physics, dt);
 
+      if (state.phase === PHASES.FALLING) {
+        state.phase = PHASES.PLAY;
+      }
+
       if (physics.bounce > 0 && state.vy > BOUNCE_MIN_VELOCITY) {
         const impact = Math.min(state.vy, BOUNCE_IMPACT_CAP);
         state.vy = -impact * physics.bounce;
       } else {
         state.vy = 0;
-        if (state.phase === PHASES.FALLING) {
-          state.phase = PHASES.PLAY;
-        }
       }
     }
 
