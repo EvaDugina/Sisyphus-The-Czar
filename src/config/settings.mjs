@@ -79,7 +79,8 @@ const PHYSICS_FORMULAS = {
   ],
   inertia: [
     "I = inertia",
-    "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
+    "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
+    "v_{y,release}^{up} = v_{y,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I^2 \\cdot k",
   ],
   groundFriction: [
     "F_f = \\mu \\cdot F_g",
@@ -333,9 +334,9 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "trailReset",
-        label: "Сбрасывать при новом броске",
+        label: "Сбрасывать при касании земли",
         type: "checkbox",
-        hint: "Стирать след каждый раз, когда камень берут заново. Выключено — след копится.",
+        hint: "Стирать след каждый раз, когда камень касается нижней земли. Выключено — след копится.",
       },
       {
         name: "trailMaxPoints",

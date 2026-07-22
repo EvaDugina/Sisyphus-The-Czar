@@ -543,6 +543,7 @@ test("влияние рывка масштабирует импульс отпу
 test("инерция масштабирует импульс и сохраняет направление движения руки", () => {
   const half = Physics.sanitizeState({ phase: Physics.PHASES.PLAY });
   const full = Physics.sanitizeState({ phase: Physics.PHASES.PLAY });
+  const low = Physics.sanitizeState({ phase: Physics.PHASES.PLAY });
   const none = Physics.sanitizeState({ phase: Physics.PHASES.PLAY });
   const base = {
     mass: 4,
@@ -564,16 +565,23 @@ test("инерция масштабирует импульс и сохраняе
     -400
   );
   Physics.applyReleaseImpulse(
+    low,
+    Physics.sanitizePhysics({ ...base, inertia: 0.1 }),
+    300,
+    -400
+  );
+  Physics.applyReleaseImpulse(
     none,
     Physics.sanitizePhysics({ ...base, inertia: 0 }),
     300,
     -400
   );
 
-  assert.equal(half.vx / half.vy, -0.75);
-  assert.equal(full.vx / full.vy, -0.75);
+  assert.ok(half.vx > 0);
+  assert.ok(half.vy < 0);
   assert.equal(full.vx, half.vx * 2);
-  assert.equal(full.vy, half.vy * 2);
+  assert.equal(full.vy, half.vy * 4);
+  assert.ok(Math.abs(low.vy) < Math.abs(full.vy) * 0.02);
   assert.equal(none.vx, 0);
   assert.equal(none.vy, 0);
 });
@@ -612,6 +620,31 @@ test("трение земли заметно и монотонно гасит и
   assert.ok(medium.vx > rough.vx);
   assert.equal(rough.vx, 0);
   assert.equal(stopped.vx, 0);
+});
+
+test("максимальное трение блокирует проскальзывание по земле", () => {
+  [0, 0.1, 1, 2].forEach((inertia) => {
+    const state = Physics.sanitizeState({
+      phase: Physics.PHASES.PLAY,
+      x: 500,
+      y: Physics.WORLD_HEIGHT,
+      vx: 900,
+      vy: 0,
+    });
+    const physics = Physics.sanitizePhysics({
+      groundFriction: 1,
+      inertia,
+      turbulence: 0,
+      bounce: 0,
+    });
+
+    Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS, {
+      motionScale: 100,
+    });
+
+    assert.equal(state.x, 500);
+    assert.equal(state.vx, 0);
+  });
 });
 
 test("трение земли не действует в воздухе или во время удержания", () => {

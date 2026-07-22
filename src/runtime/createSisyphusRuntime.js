@@ -3298,9 +3298,6 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     event.preventDefault();
-    if (params.trailReset) {
-      resetTrail();
-    }
     clearSharedReleaseHandoff();
     collab.releasePending = false;
     toggleHandVariant();
@@ -3825,6 +3822,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     const state = SharedPhysics.sanitizeState(currentSharedState());
     const previousPhase = state.phase;
+    const wasAboveGround = state.y < SharedPhysics.WORLD_HEIGHT - 0.01;
     state.turbTime = motion.turbTime;
     SharedPhysics.stepState(
       state,
@@ -3832,7 +3830,12 @@ export function createSisyphusRuntime(elements = {}) {
       deltaSeconds,
       sceneMotionOptions()
     );
+    const touchedGround =
+      wasAboveGround && state.y >= SharedPhysics.WORLD_HEIGHT - 0.01;
     applyCanonicalMotion(state);
+    if (params.trailReset && touchedGround) {
+      resetTrail();
+    }
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
       enterPlayPhase();
     } else {
@@ -3987,9 +3990,6 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     event.preventDefault();
-    if (params.trailReset) {
-      resetTrail();
-    }
     toggleHandVariant();
     updateBounds();
     motion.suspended = false;

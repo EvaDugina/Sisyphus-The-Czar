@@ -38,6 +38,7 @@
   });
   const PHYSICS_VERSION = 8;
   const RELEASE_TRANSFER_SCALE = 0.42;
+  const RELEASE_UPWARD_INERTIA_EXPONENT = 2;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
   const MAX_RELEASE_UPWARD_SPEED = 1800;
@@ -328,10 +329,16 @@
     const strength = handAcceleration(physics);
     const influence = physics.pointerInfluence;
     const inertiaMultiplier = physics.inertia;
-    const transfer =
+    const horizontalTransfer =
       strength * influence * inertiaMultiplier * RELEASE_TRANSFER_SCALE;
-    const releaseVx = safeVx * transfer;
-    const releaseVy = safeVy * transfer;
+    const verticalInertiaMultiplier =
+      safeVy < 0
+        ? Math.pow(inertiaMultiplier, RELEASE_UPWARD_INERTIA_EXPONENT)
+        : inertiaMultiplier;
+    const verticalTransfer =
+      strength * influence * verticalInertiaMultiplier * RELEASE_TRANSFER_SCALE;
+    const releaseVx = safeVx * horizontalTransfer;
+    const releaseVy = safeVy * verticalTransfer;
     const verticalLimit =
       releaseVy < 0
         ? MAX_RELEASE_UPWARD_SPEED
@@ -353,6 +360,10 @@
 
   function applyGroundFriction(state, physics, dt, options) {
     if (physics.groundFriction <= 0 || state.vx === 0) {
+      return;
+    }
+    if (physics.groundFriction >= 1) {
+      state.vx = 0;
       return;
     }
 
@@ -388,6 +399,10 @@
       const strength = physics.turbulence * TURB_ACCEL;
       state.vx +=
         strength * (Math.sin(t * 5.3) + 0.6 * Math.sin(t * 11.7 + 1.3)) * dt;
+    }
+
+    if (physics.groundFriction >= 1 && state.y >= WORLD_HEIGHT - 0.01) {
+      state.vx = 0;
     }
 
     state.x += state.vx * dt;
