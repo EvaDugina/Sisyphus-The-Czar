@@ -273,6 +273,27 @@ async function expectReadyAtBottom(page) {
   expect(position.scrollY).toBeGreaterThanOrEqual(position.maxScroll - 2);
 }
 
+async function expectImprintCenteredInTopViewport(page) {
+  await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  const position = await page.getByTestId("rock-imprint").evaluate((imprint) => {
+    const rect = imprint.getBoundingClientRect();
+    return {
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      viewportCenterX: window.innerWidth / 2,
+      viewportCenterY: window.innerHeight / 2,
+    };
+  });
+  expect(Math.abs(position.centerX - position.viewportCenterX)).toBeLessThanOrEqual(
+    3
+  );
+  expect(Math.abs(position.centerY - position.viewportCenterY)).toBeLessThanOrEqual(
+    3
+  );
+}
+
 async function expectScrollDoesNotAffectPhysics(page) {
   await expectReadyAtBottom(page);
   const before = await page.evaluate(() => ({
@@ -347,6 +368,24 @@ test("потерянная сессия заменяется рабочей и �
 
   await context.close();
 });
+
+test(
+  "верхний отпечаток центрируется в середине первого экрана",
+  async ({ browser }) => {
+    const context = await browser.newContext({
+      viewport: { width: 1398, height: 900 },
+    });
+    const page = await context.newPage();
+
+    await page.goto("/");
+    await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+    await expect(page.getByTestId("session-status")).toContainText("В сессии");
+    await expectReadyAtBottom(page);
+    await expectImprintCenteredInTopViewport(page);
+
+    await context.close();
+  }
+);
 
 test("вход на корень перенаправляет в рабочую сессию", async ({ browser }) => {
   test.setTimeout(90_000);

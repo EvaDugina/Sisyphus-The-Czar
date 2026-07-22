@@ -1919,14 +1919,13 @@ export function createSisyphusRuntime(elements = {}) {
 
   function createSummitSharedImprint(input = {}) {
     updateBounds();
-    const targetVisualTop =
+    const targetVisualCenterY =
       window.innerHeight * SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION;
-    let targetY = clamp(targetVisualTop, 0, bounds.maxY);
-    for (let index = 0; index < 5; index += 1) {
-      const scale = scaleForLocalY(targetY);
-      const scaledOffsetY = (bounds.rockHeight * (1 - scale)) / 2;
-      targetY = clamp(targetVisualTop - scaledOffsetY, 0, bounds.maxY);
-    }
+    const targetY = clamp(
+      targetVisualCenterY - bounds.rockHeight / 2,
+      0,
+      bounds.maxY
+    );
     const position = localToCanonical(
       bounds.maxX / 2,
       targetY
