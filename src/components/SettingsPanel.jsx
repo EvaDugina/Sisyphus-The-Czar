@@ -14,6 +14,38 @@ export function SettingsPanel({
       id="settings-panel"
       aria-hidden={String(!isOpen)}
     >
+      <section className="settings-versions" aria-label="Версии настроек">
+        <label
+          className="settings-versions__field"
+          data-hint="Название для новой или выбранной версии всех настроек панели."
+        >
+          <span>Название версии</span>
+          <input
+            className="settings-version-name"
+            type="text"
+            placeholder="Авто: дата и время"
+            autoComplete="off"
+          />
+        </label>
+        <div className="settings-versions__actions">
+          <button className="settings-version-save" type="button">
+            Сохранить
+          </button>
+          <button className="settings-version-rename" type="button">
+            Переименовать
+          </button>
+        </div>
+        <label
+          className="settings-versions__field"
+          data-hint="Выбор версии сразу применяет сохранённые значения ко всем настройкам панели."
+        >
+          <span>Версии</span>
+          <select className="settings-version-select" defaultValue="">
+            <option value="">Нет сохранённых</option>
+          </select>
+        </label>
+      </section>
+
       <section className="session-panel" aria-label="Совместная сессия">
         <div
           ref={sessionStatusRef}

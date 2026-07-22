@@ -976,7 +976,9 @@ test("два браузера видят один камень и поднима
   await setCheckbox(first, "rainEnabled", true);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   const rainAudioFadeIn = await first.evaluate(() => getRainAudioState());
+  expect(rainAudioFadeIn.fadeDurationMs).toBe(450);
   expect(rainAudioFadeIn.fadeActive).toBe(true);
+  expect(rainAudioFadeIn.fadeTargetVolume).toBe(0.42);
   expect(rainAudioFadeIn.playing).toBe(true);
   expect(rainAudioFadeIn.volume).toBeLessThan(0.42);
   await expect
@@ -989,8 +991,8 @@ test("два браузера видят один камень и поднима
     .poll(() => first.evaluate(() => getLastRainRendererProfile()))
     .toMatchObject({
       fallbackColor: [51, 102, 153],
-      raindropDiffuseLight: [0.2, 0.4, 0.6],
-      raindropSpecularLight: [1, 0.8, 0],
+      raindropDiffuseLight: [0.27, 0.54, 0.81],
+      raindropSpecularLight: [1, 1, 0],
     });
   const rainRenderToken = await first.evaluate(() => getRainRenderToken());
   await setRange(first, "rainBackgroundBlurSteps", 4);
@@ -1045,7 +1047,9 @@ test("два браузера видят один камень и поднима
     .toBe(true);
   await setCheckbox(first, "rainEnabled", false);
   const rainAudioFadeOut = await first.evaluate(() => getRainAudioState());
+  expect(rainAudioFadeOut.fadeDurationMs).toBe(550);
   expect(rainAudioFadeOut.fadeActive).toBe(true);
+  expect(rainAudioFadeOut.fadeTargetVolume).toBe(0);
   expect(rainAudioFadeOut.playing).toBe(true);
   expect(rainAudioFadeOut.volume).toBeGreaterThan(0);
   await expect

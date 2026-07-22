@@ -18,6 +18,7 @@ import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import {
   normalizeRainSettings,
   normalizeRockScaleSettings,
+  normalizeThemeMode,
 } from "../lib/settingsModel.mjs";
 import {
   DEFAULT_ROCK_MAX_WIDTH_VW,
@@ -27,8 +28,16 @@ import {
 } from "../lib/rockScale.mjs";
 import {
   LEGACY_SETTINGS_STORAGE_KEYS,
+  SETTINGS_GROUPS,
   SETTINGS_STORAGE_KEY,
+  SETTINGS_VERSIONS_STORAGE_KEY,
 } from "../config/settings.mjs";
+
+const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap((group) =>
+  group.controls.map((control) => control.name)
+);
+const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
+const SETTINGS_VERSION_LIMIT = 50;
 
 const chainHoverAudioModules = import.meta.glob(
   "../../assets/audio/Кандалы_*.mp3",
@@ -80,6 +89,10 @@ export function createSisyphusRuntime(elements = {}) {
   const sessionStatus = elements.sessionStatus || document.querySelector("[data-session-status]");
   const sessionShareToggle = elements.sessionShareToggle || document.querySelector(".session-share-toggle");
   const sessionRestartButton = elements.sessionRestartButton || document.querySelector(".session-restart");
+  const settingsVersionName = elements.settingsVersionName || document.querySelector(".settings-version-name");
+  const settingsVersionSelect = elements.settingsVersionSelect || document.querySelector(".settings-version-select");
+  const settingsVersionSave = elements.settingsVersionSave || document.querySelector(".settings-version-save");
+  const settingsVersionRename = elements.settingsVersionRename || document.querySelector(".settings-version-rename");
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
@@ -127,8 +140,10 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_BLUR_SATURATION = 1.1;
   const DEFAULT_RAIN_BLEND_MODE = "multiply";
   const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
+  const DEFAULT_THEME_MODE = "auto";
 
   const params = {
+    themeMode: DEFAULT_THEME_MODE,
     mass: SharedPhysics.DEFAULT_PHYSICS.mass,
     gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
     firstFallVelocity: SharedPhysics.DEFAULT_PHYSICS.firstFallVelocity,
@@ -189,6 +204,11 @@ export function createSisyphusRuntime(elements = {}) {
     lineJoin: "round",
     glow: 0,
     glowColor: "#ffffff",
+  };
+
+  const settingsVersions = {
+    entries: [],
+    selectedId: "",
   };
 
   const bounds = {
@@ -345,7 +365,9 @@ export function createSisyphusRuntime(elements = {}) {
   };
   const rainLoopAudio = {
     element: null,
+    fadeDurationMs: 0,
     fadeFrameId: null,
+    fadeTargetVolume: 0,
     fadeToken: 0,
     playing: false,
   };
@@ -455,6 +477,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.cancelAnimationFrame(rainLoopAudio.fadeFrameId);
       rainLoopAudio.fadeFrameId = null;
     }
+    rainLoopAudio.fadeDurationMs = 0;
   }
 
   function fadeRainLoopVolume(targetVolume, durationMs, onDone = () => {}) {
@@ -468,9 +491,12 @@ export function createSisyphusRuntime(elements = {}) {
     const startVolume = clamp(audio.volume, 0, RAIN_AUDIO_VOLUME);
     const endVolume = clamp(targetVolume, 0, RAIN_AUDIO_VOLUME);
     const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+    rainLoopAudio.fadeDurationMs = duration;
+    rainLoopAudio.fadeTargetVolume = endVolume;
 
     if (duration <= 0 || Math.abs(startVolume - endVolume) < 0.001) {
       audio.volume = endVolume;
+      rainLoopAudio.fadeDurationMs = 0;
       onDone();
       return;
     }
@@ -487,10 +513,28 @@ export function createSisyphusRuntime(elements = {}) {
         return;
       }
       rainLoopAudio.fadeFrameId = null;
+      rainLoopAudio.fadeDurationMs = 0;
       onDone();
     };
 
     rainLoopAudio.fadeFrameId = window.requestAnimationFrame(step);
+  }
+
+  function finishRainLoopSound() {
+    const audio = rainLoopAudio.element;
+    if (!audio) {
+      rainLoopAudio.playing = false;
+      return;
+    }
+    audio.pause();
+    try {
+      audio.currentTime = 0;
+    } catch {
+      /* currentTime может быть недоступен до загрузки audio metadata. */
+    }
+    audio.volume = 0;
+    rainLoopAudio.fadeTargetVolume = 0;
+    rainLoopAudio.playing = false;
   }
 
   function playRainLoopSound() {
@@ -502,7 +546,7 @@ export function createSisyphusRuntime(elements = {}) {
       rainLoopAudio.element = createRainLoopAudio();
     }
     const audio = rainLoopAudio.element;
-    const wasStopped = !rainLoopAudio.playing || audio.paused;
+    const wasStopped = !rainLoopAudio.playing;
 
     try {
       if (wasStopped) {
@@ -532,24 +576,36 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const finish = () => {
-      audio.pause();
-      try {
-        audio.currentTime = 0;
-      } catch {
-        /* currentTime может быть недоступен до загрузки audio metadata. */
-      }
-      audio.volume = 0;
-      rainLoopAudio.playing = false;
-    };
-
     if (immediate) {
       cancelRainLoopFade();
-      finish();
+      finishRainLoopSound();
       return;
     }
 
-    fadeRainLoopVolume(0, params.rainAudioExitMs, finish);
+    fadeRainLoopVolume(0, params.rainAudioExitMs, finishRainLoopSound);
+  }
+
+  function syncRainLoopFadeTiming(changedKeys) {
+    if (
+      !rainLoopAudio.element ||
+      !rainLoopAudio.playing ||
+      rainLoopAudio.fadeFrameId === null
+    ) {
+      return;
+    }
+    if (
+      changedKeys.has("rainAudioEnterMs") &&
+      rainLoopAudio.fadeTargetVolume > rainLoopAudio.element.volume
+    ) {
+      fadeRainLoopVolume(RAIN_AUDIO_VOLUME, params.rainAudioEnterMs);
+      return;
+    }
+    if (
+      changedKeys.has("rainAudioExitMs") &&
+      rainLoopAudio.fadeTargetVolume < rainLoopAudio.element.volume
+    ) {
+      stopRainLoopSound();
+    }
   }
 
   function getRainFxConstructor() {
@@ -1004,8 +1060,21 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    const alreadyVisible =
+      rainLayer.classList.contains("is-rain-visible") &&
+      !rainLayer.classList.contains("is-rain-hiding");
     window.clearTimeout(rain.hideTimerId);
     rain.hideTimerId = null;
+    if (alreadyVisible) {
+      if (!rainLoopAudio.playing) {
+        playRainLoopSound();
+      }
+      if (!rain.active) {
+        startRainRenderers();
+      }
+      return;
+    }
+
     rainLayer.classList.remove("is-rain-hiding");
     rainLayer.classList.add("is-rain-visible");
     playRainLoopSound();
@@ -1087,6 +1156,10 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function resolveTheme(autoTheme) {
+    return params.themeMode === "auto" ? autoTheme : params.themeMode;
+  }
+
   function setPhase(phase) {
     motion.phase = phase;
     body.classList.remove(
@@ -1107,6 +1180,13 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   const STORAGE_KEY = SETTINGS_STORAGE_KEY;
+  const VERSIONS_STORAGE_KEY = SETTINGS_VERSIONS_STORAGE_KEY;
+
+  function settingsControlElements() {
+    return settingsPanel.querySelectorAll(
+      "[data-setting-control] input, [data-setting-control] select",
+    );
+  }
 
   function saveSettings() {
     try {
@@ -1195,7 +1275,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
     }
 
-    settingsPanel.querySelectorAll("input, select").forEach((el) => {
+    settingsControlElements().forEach((el) => {
       const key = el.getAttribute("name");
       if (!key || !(key in stored)) {
         return;
@@ -1206,6 +1286,206 @@ export function createSisyphusRuntime(elements = {}) {
         el.value = stored[key];
       }
     });
+  }
+
+  function normalizeSettingsVersionEntry(entry) {
+    if (!entry || typeof entry !== "object") {
+      return null;
+    }
+    const settings =
+      entry.settings && typeof entry.settings === "object" ? entry.settings : null;
+    if (!settings) {
+      return null;
+    }
+    const cleanSettings = {};
+    SETTINGS_CONTROL_NAMES.forEach((key) => {
+      if (Object.hasOwn(settings, key)) {
+        cleanSettings[key] = settings[key];
+      }
+    });
+    if (Object.keys(cleanSettings).length === 0) {
+      return null;
+    }
+    const id = String(entry.id || "").trim();
+    const name = String(entry.name || "").trim();
+    if (!id || !name) {
+      return null;
+    }
+    return {
+      id,
+      name,
+      createdAt: String(entry.createdAt || ""),
+      updatedAt: String(entry.updatedAt || entry.createdAt || ""),
+      settings: cleanSettings,
+    };
+  }
+
+  function loadSettingsVersions() {
+    let stored = null;
+    try {
+      stored = JSON.parse(localStorage.getItem(VERSIONS_STORAGE_KEY) || "null");
+    } catch {
+      stored = null;
+    }
+    const entries = Array.isArray(stored?.entries)
+      ? stored.entries.map(normalizeSettingsVersionEntry).filter(Boolean)
+      : [];
+    settingsVersions.entries = entries.slice(-SETTINGS_VERSION_LIMIT);
+    settingsVersions.selectedId = settingsVersions.entries.some(
+      (entry) => entry.id === stored?.selectedId,
+    )
+      ? stored.selectedId
+      : "";
+    renderSettingsVersions();
+  }
+
+  function saveSettingsVersions() {
+    try {
+      localStorage.setItem(
+        VERSIONS_STORAGE_KEY,
+        JSON.stringify({
+          selectedId: settingsVersions.selectedId,
+          entries: settingsVersions.entries,
+        }),
+      );
+    } catch {
+      /* localStorage недоступен — тихо игнорируем */
+    }
+  }
+
+  function defaultSettingsVersionName(date = new Date()) {
+    const pad = (value) => String(value).padStart(2, "0");
+    return [
+      "Версия",
+      `${pad(date.getDate())}.${pad(date.getMonth() + 1)}.${date.getFullYear()}`,
+      `${pad(date.getHours())}:${pad(date.getMinutes())}`,
+    ].join(" ");
+  }
+
+  function currentSettingsVersionName() {
+    return String(settingsVersionName?.value || "").trim();
+  }
+
+  function currentSettingsSnapshot() {
+    return Object.fromEntries(
+      SETTINGS_CONTROL_NAMES.filter((key) => Object.hasOwn(params, key)).map(
+        (key) => [key, params[key]],
+      ),
+    );
+  }
+
+  function renderSettingsVersions() {
+    if (!settingsVersionSelect || !settingsVersionRename) {
+      return;
+    }
+    const selectedId = settingsVersions.selectedId;
+    settingsVersionSelect.replaceChildren();
+    if (settingsVersions.entries.length === 0) {
+      settingsVersionSelect.append(new Option("Нет сохранённых", ""));
+      settingsVersionSelect.value = "";
+      settingsVersionRename.disabled = true;
+      return;
+    }
+    settingsVersionSelect.append(new Option("Выбери версию", ""));
+    settingsVersions.entries.forEach((entry) => {
+      settingsVersionSelect.append(new Option(entry.name, entry.id));
+    });
+    const selectedEntry = settingsVersions.entries.find(
+      (entry) => entry.id === selectedId,
+    );
+    settingsVersionSelect.value = selectedEntry ? selectedEntry.id : "";
+    if (settingsVersionName && selectedEntry) {
+      settingsVersionName.value = selectedEntry.name;
+    }
+    settingsVersionRename.disabled = settingsVersionSelect.value === "";
+  }
+
+  function createSettingsVersionId() {
+    const random =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+    return `settings-version-${Date.now().toString(36)}-${random}`;
+  }
+
+  function saveCurrentSettingsVersion() {
+    const now = new Date();
+    const name = currentSettingsVersionName() || defaultSettingsVersionName(now);
+    const entry = {
+      id: createSettingsVersionId(),
+      name,
+      createdAt: now.toISOString(),
+      updatedAt: now.toISOString(),
+      settings: currentSettingsSnapshot(),
+    };
+    settingsVersions.entries = [
+      ...settingsVersions.entries,
+      entry,
+    ].slice(-SETTINGS_VERSION_LIMIT);
+    settingsVersions.selectedId = entry.id;
+    if (settingsVersionName) {
+      settingsVersionName.value = entry.name;
+    }
+    renderSettingsVersions();
+    saveSettingsVersions();
+  }
+
+  function selectedSettingsVersion() {
+    return settingsVersions.entries.find(
+      (entry) => entry.id === settingsVersions.selectedId,
+    );
+  }
+
+  function renameSelectedSettingsVersion() {
+    const selected = selectedSettingsVersion();
+    if (!selected) {
+      return;
+    }
+    const now = new Date();
+    const name = currentSettingsVersionName() || defaultSettingsVersionName(now);
+    selected.name = name;
+    selected.updatedAt = now.toISOString();
+    renderSettingsVersions();
+    saveSettingsVersions();
+  }
+
+  function applySettingsVersion(entry) {
+    if (!entry) {
+      return;
+    }
+    const changedKeys = [];
+    settingsControlElements().forEach((el) => {
+      const key = el.getAttribute("name");
+      if (!key || !SETTINGS_CONTROL_NAME_SET.has(key)) {
+        return;
+      }
+      if (!Object.hasOwn(entry.settings, key)) {
+        return;
+      }
+      const nextValue = entry.settings[key];
+      const previousValue =
+        el.type === "checkbox" ? Boolean(el.checked) : String(el.value);
+      if (el.type === "checkbox") {
+        const checked = Boolean(nextValue);
+        if (el.checked !== checked) {
+          changedKeys.push(key);
+        }
+        el.checked = checked;
+      } else {
+        const value = String(nextValue);
+        if (String(el.value) !== value && previousValue !== value) {
+          changedKeys.push(key);
+        }
+        el.value = value;
+      }
+    });
+    settingsVersions.selectedId = entry.id;
+    if (settingsVersionName) {
+      settingsVersionName.value = entry.name;
+    }
+    renderSettingsVersions();
+    saveSettingsVersions();
+    readControls({ changedKeys });
   }
 
   function updateControlOutputs() {
@@ -1257,13 +1537,26 @@ export function createSisyphusRuntime(elements = {}) {
     const bool = (name) =>
       settingsPanel.querySelector(`[name="${name}"]`).checked;
     const changedKey = options.changedKey || "";
+    const hasExplicitChangedKeys = Array.isArray(options.changedKeys);
+    const changedKeys = new Set(
+      hasExplicitChangedKeys
+        ? options.changedKeys.filter((key) => SETTINGS_CONTROL_NAME_SET.has(key))
+        : changedKey
+          ? [changedKey]
+          : [],
+    );
+    const fullRefresh = !hasExplicitChangedKeys && changedKey === "";
+    const hasTargetedChanges = hasExplicitChangedKeys || changedKey !== "";
+    const shouldHandleChange = (...keys) =>
+      fullRefresh || keys.some((key) => changedKeys.has(key));
+    const sceneHeightChanging = shouldHandleChange("sceneHeightScreens");
 
     const previousRoomSettings =
-      changedKey === "sceneHeightScreens" ? sharedRoomSettingsPayload() : null;
+      sceneHeightChanging ? sharedRoomSettingsPayload() : null;
     const preservedState =
-      changedKey === "sceneHeightScreens" ? currentSharedState() : null;
+      sceneHeightChanging ? currentSharedState() : null;
     const preserveBottomScroll =
-      changedKey === "sceneHeightScreens" &&
+      sceneHeightChanging &&
       Math.abs(
         window.scrollY +
           window.innerHeight -
@@ -1271,6 +1564,7 @@ export function createSisyphusRuntime(elements = {}) {
       ) <= 4;
 
     params.mass = num("mass");
+    params.themeMode = normalizeThemeMode(str("themeMode"), DEFAULT_THEME_MODE);
     params.gravity = num("gravity");
     params.handForce = num("handForce");
     params.pointerInfluence = num("pointerInfluence");
@@ -1407,6 +1701,7 @@ export function createSisyphusRuntime(elements = {}) {
       params.rainAudioEnterMs;
     settingsPanel.querySelector('[name="rainAudioExitMs"]').value =
       params.rainAudioExitMs;
+    settingsPanel.querySelector('[name="themeMode"]').value = params.themeMode;
     settingsPanel.querySelector('[name="rockScaleEasing"]').value =
       params.rockScaleEasing;
     settingsPanel.querySelector('[name="rockMinWidthVw"]').value =
@@ -1421,15 +1716,25 @@ export function createSisyphusRuntime(elements = {}) {
       params.slaveHandWidthPx;
     applyRainSettings({
       restartIfActive:
-        changedKey === "rainStrength" ||
-        changedKey === "rainBackgroundBlurSteps" ||
-        changedKey === "rainDropColor" ||
-        changedKey === "rainHighlightColor",
+        hasTargetedChanges &&
+        (shouldHandleChange("rainStrength") ||
+          shouldHandleChange("rainBackgroundBlurSteps") ||
+          shouldHandleChange("rainDropColor") ||
+          shouldHandleChange("rainHighlightColor")),
     });
-    if (changedKey === "rainEnabled" || changedKey === "") {
+    if (shouldHandleChange("rainEnabled")) {
       syncRainVisibility({
-        immediate: changedKey === "",
+        immediate: fullRefresh,
       });
+    }
+    if (shouldHandleChange("themeMode")) {
+      syncReturnTheme();
+    }
+    if (
+      hasTargetedChanges &&
+      shouldHandleChange("rainAudioEnterMs", "rainAudioExitMs")
+    ) {
+      syncRainLoopFadeTiming(changedKeys);
     }
 
     applyTrailBlendMode();
@@ -1460,19 +1765,33 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (
       collab.enabled &&
-      !collab.applyingRemotePhysics &&
-      SHARED_PHYSICS_KEYS.includes(changedKey)
+      !collab.applyingRemotePhysics
     ) {
-      collab.pendingPhysicsChanges[changedKey] = params[changedKey];
-      scheduleSharedPhysicsUpdate();
+      let hasPhysicsChanges = false;
+      changedKeys.forEach((key) => {
+        if (SHARED_PHYSICS_KEYS.includes(key)) {
+          collab.pendingPhysicsChanges[key] = params[key];
+          hasPhysicsChanges = true;
+        }
+      });
+      if (hasPhysicsChanges) {
+        scheduleSharedPhysicsUpdate();
+      }
     }
     if (
       collab.enabled &&
-      !collab.applyingRemoteRoomSettings &&
-      SHARED_ROOM_SETTING_KEYS.includes(changedKey)
+      !collab.applyingRemoteRoomSettings
     ) {
-      collab.pendingRoomSettingsChanges[changedKey] = params[changedKey];
-      scheduleSharedRoomSettingsUpdate();
+      let hasRoomSettingsChanges = false;
+      changedKeys.forEach((key) => {
+        if (SHARED_ROOM_SETTING_KEYS.includes(key)) {
+          collab.pendingRoomSettingsChanges[key] = params[key];
+          hasRoomSettingsChanges = true;
+        }
+      });
+      if (hasRoomSettingsChanges) {
+        scheduleSharedRoomSettingsUpdate();
+      }
     }
   }
 
@@ -2426,7 +2745,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function sharedSnapshotTheme(snapshot) {
-    return sharedSnapshotAtReturnPlace(snapshot) ? "light" : "dark";
+    return resolveTheme(sharedSnapshotAtReturnPlace(snapshot) ? "light" : "dark");
   }
 
   function resetLocalExperience() {
@@ -2458,7 +2777,7 @@ export function createSisyphusRuntime(elements = {}) {
     hideHandCursor();
     updateLocalSharedPointer(null, "grab", false);
     setPhase(PHASES.PLAY);
-    setTheme("dark");
+    setTheme(resolveTheme("dark"));
     hideReturnRain({ immediate: true });
     resetTrail();
     renderImprint();
@@ -3430,20 +3749,20 @@ export function createSisyphusRuntime(elements = {}) {
 
   function syncReturnTheme() {
     if (motion.phase === PHASES.INTRO) {
-      setTheme("dark");
+      setTheme(resolveTheme("dark"));
       hideReturnRain({ immediate: true });
       return;
     }
     const atReturnPlace =
       (motion.phase === PHASES.PLAY || motion.phase === PHASES.WON) &&
       rockInsideImprint();
-    setTheme(atReturnPlace ? "light" : "dark");
+    setTheme(resolveTheme(atReturnPlace ? "light" : "dark"));
     syncReturnRain(atReturnPlace);
   }
 
   function enterPlayPhase() {
     setPhase(PHASES.PLAY);
-    setTheme("dark");
+    setTheme(resolveTheme("dark"));
     hideReturnRain();
     rock.classList.remove("is-falling");
   }
@@ -3740,11 +4059,31 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  settingsPanel.querySelectorAll("input, select").forEach((el) => {
+  settingsControlElements().forEach((el) => {
     const handleControlChange = () =>
       readControls({ changedKey: el.name });
     listen(el, "input", handleControlChange);
     listen(el, "change", handleControlChange);
+  });
+
+  listen(settingsVersionSave, "click", () => {
+    readControls({ changedKeys: [] });
+    saveCurrentSettingsVersion();
+  });
+  listen(settingsVersionRename, "click", renameSelectedSettingsVersion);
+  listen(settingsVersionSelect, "change", () => {
+    const selectedId = settingsVersionSelect.value;
+    settingsVersions.selectedId = selectedId;
+    const entry = selectedSettingsVersion();
+    if (!entry) {
+      if (settingsVersionName) {
+        settingsVersionName.value = "";
+      }
+      renderSettingsVersions();
+      saveSettingsVersions();
+      return;
+    }
+    applySettingsVersion(entry);
   });
 
   listen(settingsPanel.querySelector(".trail-clear"), "click", resetTrail);
@@ -3821,7 +4160,7 @@ export function createSisyphusRuntime(elements = {}) {
     renderImprint();
     setPhase(PHASES.PLAY);
     motion.suspended = true;
-    setTheme("dark");
+    setTheme(resolveTheme("dark"));
     hideReturnRain({ immediate: true });
     motion.sceneReady = true;
     resizeTrailCanvas();
@@ -3858,12 +4197,20 @@ export function createSisyphusRuntime(elements = {}) {
     },
     getRoomSettings: sharedRoomSettingsPayload,
     getRainAudioState: () => ({
+      fadeDurationMs: rainLoopAudio.fadeDurationMs,
       fadeActive: rainLoopAudio.fadeFrameId !== null,
+      fadeTargetVolume: rainLoopAudio.fadeTargetVolume,
       paused: rainLoopAudio.element ? rainLoopAudio.element.paused : true,
       playing: rainLoopAudio.playing,
       volume: rainLoopAudio.element ? rainLoopAudio.element.volume : 0,
     }),
     getRainRenderToken: () => rain.renderToken,
+    getSettingsVersions: () =>
+      settingsVersions.entries.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        settings: { ...entry.settings },
+      })),
     resetTrail,
     sendShared,
     setPosition,
@@ -3876,6 +4223,7 @@ export function createSisyphusRuntime(elements = {}) {
   Object.assign(window, testApi);
 
   loadSettings();
+  loadSettingsVersions();
   readControls();
 
   if (rock.complete) {

@@ -17,10 +17,12 @@ import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
 import {
   normalizeRainSettings,
   normalizeRockScaleSettings,
+  normalizeThemeMode,
 } from "../../src/lib/settingsModel.mjs";
 import {
   SETTINGS_GROUPS,
   SETTINGS_STORAGE_KEY,
+  SETTINGS_VERSIONS_STORAGE_KEY,
 } from "../../src/config/settings.mjs";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
@@ -46,6 +48,25 @@ test("координаты сохраняют каноническое поло�
 
   assert.deepEqual(canonical, { x: 500, y: 1000 });
   assert.deepEqual(local, { x: 450, y: 1200 });
+});
+
+test("настройка темы содержит автоматический и ручные режимы", () => {
+  const viewGroup = SETTINGS_GROUPS.find((group) => group.title === "Вид");
+  const themeMode = viewGroup.controls.find(
+    (control) => control.name === "themeMode"
+  );
+
+  assert.equal(normalizeThemeMode("dark"), "dark");
+  assert.equal(normalizeThemeMode("light"), "light");
+  assert.equal(normalizeThemeMode("invalid"), "auto");
+  assert.equal(themeMode.type, "select");
+  assert.equal(themeMode.label, "Тема");
+  assert.equal(themeMode.defaultValue, "auto");
+  assert.deepEqual(themeMode.options, [
+    ["auto", "Авто"],
+    ["dark", "Тёмная"],
+    ["light", "Светлая"],
+  ]);
 });
 
 test("session status сохраняет публичные тексты управления", () => {
@@ -175,6 +196,10 @@ test("настройка инерции отображает шкалу 0–2 с
   );
 
   assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v11");
+  assert.equal(
+    SETTINGS_VERSIONS_STORAGE_KEY,
+    "sisyphus-czar-settings-versions-v1"
+  );
   assert.deepEqual(
     {
       min: inertia.min,
@@ -608,8 +633,11 @@ test("профиль дождя принимает общий цвет капе�
   });
 
   assert.deepEqual(profile.fallbackColor, [51, 102, 153]);
-  assert.deepEqual(profile.raindropDiffuseLight, [0.2, 0.4, 0.6]);
-  assert.deepEqual(profile.raindropSpecularLight, [1, 0.8, 0]);
+  assert.deepEqual(profile.raindropDiffuseLight, [0.27, 0.54, 0.81]);
+  assert.deepEqual(profile.raindropSpecularLight, [1, 1, 0]);
+  assert.deepEqual(profile.mistColor, [0.16, 0.128, 0.02, 0.8]);
+  assert.equal(profile.fxOpacity, 0.59);
+  assert.ok(profile.fallbackAlpha[1] > 0.46);
 });
 
 test("тёмный профиль принимает число blur-шагов raindrop-fx", () => {

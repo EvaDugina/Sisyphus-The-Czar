@@ -11,6 +11,7 @@ const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
 export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v11";
+export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
   "sisyphus-czar-settings-v10",
   "sisyphus-czar-settings-v9",
@@ -111,6 +112,23 @@ const PHYSICS_FORMULAS = {
 };
 
 export const SETTINGS_GROUPS = [
+  {
+    title: "Вид",
+    controls: [
+      {
+        name: "themeMode",
+        label: "Тема",
+        type: "select",
+        defaultValue: "auto",
+        options: [
+          ["auto", "Авто"],
+          ["dark", "Тёмная"],
+          ["light", "Светлая"],
+        ],
+        hint: "Авто сохраняет текущую механику: светлая тема включается в верхнем отпечатке. Ручные режимы фиксируют выбранную тему локально.",
+      },
+    ],
+  },
   {
     title: "Физика",
     controls: [

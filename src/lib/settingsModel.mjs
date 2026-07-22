@@ -31,6 +31,8 @@ export const MIX_BLEND_MODES = Object.freeze([
 ]);
 
 const MIX_BLEND_MODE_SET = new Set(MIX_BLEND_MODES);
+const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
+const THEME_MODE_SET = new Set(THEME_MODES);
 
 function mixBlendMode(value, fallback) {
   const normalized = String(value || "").trim();
@@ -43,6 +45,14 @@ function mixBlendMode(value, fallback) {
 function timingFunction(value, fallback, isSupported) {
   const trimmed = String(value || "").trim();
   return trimmed && isSupported(trimmed) ? trimmed : fallback;
+}
+
+export function normalizeThemeMode(value, fallback = "auto") {
+  const normalized = String(value || "").trim();
+  if (THEME_MODE_SET.has(normalized)) {
+    return normalized;
+  }
+  return THEME_MODE_SET.has(fallback) ? fallback : "auto";
 }
 
 export function normalizeRainSettings(raw, options) {
