@@ -466,7 +466,12 @@ test("сессия переживает restart сервиса с тем же х
     rainDropColor: "#234567",
     rainHighlightColor: "#abcdef",
   });
-  assert.equal(snapshot.payload.imprint.x, 300);
+  assert.deepEqual(snapshot.payload.imprint, {
+    x: Physics.WORLD_WIDTH / 2,
+    y: 20,
+    toleranceX: 40,
+    toleranceY: 30,
+  });
   assert.deepEqual(snapshot.payload.trail, [[10, 20], [30, 40]]);
   restored.socket.close();
 });

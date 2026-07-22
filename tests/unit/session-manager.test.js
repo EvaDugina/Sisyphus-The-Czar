@@ -705,7 +705,7 @@ test("reconnect в grace-период сохраняет состояние и �
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.x, 420);
   assert.equal(session.physics.gravity, 7);
-  assert.equal(session.imprint.x, 400);
+  assert.deepEqual(session.imprint, Physics.createSummitImprint());
   assert.equal(reconnected.client.id, "client-reload-001");
 
   clock.value = 1001;
@@ -906,7 +906,7 @@ test("брошенный камень не останавливается при
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
     physics: { mass: 1, handForce: 100, gravity: 0.45, turbulence: 0 },
-    imprint: { x: 500, y: 800, toleranceX: 40, toleranceY: 20 },
+    imprint: { toleranceX: 40, toleranceY: 20 },
   });
   const first = connect(manager, session, "client-throw-win-01");
   const second = connect(manager, session, "client-throw-win-02");
@@ -923,6 +923,11 @@ test("брошенный камень не останавливается при
   manager.tick();
 
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
-  assert.notEqual(session.state.y, session.imprint.y);
+  assert.deepEqual(session.imprint, {
+    x: Physics.WORLD_WIDTH / 2,
+    y: 20,
+    toleranceX: 40,
+    toleranceY: 20,
+  });
   assert.notEqual(session.state.vy, 0);
 });

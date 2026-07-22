@@ -151,8 +151,7 @@ class SessionManager {
       roomSettings,
       trail: sanitizeTrail(payload.trail),
       imprint:
-        Physics.sanitizeImprint(payload.imprint) ||
-        Physics.createSummitImprint(),
+        Physics.createSummitImprint(payload.imprint),
       masterClientId: normalizeClientId(
         payload.creatorClientId || payload.masterClientId
       ),
@@ -271,8 +270,7 @@ class SessionManager {
         roomSettings,
         trail: sanitizeTrail(record.trail),
         imprint:
-          Physics.sanitizeImprint(record.imprint) ||
-          Physics.createSummitImprint(),
+          Physics.createSummitImprint(record.imprint),
         masterClientId: normalizeClientId(record.masterClientId),
         clients: new Map(),
         holders: new Map(),

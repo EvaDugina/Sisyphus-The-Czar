@@ -282,11 +282,12 @@
   }
 
   function createSummitImprint(input = {}) {
+    const source = input && typeof input === "object" ? input : {};
     return sanitizeImprint({
       x: WORLD_WIDTH / 2,
       y: SUMMIT_IMPRINT_Y,
-      toleranceX: input.toleranceX,
-      toleranceY: input.toleranceY,
+      toleranceX: source.toleranceX,
+      toleranceY: source.toleranceY,
     });
   }
 

@@ -464,6 +464,29 @@ test("отпечаток распознаётся без остановки ка
   assert.equal(playing.vy, -500);
 });
 
+test("верхний отпечаток всегда создаётся по центру страницы", () => {
+  assert.deepEqual(
+    Physics.createSummitImprint({
+      x: 250,
+      y: 700,
+      toleranceX: 40,
+      toleranceY: 30,
+    }),
+    {
+      x: Physics.WORLD_WIDTH / 2,
+      y: 20,
+      toleranceX: 40,
+      toleranceY: 30,
+    }
+  );
+  assert.deepEqual(Physics.createSummitImprint(null), {
+    x: Physics.WORLD_WIDTH / 2,
+    y: 20,
+    toleranceX: 100,
+    toleranceY: 80,
+  });
+});
+
 test("импульс отпускания учитывает массу, силу и направление указателя", () => {
   const state = Physics.sanitizeState({ phase: Physics.PHASES.PLAY, y: 4000 });
   const physics = Physics.sanitizePhysics({
