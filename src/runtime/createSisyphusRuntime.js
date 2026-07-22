@@ -92,7 +92,6 @@ export function createSisyphusRuntime(elements = {}) {
   const settingsVersionName = elements.settingsVersionName || document.querySelector(".settings-version-name");
   const settingsVersionSelect = elements.settingsVersionSelect || document.querySelector(".settings-version-select");
   const settingsVersionSave = elements.settingsVersionSave || document.querySelector(".settings-version-save");
-  const settingsVersionRename = elements.settingsVersionRename || document.querySelector(".settings-version-rename");
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
@@ -1376,18 +1375,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function renderSettingsVersions() {
-    if (!settingsVersionSelect || !settingsVersionRename) {
+    if (!settingsVersionSelect) {
       return;
     }
     const selectedId = settingsVersions.selectedId;
     settingsVersionSelect.replaceChildren();
-    if (settingsVersions.entries.length === 0) {
-      settingsVersionSelect.append(new Option("Нет сохранённых", ""));
-      settingsVersionSelect.value = "";
-      settingsVersionRename.disabled = true;
-      return;
-    }
-    settingsVersionSelect.append(new Option("Выбери версию", ""));
+    settingsVersionSelect.append(new Option("Черновик", ""));
     settingsVersions.entries.forEach((entry) => {
       settingsVersionSelect.append(new Option(entry.name, entry.id));
     });
@@ -1398,7 +1391,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (settingsVersionName && selectedEntry) {
       settingsVersionName.value = selectedEntry.name;
     }
-    settingsVersionRename.disabled = settingsVersionSelect.value === "";
   }
 
   function createSettingsVersionId() {
@@ -1411,21 +1403,31 @@ export function createSisyphusRuntime(elements = {}) {
 
   function saveCurrentSettingsVersion() {
     const now = new Date();
-    const name = currentSettingsVersionName() || defaultSettingsVersionName(now);
-    const entry = {
-      id: createSettingsVersionId(),
-      name,
-      createdAt: now.toISOString(),
-      updatedAt: now.toISOString(),
-      settings: currentSettingsSnapshot(),
-    };
-    settingsVersions.entries = [
-      ...settingsVersions.entries,
-      entry,
-    ].slice(-SETTINGS_VERSION_LIMIT);
-    settingsVersions.selectedId = entry.id;
+    const selected = selectedSettingsVersion();
+    const name =
+      currentSettingsVersionName() ||
+      selected?.name ||
+      defaultSettingsVersionName(now);
+    if (selected) {
+      selected.name = name;
+      selected.updatedAt = now.toISOString();
+      selected.settings = currentSettingsSnapshot();
+    } else {
+      const entry = {
+        id: createSettingsVersionId(),
+        name,
+        createdAt: now.toISOString(),
+        updatedAt: now.toISOString(),
+        settings: currentSettingsSnapshot(),
+      };
+      settingsVersions.entries = [
+        ...settingsVersions.entries,
+        entry,
+      ].slice(-SETTINGS_VERSION_LIMIT);
+      settingsVersions.selectedId = entry.id;
+    }
     if (settingsVersionName) {
-      settingsVersionName.value = entry.name;
+      settingsVersionName.value = name;
     }
     renderSettingsVersions();
     saveSettingsVersions();
@@ -1435,19 +1437,6 @@ export function createSisyphusRuntime(elements = {}) {
     return settingsVersions.entries.find(
       (entry) => entry.id === settingsVersions.selectedId,
     );
-  }
-
-  function renameSelectedSettingsVersion() {
-    const selected = selectedSettingsVersion();
-    if (!selected) {
-      return;
-    }
-    const now = new Date();
-    const name = currentSettingsVersionName() || defaultSettingsVersionName(now);
-    selected.name = name;
-    selected.updatedAt = now.toISOString();
-    renderSettingsVersions();
-    saveSettingsVersions();
   }
 
   function applySettingsVersion(entry) {
@@ -1486,7 +1475,19 @@ export function createSisyphusRuntime(elements = {}) {
     }
     renderSettingsVersions();
     saveSettingsVersions();
-    readControls({ changedKeys });
+    readControls({
+      changedKeys,
+      preserveSettingsVersionSelection: true,
+    });
+  }
+
+  function markSettingsVersionDraft() {
+    if (!settingsVersions.selectedId) {
+      return;
+    }
+    settingsVersions.selectedId = "";
+    renderSettingsVersions();
+    saveSettingsVersions();
   }
 
   function updateControlOutputs() {
@@ -1751,6 +1752,15 @@ export function createSisyphusRuntime(elements = {}) {
 
     updateControlOutputs();
     saveSettings();
+    if (
+      hasTargetedChanges &&
+      changedKeys.size > 0 &&
+      !options.preserveSettingsVersionSelection &&
+      !collab.applyingRemotePhysics &&
+      !collab.applyingRemoteRoomSettings
+    ) {
+      markSettingsVersionDraft();
+    }
     trail.dirty = true;
     applySceneHeight();
     if (preservedState) {
@@ -4104,7 +4114,6 @@ export function createSisyphusRuntime(elements = {}) {
     readControls({ changedKeys: [] });
     saveCurrentSettingsVersion();
   });
-  listen(settingsVersionRename, "click", renameSelectedSettingsVersion);
   listen(settingsVersionSelect, "change", () => {
     const selectedId = settingsVersionSelect.value;
     settingsVersions.selectedId = selectedId;
