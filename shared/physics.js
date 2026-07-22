@@ -32,7 +32,7 @@
     maxSpeed: 2800,
     loadFloor: 0.1,
   });
-  const PHYSICS_VERSION = 7;
+  const PHYSICS_VERSION = 8;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
@@ -49,7 +49,7 @@
     handForce: [1, 1000],
     pointerInfluence: [0, 10],
     bounce: [0, 1],
-    inertia: [0, 10],
+    inertia: [0, 2],
     groundFriction: [0, 1],
     turbulence: [0, 1],
   });
@@ -61,7 +61,7 @@
     handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
-    inertia: 9,
+    inertia: 0.9,
     groundFriction: 0.35,
     turbulence: 0.4,
   });
@@ -124,6 +124,10 @@
       inertia <= 100
     ) {
       source.inertia = inertia / 10;
+    }
+    const migratedInertia = Number(source.inertia);
+    if (sourceVersion < 8 && Number.isFinite(migratedInertia)) {
+      source.inertia = migratedInertia / 10;
     }
     const handForce = Number(source.handForce);
     if (
@@ -316,9 +320,9 @@
     const safeVy = clamp(finiteNumber(pointerVy, 0), -9000, 9000);
     const strength = handAcceleration(physics);
     const influence = physics.pointerInfluence;
-    const inertiaFraction = physics.inertia / 10;
+    const inertiaMultiplier = physics.inertia;
     const transfer =
-      strength * influence * inertiaFraction * RELEASE_TRANSFER_SCALE;
+      strength * influence * inertiaMultiplier * RELEASE_TRANSFER_SCALE;
     const releaseVx = safeVx * transfer;
     const releaseVy = safeVy * transfer;
     const verticalLimit =

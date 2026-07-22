@@ -10,8 +10,9 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v10";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v11";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v10",
   "sisyphus-czar-settings-v9",
   "sisyphus-czar-settings-v8",
   "sisyphus-czar-settings-v7",
@@ -76,7 +77,7 @@ const PHYSICS_FORMULAS = {
     "v_y' = -min(v_y, v_{impactMax}) \\cdot b",
   ],
   inertia: [
-    "I = \\frac{inertia}{10}",
+    "I = inertia",
     "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
   ],
   groundFriction: [
@@ -178,11 +179,11 @@ export const SETTINGS_GROUPS = [
         label: "Инерция",
         type: "range",
         min: 0,
-        max: 10,
-        step: 1,
-        defaultValue: 9,
-        output: "9",
-        hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 10 — максимальная передача с учётом массы, силы и влияния рывка.",
+        max: 2,
+        step: 0.1,
+        defaultValue: 0.9,
+        output: "0.9",
+        hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 1 — базовая передача; 2 — удвоенная передача с учётом массы, силы и влияния рывка.",
         formulas: PHYSICS_FORMULAS.inertia,
       },
       {

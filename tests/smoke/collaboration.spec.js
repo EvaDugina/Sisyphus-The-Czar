@@ -846,7 +846,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -881,7 +881,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -990,7 +990,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -1025,7 +1025,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1036,7 +1036,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v10") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1060,7 +1060,7 @@ test("два браузера видят один камень и поднима
   await setRange(first, "handForce", 500);
   await setRange(first, "pointerInfluence", 1.8);
   await setRange(first, "bounce", 0.1);
-  await setRange(first, "inertia", 8);
+  await setRange(first, "inertia", 0.8);
   await setRange(first, "groundFriction", 0.2);
   await setRange(first, "turbulence", 0.3);
   await setRange(first, "handWidthVw", 40);
@@ -1096,7 +1096,7 @@ test("два браузера видят один камень и поднима
     handForce: "500",
     pointerInfluence: "1.8",
     bounce: "0.1",
-    inertia: "8",
+    inertia: "0.8",
     groundFriction: "0.2",
     turbulence: "0.3",
   };

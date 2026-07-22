@@ -133,7 +133,7 @@ export function createSisyphusRuntime(elements = {}) {
     handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
-    inertia: 9,
+    inertia: SharedPhysics.DEFAULT_PHYSICS.inertia,
     groundFriction: 0.35,
     turbulence: 0.4,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
@@ -1052,6 +1052,11 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function settingsStorageKeyVersion(key) {
+    const match = String(key || "").match(/-v(\d+)$/);
+    return match ? Number(match[1]) : 0;
+  }
+
   function loadSettings() {
     let stored = null;
     let migratedLegacySettings = false;
@@ -1073,8 +1078,11 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    const legacyKeyVersion = settingsStorageKeyVersion(legacyKey);
     const migratedPreV7Settings =
-      migratedLegacySettings && legacyKey !== "sisyphus-czar-settings-v7";
+      migratedLegacySettings && legacyKeyVersion > 0 && legacyKeyVersion < 7;
+    const migratedPreV10Settings =
+      migratedLegacySettings && legacyKeyVersion > 0 && legacyKeyVersion < 10;
     if (migratedPreV7Settings) {
       const legacyHandForce = Number(stored.handForce);
       if (
@@ -1096,13 +1104,12 @@ export function createSisyphusRuntime(elements = {}) {
       delete stored.gravity;
     }
     const storedInertia = Number(stored.inertia);
-    if (
-      migratedLegacySettings &&
-      Number.isFinite(storedInertia) &&
-      storedInertia > 10 &&
-      storedInertia <= 100
-    ) {
-      stored = { ...stored, inertia: storedInertia / 10 };
+    if (migratedLegacySettings && Number.isFinite(storedInertia)) {
+      const oldScaleInertia =
+        storedInertia > 10 && storedInertia <= 100
+          ? storedInertia / 10
+          : storedInertia;
+      stored = { ...stored, inertia: oldScaleInertia / 10 };
     }
     if (
       !Object.hasOwn(stored, "groundFriction") &&
@@ -1113,10 +1120,13 @@ export function createSisyphusRuntime(elements = {}) {
     if (migratedLegacySettings) {
       stored = { ...stored };
       delete stored.trailEnabled;
-      if (Number.isFinite(Number(stored.handWidthVw))) {
+      if (migratedPreV10Settings && Number.isFinite(Number(stored.handWidthVw))) {
         stored.handWidthVw = Number(stored.handWidthVw) / 2;
       }
-      if (Number.isFinite(Number(stored.slaveHandWidthPx))) {
+      if (
+        migratedPreV10Settings &&
+        Number.isFinite(Number(stored.slaveHandWidthPx))
+      ) {
         stored.slaveHandWidthPx = Number(stored.slaveHandWidthPx) / 2;
       }
     }
@@ -1141,7 +1151,7 @@ export function createSisyphusRuntime(elements = {}) {
       handForce: params.handForce.toFixed(0),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
-      inertia: params.inertia.toFixed(0),
+      inertia: params.inertia.toFixed(1),
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
