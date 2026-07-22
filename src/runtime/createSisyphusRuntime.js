@@ -115,6 +115,7 @@ export function createSisyphusRuntime(elements = {}) {
     followY: null,
     pixelRatio: 1,
     dirty: true,
+    skipNextRecord: false,
   };
 
   const PHASES = SharedPhysics.PHASES;
@@ -328,6 +329,7 @@ export function createSisyphusRuntime(elements = {}) {
     lastPointerSentAt: 0,
     lastRenderAt: 0,
     imprint: null,
+    groundTouchSeq: null,
     releaseHandoff: {
       active: false,
       fromX: 0,
@@ -3031,6 +3033,7 @@ export function createSisyphusRuntime(elements = {}) {
     applySharedRoomSettings(payload.roomSettings);
     const holderIds = normalizeHolderIds(payload.holderIds);
     updateSharedHolders(holderIds, payload.requiredHolders);
+    syncSharedGroundTouchSeq(payload.groundTouchSeq);
 
     collab.imprint = SharedPhysics.sanitizeImprint(payload.imprint);
     renderImprint();
@@ -3488,8 +3491,33 @@ export function createSisyphusRuntime(elements = {}) {
     trail.lastY = null;
     trail.followX = null;
     trail.followY = null;
+    trail.skipNextRecord = false;
     clearTrailCanvas();
     trail.dirty = false;
+  }
+
+  function resetTrailOnGroundTouch(touchedGround) {
+    if (!params.trailReset || !touchedGround) {
+      return false;
+    }
+    resetTrail();
+    trail.skipNextRecord = true;
+    return true;
+  }
+
+  function normalizeGroundTouchSeq(value) {
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number >= 0 ? number : null;
+  }
+
+  function syncSharedGroundTouchSeq(value) {
+    const next = normalizeGroundTouchSeq(value);
+    if (next === null) {
+      return false;
+    }
+    const previous = collab.groundTouchSeq;
+    collab.groundTouchSeq = next;
+    return resetTrailOnGroundTouch(previous !== null && next > previous);
   }
 
   function trimTrailToLimit() {
@@ -3550,6 +3578,10 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function shouldRecordTrailPoint() {
+    if (trail.skipNextRecord) {
+      trail.skipNextRecord = false;
+      return false;
+    }
     if (motion.suspended) {
       return false;
     }
@@ -3821,6 +3853,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     const state = SharedPhysics.sanitizeState(currentSharedState());
     const previousPhase = state.phase;
+    const previousY = motion.y;
     const wasAboveGround = state.y < SharedPhysics.WORLD_HEIGHT - 0.01;
     state.turbTime = motion.turbTime;
     SharedPhysics.stepState(
@@ -3829,12 +3862,13 @@ export function createSisyphusRuntime(elements = {}) {
       deltaSeconds,
       sceneMotionOptions()
     );
-    const touchedGround =
+    const touchedGroundCanonical =
       wasAboveGround && state.y >= SharedPhysics.WORLD_HEIGHT - 0.01;
     applyCanonicalMotion(state);
-    if (params.trailReset && touchedGround) {
-      resetTrail();
-    }
+    const touchedGround =
+      touchedGroundCanonical ||
+      (previousY < bounds.maxY - 0.75 && motion.y >= bounds.maxY - 0.75);
+    resetTrailOnGroundTouch(touchedGround);
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
       enterPlayPhase();
     } else {

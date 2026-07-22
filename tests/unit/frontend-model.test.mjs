@@ -445,14 +445,24 @@ test("общие визуальные настройки комнаты есть
   );
 });
 
-test("след включён по умолчанию и выключается через настройку", () => {
+test("траектория включена по умолчанию и выключается через настройку", () => {
+  const trailGroup = SETTINGS_GROUPS.find((group) => group.title === "Траектория");
+  const trailStyleGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Траектория — стиль"
+  );
   const controls = SETTINGS_GROUPS.flatMap((group) => group.controls);
   const trailEnabled = controls.find((control) => control.name === "trailEnabled");
   const trailReset = controls.find((control) => control.name === "trailReset");
+  const trailMaxPoints = controls.find(
+    (control) => control.name === "trailMaxPoints"
+  );
 
-  assert.equal(trailEnabled.label, "Показывать след");
+  assert.ok(trailGroup);
+  assert.ok(trailStyleGroup);
+  assert.equal(trailEnabled.label, "Показывать траекторию");
   assert.equal(trailEnabled.defaultChecked, true);
   assert.equal(trailReset.label, "Сбрасывать при касании земли");
+  assert.equal(trailMaxPoints.label, "Длина траектории");
 });
 
 test("настройка трения земли заменяет скольжение", () => {

@@ -67,7 +67,7 @@ export function SettingsPanel({
           className="session-restart"
           type="button"
           data-testid="restart-session"
-          data-hint="Возвращает камень, отпечаток и след в начало текущей комнаты."
+          data-hint="Возвращает камень, отпечаток и траекторию в начало текущей комнаты."
         >
           Начать сначала
         </button>

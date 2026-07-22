@@ -166,6 +166,7 @@ class SessionManager {
       accumulator: 0,
       nextSnapshotAt: now,
       lastTrailAt: now,
+      groundTouchSeq: Math.max(0, Number(payload.groundTouchSeq) || 0),
       firstFallAt: null,
       holdReleaseAt: null,
       lastPointer: { vx: 0, vy: 0 },
@@ -196,6 +197,7 @@ class SessionManager {
       emptyDeleteAt: session.emptyDeleteAt,
       lastPointer: { ...session.lastPointer },
       lastPointerAt: session.lastPointerAt,
+      groundTouchSeq: session.groundTouchSeq,
     }));
   }
 
@@ -285,6 +287,7 @@ class SessionManager {
         accumulator: 0,
         nextSnapshotAt: now,
         lastTrailAt: now,
+        groundTouchSeq: Math.max(0, Number(record.groundTouchSeq) || 0),
         firstFallAt: null,
         holdReleaseAt: null,
         lastPointer,
@@ -1002,18 +1005,27 @@ class SessionManager {
       );
 
       let physicsChanged = false;
+      let groundTouched = false;
       while (
         session.accumulator >= Physics.FIXED_STEP_SECONDS &&
         Physics.isMoving(session.state)
       ) {
+        const wasAboveGround = session.state.y < Physics.WORLD_HEIGHT - 0.01;
         Physics.stepState(
           session.state,
           session.physics,
           Physics.FIXED_STEP_SECONDS,
           sceneMotionOptions(session)
         );
+        if (wasAboveGround && session.state.y >= Physics.WORLD_HEIGHT - 0.01) {
+          groundTouched = true;
+        }
         session.accumulator -= Physics.FIXED_STEP_SECONDS;
         physicsChanged = true;
+      }
+
+      if (groundTouched) {
+        session.groundTouchSeq += 1;
       }
 
       if (physicsChanged) {
@@ -1042,6 +1054,7 @@ class SessionManager {
       holderIds: this.holderIds(session),
       requiredHolders: REQUIRED_HOLDERS,
       masterClientId: session.masterClientId,
+      groundTouchSeq: session.groundTouchSeq,
       revision: session.revision,
       serverTime: this.now(),
       expiresAt: session.expiresAt,

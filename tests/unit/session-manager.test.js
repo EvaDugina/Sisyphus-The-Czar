@@ -743,6 +743,31 @@ test("разрыв соединения сразу убирает участни
   assert.deepEqual([...session.holders.keys()], [second.client.id]);
 });
 
+test("касание земли увеличивает счётчик для клиентского сброса траектории", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: Physics.WORLD_WIDTH / 2,
+      y: Physics.WORLD_HEIGHT - 1,
+      vy: 500,
+    },
+    physics: { gravity: 10, bounce: 0, turbulence: 0 },
+  });
+  const { socket } = connect(manager, session, "client-ground-touch");
+
+  clock.value = 1000;
+  manager.tick();
+
+  assert.equal(session.state.y, Physics.WORLD_HEIGHT);
+  assert.equal(session.groundTouchSeq, 1);
+  assert.equal(
+    socket.messages.findLast((message) => message.type === "session.snapshot")
+      .payload.groundTouchSeq,
+    1
+  );
+});
+
 test("неактивная сессия удаляется по TTL", () => {
   const { clock, manager } = setup({ ttlMs: 1000 });
   const session = manager.createSession();

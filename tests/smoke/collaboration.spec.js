@@ -387,6 +387,55 @@ test(
   }
 );
 
+test("траектория сбрасывается при касании земли", async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+  });
+  const page = await context.newPage();
+
+  await page.goto("/");
+  await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expectReadyAtBottom(page);
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Траектория");
+  await setCheckbox(page, "trailReset", true);
+  await closeSettingsPanel(page);
+
+  const result = await page.evaluate(() => {
+    params.bounce = 0;
+    updateBounds();
+    trail.points = [
+      { x: 10, y: 20 },
+      { x: 20, y: 40 },
+    ];
+    trail.lastX = 20;
+    trail.lastY = 40;
+    trail.followX = 20;
+    trail.followY = 40;
+    trail.dirty = true;
+    motion.phase = SharedPhysics.PHASES.PLAY;
+    motion.suspended = false;
+    motion.dragging = false;
+    motion.vx = 0;
+    motion.vy = 900;
+    setPosition(bounds.maxX / 2, Math.max(0, bounds.maxY - 1));
+    window.__sisyphusTestApi.applyPhysics(SharedPhysics.FIXED_STEP_SECONDS);
+    return {
+      points: trail.points.length,
+      skipNextRecord: trail.skipNextRecord,
+      y: motion.y,
+      maxY: bounds.maxY,
+    };
+  });
+
+  expect(result.points).toBe(0);
+  expect(result.skipNextRecord).toBe(true);
+  expect(result.y).toBeCloseTo(result.maxY, 1);
+
+  await context.close();
+});
+
 test("вход на корень перенаправляет в рабочую сессию", async ({ browser }) => {
   test.setTimeout(90_000);
   const context = await browser.newContext();
@@ -534,7 +583,7 @@ test("вход на корень перенаправляет в рабочую 
     .poll(() => page.evaluate(() => trail.points.length))
     .toBeGreaterThan(0);
   await openSettingsPanel(page);
-  await openControlGroup(page, "След");
+  await openControlGroup(page, "Траектория");
   const trailEnabled = page.locator('[name="trailEnabled"]');
   await expect(trailEnabled).toBeChecked();
   await expect
@@ -854,7 +903,7 @@ test("два браузера видят один камень и поднима
   await expect(
     first.locator(".settings-panel .control-group[open]")
   ).toHaveCount(0);
-  await openControlGroup(first, "След");
+  await openControlGroup(first, "Траектория");
   const trailEnabled = first.locator('[name="trailEnabled"]');
   const trailLength = first.locator('[name="trailMaxPoints"]');
   const trailUnlimited = first.locator('[name="trailUnlimited"]');
@@ -1299,7 +1348,7 @@ test("два браузера видят один камень и поднима
     });
   await expect.poll(() => trailHasVisiblePixels(second)).toBe(false);
   await second.locator(".settings-toggle").click();
-  await openControlGroup(second, "След");
+  await openControlGroup(second, "Траектория");
   await expect(second.locator('[name="trailEnabled"]')).toBeChecked();
   await second.locator(".settings-toggle").click();
   await scrollToRock(first);
