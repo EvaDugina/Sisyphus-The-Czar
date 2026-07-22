@@ -141,6 +141,7 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_BLEND_MODE = "multiply";
   const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
   const DEFAULT_THEME_MODE = "auto";
+  const SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION = 0.5;
 
   const params = {
     themeMode: DEFAULT_THEME_MODE,
@@ -1906,6 +1907,27 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
+  function createSummitSharedImprint(input = {}) {
+    updateBounds();
+    const targetVisualTop =
+      window.innerHeight * SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION;
+    let targetY = clamp(targetVisualTop, 0, bounds.maxY);
+    for (let index = 0; index < 5; index += 1) {
+      const scale = scaleForLocalY(targetY);
+      const scaledOffsetY = (bounds.rockHeight * (1 - scale)) / 2;
+      targetY = clamp(targetVisualTop - scaledOffsetY, 0, bounds.maxY);
+    }
+    const position = localToCanonical(
+      bounds.maxX / 2,
+      targetY
+    );
+    const source = input && typeof input === "object" ? input : {};
+    return SharedPhysics.createSummitImprint({
+      ...source,
+      y: position.y,
+    });
+  }
+
   function activeLocalImprint() {
     updateBounds();
     if (collab.enabled) {
@@ -2761,7 +2783,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.pointerVy = 0;
     motion.turbTime = 0;
     motion.imprint = null;
-    collab.imprint = SharedPhysics.createSummitImprint();
+    collab.imprint = createSummitSharedImprint(collab.imprint);
     collab.snapshots = [];
     clearSharedReleaseHandoff();
     collab.hasControl = false;
@@ -2791,7 +2813,12 @@ export function createSisyphusRuntime(elements = {}) {
 
   function restartExperience() {
     if (collab.enabled) {
-      if (sendShared("session.restart", initialSharedState())) {
+      if (
+        sendShared("session.restart", {
+          ...initialSharedState(),
+          imprint: createSummitSharedImprint(collab.imprint),
+        })
+      ) {
         resetLocalExperience();
       } else {
         updateSessionStatus();
@@ -3540,6 +3567,21 @@ export function createSisyphusRuntime(elements = {}) {
     return [];
   }
 
+  function drawTrailStartPoint(point) {
+    trailCtx.fillStyle = params.useGradient
+      ? params.lineColorTail
+      : params.lineColor;
+    trailCtx.beginPath();
+    trailCtx.arc(
+      point.x,
+      point.y,
+      Math.max(2.5, params.lineWidth * 0.75),
+      0,
+      Math.PI * 2
+    );
+    trailCtx.fill();
+  }
+
   function drawTrail() {
     ensureTrailCanvasSize();
     if (!trail.dirty) {
@@ -3574,16 +3616,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     if (points.length < 2) {
       // Одна точка — рисуем кружок, чтобы след был виден.
-      trailCtx.fillStyle = params.lineColor;
-      trailCtx.beginPath();
-      trailCtx.arc(
-        points[0].x,
-        points[0].y,
-        Math.max(0.5, params.lineWidth / 2),
-        0,
-        Math.PI * 2
-      );
-      trailCtx.fill();
+      drawTrailStartPoint(points[0]);
       trailCtx.restore();
       return;
     }
@@ -3617,6 +3650,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     trailCtx.stroke();
     trailCtx.setLineDash([]);
+    drawTrailStartPoint(points[0]);
     trailCtx.restore();
   }
 
@@ -4156,7 +4190,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function initScene() {
     centerIntroRock();
-    collab.imprint = SharedPhysics.createSummitImprint();
+    collab.imprint = createSummitSharedImprint();
     renderImprint();
     setPhase(PHASES.PLAY);
     motion.suspended = true;

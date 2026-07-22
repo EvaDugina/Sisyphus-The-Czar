@@ -318,7 +318,7 @@ test("session.start сохраняет отпечаток и запускает 
   assert.equal(session.state.vy, 0);
   assert.deepEqual(session.imprint, {
     x: 500,
-    y: 20,
+    y: 100,
     toleranceX: 40,
     toleranceY: 30,
   });
@@ -705,7 +705,7 @@ test("reconnect в grace-период сохраняет состояние и �
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.x, 420);
   assert.equal(session.physics.gravity, 7);
-  assert.deepEqual(session.imprint, Physics.createSummitImprint());
+  assert.deepEqual(session.imprint, Physics.createSummitImprint({ y: 700 }));
   assert.equal(reconnected.client.id, "client-reload-001");
 
   clock.value = 1001;
@@ -789,7 +789,7 @@ test("первый старт сохраняет отпечаток без фи�
   });
   assert.deepEqual(session.imprint, {
     x: 500,
-    y: 20,
+    y: 100,
     toleranceX: 40,
     toleranceY: 30,
   });
@@ -925,7 +925,7 @@ test("брошенный камень не останавливается при
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.deepEqual(session.imprint, {
     x: Physics.WORLD_WIDTH / 2,
-    y: 20,
+    y: 100,
     toleranceX: 40,
     toleranceY: 20,
   });

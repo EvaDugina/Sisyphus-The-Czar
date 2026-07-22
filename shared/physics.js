@@ -18,7 +18,11 @@
 
   const WORLD_WIDTH = 1000;
   const WORLD_HEIGHT = 2000;
-  const SUMMIT_IMPRINT_Y = WORLD_HEIGHT * 0.01;
+  const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
+  const SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION = 0.5;
+  const SUMMIT_IMPRINT_Y =
+    WORLD_HEIGHT *
+    (SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION / DEFAULT_SCENE_HEIGHT_SCREENS);
   const IMPRINT_TOLERANCE_FRACTION = 0.12;
   const DEFAULT_IMPRINT_TOLERANCE_X = 100;
   const DEFAULT_IMPRINT_TOLERANCE_Y = 80;
@@ -285,7 +289,9 @@
     const source = input && typeof input === "object" ? input : {};
     return sanitizeImprint({
       x: WORLD_WIDTH / 2,
-      y: SUMMIT_IMPRINT_Y,
+      y: hasOwn(source, "y")
+        ? finiteNumber(source.y, SUMMIT_IMPRINT_Y)
+        : SUMMIT_IMPRINT_Y,
       toleranceX: source.toleranceX,
       toleranceY: source.toleranceY,
     });

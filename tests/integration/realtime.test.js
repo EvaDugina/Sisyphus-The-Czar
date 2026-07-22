@@ -468,7 +468,7 @@ test("сессия переживает restart сервиса с тем же х
   });
   assert.deepEqual(snapshot.payload.imprint, {
     x: Physics.WORLD_WIDTH / 2,
-    y: 20,
+    y: 700,
     toleranceX: 40,
     toleranceY: 30,
   });
