@@ -118,6 +118,8 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_EXIT_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const DEFAULT_RAIN_ENTER_MS = 1100;
   const DEFAULT_RAIN_EXIT_MS = 2000;
+  const DEFAULT_RAIN_AUDIO_ENTER_MS = 1100;
+  const DEFAULT_RAIN_AUDIO_EXIT_MS = 2000;
   const DEFAULT_RAIN_Z_INDEX = 5;
   const DEFAULT_RAIN_BACKGROUND_BLUR_STEPS = 3;
   const DEFAULT_RAIN_BLUR_PX = 14;
@@ -162,6 +164,8 @@ export function createSisyphusRuntime(elements = {}) {
     rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
     rainEnterMs: DEFAULT_RAIN_ENTER_MS,
     rainExitMs: DEFAULT_RAIN_EXIT_MS,
+    rainAudioEnterMs: DEFAULT_RAIN_AUDIO_ENTER_MS,
+    rainAudioExitMs: DEFAULT_RAIN_AUDIO_EXIT_MS,
 
     // След
     trailEnabled: true,
@@ -341,6 +345,8 @@ export function createSisyphusRuntime(elements = {}) {
   };
   const rainLoopAudio = {
     element: null,
+    fadeFrameId: null,
+    fadeToken: 0,
     playing: false,
   };
 
@@ -439,8 +445,52 @@ export function createSisyphusRuntime(elements = {}) {
     const audio = new Audio(rainAudioUrl);
     audio.loop = true;
     audio.preload = "auto";
-    audio.volume = RAIN_AUDIO_VOLUME;
+    audio.volume = 0;
     return audio;
+  }
+
+  function cancelRainLoopFade() {
+    rainLoopAudio.fadeToken += 1;
+    if (rainLoopAudio.fadeFrameId !== null) {
+      window.cancelAnimationFrame(rainLoopAudio.fadeFrameId);
+      rainLoopAudio.fadeFrameId = null;
+    }
+  }
+
+  function fadeRainLoopVolume(targetVolume, durationMs, onDone = () => {}) {
+    const audio = rainLoopAudio.element;
+    if (!audio) {
+      return;
+    }
+
+    cancelRainLoopFade();
+    const token = rainLoopAudio.fadeToken;
+    const startVolume = clamp(audio.volume, 0, RAIN_AUDIO_VOLUME);
+    const endVolume = clamp(targetVolume, 0, RAIN_AUDIO_VOLUME);
+    const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+
+    if (duration <= 0 || Math.abs(startVolume - endVolume) < 0.001) {
+      audio.volume = endVolume;
+      onDone();
+      return;
+    }
+
+    const startAt = performance.now();
+    const step = (now) => {
+      if (token !== rainLoopAudio.fadeToken) {
+        return;
+      }
+      const progress = clamp((now - startAt) / duration, 0, 1);
+      audio.volume = startVolume + (endVolume - startVolume) * progress;
+      if (progress < 1) {
+        rainLoopAudio.fadeFrameId = window.requestAnimationFrame(step);
+        return;
+      }
+      rainLoopAudio.fadeFrameId = null;
+      onDone();
+    };
+
+    rainLoopAudio.fadeFrameId = window.requestAnimationFrame(step);
   }
 
   function playRainLoopSound() {
@@ -452,40 +502,54 @@ export function createSisyphusRuntime(elements = {}) {
       rainLoopAudio.element = createRainLoopAudio();
     }
     const audio = rainLoopAudio.element;
-    if (rainLoopAudio.playing) {
-      return;
-    }
+    const wasStopped = !rainLoopAudio.playing || audio.paused;
 
     try {
-      if (!rainLoopAudio.playing) {
+      if (wasStopped) {
         audio.currentTime = 0;
       }
     } catch {
       /* currentTime может быть недоступен до загрузки audio metadata. */
     }
+    if (wasStopped) {
+      audio.volume = 0;
+    }
     rainLoopAudio.playing = true;
     const promise = audio.play();
     if (promise && typeof promise.catch === "function") {
       promise.catch(() => {
+        cancelRainLoopFade();
         rainLoopAudio.playing = false;
       });
     }
+    fadeRainLoopVolume(RAIN_AUDIO_VOLUME, params.rainAudioEnterMs);
   }
 
-  function stopRainLoopSound() {
+  function stopRainLoopSound({ immediate = false } = {}) {
     const audio = rainLoopAudio.element;
     if (!audio) {
       rainLoopAudio.playing = false;
       return;
     }
 
-    audio.pause();
-    try {
-      audio.currentTime = 0;
-    } catch {
-      /* currentTime может быть недоступен до загрузки audio metadata. */
+    const finish = () => {
+      audio.pause();
+      try {
+        audio.currentTime = 0;
+      } catch {
+        /* currentTime может быть недоступен до загрузки audio metadata. */
+      }
+      audio.volume = 0;
+      rainLoopAudio.playing = false;
+    };
+
+    if (immediate) {
+      cancelRainLoopFade();
+      finish();
+      return;
     }
-    rainLoopAudio.playing = false;
+
+    fadeRainLoopVolume(0, params.rainAudioExitMs, finish);
   }
 
   function getRainFxConstructor() {
@@ -957,7 +1021,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(rain.hideTimerId);
       rain.hideTimerId = null;
       rainLayer.classList.remove("is-rain-visible", "is-rain-hiding");
-      stopRainLoopSound();
+      stopRainLoopSound({ immediate: true });
       stopRainRenderers();
       return;
     }
@@ -975,13 +1039,13 @@ export function createSisyphusRuntime(elements = {}) {
 
     rainLayer.classList.remove("is-rain-visible");
     rainLayer.classList.add("is-rain-hiding");
+    stopRainLoopSound();
     rain.hideTimerId = window.setTimeout(() => {
       if (shouldShowRain()) {
         return;
       }
       rainLayer.classList.remove("is-rain-hiding");
       rain.hideTimerId = null;
-      stopRainLoopSound();
       stopRainRenderers();
     }, getRainExitDurationMs());
   }
@@ -1167,6 +1231,8 @@ export function createSisyphusRuntime(elements = {}) {
       rainZIndex: params.rainZIndex.toFixed(0),
       rainEnterMs: params.rainEnterMs.toFixed(0),
       rainExitMs: params.rainExitMs.toFixed(0),
+      rainAudioEnterMs: params.rainAudioEnterMs.toFixed(0),
+      rainAudioExitMs: params.rainAudioExitMs.toFixed(0),
       lineDelay: params.lineDelay.toFixed(2),
       trailMaxPoints: params.trailMaxPoints.toFixed(0),
       trailSampleDist: params.trailSampleDist.toFixed(0),
@@ -1266,6 +1332,8 @@ export function createSisyphusRuntime(elements = {}) {
           rainExitEasing: str("rainExitEasing"),
           rainEnterMs: num("rainEnterMs"),
           rainExitMs: num("rainExitMs"),
+          rainAudioEnterMs: num("rainAudioEnterMs"),
+          rainAudioExitMs: num("rainAudioExitMs"),
         },
         {
           defaults: {
@@ -1279,6 +1347,8 @@ export function createSisyphusRuntime(elements = {}) {
             rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
             rainEnterMs: DEFAULT_RAIN_ENTER_MS,
             rainExitMs: DEFAULT_RAIN_EXIT_MS,
+            rainAudioEnterMs: DEFAULT_RAIN_AUDIO_ENTER_MS,
+            rainAudioExitMs: DEFAULT_RAIN_AUDIO_EXIT_MS,
             rainZIndex: DEFAULT_RAIN_Z_INDEX,
           },
           isTimingFunctionSupported: (value) =>
@@ -1333,6 +1403,10 @@ export function createSisyphusRuntime(elements = {}) {
     settingsPanel.querySelector('[name="rainExitEasing"]').value = params.rainExitEasing;
     settingsPanel.querySelector('[name="rainEnterMs"]').value = params.rainEnterMs;
     settingsPanel.querySelector('[name="rainExitMs"]').value = params.rainExitMs;
+    settingsPanel.querySelector('[name="rainAudioEnterMs"]').value =
+      params.rainAudioEnterMs;
+    settingsPanel.querySelector('[name="rainAudioExitMs"]').value =
+      params.rainAudioExitMs;
     settingsPanel.querySelector('[name="rockScaleEasing"]').value =
       params.rockScaleEasing;
     settingsPanel.querySelector('[name="rockMinWidthVw"]').value =
@@ -3783,6 +3857,12 @@ export function createSisyphusRuntime(elements = {}) {
         : null;
     },
     getRoomSettings: sharedRoomSettingsPayload,
+    getRainAudioState: () => ({
+      fadeActive: rainLoopAudio.fadeFrameId !== null,
+      paused: rainLoopAudio.element ? rainLoopAudio.element.paused : true,
+      playing: rainLoopAudio.playing,
+      volume: rainLoopAudio.element ? rainLoopAudio.element.volume : 0,
+    }),
     getRainRenderToken: () => rain.renderToken,
     resetTrail,
     sendShared,
@@ -3821,7 +3901,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(collab.statusResetTimerId);
       window.clearTimeout(collab.physicsTimerId);
       window.clearTimeout(collab.roomSettingsTimerId);
-      stopRainLoopSound();
+      stopRainLoopSound({ immediate: true });
       slaveClickAudio.element?.pause();
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;

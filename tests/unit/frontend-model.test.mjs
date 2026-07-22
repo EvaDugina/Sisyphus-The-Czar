@@ -74,6 +74,8 @@ test("настройки дождя ограничиваются и исполь
     rainExitEasing: "ease-out",
     rainEnterMs: 1100,
     rainExitMs: 2000,
+    rainAudioEnterMs: 1100,
+    rainAudioExitMs: 2000,
     rainZIndex: 5,
     rainBlendMode: "multiply",
     rainBlurBlendMode: "normal",
@@ -96,6 +98,8 @@ test("настройки дождя ограничиваются и исполь
       rainExitEasing: " linear ",
       rainEnterMs: -10,
       rainExitMs: 100000,
+      rainAudioEnterMs: -25,
+      rainAudioExitMs: 100000,
     },
     {
       defaults,
@@ -116,6 +120,8 @@ test("настройки дождя ограничиваются и исполь
     rainExitEasing: "linear",
     rainEnterMs: 0,
     rainExitMs: 10000,
+    rainAudioEnterMs: 0,
+    rainAudioExitMs: 10000,
   });
 });
 
@@ -133,6 +139,8 @@ test("mix blend дождя и blur нормализуются независим
         rainExitEasing: "ease-out",
         rainEnterMs: 1100,
         rainExitMs: 2000,
+        rainAudioEnterMs: 1100,
+        rainAudioExitMs: 2000,
         rainZIndex: 5,
       },
     },
@@ -469,6 +477,12 @@ test("группа дождя содержит локальный toggle и blur
   const rainZIndex = rainGroup.controls.find(
     (control) => control.name === "rainZIndex"
   );
+  const rainAudioEnterMs = rainGroup.controls.find(
+    (control) => control.name === "rainAudioEnterMs"
+  );
+  const rainAudioExitMs = rainGroup.controls.find(
+    (control) => control.name === "rainAudioExitMs"
+  );
 
   assert.equal(rainEnabled.type, "checkbox");
   assert.equal(rainEnabled.label, "Включить дождь");
@@ -516,6 +530,42 @@ test("группа дождя содержит локальный toggle и blur
       defaultValue: rainZIndex.defaultValue,
     },
     { min: 0, max: 30, step: 1, defaultValue: 5 },
+  );
+  assert.deepEqual(
+    {
+      label: rainAudioEnterMs.label,
+      type: rainAudioEnterMs.type,
+      min: rainAudioEnterMs.min,
+      max: rainAudioEnterMs.max,
+      step: rainAudioEnterMs.step,
+      defaultValue: rainAudioEnterMs.defaultValue,
+    },
+    {
+      label: "Звук: появление, мс",
+      type: "number",
+      min: 0,
+      max: 10000,
+      step: 50,
+      defaultValue: 1100,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: rainAudioExitMs.label,
+      type: rainAudioExitMs.type,
+      min: rainAudioExitMs.min,
+      max: rainAudioExitMs.max,
+      step: rainAudioExitMs.step,
+      defaultValue: rainAudioExitMs.defaultValue,
+    },
+    {
+      label: "Звук: затухание, мс",
+      type: "number",
+      min: 0,
+      max: 10000,
+      step: 50,
+      defaultValue: 2000,
+    },
   );
 });
 

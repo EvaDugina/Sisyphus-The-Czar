@@ -108,6 +108,26 @@ export function normalizeRainSettings(raw, options) {
     rainExitMs: Math.round(
       clamp(finiteNumber(raw.rainExitMs, defaults.rainExitMs), 0, 10000),
     ),
+    rainAudioEnterMs: Math.round(
+      clamp(
+        finiteNumber(
+          raw.rainAudioEnterMs,
+          finiteNumber(defaults.rainAudioEnterMs, 1100),
+        ),
+        0,
+        10000,
+      ),
+    ),
+    rainAudioExitMs: Math.round(
+      clamp(
+        finiteNumber(
+          raw.rainAudioExitMs,
+          finiteNumber(defaults.rainAudioExitMs, 2000),
+        ),
+        0,
+        10000,
+      ),
+    ),
   };
 }
 

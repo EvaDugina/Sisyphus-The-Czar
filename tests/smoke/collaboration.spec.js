@@ -864,6 +864,8 @@ test("два браузера видят один камень и поднима
   await setField(first, "rainExitEasing", "cubic-bezier(0.7, 0, 0.3, 1)");
   await setField(first, "rainEnterMs", 650);
   await setField(first, "rainExitMs", 700);
+  await setField(first, "rainAudioEnterMs", 450);
+  await setField(first, "rainAudioExitMs", 550);
   await setField(first, "rainZIndex", 9);
   await setField(first, "rainDropColor", "#336699");
   await setField(first, "rainHighlightColor", "#ffcc00");
@@ -874,6 +876,8 @@ test("два браузера видят один камень и поднима
   await expect(first.locator('[data-output="rainBlurSaturation"]')).toHaveText("125%");
   await expect(first.locator('[data-output="rainEnterMs"]')).toHaveText("650");
   await expect(first.locator('[data-output="rainExitMs"]')).toHaveText("700");
+  await expect(first.locator('[data-output="rainAudioEnterMs"]')).toHaveText("450");
+  await expect(first.locator('[data-output="rainAudioExitMs"]')).toHaveText("550");
   await expect(first.locator('[data-output="rainZIndex"]')).toHaveText("9");
   await expect(first.locator('[name="rainBlendMode"]')).toHaveValue("screen");
   await expect(first.locator('[name="rainBlurBlendMode"]')).toHaveValue("overlay");
@@ -886,6 +890,8 @@ test("два браузера видят один камень и поднима
         return {
           rainEnterEasing: stored.rainEnterEasing,
           rainEnterMs: stored.rainEnterMs,
+          rainAudioEnterMs: stored.rainAudioEnterMs,
+          rainAudioExitMs: stored.rainAudioExitMs,
           rainExitEasing: stored.rainExitEasing,
           rainExitMs: stored.rainExitMs,
           rainBlendMode: stored.rainBlendMode,
@@ -902,6 +908,8 @@ test("два браузера видят один камень и поднима
     .toEqual({
       rainEnterEasing: "cubic-bezier(0.12, 0.8, 0.2, 1)",
       rainEnterMs: 650,
+      rainAudioEnterMs: 450,
+      rainAudioExitMs: 550,
       rainExitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
       rainExitMs: 700,
       rainBlendMode: "screen",
@@ -967,6 +975,10 @@ test("два браузера видят один камень и поднима
   await expect(first.locator('[name="rainEnabled"]')).not.toBeChecked();
   await setCheckbox(first, "rainEnabled", true);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
+  const rainAudioFadeIn = await first.evaluate(() => getRainAudioState());
+  expect(rainAudioFadeIn.fadeActive).toBe(true);
+  expect(rainAudioFadeIn.playing).toBe(true);
+  expect(rainAudioFadeIn.volume).toBeLessThan(0.42);
   await expect
     .poll(() =>
       first.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
@@ -1032,6 +1044,10 @@ test("два браузера видят один камень и поднима
     )
     .toBe(true);
   await setCheckbox(first, "rainEnabled", false);
+  const rainAudioFadeOut = await first.evaluate(() => getRainAudioState());
+  expect(rainAudioFadeOut.fadeActive).toBe(true);
+  expect(rainAudioFadeOut.playing).toBe(true);
+  expect(rainAudioFadeOut.volume).toBeGreaterThan(0);
   await expect
     .poll(() =>
       first.evaluate(() => {
@@ -1054,6 +1070,9 @@ test("два браузера видят один камень и поднима
       )
     )
     .toEqual([0, 0]);
+  await expect
+    .poll(() => first.evaluate(() => getRainAudioState()))
+    .toMatchObject({ fadeActive: false, playing: false, volume: 0 });
   await openControlGroup(first, "Физика");
   await setRange(first, "mass", 10);
   await setRange(first, "gravity", 10);
