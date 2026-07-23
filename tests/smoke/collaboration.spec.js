@@ -294,6 +294,53 @@ async function expectImprintCenteredInTopViewport(page) {
   );
 }
 
+async function expectReturnImprintScrollsToTop(page) {
+  await page.evaluate(() => {
+    const originalScrollTo = window.scrollTo.bind(window);
+    window.__returnScrollCalls = [];
+    window.__restoreScrollTo = () => {
+      window.scrollTo = originalScrollTo;
+      delete window.__restoreScrollTo;
+    };
+    window.scrollTo = (...args) => {
+      window.__returnScrollCalls.push(args);
+      const [first, second] = args;
+      if (first && typeof first === "object") {
+        originalScrollTo({ ...first, behavior: "auto" });
+        return;
+      }
+      originalScrollTo(first, second);
+    };
+
+    originalScrollTo(0, document.documentElement.scrollHeight);
+    const imprint = document.querySelector(".rock-imprint");
+    const x = Number.parseFloat(imprint.style.getPropertyValue("--imprint-x"));
+    const y = Number.parseFloat(imprint.style.getPropertyValue("--imprint-y"));
+    motion.suspended = false;
+    setPosition(x, y);
+    syncReturnTheme();
+  });
+
+  await expect(page.locator("body")).toHaveClass(/theme-light/);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__returnScrollCalls.some(([options]) => {
+          return (
+            options &&
+            typeof options === "object" &&
+            options.top === 0 &&
+            options.left === 0 &&
+            options.behavior === "smooth"
+          );
+        })
+      )
+    )
+    .toBe(true);
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.evaluate(() => window.__restoreScrollTo?.());
+}
+
 async function expectScrollDoesNotAffectPhysics(page) {
   await expectReadyAtBottom(page);
   const before = await page.evaluate(() => ({
@@ -382,6 +429,7 @@ test(
     await expect(page.getByTestId("session-status")).toContainText("В сессии");
     await expectReadyAtBottom(page);
     await expectImprintCenteredInTopViewport(page);
+    await expectReturnImprintScrollsToTop(page);
 
     await context.close();
   }
@@ -453,6 +501,7 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(page).toHaveTitle("ПУТЬ ЦАРЕЙ");
+  await expect(page.locator("h1")).toHaveText("Смертию смерть поправ");
   await expect(page.locator(".title")).toHaveText("ПУТЬ ЦАРЕЙ");
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).not.toHaveClass(/is-scroll-locked/);

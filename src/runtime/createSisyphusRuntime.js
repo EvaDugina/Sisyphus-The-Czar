@@ -252,6 +252,7 @@ export function createSisyphusRuntime(elements = {}) {
     alternateHand: false,
     turbTime: 0,
     imprint: null,
+    wasAtReturnPlace: false,
   };
 
   const SHARED_PHYSICS_KEYS = [
@@ -2072,6 +2073,21 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
+  function scrollToSceneTopOnReturn() {
+    window.requestAnimationFrame(() => {
+      if (disposed) {
+        return;
+      }
+      window.scrollTo({
+        top: 0,
+        left: 0,
+        behavior: reducedMotion.matches ? "auto" : "smooth",
+      });
+      trail.dirty = true;
+      drawTrail();
+    });
+  }
+
   function setSessionStatus(text, state = "local") {
     sessionStatus.textContent = text;
     sessionStatus.dataset.state = state;
@@ -2798,6 +2814,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.pointerVy = 0;
     motion.turbTime = 0;
     motion.imprint = null;
+    motion.wasAtReturnPlace = false;
     collab.imprint = createSummitSharedImprint(collab.imprint);
     collab.snapshots = [];
     clearSharedReleaseHandoff();
@@ -3825,6 +3842,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function syncReturnTheme() {
     if (motion.phase === PHASES.INTRO) {
+      motion.wasAtReturnPlace = false;
       setTheme(resolveTheme("dark"));
       hideReturnRain({ immediate: true });
       return;
@@ -3832,8 +3850,14 @@ export function createSisyphusRuntime(elements = {}) {
     const atReturnPlace =
       (motion.phase === PHASES.PLAY || motion.phase === PHASES.WON) &&
       rockInsideImprint();
-    setTheme(resolveTheme(atReturnPlace ? "light" : "dark"));
+    const nextTheme = resolveTheme(atReturnPlace ? "light" : "dark");
+    const enteredReturnPlace = atReturnPlace && !motion.wasAtReturnPlace;
+    motion.wasAtReturnPlace = atReturnPlace;
+    setTheme(nextTheme);
     syncReturnRain(atReturnPlace);
+    if (enteredReturnPlace && nextTheme === "light") {
+      scrollToSceneTopOnReturn();
+    }
   }
 
   function enterPlayPhase() {
@@ -4240,6 +4264,7 @@ export function createSisyphusRuntime(elements = {}) {
     renderImprint();
     setPhase(PHASES.PLAY);
     motion.suspended = true;
+    motion.wasAtReturnPlace = false;
     setTheme(resolveTheme("dark"));
     hideReturnRain({ immediate: true });
     motion.sceneReady = true;

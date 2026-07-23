@@ -7,10 +7,11 @@ export function Scene({ scene, trail, rain }) {
   return (
     <main ref={scene.worldRef} className="world" aria-label="Сцена Пути Царей">
       <TrailCanvas canvasRef={trail.trailCanvasRef} />
-      <section className="summit" aria-hidden="true">
-        <div className="target-zone" />
+      <section className="summit">
+        <div className="target-zone" aria-hidden="true" />
+        <h1 className="top-inscription">Смертию смерть поправ</h1>
         <h2 className="title2">Миниатюра</h2>
-        <h1 className="title">ПУТЬ ЦАРЕЙ</h1>
+        <h2 className="title">ПУТЬ ЦАРЕЙ</h2>
       </section>
       <WeatherRain
         layerRef={rain.rainLayerRef}
