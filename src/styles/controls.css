@@ -255,6 +255,24 @@ input[type="range"] {
   opacity: 0.5;
 }
 
+.control-subgroup {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.85rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid color-mix(in srgb, var(--line) 70%, transparent);
+}
+
+.control-subgroup h3 {
+  margin: 0 0 0.1rem;
+  color: var(--muted);
+  font-size: 0.76rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  line-height: 1.2;
+  text-transform: uppercase;
+}
+
 .trail-clear,
 .session-restart {
   width: 100%;

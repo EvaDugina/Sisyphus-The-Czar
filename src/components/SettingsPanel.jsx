@@ -1,4 +1,7 @@
-import { SETTINGS_GROUPS } from "../config/settings.mjs";
+import {
+  SETTINGS_GROUPS,
+  settingsGroupControls,
+} from "../config/settings.mjs";
 import { SettingsControl } from "./SettingsControl";
 
 export function SettingsPanel({
@@ -78,6 +81,18 @@ export function SettingsPanel({
           <summary>{group.title}</summary>
           {group.controls.map((control) => (
             <SettingsControl control={control} key={control.name} />
+          ))}
+          {group.subgroups?.map((subgroup) => (
+            <section
+              className="control-subgroup"
+              key={subgroup.title}
+              aria-label={`${group.title}: ${subgroup.title}`}
+            >
+              <h3>{subgroup.title}</h3>
+              {settingsGroupControls(subgroup).map((control) => (
+                <SettingsControl control={control} key={control.name} />
+              ))}
+            </section>
           ))}
           {group.action && (
             <button

@@ -15,6 +15,7 @@ import {
 } from "../lib/rainProfile.mjs";
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
+import { formatSettingsVersionOptionLabel } from "../lib/settingsVersions.mjs";
 import {
   normalizeRainSettings,
   normalizeRockScaleSettings,
@@ -31,10 +32,11 @@ import {
   SETTINGS_GROUPS,
   SETTINGS_STORAGE_KEY,
   SETTINGS_VERSIONS_STORAGE_KEY,
+  settingsGroupControls,
 } from "../config/settings.mjs";
 
-const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap((group) =>
-  group.controls.map((control) => control.name)
+const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).map(
+  (control) => control.name,
 );
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
 const SETTINGS_VERSION_LIMIT = 50;
@@ -1384,7 +1386,9 @@ export function createSisyphusRuntime(elements = {}) {
     settingsVersionSelect.replaceChildren();
     settingsVersionSelect.append(new Option("Черновик", ""));
     settingsVersions.entries.forEach((entry) => {
-      settingsVersionSelect.append(new Option(entry.name, entry.id));
+      settingsVersionSelect.append(
+        new Option(formatSettingsVersionOptionLabel(entry), entry.id),
+      );
     });
     const selectedEntry = settingsVersions.entries.find(
       (entry) => entry.id === selectedId,
