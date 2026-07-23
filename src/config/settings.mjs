@@ -50,7 +50,7 @@ const PHYSICS_FORMULAS = {
     "a_{hand} = \\frac{F_{hand}}{m}",
     "F_{hands} = n \\cdot F_{hand}",
     "F_{surplus} = F_{hands} - F_g",
-    "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k",
+    "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k \\cdot 0.5",
     "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
     "v_y = F_{surplus} > 0 ? -v_{lift} : v_{drop}",
     "v_{lift/drop} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{|F_{surplus}|}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
@@ -66,21 +66,21 @@ const PHYSICS_FORMULAS = {
     "a_{hand} = \\frac{F_{hand}}{m}",
     "F_{hands} = n \\cdot F_{hand}",
     "F_{surplus} = F_{hands} - F_g",
-    "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k",
+    "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k \\cdot 0.5",
     "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
     "v_y = F_{surplus} > 0 ? -v_{lift} : v_{drop}",
     "v_{lift/drop} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{|F_{surplus}|}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
   ],
   pointerInfluence: [
-    "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
+    "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k \\cdot 0.5",
   ],
   bounce: [
     "v_y' = -min(v_y, v_{impactMax}) \\cdot b",
   ],
   inertia: [
     "I = inertia",
-    "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k",
-    "v_{y,release}^{up} = v_{y,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I^2 \\cdot k",
+    "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k \\cdot 0.5",
+    "v_{y,release}^{up} = v_{y,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I^2 \\cdot k \\cdot 0.5",
   ],
   groundFriction: [
     "F_f = \\mu \\cdot F_g",
@@ -335,7 +335,7 @@ export const SETTINGS_GROUPS = [
         step: 0.1,
         defaultValue: 0.9,
         output: "0.9",
-        hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 1 — базовая передача; 2 — удвоенная передача с учётом массы, силы и влияния рывка.",
+        hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 1 — базовая передача с половинным итоговым влиянием; 2 — удвоенная передача с учётом массы, силы и влияния рывка.",
         formulas: PHYSICS_FORMULAS.inertia,
       },
       {

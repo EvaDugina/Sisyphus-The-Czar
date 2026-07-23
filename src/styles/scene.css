@@ -71,6 +71,7 @@
 .top-inscription {
   top: 15rem;
   font-size: 8.4rem;
+  white-space: nowrap;
 }
 
 .title2 {

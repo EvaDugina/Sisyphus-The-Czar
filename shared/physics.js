@@ -38,6 +38,7 @@
   });
   const PHYSICS_VERSION = 8;
   const RELEASE_TRANSFER_SCALE = 0.42;
+  const RELEASE_INERTIA_EFFECT_SCALE = 0.5;
   const RELEASE_UPWARD_INERTIA_EXPONENT = 2;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
@@ -337,8 +338,8 @@
         : inertiaMultiplier;
     const verticalTransfer =
       strength * influence * verticalInertiaMultiplier * RELEASE_TRANSFER_SCALE;
-    const releaseVx = safeVx * horizontalTransfer;
-    const releaseVy = safeVy * verticalTransfer;
+    const releaseVx = safeVx * horizontalTransfer * RELEASE_INERTIA_EFFECT_SCALE;
+    const releaseVy = safeVy * verticalTransfer * RELEASE_INERTIA_EFFECT_SCALE;
     const verticalLimit =
       releaseVy < 0
         ? MAX_RELEASE_UPWARD_SPEED

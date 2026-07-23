@@ -534,6 +534,7 @@ test("влияние рывка масштабирует импульс отпу
 
   assert.equal(none.vx, 0);
   assert.ok(normal.vx > 0);
+  assert.equal(Math.round(normal.vx * 1000), 2100);
   assert.equal(
     Math.round(boosted.vx * 1000),
     Math.round(normal.vx * 10 * 1000)
@@ -581,6 +582,8 @@ test("инерция масштабирует импульс и сохраняе
   assert.ok(half.vy < 0);
   assert.equal(full.vx, half.vx * 2);
   assert.equal(full.vy, half.vy * 4);
+  assert.equal(Math.round(full.vx * 1000), 63000);
+  assert.equal(Math.round(full.vy * 1000), -84000);
   assert.ok(Math.abs(low.vy) < Math.abs(full.vy) * 0.02);
   assert.equal(none.vx, 0);
   assert.equal(none.vy, 0);

@@ -297,6 +297,7 @@ async function expectImprintCenteredInTopViewport(page) {
       inscriptionLineHeight: inscriptionStyle.lineHeight,
       inscriptionFontFamily: inscriptionStyle.fontFamily,
       inscriptionFontWeight: inscriptionStyle.fontWeight,
+      inscriptionWhiteSpace: inscriptionStyle.whiteSpace,
       titleFontSize: titleStyle.fontSize,
       titleLineHeight: titleStyle.lineHeight,
       titleFontFamily: titleStyle.fontFamily,
@@ -314,6 +315,7 @@ async function expectImprintCenteredInTopViewport(page) {
   expect(position.inscriptionLineHeight).toBe(position.titleLineHeight);
   expect(position.inscriptionFontFamily).toBe(position.titleFontFamily);
   expect(position.inscriptionFontWeight).toBe(position.titleFontWeight);
+  expect(position.inscriptionWhiteSpace).toBe("nowrap");
 }
 
 async function expectReturnImprintScrollsToTop(page) {
