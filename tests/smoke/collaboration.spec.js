@@ -277,13 +277,30 @@ async function expectImprintCenteredInTopViewport(page) {
   await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await expect(page.locator("h1.top-inscription")).toBeVisible();
   const position = await page.getByTestId("rock-imprint").evaluate((imprint) => {
     const rect = imprint.getBoundingClientRect();
+    const inscriptionRect = document
+      .querySelector(".top-inscription")
+      .getBoundingClientRect();
+    const titleStyle = getComputedStyle(document.querySelector(".title"));
+    const inscriptionStyle = getComputedStyle(
+      document.querySelector(".top-inscription"),
+    );
     return {
       centerX: rect.left + rect.width / 2,
       centerY: rect.top + rect.height / 2,
       viewportCenterX: window.innerWidth / 2,
       viewportCenterY: window.innerHeight / 2,
+      inscriptionTop: inscriptionRect.top,
+      inscriptionFontSize: inscriptionStyle.fontSize,
+      inscriptionLineHeight: inscriptionStyle.lineHeight,
+      inscriptionFontFamily: inscriptionStyle.fontFamily,
+      inscriptionFontWeight: inscriptionStyle.fontWeight,
+      titleFontSize: titleStyle.fontSize,
+      titleLineHeight: titleStyle.lineHeight,
+      titleFontFamily: titleStyle.fontFamily,
+      titleFontWeight: titleStyle.fontWeight,
     };
   });
   expect(Math.abs(position.centerX - position.viewportCenterX)).toBeLessThanOrEqual(
@@ -292,10 +309,15 @@ async function expectImprintCenteredInTopViewport(page) {
   expect(Math.abs(position.centerY - position.viewportCenterY)).toBeLessThanOrEqual(
     3
   );
+  expect(position.inscriptionTop).toBeGreaterThanOrEqual(0);
+  expect(position.inscriptionFontSize).toBe(position.titleFontSize);
+  expect(position.inscriptionLineHeight).toBe(position.titleLineHeight);
+  expect(position.inscriptionFontFamily).toBe(position.titleFontFamily);
+  expect(position.inscriptionFontWeight).toBe(position.titleFontWeight);
 }
 
 async function expectReturnImprintScrollsToTop(page) {
-  await page.evaluate(() => {
+  const returnState = await page.evaluate(() => {
     const originalScrollTo = window.scrollTo.bind(window);
     window.__returnScrollCalls = [];
     window.__restoreScrollTo = () => {
@@ -319,9 +341,16 @@ async function expectReturnImprintScrollsToTop(page) {
     motion.suspended = false;
     setPosition(x, y);
     syncReturnTheme();
+    return {
+      bodyClassAfterSync: document.body.className,
+      x,
+      y,
+    };
   });
 
-  await expect(page.locator("body")).toHaveClass(/theme-light/);
+  expect(returnState.bodyClassAfterSync).toContain("theme-light");
+  expect(Number.isFinite(returnState.x)).toBe(true);
+  expect(Number.isFinite(returnState.y)).toBe(true);
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -501,7 +530,7 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(page).toHaveTitle("ПУТЬ ЦАРЕЙ");
-  await expect(page.locator("h1")).toHaveText("Смертию смерть поправ");
+  await expect(page.locator("h1")).toHaveText("СМЕРТИЮ СМЕРТЬ ПОПРАВ");
   await expect(page.locator(".title")).toHaveText("ПУТЬ ЦАРЕЙ");
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).not.toHaveClass(/is-scroll-locked/);
