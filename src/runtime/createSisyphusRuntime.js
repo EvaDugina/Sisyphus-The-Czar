@@ -92,7 +92,9 @@ export function createSisyphusRuntime(elements = {}) {
   const sessionShareToggle = elements.sessionShareToggle || document.querySelector(".session-share-toggle");
   const sessionRestartButton = elements.sessionRestartButton || document.querySelector(".session-restart");
   const settingsVersionName = elements.settingsVersionName || document.querySelector(".settings-version-name");
-  const settingsVersionSelect = elements.settingsVersionSelect || document.querySelector(".settings-version-select");
+  const settingsVersionToggle = elements.settingsVersionToggle || document.querySelector(".settings-version-toggle");
+  const settingsVersionCurrent = elements.settingsVersionCurrent || document.querySelector("#settings-version-current");
+  const settingsVersionMenu = elements.settingsVersionMenu || document.querySelector(".settings-version-menu");
   const settingsVersionSave = elements.settingsVersionSave || document.querySelector(".settings-version-save");
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
@@ -1379,22 +1381,70 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function setSettingsVersionMenuOpen(open) {
+    if (!settingsVersionMenu || !settingsVersionToggle) {
+      return;
+    }
+    settingsVersionMenu.hidden = !open;
+    settingsVersionToggle.setAttribute("aria-expanded", String(open));
+  }
+
+  function createSettingsVersionMenuItem({ id, label, selected, draft = false }) {
+    const item = document.createElement("div");
+    item.className = `settings-version-option${selected ? " is-selected" : ""}${
+      draft ? " is-draft" : ""
+    }`;
+
+    const choice = document.createElement("button");
+    choice.className = "settings-version-choice";
+    choice.type = "button";
+    choice.dataset.settingsVersionChoice = id;
+    choice.setAttribute("role", "menuitemradio");
+    choice.setAttribute("aria-checked", String(selected));
+    choice.textContent = label;
+    item.append(choice);
+
+    if (!draft) {
+      const deleteButton = document.createElement("button");
+      deleteButton.className = "settings-version-delete";
+      deleteButton.type = "button";
+      deleteButton.dataset.settingsVersionDelete = id;
+      deleteButton.setAttribute("aria-label", `Удалить версию ${label}`);
+      deleteButton.title = "Удалить версию";
+      deleteButton.innerHTML =
+        '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>';
+      item.append(deleteButton);
+    }
+
+    return item;
+  }
+
   function renderSettingsVersions() {
-    if (!settingsVersionSelect) {
+    if (!settingsVersionMenu || !settingsVersionCurrent) {
       return;
     }
     const selectedId = settingsVersions.selectedId;
-    settingsVersionSelect.replaceChildren();
-    settingsVersionSelect.append(new Option("Черновик", ""));
-    settingsVersions.entries.forEach((entry) => {
-      settingsVersionSelect.append(
-        new Option(formatSettingsVersionOptionLabel(entry), entry.id),
-      );
-    });
     const selectedEntry = settingsVersions.entries.find(
       (entry) => entry.id === selectedId,
     );
-    settingsVersionSelect.value = selectedEntry ? selectedEntry.id : "";
+    settingsVersionCurrent.textContent = selectedEntry
+      ? formatSettingsVersionOptionLabel(selectedEntry)
+      : "Черновик";
+    settingsVersionMenu.replaceChildren(
+      createSettingsVersionMenuItem({
+        id: "",
+        label: "Черновик",
+        selected: !selectedEntry,
+        draft: true,
+      }),
+      ...settingsVersions.entries.map((entry) =>
+        createSettingsVersionMenuItem({
+          id: entry.id,
+          label: formatSettingsVersionOptionLabel(entry),
+          selected: entry.id === selectedEntry?.id,
+        }),
+      ),
+    );
     if (settingsVersionName && selectedEntry) {
       settingsVersionName.value = selectedEntry.name;
     }
@@ -1444,6 +1494,41 @@ export function createSisyphusRuntime(elements = {}) {
     return settingsVersions.entries.find(
       (entry) => entry.id === settingsVersions.selectedId,
     );
+  }
+
+  function selectSettingsVersion(id) {
+    settingsVersions.selectedId = id;
+    const entry = selectedSettingsVersion();
+    if (!entry) {
+      settingsVersions.selectedId = "";
+      if (settingsVersionName) {
+        settingsVersionName.value = "";
+      }
+      renderSettingsVersions();
+      saveSettingsVersions();
+      setSettingsVersionMenuOpen(false);
+      return;
+    }
+    applySettingsVersion(entry);
+    setSettingsVersionMenuOpen(false);
+  }
+
+  function deleteSettingsVersion(id) {
+    const beforeCount = settingsVersions.entries.length;
+    settingsVersions.entries = settingsVersions.entries.filter(
+      (entry) => entry.id !== id,
+    );
+    if (settingsVersions.entries.length === beforeCount) {
+      return;
+    }
+    if (settingsVersions.selectedId === id) {
+      settingsVersions.selectedId = "";
+      if (settingsVersionName) {
+        settingsVersionName.value = "";
+      }
+    }
+    renderSettingsVersions();
+    saveSettingsVersions();
   }
 
   function applySettingsVersion(entry) {
@@ -4175,19 +4260,34 @@ export function createSisyphusRuntime(elements = {}) {
     readControls({ changedKeys: [] });
     saveCurrentSettingsVersion();
   });
-  listen(settingsVersionSelect, "change", () => {
-    const selectedId = settingsVersionSelect.value;
-    settingsVersions.selectedId = selectedId;
-    const entry = selectedSettingsVersion();
-    if (!entry) {
-      if (settingsVersionName) {
-        settingsVersionName.value = "";
-      }
-      renderSettingsVersions();
-      saveSettingsVersions();
+  listen(settingsVersionToggle, "click", () => {
+    setSettingsVersionMenuOpen(settingsVersionMenu?.hidden !== false);
+  });
+  listen(settingsVersionMenu, "click", (event) => {
+    const deleteButton = event.target.closest("[data-settings-version-delete]");
+    if (deleteButton) {
+      deleteSettingsVersion(deleteButton.dataset.settingsVersionDelete || "");
       return;
     }
-    applySettingsVersion(entry);
+    const choice = event.target.closest("[data-settings-version-choice]");
+    if (choice) {
+      selectSettingsVersion(choice.dataset.settingsVersionChoice || "");
+    }
+  });
+  listen(document, "click", (event) => {
+    const target = event.target;
+    if (
+      settingsVersionToggle?.contains(target) ||
+      settingsVersionMenu?.contains(target)
+    ) {
+      return;
+    }
+    setSettingsVersionMenuOpen(false);
+  });
+  listen(window, "keydown", (event) => {
+    if (event.key === "Escape") {
+      setSettingsVersionMenuOpen(false);
+    }
   });
 
   listen(settingsPanel.querySelector(".trail-clear"), "click", resetTrail);

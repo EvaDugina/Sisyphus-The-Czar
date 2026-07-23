@@ -363,6 +363,23 @@ export const SETTINGS_GROUPS = [
         formulas: PHYSICS_FORMULAS.turbulence,
       },
       {
+        name: "sceneHeightScreens",
+        label: "Высота страницы",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.sceneHeightScreens[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.sceneHeightScreens[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
+        output: `${DEFAULT_ROOM_SETTINGS.sceneHeightScreens * 100}vh`,
+        hint: "Общая высота сцены в экранах. При изменении автоматически применяется внутренний коэффициент скорости относительно старой длинной сцены 10000vh.",
+        formulas: PHYSICS_FORMULAS.sceneHeightScreens,
+      },
+    ],
+  },
+  {
+    title: "Размер камня",
+    controls: [
+      {
         name: "rockScaleEasing",
         label: "Кривая размера",
         type: "text",
@@ -395,18 +412,11 @@ export const SETTINGS_GROUPS = [
         hint: "Максимальная ширина камня в процентах от ширины экрана. Высота меняется пропорционально.",
         formulas: PHYSICS_FORMULAS.rockMaxWidthVw,
       },
-      {
-        name: "sceneHeightScreens",
-        label: "Высота страницы",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.sceneHeightScreens[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.sceneHeightScreens[1],
-        step: 1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
-        output: `${DEFAULT_ROOM_SETTINGS.sceneHeightScreens * 100}vh`,
-        hint: "Общая высота сцены в экранах. При изменении автоматически применяется внутренний коэффициент скорости относительно старой длинной сцены 10000vh.",
-        formulas: PHYSICS_FORMULAS.sceneHeightScreens,
-      },
+    ],
+  },
+  {
+    title: "Размер рук",
+    controls: [
       {
         name: "handWidthVw",
         label: "Размер master-руки, vw",

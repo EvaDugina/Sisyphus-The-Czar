@@ -567,11 +567,37 @@ test("вход на корень перенаправляет в рабочую 
   await expect(
     page.locator(".settings-panel .control-group[open]")
   ).toHaveCount(0);
+  await page.locator(".settings-version-name").fill("Проверка удаления");
+  await page.locator(".settings-version-save").click();
+  await page.locator(".settings-version-toggle").click();
+  const savedVersion = page.locator(".settings-version-option", {
+    hasText: "Проверка удаления",
+  });
+  await expect(savedVersion).toHaveCount(1);
+  await expect(savedVersion.locator(".settings-version-choice")).toHaveText(
+    /^Проверка удаления — \d{2}\.\d{2} \d{2}:\d{2}$/,
+  );
+  await savedVersion.locator(".settings-version-delete").click();
+  await expect(savedVersion).toHaveCount(0);
+  await expect(page.locator("#settings-version-current")).toHaveText("Черновик");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-versions-v1") || "{}",
+        );
+        return Boolean(
+          stored.entries?.some((entry) => entry.name === "Проверка удаления"),
+        );
+      })
+    )
+    .toBe(false);
   await openControlGroup(page, "Физика");
   await page.locator('[name="mass"]').hover();
   await expect(page.locator(".hint .katex").first()).toBeVisible();
   await expect(page.locator(".hint__formulas code")).toHaveCount(0);
   await setRange(page, "gravity", 10);
+  await openControlGroup(page, "Размер камня");
   await setField(page, "rockScaleEasing", "cubic-bezier(0, 0, 1, 1)");
   await setField(page, "rockMinWidthVw", 10);
   await setField(page, "rockMaxWidthVw", 40);
@@ -1252,6 +1278,7 @@ test("два браузера видят один камень и поднима
   await setRange(first, "inertia", 0.8);
   await setRange(first, "groundFriction", 0.2);
   await setRange(first, "turbulence", 0.3);
+  await openControlGroup(first, "Размер рук");
   await setRange(first, "handWidthVw", 40);
   await setRange(first, "slaveHandWidthPx", 36);
   await expect(first.locator('[data-output="handWidthVw"]')).toHaveText("40.0vw");
@@ -1274,8 +1301,10 @@ test("два браузера видят один камень и поднима
   await openControlGroup(second, "Дождь");
   await expect(second.locator('[name="rainBlendMode"]')).toHaveValue("multiply");
   await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue("normal");
+  await openControlGroup(second, "Размер рук");
   await expect(second.locator('[name="handWidthVw"]')).toHaveValue("40");
   await expect(second.locator('[name="slaveHandWidthPx"]')).toHaveValue("36");
+  await openControlGroup(second, "Дождь");
   await setField(second, "rainExitMs", 700);
   await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("700");
   await expect(first.getByTestId("session-status")).toContainText("2");

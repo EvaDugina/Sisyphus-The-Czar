@@ -18,15 +18,33 @@ export function SettingsPanel({
       aria-hidden={String(!isOpen)}
     >
       <section className="settings-versions" aria-label="Версии настроек">
-        <label
+        <div
           className="settings-versions__field"
           data-hint="Выбор версии сразу применяет сохранённые значения ко всем настройкам панели."
         >
-          <span>Версия</span>
-          <select className="settings-version-select" defaultValue="">
-            <option value="">Черновик</option>
-          </select>
-        </label>
+          <span id="settings-version-label">Версия</span>
+          <div className="settings-version-dropdown">
+            <button
+              className="settings-version-toggle"
+              type="button"
+              aria-haspopup="menu"
+              aria-expanded="false"
+              aria-labelledby="settings-version-label settings-version-current"
+              data-hint="Открывает список сохранённых версий настроек."
+            >
+              <span id="settings-version-current">Черновик</span>
+              <svg aria-hidden="true" viewBox="0 0 24 24">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+            <div
+              className="settings-version-menu"
+              role="menu"
+              aria-labelledby="settings-version-label"
+              hidden
+            />
+          </div>
+        </div>
         <div
           className="settings-versions__save"
           data-hint="Название для новой или выбранной версии всех настроек панели."
