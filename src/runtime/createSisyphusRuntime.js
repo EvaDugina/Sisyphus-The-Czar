@@ -39,6 +39,7 @@ const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).ma
   (control) => control.name,
 );
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
+const SETTINGS_SCHEMA_VERSION = 13;
 const SETTINGS_VERSION_LIMIT = 50;
 
 const chainHoverAudioModules = import.meta.glob(
@@ -156,6 +157,7 @@ export function createSisyphusRuntime(elements = {}) {
     pointerInfluence: 1,
     bounce: 0.35,
     inertia: SharedPhysics.DEFAULT_PHYSICS.inertia,
+    horizontalInertia: SharedPhysics.DEFAULT_PHYSICS.horizontalInertia,
     groundFriction: 0.35,
     turbulence: 0.4,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
@@ -265,6 +267,7 @@ export function createSisyphusRuntime(elements = {}) {
     "pointerInfluence",
     "bounce",
     "inertia",
+    "horizontalInertia",
     "groundFriction",
     "turbulence",
   ];
@@ -1208,6 +1211,70 @@ export function createSisyphusRuntime(elements = {}) {
     return match ? Number(match[1]) : 0;
   }
 
+  function migrateStoredVerticalInertiaValue(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return value;
+    }
+    if (number > 10 && number <= 100) {
+      return clamp(number / 100, 0, 1);
+    }
+    if (number > 2 && number <= 10) {
+      return clamp(number / 10, 0, 1);
+    }
+    if (number > 1) {
+      return 1;
+    }
+    if (number > 0 && number <= 0.1) {
+      return clamp(number * 10, 0, 1);
+    }
+    return clamp(number, 0, 1);
+  }
+
+  function migrateStoredHorizontalInertiaValue(value) {
+    const number = Number(value);
+    if (!Number.isFinite(number)) {
+      return value;
+    }
+    if (number > 10 && number <= 100) {
+      return clamp(number / 1000, 0, 1);
+    }
+    if (number > 2 && number <= 10) {
+      return clamp(number / 100, 0, 1);
+    }
+    if (number > 1) {
+      return 1;
+    }
+    return clamp(number, 0, 1);
+  }
+
+  function migrateStoredInertiaSettings(settings, options = {}) {
+    if (options.schemaVersion >= SETTINGS_SCHEMA_VERSION) {
+      return settings;
+    }
+    let migrated = settings;
+    if (Object.hasOwn(migrated, "inertia")) {
+      const inertia = migrateStoredVerticalInertiaValue(migrated.inertia);
+      if (inertia !== migrated.inertia) {
+        migrated = { ...migrated, inertia };
+      }
+    }
+    if (Object.hasOwn(migrated, "horizontalInertia")) {
+      const horizontalInertia = migrateStoredHorizontalInertiaValue(
+        migrated.horizontalInertia,
+      );
+      if (horizontalInertia !== migrated.horizontalInertia) {
+        migrated = { ...migrated, horizontalInertia };
+      }
+    } else {
+      migrated = {
+        ...migrated,
+        horizontalInertia: SharedPhysics.DEFAULT_PHYSICS.horizontalInertia,
+      };
+    }
+    return migrated;
+  }
+
   function loadSettings() {
     let stored = null;
     let migratedLegacySettings = false;
@@ -1254,13 +1321,15 @@ export function createSisyphusRuntime(elements = {}) {
       delete stored.mass;
       delete stored.gravity;
     }
-    const storedInertia = Number(stored.inertia);
-    if (migratedLegacySettings && Number.isFinite(storedInertia)) {
-      const oldScaleInertia =
-        storedInertia > 10 && storedInertia <= 100
-          ? storedInertia / 10
-          : storedInertia;
-      stored = { ...stored, inertia: oldScaleInertia / 10 };
+    if (migratedLegacySettings) {
+      stored = migrateStoredInertiaSettings(stored, {
+        schemaVersion: legacyKeyVersion,
+      });
+    } else if (!Object.hasOwn(stored, "horizontalInertia")) {
+      stored = {
+        ...stored,
+        horizontalInertia: SharedPhysics.DEFAULT_PHYSICS.horizontalInertia,
+      };
     }
     if (
       !Object.hasOwn(stored, "groundFriction") &&
@@ -1300,7 +1369,11 @@ export function createSisyphusRuntime(elements = {}) {
       return null;
     }
     const settings =
-      entry.settings && typeof entry.settings === "object" ? entry.settings : null;
+      entry.settings && typeof entry.settings === "object"
+        ? migrateStoredInertiaSettings(entry.settings, {
+            schemaVersion: Number(entry.settingsSchemaVersion) || 0,
+          })
+        : null;
     if (!settings) {
       return null;
     }
@@ -1321,6 +1394,8 @@ export function createSisyphusRuntime(elements = {}) {
     return {
       id,
       name,
+      settingsSchemaVersion:
+        Number(entry.settingsSchemaVersion) || SETTINGS_SCHEMA_VERSION,
       createdAt: String(entry.createdAt || ""),
       updatedAt: String(entry.updatedAt || entry.createdAt || ""),
       settings: cleanSettings,
@@ -1468,11 +1543,13 @@ export function createSisyphusRuntime(elements = {}) {
     if (selected) {
       selected.name = name;
       selected.updatedAt = now.toISOString();
+      selected.settingsSchemaVersion = SETTINGS_SCHEMA_VERSION;
       selected.settings = currentSettingsSnapshot();
     } else {
       const entry = {
         id: createSettingsVersionId(),
         name,
+        settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
         createdAt: now.toISOString(),
         updatedAt: now.toISOString(),
         settings: currentSettingsSnapshot(),
@@ -1589,7 +1666,8 @@ export function createSisyphusRuntime(elements = {}) {
       handForce: params.handForce.toFixed(0),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
-      inertia: params.inertia.toFixed(1),
+      inertia: params.inertia.toFixed(2),
+      horizontalInertia: params.horizontalInertia.toFixed(2),
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
@@ -1664,6 +1742,7 @@ export function createSisyphusRuntime(elements = {}) {
     params.pointerInfluence = num("pointerInfluence");
     params.bounce = num("bounce");
     params.inertia = num("inertia");
+    params.horizontalInertia = num("horizontalInertia");
     params.groundFriction = num("groundFriction");
     params.turbulence = num("turbulence");
     Object.assign(

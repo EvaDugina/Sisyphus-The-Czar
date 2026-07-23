@@ -36,9 +36,10 @@
     maxSpeed: 2800,
     loadFloor: 0.1,
   });
-  const PHYSICS_VERSION = 8;
+  const PHYSICS_VERSION = 10;
   const RELEASE_TRANSFER_SCALE = 0.42;
-  const RELEASE_INERTIA_EFFECT_SCALE = 0.5;
+  const HORIZONTAL_INERTIA_EFFECT_SCALE = 0.001;
+  const VERTICAL_INERTIA_EFFECT_SCALE = 0.1;
   const RELEASE_UPWARD_INERTIA_EXPONENT = 2;
   const AIR_RETENTION_PER_SECOND = 0.9305;
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
@@ -55,7 +56,8 @@
     handForce: [1, 1000],
     pointerInfluence: [0, 10],
     bounce: [0, 1],
-    inertia: [0, 2],
+    inertia: [0, 1],
+    horizontalInertia: [0, 1],
     groundFriction: [0, 1],
     turbulence: [0, 1],
   });
@@ -68,6 +70,7 @@
     pointerInfluence: 1,
     bounce: 0.35,
     inertia: 0.9,
+    horizontalInertia: 0.02,
     groundFriction: 0.35,
     turbulence: 0.4,
   });
@@ -134,6 +137,22 @@
     const migratedInertia = Number(source.inertia);
     if (sourceVersion < 8 && Number.isFinite(migratedInertia)) {
       source.inertia = migratedInertia / 10;
+    }
+    const currentScaleInertia = Number(source.inertia);
+    if (sourceVersion < 9 && Number.isFinite(currentScaleInertia)) {
+      source.inertia = currentScaleInertia / 10;
+    }
+    const displayScaleInertia = Number(source.inertia);
+    if (sourceVersion < 10 && Number.isFinite(displayScaleInertia)) {
+      source.inertia = displayScaleInertia * 10;
+    }
+    if (!hasOwn(source, "horizontalInertia")) {
+      source.horizontalInertia = DEFAULT_PHYSICS.horizontalInertia;
+    } else if (sourceVersion < 9) {
+      const horizontalInertia = Number(source.horizontalInertia);
+      if (Number.isFinite(horizontalInertia) && horizontalInertia > 0.1) {
+        source.horizontalInertia = horizontalInertia / 10;
+      }
     }
     const handForce = Number(source.handForce);
     if (
@@ -329,17 +348,19 @@
     const safeVy = clamp(finiteNumber(pointerVy, 0), -9000, 9000);
     const strength = handAcceleration(physics);
     const influence = physics.pointerInfluence;
-    const inertiaMultiplier = physics.inertia;
+    const horizontalInertia =
+      physics.horizontalInertia * HORIZONTAL_INERTIA_EFFECT_SCALE;
+    const verticalInertia = physics.inertia * VERTICAL_INERTIA_EFFECT_SCALE;
     const horizontalTransfer =
-      strength * influence * inertiaMultiplier * RELEASE_TRANSFER_SCALE;
+      strength * influence * horizontalInertia * RELEASE_TRANSFER_SCALE;
     const verticalInertiaMultiplier =
       safeVy < 0
-        ? Math.pow(inertiaMultiplier, RELEASE_UPWARD_INERTIA_EXPONENT)
-        : inertiaMultiplier;
+        ? Math.pow(verticalInertia, RELEASE_UPWARD_INERTIA_EXPONENT)
+        : verticalInertia;
     const verticalTransfer =
       strength * influence * verticalInertiaMultiplier * RELEASE_TRANSFER_SCALE;
-    const releaseVx = safeVx * horizontalTransfer * RELEASE_INERTIA_EFFECT_SCALE;
-    const releaseVy = safeVy * verticalTransfer * RELEASE_INERTIA_EFFECT_SCALE;
+    const releaseVx = safeVx * horizontalTransfer;
+    const releaseVy = safeVy * verticalTransfer;
     const verticalLimit =
       releaseVy < 0
         ? MAX_RELEASE_UPWARD_SPEED

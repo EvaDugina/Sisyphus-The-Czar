@@ -10,9 +10,11 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v11";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v13";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v12",
+  "sisyphus-czar-settings-v11",
   "sisyphus-czar-settings-v10",
   "sisyphus-czar-settings-v9",
   "sisyphus-czar-settings-v8",
@@ -50,7 +52,8 @@ const PHYSICS_FORMULAS = {
     "a_{hand} = \\frac{F_{hand}}{m}",
     "F_{hands} = n \\cdot F_{hand}",
     "F_{surplus} = F_{hands} - F_g",
-    "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k \\cdot 0.5",
+    "v_{x,release} = v_{x,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
+    "v_{y,release} = v_{y,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_y}{10} \\cdot k",
     "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
     "v_y = F_{surplus} > 0 ? -v_{lift} : v_{drop}",
     "v_{lift/drop} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{|F_{surplus}|}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
@@ -66,21 +69,27 @@ const PHYSICS_FORMULAS = {
     "a_{hand} = \\frac{F_{hand}}{m}",
     "F_{hands} = n \\cdot F_{hand}",
     "F_{surplus} = F_{hands} - F_g",
-    "v_{release} = v_{pointer} \\cdot a_{hand} \\cdot I \\cdot k \\cdot 0.5",
+    "v_{x,release} = v_{x,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
+    "v_{y,release} = v_{y,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_y}{10} \\cdot k",
     "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
     "v_y = F_{surplus} > 0 ? -v_{lift} : v_{drop}",
     "v_{lift/drop} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{|F_{surplus}|}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
   ],
   pointerInfluence: [
-    "v_{release} = v_{pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k \\cdot 0.5",
+    "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
+    "v_{y,release} = v_{y,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot \\frac{I_y}{10} \\cdot k",
   ],
   bounce: [
     "v_y' = -min(v_y, v_{impactMax}) \\cdot b",
   ],
   inertia: [
-    "I = inertia",
-    "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I \\cdot k \\cdot 0.5",
-    "v_{y,release}^{up} = v_{y,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I^2 \\cdot k \\cdot 0.5",
+    "I_y = \\frac{inertia}{10}",
+    "v_{y,release}^{up} = v_{y,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I_y^2 \\cdot k",
+    "v_{y,release}^{down} = v_{y,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I_y \\cdot k",
+  ],
+  horizontalInertia: [
+    "I_x = \\frac{horizontalInertia}{1000}",
+    "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I_x \\cdot k",
   ],
   groundFriction: [
     "F_f = \\mu \\cdot F_g",
@@ -328,15 +337,27 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "inertia",
-        label: "Инерция",
+        label: "Вертикальная инерция",
         type: "range",
         min: 0,
-        max: 2,
-        step: 0.1,
+        max: 1,
+        step: 0.01,
         defaultValue: 0.9,
-        output: "0.9",
-        hint: "Какую долю скорости движения руки камень получает при отпускании или авто-выпадении. Ноль — без импульса; 1 — базовая передача с половинным итоговым влиянием; 2 — удвоенная передача с учётом массы, силы и влияния рывка.",
+        output: "0.90",
+        hint: "Коэффициент вертикального импульса при отпускании или авто-выпадении. В физике значение делится на 10: 1 на ползунке даёт 0.1 реального коэффициента.",
         formulas: PHYSICS_FORMULAS.inertia,
+      },
+      {
+        name: "horizontalInertia",
+        label: "Горизонтальная инерция",
+        type: "range",
+        min: 0,
+        max: 1,
+        step: 0.01,
+        defaultValue: 0.02,
+        output: "0.02",
+        hint: "Отдельный коэффициент горизонтального импульса. В физике значение делится на 1000, чтобы камень не улетал в стороны.",
+        formulas: PHYSICS_FORMULAS.horizontalInertia,
       },
       {
         name: "groundFriction",
@@ -377,7 +398,7 @@ export const SETTINGS_GROUPS = [
     ],
   },
   {
-    title: "Размер камня",
+    title: "Камень",
     controls: [
       {
         name: "rockScaleEasing",
@@ -415,7 +436,7 @@ export const SETTINGS_GROUPS = [
     ],
   },
   {
-    title: "Размер рук",
+    title: "Руки",
     controls: [
       {
         name: "handWidthVw",

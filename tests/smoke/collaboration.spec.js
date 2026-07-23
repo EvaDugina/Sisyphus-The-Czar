@@ -599,7 +599,7 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page.locator(".hint .katex").first()).toBeVisible();
   await expect(page.locator(".hint__formulas code")).toHaveCount(0);
   await setRange(page, "gravity", 10);
-  await openControlGroup(page, "Размер камня");
+  await openControlGroup(page, "Камень");
   await setField(page, "rockScaleEasing", "cubic-bezier(0, 0, 1, 1)");
   await setField(page, "rockMinWidthVw", 10);
   await setField(page, "rockMaxWidthVw", 40);
@@ -1040,7 +1040,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -1079,7 +1079,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -1198,7 +1198,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -1233,7 +1233,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1250,7 +1250,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v11") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1278,9 +1278,10 @@ test("два браузера видят один камень и поднима
   await setRange(first, "pointerInfluence", 1.8);
   await setRange(first, "bounce", 0.1);
   await setRange(first, "inertia", 0.8);
+  await setRange(first, "horizontalInertia", 0.3);
   await setRange(first, "groundFriction", 0.2);
   await setRange(first, "turbulence", 0.3);
-  await openControlGroup(first, "Размер рук");
+  await openControlGroup(first, "Руки");
   await setRange(first, "handWidthVw", 40);
   await setRange(first, "slaveHandWidthPx", 36);
   await expect(first.locator('[data-output="handWidthVw"]')).toHaveText("40.0vw");
@@ -1303,7 +1304,7 @@ test("два браузера видят один камень и поднима
   await openControlGroup(second, "Дождь");
   await expect(second.locator('[name="rainBlendMode"]')).toHaveValue("multiply");
   await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue("normal");
-  await openControlGroup(second, "Размер рук");
+  await openControlGroup(second, "Руки");
   await expect(second.locator('[name="handWidthVw"]')).toHaveValue("40");
   await expect(second.locator('[name="slaveHandWidthPx"]')).toHaveValue("36");
   await openControlGroup(second, "Дождь");
@@ -1317,6 +1318,7 @@ test("два браузера видят один камень и поднима
     pointerInfluence: "1.8",
     bounce: "0.1",
     inertia: "0.8",
+    horizontalInertia: "0.3",
     groundFriction: "0.2",
     turbulence: "0.3",
   };
