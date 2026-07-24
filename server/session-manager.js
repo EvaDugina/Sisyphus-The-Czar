@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
 const GachiSounds = require("../shared/gachi-sounds");
+const Viewport = require("../shared/viewport");
 
 const SNAPSHOT_INTERVAL_MS = 1000 / 20;
 const DISCONNECT_GRACE_MS = 500;
@@ -139,6 +140,7 @@ class SessionManager {
     );
     const physics = Physics.sanitizePhysics(payload.physics);
     const roomSettings = RoomSettings.sanitizeRoomSettings(payload.roomSettings);
+    const masterViewport = Viewport.sanitizeViewport(payload.masterViewport);
 
     if (state.phase === Physics.PHASES.WON) {
       state.vx = 0;
@@ -150,6 +152,7 @@ class SessionManager {
       state,
       physics,
       roomSettings,
+      masterViewport,
       trail: sanitizeTrail(payload.trail),
       imprint:
         Physics.createSummitImprint(payload.imprint),
@@ -188,6 +191,9 @@ class SessionManager {
       physicsVersion: Physics.PHYSICS_VERSION,
       roomSettings: { ...session.roomSettings },
       roomSettingsVersion: RoomSettings.ROOM_SETTINGS_VERSION,
+      masterViewport: session.masterViewport
+        ? { ...session.masterViewport }
+        : null,
       trail: session.trail.map((point) => [...point]),
       imprint: session.imprint ? { ...session.imprint } : null,
       masterClientId: session.masterClientId,
@@ -240,6 +246,7 @@ class SessionManager {
           record.roomSettingsVersion
         )
       );
+      const masterViewport = Viewport.sanitizeViewport(record.masterViewport);
       const lastPointer = {
         vx: finite(record.lastPointer?.vx, 0),
         vy: finite(record.lastPointer?.vy, 0),
@@ -271,6 +278,7 @@ class SessionManager {
         state,
         physics,
         roomSettings,
+        masterViewport,
         trail: sanitizeTrail(record.trail),
         imprint:
           Physics.createSummitImprint(record.imprint),
@@ -672,10 +680,13 @@ class SessionManager {
         this.releaseControl(session, client, payload);
         break;
       case "physics.update":
-        this.updatePhysics(session, payload);
+        this.updatePhysics(session, client, payload);
         break;
       case "roomSettings.update":
-        this.updateRoomSettings(session, payload);
+        this.updateRoomSettings(session, client, payload);
+        break;
+      case "viewport.update":
+        this.updateMasterViewport(session, client, payload);
         break;
       case "session.restart":
         this.restartSession(session, payload);
@@ -809,7 +820,29 @@ class SessionManager {
     });
   }
 
-  updatePhysics(session, payload) {
+  clientCanEditSettings(session, client) {
+    return Boolean(
+      client &&
+        client.role === "master" &&
+        client.id === session.masterClientId,
+    );
+  }
+
+  rejectMasterOnly(client) {
+    this.sendError(
+      client,
+      "master_only",
+      "Параметры комнаты может изменять только царь",
+    );
+    return false;
+  }
+
+  updatePhysics(session, clientOrPayload, maybePayload) {
+    const client = maybePayload === undefined ? null : clientOrPayload;
+    const payload = maybePayload === undefined ? clientOrPayload : maybePayload;
+    if (client && !this.clientCanEditSettings(session, client)) {
+      return this.rejectMasterOnly(client);
+    }
     const sourcePayload =
       payload && typeof payload === "object" ? payload : {};
     const nextPayload =
@@ -826,7 +859,12 @@ class SessionManager {
     this.broadcastSnapshot(session);
   }
 
-  updateRoomSettings(session, payload) {
+  updateRoomSettings(session, clientOrPayload, maybePayload) {
+    const client = maybePayload === undefined ? null : clientOrPayload;
+    const payload = maybePayload === undefined ? clientOrPayload : maybePayload;
+    if (client && !this.clientCanEditSettings(session, client)) {
+      return this.rejectMasterOnly(client);
+    }
     const sourcePayload =
       payload && typeof payload === "object" ? payload : {};
     const previousRoomSettings = session.roomSettings;
@@ -838,6 +876,27 @@ class SessionManager {
     session.roomSettings = nextRoomSettings;
     this.markChanged(session);
     this.broadcastSnapshot(session);
+  }
+
+  updateMasterViewport(session, client, payload = {}) {
+    if (!this.clientCanEditSettings(session, client)) {
+      return this.rejectMasterOnly(client);
+    }
+    const viewport = Viewport.sanitizeViewport(payload);
+    if (!viewport) {
+      this.sendError(client, "invalid_viewport", "Некорректный размер viewport");
+      return false;
+    }
+    if (
+      session.masterViewport?.width === viewport.width &&
+      session.masterViewport?.height === viewport.height
+    ) {
+      return true;
+    }
+    session.masterViewport = viewport;
+    this.markChanged(session);
+    this.broadcastSnapshot(session);
+    return true;
   }
 
   restartSession(session, payload = {}) {
@@ -1064,6 +1123,9 @@ class SessionManager {
       ...session.state,
       physics: { ...session.physics },
       roomSettings: { ...session.roomSettings },
+      masterViewport: session.masterViewport
+        ? { ...session.masterViewport }
+        : null,
       imprint: session.imprint ? { ...session.imprint } : null,
       holderIds: this.holderIds(session),
       requiredHolders: REQUIRED_HOLDERS,

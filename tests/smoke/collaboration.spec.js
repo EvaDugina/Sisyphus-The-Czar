@@ -756,14 +756,31 @@ test("вход на корень перенаправляет в рабочую 
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
     )
     .toBe(chainSoundCountAfterEnter);
-  await page.locator(".rock").evaluate((rock) => {
+  const masterRoleAudioFadeIn = await page.locator(".rock").evaluate((rock) => {
     rock.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return getRoleAudioState();
+  });
+  expect(masterRoleAudioFadeIn).toEqual({
+    fadeActive: true,
+    fadeDurationMs: 300,
+    fadeTargetVolume: 1,
+    role: "master",
+    volume: 0,
   });
   await expect
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
     )
     .toBe(chainSoundCountAfterEnter + 1);
+  await expect
+    .poll(() => page.evaluate(() => getRoleAudioState()))
+    .toEqual({
+      fadeActive: false,
+      fadeDurationMs: 300,
+      fadeTargetVolume: 1,
+      role: "master",
+      volume: 1,
+    });
   await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("тяните");
   await page.mouse.up();
@@ -1296,20 +1313,24 @@ test("два браузера видят один камень и поднима
   await expect(second).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
   expect(second.url()).not.toBe(sharedUrl);
   await second.goto(sharedUrl);
-  await second.locator(".settings-toggle").click();
   await expect(second.getByTestId("session-status")).toContainText("В сессии");
   await expectReadyAtBottom(second);
   await expect.poll(() => first.evaluate(() => collab.clientRole)).toBe("master");
   await expect.poll(() => second.evaluate(() => collab.clientRole)).toBe("slave");
-  await openControlGroup(second, "Дождь");
-  await expect(second.locator('[name="rainBlendMode"]')).toHaveValue("multiply");
-  await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue("normal");
-  await openControlGroup(second, "Руки");
+  await expect(second.locator(".settings-toggle")).toBeHidden();
+  await expect(second.locator(".settings-toggle")).toBeDisabled();
+  await expect(second.locator("#settings-panel")).toBeHidden();
+  await expect(second.locator('[name="rainBlendMode"]')).toHaveValue(
+    await first.locator('[name="rainBlendMode"]').inputValue()
+  );
+  await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue(
+    await first.locator('[name="rainBlurBlendMode"]').inputValue()
+  );
   await expect(second.locator('[name="handWidthVw"]')).toHaveValue("40");
   await expect(second.locator('[name="slaveHandWidthPx"]')).toHaveValue("36");
-  await openControlGroup(second, "Дождь");
-  await setField(second, "rainExitMs", 700);
+  await setField(second, "rainExitMs", 300);
   await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("700");
+  await expect(first.locator('[name="rainExitMs"]')).toHaveValue("700");
   await expect(first.getByTestId("session-status")).toContainText("2");
   const expectedPhysics = {
     mass: "10",
@@ -1325,15 +1346,10 @@ test("два браузера видят один камень и поднима
   for (const [name, value] of Object.entries(expectedPhysics)) {
     await expect(second.locator(`[name="${name}"]`)).toHaveValue(value);
   }
+  const expectedRoomSettings = await first.evaluate(() => getRoomSettings());
   await expect
     .poll(() => second.evaluate(() => getRoomSettings()))
-    .toEqual({
-      sceneHeightScreens: 10,
-      handWidthVw: 40,
-      slaveHandWidthPx: 36,
-      rainDropColor: "#336699",
-      rainHighlightColor: "#ffcc00",
-    });
+    .toEqual(expectedRoomSettings);
   await expect
     .poll(() =>
       second.evaluate(() => ({
@@ -1349,14 +1365,13 @@ test("два браузера видят один камень и поднима
 
   await second.evaluate(() => collab.socket.close(4100, "test_reconnect"));
   await expect(second.getByTestId("session-status")).toContainText("Переподключение");
-  await setRange(second, "gravity", 8);
-  await expect(first.locator('[name="gravity"]')).toHaveValue("8", {
+  await setRange(first, "gravity", 8);
+  await expect(second.locator('[name="gravity"]')).toHaveValue("8", {
     timeout: 5000,
   });
   await expect.poll(() => second.evaluate(() => collab.clientRole)).toBe("slave");
 
   await first.locator(".settings-toggle").click();
-  await second.locator(".settings-toggle").click();
   const remoteCursor = second.getByTestId("remote-cursor");
 
   await expectScrollDoesNotAffectPhysics(first);
@@ -1443,8 +1458,16 @@ test("два браузера видят один камень и поднима
       }), assignedGachiTarget)
     )
     .toEqual(slaveAudioBefore);
-  await second.locator(".rock").evaluate((rock) => {
+  const slaveRoleAudioFadeIn = await second.locator(".rock").evaluate((rock) => {
     rock.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    return getRoleAudioState();
+  });
+  expect(slaveRoleAudioFadeIn).toEqual({
+    fadeActive: true,
+    fadeDurationMs: 300,
+    fadeTargetVolume: 1,
+    role: "slave",
+    volume: 0,
   });
   await expect
     .poll(() =>
@@ -1457,11 +1480,17 @@ test("два браузера видят один камень и поднима
       chains: slaveAudioBefore.chains,
       gachi: slaveAudioBefore.gachi + 1,
     });
+  await expect
+    .poll(() => second.evaluate(() => getRoleAudioState()))
+    .toEqual({
+      fadeActive: false,
+      fadeDurationMs: 300,
+      fadeTargetVolume: 1,
+      role: "slave",
+      volume: 1,
+    });
   await expect.poll(() => trailHasVisiblePixels(second)).toBe(false);
-  await second.locator(".settings-toggle").click();
-  await openControlGroup(second, "Траектория");
-  await expect(second.locator('[name="trailEnabled"]')).toBeChecked();
-  await second.locator(".settings-toggle").click();
+  await expect.poll(() => second.evaluate(() => params.trailEnabled)).toBe(true);
   await scrollToRock(first);
   const firstGrabPoint = await visibleRockPoint(first);
   await first.mouse.move(firstGrabPoint.x, firstGrabPoint.y);
@@ -1667,9 +1696,17 @@ test("два браузера видят один камень и поднима
       })
     )
     .toEqual({ opacity: "0", visibility: "hidden" });
-  await setCheckbox(second, "rainEnabled", true);
+  await setCheckbox(first, "rainEnabled", true);
+  await expect(firstRain).toHaveClass(/is-rain-visible/);
   await expect(secondRain).toHaveClass(/is-rain-visible/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
+  const expectedRainBlendModes = await firstRain.evaluate((layer) => {
+    const canvas = layer.querySelector(".weather-rain__canvas--fx");
+    return {
+      canvasBlendMode: getComputedStyle(canvas).mixBlendMode,
+      layerBlendMode: getComputedStyle(layer).mixBlendMode,
+    };
+  });
   await expect
     .poll(() =>
       secondRain.evaluate((layer) => {
@@ -1680,14 +1717,11 @@ test("два браузера видят один камень и поднима
         };
       })
     )
-    .toEqual({
-      canvasBlendMode: "multiply",
-      layerBlendMode: "normal",
-    });
+    .toEqual(expectedRainBlendModes);
   await second.evaluate(() => {
     const style = document.createElement("style");
     style.dataset.testRainBlendOverride = "true";
-    style.textContent = ".weather-rain__canvas--fx { mix-blend-mode: screen; }";
+    style.textContent = ".weather-rain__canvas--fx { mix-blend-mode: difference; }";
     document.head.append(style);
   });
   await expect
@@ -1698,7 +1732,7 @@ test("два браузера видят один камень и поднима
         ).mixBlendMode
       )
     )
-    .toBe("screen");
+    .toBe("difference");
   await second.evaluate(() => {
     document.querySelector("[data-test-rain-blend-override]")?.remove();
   });
@@ -1710,7 +1744,7 @@ test("два браузера видят один камень и поднима
         ).mixBlendMode
       )
     )
-    .toBe("multiply");
+    .toBe(expectedRainBlendModes.canvasBlendMode);
   await expect
     .poll(() =>
       secondRain.evaluate((layer) =>
@@ -1728,7 +1762,8 @@ test("два браузера видят один камень и поднима
       )
     )
     .toBeGreaterThan(0);
-  await setCheckbox(second, "rainEnabled", false);
+  await setCheckbox(first, "rainEnabled", false);
+  await expect(firstRain).not.toHaveClass(/is-rain-visible/, { timeout: 2000 });
   await expect(secondRain).not.toHaveClass(/is-rain-visible/, { timeout: 2000 });
 
   await first.locator(".settings-toggle").click();

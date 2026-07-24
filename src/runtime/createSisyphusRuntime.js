@@ -1,6 +1,7 @@
 import "../../shared/physics.js";
 import "../../shared/room-settings.js";
 import "../../shared/gachi-sounds.js";
+import "../../shared/viewport.js";
 import katex from "katex";
 import "katex/dist/katex.min.css";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
@@ -40,6 +41,8 @@ const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).ma
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
 const SETTINGS_SCHEMA_VERSION = 13;
 const SETTINGS_VERSION_LIMIT = 50;
+const ROLE_AUDIO_FADE_IN_MS = 300;
+const ROLE_AUDIO_VOLUME = 1;
 
 const chainHoverAudioModules = import.meta.glob(
   "../../assets/audio/Кандалы_*.mp3",
@@ -91,6 +94,10 @@ export function createSisyphusRuntime(elements = {}) {
   const sessionStatus = elements.sessionStatus || document.querySelector("[data-session-status]");
   const sessionShareToggle = elements.sessionShareToggle || document.querySelector(".session-share-toggle");
   const sessionRestartButton = elements.sessionRestartButton || document.querySelector(".session-restart");
+  const onClientRoleChange =
+    typeof elements.onClientRoleChange === "function"
+      ? elements.onClientRoleChange
+      : () => {};
   const settingsVersionName = elements.settingsVersionName || document.querySelector(".settings-version-name");
   const settingsVersionToggle = elements.settingsVersionToggle || document.querySelector(".settings-version-toggle");
   const settingsVersionCurrent = elements.settingsVersionCurrent || document.querySelector("#settings-version-current");
@@ -101,6 +108,7 @@ export function createSisyphusRuntime(elements = {}) {
   const SharedPhysics = window.SisyphusPhysics;
   const SharedRoomSettings = window.SisyphusRoomSettings;
   const SharedGachiSounds = window.SisyphusGachiSounds;
+  const SharedViewport = window.SisyphusViewport;
   const listenerDisposers = [];
   let disposed = false;
 
@@ -327,7 +335,9 @@ export function createSisyphusRuntime(elements = {}) {
     hasControl: false,
     pendingControl: false,
     releasePending: false,
-    clientRole: "master",
+    clientRole: "pending",
+    masterViewport: null,
+    viewportSignature: "",
     gachiSoundFilename: null,
     holderIds: new Set(),
     requiredHolders: 1,
@@ -367,6 +377,31 @@ export function createSisyphusRuntime(elements = {}) {
   };
   collab.enabled = Boolean(collab.sessionId);
 
+  function currentViewport() {
+    return SharedViewport.sanitizeViewport({
+      width: window.innerWidth || document.documentElement.clientWidth,
+      height: window.innerHeight || document.documentElement.clientHeight,
+    });
+  }
+
+  function localCanEditSettings() {
+    return collab.clientRole === "master";
+  }
+
+  function slaveViewportScale() {
+    if (collab.clientRole !== "slave") {
+      return { x: 1, y: 1 };
+    }
+    return SharedViewport.viewportScale(
+      collab.masterViewport,
+      currentViewport(),
+    );
+  }
+
+  function scaledVisualPixel(value) {
+    return Number(value) * slaveViewportScale().x;
+  }
+
   const rain = {
     active: false,
     fallback: null,
@@ -386,6 +421,10 @@ export function createSisyphusRuntime(elements = {}) {
     filename: null,
     element: null,
   };
+  const roleAudioFade = {
+    entries: new Map(),
+    latest: null,
+  };
   const rainLoopAudio = {
     element: null,
     fadeDurationMs: 0,
@@ -399,6 +438,73 @@ export function createSisyphusRuntime(elements = {}) {
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
+  }
+
+  function cancelRoleAudioFade(audio) {
+    const state = roleAudioFade.entries.get(audio);
+    if (!state) {
+      return;
+    }
+    if (state.frameId !== null) {
+      window.cancelAnimationFrame(state.frameId);
+      state.frameId = null;
+    }
+    roleAudioFade.entries.delete(audio);
+  }
+
+  function cancelAllRoleAudioFades() {
+    Array.from(roleAudioFade.entries.keys()).forEach(cancelRoleAudioFade);
+  }
+
+  function fadeInRoleAudio(audio, role) {
+    cancelRoleAudioFade(audio);
+    const state = {
+      audio,
+      durationMs: ROLE_AUDIO_FADE_IN_MS,
+      frameId: null,
+      role,
+      targetVolume: ROLE_AUDIO_VOLUME,
+    };
+    const startedAt = performance.now();
+    const step = (now) => {
+      if (roleAudioFade.entries.get(audio) !== state) {
+        return;
+      }
+      const progress = clamp(
+        (now - startedAt) / ROLE_AUDIO_FADE_IN_MS,
+        0,
+        1,
+      );
+      audio.volume = ROLE_AUDIO_VOLUME * progress;
+      if (progress < 1) {
+        state.frameId = window.requestAnimationFrame(step);
+        return;
+      }
+      state.frameId = null;
+    };
+
+    audio.volume = 0;
+    roleAudioFade.entries.set(audio, state);
+    roleAudioFade.latest = state;
+    state.frameId = window.requestAnimationFrame(step);
+  }
+
+  function playRoleAudio(audio, role) {
+    cancelRoleAudioFade(audio);
+    try {
+      audio.currentTime = 0;
+      audio.volume = 0;
+      const promise = audio.play();
+      fadeInRoleAudio(audio, role);
+      if (promise && typeof promise.catch === "function") {
+        promise.catch(() => {
+          cancelRoleAudioFade(audio);
+          audio.volume = 0;
+        });
+      }
+    } catch {
+      audio.volume = 0;
+    }
   }
 
   function chooseChainHoverAudioIndex() {
@@ -435,11 +541,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     chainHoverAudio.lastPlayedIndex = index;
 
-    audio.currentTime = 0;
-    const promise = audio.play();
-    if (promise && typeof promise.catch === "function") {
-      promise.catch(() => {});
-    }
+    playRoleAudio(audio, "master");
   }
 
   function setSlaveClickSound(filename) {
@@ -449,6 +551,9 @@ export function createSisyphusRuntime(elements = {}) {
     collab.gachiSoundFilename = nextFilename;
     if (slaveClickAudio.filename === nextFilename) {
       return;
+    }
+    if (slaveClickAudio.element) {
+      cancelRoleAudioFade(slaveClickAudio.element);
     }
     slaveClickAudio.element?.pause();
     slaveClickAudio.filename = nextFilename;
@@ -471,11 +576,7 @@ export function createSisyphusRuntime(elements = {}) {
       slaveClickAudio.element = new Audio(url);
       slaveClickAudio.element.preload = "auto";
     }
-    slaveClickAudio.element.currentTime = 0;
-    const promise = slaveClickAudio.element.play();
-    if (promise && typeof promise.catch === "function") {
-      promise.catch(() => {});
-    }
+    playRoleAudio(slaveClickAudio.element, "slave");
   }
 
   function playRockClickSound() {
@@ -839,7 +940,10 @@ export function createSisyphusRuntime(elements = {}) {
       "--rain-blur-blend-mode",
       params.rainBlurBlendMode,
     );
-    rainLayer.style.setProperty("--rain-blur-radius", `${params.rainBlurPx}px`);
+    rainLayer.style.setProperty(
+      "--rain-blur-radius",
+      `${scaledVisualPixel(params.rainBlurPx)}px`,
+    );
     rainLayer.style.setProperty(
       "--rain-blur-opacity",
       params.rainBlurOpacity.toFixed(2),
@@ -861,8 +965,15 @@ export function createSisyphusRuntime(elements = {}) {
     );
     document.documentElement.style.setProperty(
       "--slave-hand-width-px",
-      `${params.slaveHandWidthPx}px`
+      `${scaledVisualPixel(params.slaveHandWidthPx)}px`
     );
+  }
+
+  function applyViewportScaledVisuals() {
+    applyHandSize();
+    applyRainSettings();
+    trail.dirty = true;
+    drawTrail();
   }
 
   function applySceneHeight() {
@@ -1491,15 +1602,19 @@ export function createSisyphusRuntime(elements = {}) {
   function syncRoomSettingControls() {
     SHARED_ROOM_SETTING_KEYS.forEach((key) => {
       const input = roomSettingControlElement(key);
-      if (!input || !Object.hasOwn(params, key)) {
-        return;
-      }
-      if (input.type === "checkbox") {
-        input.checked = Boolean(params[key]);
-      } else {
-        input.value = String(params[key]);
-      }
+      syncSettingControl(input, key);
     });
+  }
+
+  function syncSettingControl(input, key) {
+    if (!input || !Object.hasOwn(params, key)) {
+      return;
+    }
+    if (input.type === "checkbox") {
+      input.checked = Boolean(params[key]);
+    } else {
+      input.value = String(params[key]);
+    }
   }
 
   function setSettingsVersionMenuOpen(open) {
@@ -1902,6 +2017,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (
       collab.enabled &&
+      localCanEditSettings() &&
       !collab.applyingRemotePhysics
     ) {
       let hasPhysicsChanges = false;
@@ -1917,6 +2033,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (
       collab.enabled &&
+      localCanEditSettings() &&
       !collab.applyingRemoteRoomSettings
     ) {
       let hasRoomSettingsChanges = false;
@@ -2333,19 +2450,68 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function setLocalCursorRole(role) {
-    collab.clientRole = pointerRole(role);
+    const nextRole = pointerRole(role);
+    collab.clientRole = nextRole;
     applyCursorRole(handCursor, collab.clientRole);
+    body.dataset.clientRole = nextRole;
+    onClientRoleChange(nextRole);
+    if (nextRole === "slave") {
+      window.clearTimeout(collab.physicsTimerId);
+      window.clearTimeout(collab.roomSettingsTimerId);
+      collab.physicsTimerId = null;
+      collab.roomSettingsTimerId = null;
+      collab.pendingPhysicsChanges = Object.create(null);
+      collab.pendingRoomSettingsChanges = Object.create(null);
+    }
+    applyViewportScaledVisuals();
+    sendMasterViewport(true);
+  }
+
+  function applyMasterViewport(viewport) {
+    const next = SharedViewport.sanitizeViewport(viewport);
+    const previous = collab.masterViewport;
+    if (
+      !next ||
+      (previous?.width === next.width && previous?.height === next.height)
+    ) {
+      return false;
+    }
+    collab.masterViewport = next;
+    applyViewportScaledVisuals();
+    return true;
+  }
+
+  function sendMasterViewport(force = false) {
+    if (
+      !collab.enabled ||
+      !collab.connected ||
+      !localCanEditSettings()
+    ) {
+      return false;
+    }
+    const viewport = currentViewport();
+    if (!viewport) {
+      return false;
+    }
+    const signature = `${viewport.width}x${viewport.height}`;
+    if (!force && signature === collab.viewportSignature) {
+      return false;
+    }
+    collab.viewportSignature = signature;
+    sendShared("viewport.update", viewport);
+    return true;
   }
 
   function updateLocalSharedPointer(event, mode, visible) {
     if (event) {
       const position = viewportPointToCanonical(event.clientX, event.clientY);
-      const worldRect = world.getBoundingClientRect();
+      const viewport = currentViewport();
       const rockOffset = viewportToRockRelativePosition(
         event.clientX,
         event.clientY,
         rock.getBoundingClientRect(),
-        worldRect.width || window.innerWidth,
+        viewport?.width || window.innerWidth,
+        viewport?.height || window.innerHeight,
       );
       collab.localPointer.x = position.x;
       collab.localPointer.y = position.y;
@@ -2473,6 +2639,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     const rect = world.getBoundingClientRect();
+    const viewport = currentViewport();
     updateBounds();
     collab.remotePointers.forEach((pointer) => {
       pointer.x += (pointer.targetX - pointer.x) * 0.42;
@@ -2490,7 +2657,8 @@ export function createSisyphusRuntime(elements = {}) {
           pointer.rockOffsetX,
           pointer.rockOffsetY,
           rock.getBoundingClientRect(),
-          rect.width || window.innerWidth,
+          viewport?.width || window.innerWidth,
+          viewport?.height || window.innerHeight,
         );
       } else {
         const local = canonicalToLocal(pointer.x, pointer.y);
@@ -2763,6 +2931,7 @@ export function createSisyphusRuntime(elements = {}) {
   function scheduleSharedPhysicsUpdate() {
     if (
       !collab.enabled ||
+      !localCanEditSettings() ||
       collab.applyingRemotePhysics
     ) {
       return;
@@ -2783,6 +2952,7 @@ export function createSisyphusRuntime(elements = {}) {
   function scheduleSharedRoomSettingsUpdate() {
     if (
       !collab.enabled ||
+      !localCanEditSettings() ||
       collab.applyingRemoteRoomSettings
     ) {
       return;
@@ -2872,6 +3042,7 @@ export function createSisyphusRuntime(elements = {}) {
           state: currentSharedState(),
           physics: sharedPhysicsPayload(),
           roomSettings: sharedRoomSettingsPayload(),
+          masterViewport: currentViewport(),
           trail: currentSharedTrail(),
           imprint: currentSharedImprint(),
         }),
@@ -3118,8 +3289,6 @@ export function createSisyphusRuntime(elements = {}) {
         collab.localPointer.visible,
         true
       );
-      scheduleSharedPhysicsUpdate();
-      scheduleSharedRoomSettingsUpdate();
       updateSessionStatus();
     });
 
@@ -3241,6 +3410,7 @@ export function createSisyphusRuntime(elements = {}) {
       ? collab.clockOffset * 0.8 + offsetSample * 0.2
       : offsetSample;
     collab.clockOffsetReady = true;
+    applyMasterViewport(payload.masterViewport);
     applySharedPhysics(payload.physics);
     applySharedRoomSettings(payload.roomSettings);
     const holderIds = normalizeHolderIds(payload.holderIds);
@@ -3773,7 +3943,8 @@ export function createSisyphusRuntime(elements = {}) {
     if (trail.lastX !== null) {
       const dx = x - trail.lastX;
       const dy = y - trail.lastY;
-      const threshold = params.trailSampleDist * params.trailSampleDist;
+      const sampleDistance = scaledVisualPixel(params.trailSampleDist);
+      const threshold = sampleDistance * sampleDistance;
       if (dx * dx + dy * dy < threshold) {
         return;
       }
@@ -3808,11 +3979,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function trailDashArray() {
+    const scale = slaveViewportScale().x;
     if (params.dashStyle === "dashed") {
-      return [params.dashLength, params.dashGap];
+      return [params.dashLength * scale, params.dashGap * scale];
     }
     if (params.dashStyle === "dotted") {
-      return [1, Math.max(params.dashGap, 2)];
+      return [scale, Math.max(params.dashGap * scale, 2 * scale)];
     }
     return [];
   }
@@ -3825,7 +3997,10 @@ export function createSisyphusRuntime(elements = {}) {
     trailCtx.arc(
       point.x,
       point.y,
-      Math.max(2.5, params.lineWidth * 0.75),
+      Math.max(
+        scaledVisualPixel(2.5),
+        scaledVisualPixel(params.lineWidth) * 0.75,
+      ),
       0,
       Math.PI * 2
     );
@@ -3857,10 +4032,10 @@ export function createSisyphusRuntime(elements = {}) {
     trailCtx.globalAlpha = params.lineOpacity;
     trailCtx.lineCap = params.lineCap;
     trailCtx.lineJoin = params.lineJoin;
-    trailCtx.lineWidth = params.lineWidth;
+    trailCtx.lineWidth = scaledVisualPixel(params.lineWidth);
 
     if (params.glow > 0) {
-      trailCtx.shadowBlur = params.glow;
+      trailCtx.shadowBlur = scaledVisualPixel(params.glow);
       trailCtx.shadowColor = params.glowColor;
     }
 
@@ -4356,20 +4531,35 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   settingsControlElements().forEach((el) => {
-    const handleControlChange = () =>
+    const handleControlChange = () => {
+      if (collab.enabled && !localCanEditSettings()) {
+        syncSettingControl(el, el.name);
+        updateControlOutputs();
+        return;
+      }
       readControls({ changedKey: el.name });
+    };
     listen(el, "input", handleControlChange);
     listen(el, "change", handleControlChange);
   });
 
   listen(settingsVersionSave, "click", () => {
+    if (collab.enabled && !localCanEditSettings()) {
+      return;
+    }
     readControls({ changedKeys: [] });
     saveCurrentSettingsVersion();
   });
   listen(settingsVersionToggle, "click", () => {
+    if (collab.enabled && !localCanEditSettings()) {
+      return;
+    }
     setSettingsVersionMenuOpen(settingsVersionMenu?.hidden !== false);
   });
   listen(settingsVersionMenu, "click", (event) => {
+    if (collab.enabled && !localCanEditSettings()) {
+      return;
+    }
     const deleteButton = event.target.closest("[data-settings-version-delete]");
     if (deleteButton) {
       deleteSettingsVersion(deleteButton.dataset.settingsVersionDelete || "");
@@ -4453,6 +4643,8 @@ export function createSisyphusRuntime(elements = {}) {
   );
   listen(window, "resize", () => {
     updateBounds();
+    applyViewportScaledVisuals();
+    sendMasterViewport();
     resizeTrailCanvas();
     if (collab.enabled && collab.snapshots.length > 0) {
       applySharedFrame(collab.snapshots.at(-1));
@@ -4505,6 +4697,22 @@ export function createSisyphusRuntime(elements = {}) {
             raindropSpecularLight: [...profile.raindropSpecularLight],
           }
         : null;
+    },
+    getViewportScale: () => ({ ...slaveViewportScale() }),
+    getRenderedVisualSettings: () => ({
+      lineWidth: scaledVisualPixel(params.lineWidth),
+      rainBlurPx: scaledVisualPixel(params.rainBlurPx),
+      slaveHandWidthPx: scaledVisualPixel(params.slaveHandWidthPx),
+    }),
+    getRoleAudioState: () => {
+      const state = roleAudioFade.latest;
+      return {
+        fadeActive: state?.frameId !== null && state?.frameId !== undefined,
+        fadeDurationMs: state?.durationMs ?? 0,
+        fadeTargetVolume: state?.targetVolume ?? 0,
+        role: state?.role ?? null,
+        volume: state?.audio?.volume ?? 0,
+      };
     },
     getRoomSettings: sharedRoomSettingsPayload,
     getRainAudioState: () => ({
@@ -4561,6 +4769,8 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(collab.physicsTimerId);
       window.clearTimeout(collab.roomSettingsTimerId);
       stopRainLoopSound({ immediate: true });
+      cancelAllRoleAudioFades();
+      chainHoverAudio.elements.forEach((audio) => audio?.pause());
       slaveClickAudio.element?.pause();
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;

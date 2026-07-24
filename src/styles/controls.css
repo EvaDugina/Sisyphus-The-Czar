@@ -29,6 +29,11 @@
   right: 1rem;
 }
 
+.settings-toggle[hidden],
+.settings-panel[hidden] {
+  display: none;
+}
+
 .session-share-toggle {
   right: 4.5rem;
 }

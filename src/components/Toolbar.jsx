@@ -3,6 +3,7 @@ export function Toolbar({
   settingsToggleRef,
   isSettingsOpen,
   onToggleSettings,
+  settingsAvailable,
 }) {
   return (
     <>
@@ -33,6 +34,8 @@ export function Toolbar({
         aria-label="Параметры"
         title="Параметры"
         onClick={onToggleSettings}
+        hidden={!settingsAvailable}
+        disabled={!settingsAvailable}
       >
         ⚙
       </button>

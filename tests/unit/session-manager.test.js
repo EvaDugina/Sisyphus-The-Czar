@@ -295,6 +295,62 @@ test("roomSettings.update синхронизирует размер руки и 
   );
 });
 
+test("только master изменяет параметры и публикует свой viewport", () => {
+  const { manager } = setup();
+  const session = manager.createSession({
+    creatorClientId: "client-master-view-01",
+    masterViewport: { width: 1905, height: 899 },
+  });
+  const master = connect(manager, session, "client-master-view-01");
+  const slave = connect(manager, session, "client-slave-view-001");
+
+  manager.handleMessage(session, slave.client, {
+    v: 1,
+    type: "roomSettings.update",
+    seq: 1,
+    payload: { lineWidth: 9 },
+  });
+  manager.handleMessage(session, slave.client, {
+    v: 1,
+    type: "physics.update",
+    seq: 2,
+    payload: { gravity: 99 },
+  });
+  manager.handleMessage(session, slave.client, {
+    v: 1,
+    type: "viewport.update",
+    seq: 3,
+    payload: { width: 1000, height: 500 },
+  });
+
+  assert.equal(
+    session.roomSettings.lineWidth,
+    RoomSettings.DEFAULT_ROOM_SETTINGS.lineWidth,
+  );
+  assert.equal(session.physics.gravity, Physics.DEFAULT_PHYSICS.gravity);
+  assert.deepEqual(session.masterViewport, { width: 1905, height: 899 });
+  assert.equal(
+    slave.socket.messages.findLast((message) => message.type === "error").payload
+      .code,
+    "master_only",
+  );
+
+  manager.handleMessage(session, master.client, {
+    v: 1,
+    type: "viewport.update",
+    seq: 1,
+    payload: { width: 1600, height: 900 },
+  });
+
+  assert.deepEqual(session.masterViewport, { width: 1600, height: 900 });
+  assert.deepEqual(
+    slave.socket.messages.findLast(
+      (message) => message.type === "session.snapshot",
+    ).payload.masterViewport,
+    { width: 1600, height: 900 },
+  );
+});
+
 test("старая сохранённая сессия без roomSettings получает дефолты", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([

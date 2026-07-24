@@ -1,9 +1,10 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { createSisyphusRuntime } from "../runtime/createSisyphusRuntime";
 import { useSettings } from "./useSettings";
 
 export function useSisyphusExperience() {
-  const settings = useSettings();
+  const [clientRole, setClientRole] = useState("pending");
+  const settings = useSettings(clientRole === "master");
   const realtime = {
     sessionStatusRef: useRef(null),
     sessionShareToggleRef: useRef(null),
@@ -67,6 +68,7 @@ export function useSisyphusExperience() {
       sessionStatus: sessionStatusRef.current,
       sessionShareToggle: sessionShareToggleRef.current,
       sessionRestartButton: sessionRestartButtonRef.current,
+      onClientRoleChange: setClientRole,
     });
 
     return () => runtime.dispose();
@@ -88,5 +90,5 @@ export function useSisyphusExperience() {
     worldRef,
   ]);
 
-  return { settings, realtime, scene, trail, rain };
+  return { clientRole, settings, realtime, scene, trail, rain };
 }

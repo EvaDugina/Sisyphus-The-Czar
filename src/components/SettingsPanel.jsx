@@ -9,13 +9,15 @@ export function SettingsPanel({
   restartButtonRef,
   sessionStatusRef,
   isOpen,
+  settingsAvailable,
 }) {
   return (
     <aside
       ref={panelRef}
       className={`settings-panel${isOpen ? " is-open" : ""}`}
       id="settings-panel"
-      aria-hidden={String(!isOpen)}
+      aria-hidden={String(!settingsAvailable || !isOpen)}
+      hidden={!settingsAvailable}
     >
       <section className="settings-versions" aria-label="Версии настроек">
         <div

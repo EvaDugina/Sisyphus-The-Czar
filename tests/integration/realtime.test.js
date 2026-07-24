@@ -74,6 +74,7 @@ test("два WebSocket-клиента делят состояние и пере�
       creatorClientId: "integration-client-a",
       state: { phase: Physics.PHASES.PLAY, x: 500, y: Physics.WORLD_HEIGHT },
       physics: { gravity: 1, bounce: 0 },
+      masterViewport: { width: 1905, height: 899 },
       roomSettings: {
         sceneHeightScreens:
           RoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
@@ -102,6 +103,14 @@ test("два WebSocket-клиента делят состояние и пере�
   ]);
   assert.equal(firstSnapshot.payload.clientRole, "master");
   assert.equal(secondSnapshot.payload.clientRole, "slave");
+  assert.deepEqual(firstSnapshot.payload.masterViewport, {
+    width: 1905,
+    height: 899,
+  });
+  assert.deepEqual(secondSnapshot.payload.masterViewport, {
+    width: 1905,
+    height: 899,
+  });
   assert.equal(firstSnapshot.payload.gachiSoundFilename, null);
   assert.ok(
     GachiSounds.isGachiSoundFilename(
@@ -251,11 +260,11 @@ test("два WebSocket-клиента делят состояние и пере�
   );
   await first.waitFor("control.granted");
 
-  second.socket.send(
+  first.socket.send(
     JSON.stringify({
       v: 1,
       type: "physics.update",
-      seq: 3,
+      seq: 6,
       payload: { gravity: 10 },
     })
   );
@@ -265,11 +274,11 @@ test("два WebSocket-клиента делят состояние и пере�
   );
   assert.equal(synced.payload.controllerId, "integration-client-b");
 
-  second.socket.send(
+  first.socket.send(
     JSON.stringify({
       v: 1,
       type: "roomSettings.update",
-      seq: 4,
+      seq: 7,
       payload: {
         sceneHeightScreens: 50,
         handWidthVw: 42.5,
@@ -298,7 +307,7 @@ test("два WebSocket-клиента делят состояние и пере�
     JSON.stringify({
       v: 1,
       type: "session.restart",
-      seq: 6,
+      seq: 8,
       payload: { x: 321, y: 654 },
     })
   );
@@ -306,7 +315,9 @@ test("два WebSocket-клиента делят состояние и пере�
     "session.snapshot",
     (payload) =>
       payload.revision > roomSettingsSynced.payload.revision &&
-      payload.phase === Physics.PHASES.PLAY
+      payload.phase === Physics.PHASES.PLAY &&
+      payload.x === 321 &&
+      payload.y === 654
   );
   assert.equal(restarted.payload.x, 321);
   assert.equal(restarted.payload.y, 654);

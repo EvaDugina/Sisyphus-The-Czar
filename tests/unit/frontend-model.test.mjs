@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import "../../shared/viewport.js";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
@@ -33,6 +34,7 @@ import {
 } from "../../src/config/settings.mjs";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
+const SharedViewport = globalThis.SisyphusViewport;
 
 test("координаты сохраняют каноническое положение между viewport", () => {
   const world = { width: 1000, height: 2000 };
@@ -65,6 +67,7 @@ test("курсор сохраняет положение относительн�
     sourceCursor.y,
     sourceRock,
     1905,
+    899,
   );
   const targetRock = { left: 890, top: 636, width: 100, height: 100 };
   const targetCursor = rockRelativeToViewportPosition(
@@ -72,18 +75,35 @@ test("курсор сохраняет положение относительн�
     relative.y,
     targetRock,
     1580,
+    745,
   );
   const targetRelative = viewportToRockRelativePosition(
     targetCursor.x,
     targetCursor.y,
     targetRock,
     1580,
+    745,
   );
 
   assert.ok(Math.abs(relative.x - -195 / 1905) < 1e-12);
-  assert.ok(Math.abs(relative.y - -160 / 1905) < 1e-12);
+  assert.ok(Math.abs(relative.y - -160 / 899) < 1e-12);
   assert.ok(Math.abs(targetRelative.x - relative.x) < 1e-12);
   assert.ok(Math.abs(targetRelative.y - relative.y) < 1e-12);
+});
+
+test("slave масштабирует пиксельные значения по отношению viewport", () => {
+  const scale = SharedViewport.viewportScale(
+    { width: 1905, height: 899 },
+    { width: 1580, height: 745 },
+  );
+
+  assert.ok(Math.abs(scale.x - 1580 / 1905) < 1e-12);
+  assert.ok(Math.abs(scale.y - 745 / 899) < 1e-12);
+  assert.equal(SharedViewport.viewportScale(null, null).x, 1);
+  assert.deepEqual(
+    SharedViewport.sanitizeViewport({ width: 1905.4, height: 898.6 }),
+    { width: 1905, height: 899 },
+  );
 });
 
 test("настройка темы содержит автоматический и ручные режимы", () => {
