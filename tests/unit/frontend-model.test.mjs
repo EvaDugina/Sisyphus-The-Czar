@@ -152,6 +152,7 @@ test("настройки дождя ограничиваются и исполь
     rainExitEasing: "ease-out",
     rainEnterMs: 1100,
     rainExitMs: 2000,
+    rainMaxVolume: 0.5,
     rainZIndex: 5,
     rainBlendMode: "multiply",
     rainBlurBlendMode: "normal",
@@ -163,6 +164,7 @@ test("настройки дождя ограничиваются и исполь
   const settings = normalizeRainSettings(
     {
       rainStrength: 8,
+      rainMaxVolume: 8,
       rainBlendMode: "invalid",
       rainBlurBlendMode: "also-invalid",
       rainBackgroundBlurSteps: 100,
@@ -185,6 +187,7 @@ test("настройки дождя ограничиваются и исполь
 
   assert.deepEqual(settings, {
     rainStrength: 1.5,
+    rainMaxVolume: 3,
     rainBlendMode: "multiply",
     rainBlurBlendMode: "normal",
     rainBackgroundBlurSteps: 8,
@@ -213,6 +216,7 @@ test("mix blend дождя и blur нормализуются независим
         rainExitEasing: "ease-out",
         rainEnterMs: 1100,
         rainExitMs: 2000,
+        rainMaxVolume: 0.5,
         rainZIndex: 5,
       },
     },
@@ -250,7 +254,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v15");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v16");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -480,11 +484,15 @@ test("общие визуальные настройки комнаты есть
     },
     {
       type: "range",
-      min: 5,
+      min: 1,
       max: 100,
       step: 1,
       defaultValue: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
     }
+  );
+  assert.equal(
+    SharedRoomSettings.sceneMotionMultiplier({ sceneHeightScreens: 1 }),
+    1000
   );
   assert.equal(
     SharedRoomSettings.sceneMotionMultiplier({ sceneHeightScreens: 10 }),
@@ -647,6 +655,9 @@ test("группа дождя содержит общий toggle и blur тём�
   const rainBackgroundBlurSteps = rainGroup.controls.find(
     (control) => control.name === "rainBackgroundBlurSteps"
   );
+  const rainMaxVolume = rainGroup.controls.find(
+    (control) => control.name === "rainMaxVolume"
+  );
   const rainBlendMode = rainGroup.controls.find(
     (control) => control.name === "rainBlendMode"
   );
@@ -678,6 +689,26 @@ test("группа дождя содержит общий toggle и blur тём�
     rainEnabled.defaultChecked,
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnabled
   );
+  assert.deepEqual(
+    {
+      label: rainMaxVolume.label,
+      type: rainMaxVolume.type,
+      min: rainMaxVolume.min,
+      max: rainMaxVolume.max,
+      step: rainMaxVolume.step,
+      defaultValue: rainMaxVolume.defaultValue,
+    },
+    {
+      label: "Максимальная громкость",
+      type: "range",
+      min: 0,
+      max: 3,
+      step: 0.01,
+      defaultValue: 0.5,
+    },
+  );
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 8);
+  assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainMaxVolume, 0.5);
   assert.equal(rainBlendMode.label, "Mix blend дождя");
   assert.equal(rainBlendMode.type, "select");
   assert.equal(rainBlendMode.defaultValue, "multiply");

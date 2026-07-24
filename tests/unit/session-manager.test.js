@@ -439,6 +439,7 @@ test("общие визуальные настройки комнаты норм
       rainHighlightColor: "#ABCDEF",
       rainEnterMs: 650,
       rainExitMs: 700,
+      rainMaxVolume: 9,
       rainAudioEnterMs: 450,
       rainAudioExitMs: 550,
     },
@@ -452,6 +453,12 @@ test("общие визуальные настройки комнаты норм
   assert.equal(session.roomSettings.lineWidth, 60);
   assert.equal(session.roomSettings.rainEnterMs, 650);
   assert.equal(session.roomSettings.rainExitMs, 700);
+  assert.equal(session.roomSettings.rainMaxVolume, 3);
+  assert.equal(
+    RoomSettings.sanitizeRoomSettings({ sceneHeightScreens: 0 })
+      .sceneHeightScreens,
+    1
+  );
   assert.equal(Object.hasOwn(session.roomSettings, "rainAudioEnterMs"), false);
   assert.equal(Object.hasOwn(session.roomSettings, "rainAudioExitMs"), false);
   assert.equal(
@@ -485,6 +492,7 @@ test("roomSettings.update синхронизирует размер руки и 
     sceneHeightScreens: 50,
     handWidthVw: 42.5,
     slaveHandWidthPx: 40,
+    rainMaxVolume: 2.5,
     rainDropColor: "#123456",
     rainHighlightColor: "#fedcba",
     trailReset: true,
@@ -503,6 +511,7 @@ test("roomSettings.update синхронизирует размер руки и 
       sceneHeightScreens: 50,
       handWidthVw: 42.5,
       slaveHandWidthPx: 40,
+      rainMaxVolume: 2.5,
       rainDropColor: "#123456",
       rainHighlightColor: "#fedcba",
       trailReset: true,

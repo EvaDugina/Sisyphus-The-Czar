@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 7;
+  const ROOM_SETTINGS_VERSION = 8;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -41,11 +41,12 @@
     /^cubic-bezier\(\s*(-?(?:\d+\.?\d*|\.\d+))\s*,\s*(-?(?:\d+\.?\d*|\.\d+))\s*,\s*(-?(?:\d+\.?\d*|\.\d+))\s*,\s*(-?(?:\d+\.?\d*|\.\d+))\s*\)$/i;
 
   const ROOM_SETTINGS_LIMITS = Object.freeze({
-    sceneHeightScreens: [5, 100],
+    sceneHeightScreens: [1, 100],
     handWidthVw: [10, 90],
     slaveHandWidthPx: [8, 96],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     rainStrength: [0.25, 1.5],
+    rainMaxVolume: [0, 3],
     rainBackgroundBlurSteps: [0, 8],
     rainBlurPx: [0, 40],
     rainBlurOpacity: [0, 1],
@@ -73,6 +74,7 @@
     slaveHandWidthPx: 16,
     rainEnabled: false,
     rainStrength: 1,
+    rainMaxVolume: 0.5,
     rainDropColor: "#8c8c8c",
     rainHighlightColor: "#ffffff",
     rainBlendMode: "multiply",
@@ -245,6 +247,8 @@
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
     const [slaveHandMin, slaveHandMax] = ROOM_SETTINGS_LIMITS.slaveHandWidthPx;
     const [rainStrengthMin, rainStrengthMax] = ROOM_SETTINGS_LIMITS.rainStrength;
+    const [rainVolumeMin, rainVolumeMax] =
+      ROOM_SETTINGS_LIMITS.rainMaxVolume;
     const [rainStepsMin, rainStepsMax] =
       ROOM_SETTINGS_LIMITS.rainBackgroundBlurSteps;
     const [rainBlurMin, rainBlurMax] = ROOM_SETTINGS_LIMITS.rainBlurPx;
@@ -301,6 +305,13 @@
         "rainStrength",
         rainStrengthMin,
         rainStrengthMax
+      ),
+      rainMaxVolume: finiteSetting(
+        source,
+        fallbackSource,
+        "rainMaxVolume",
+        rainVolumeMin,
+        rainVolumeMax
       ),
       rainDropColor: normalizeHexColor(
         source.rainDropColor,

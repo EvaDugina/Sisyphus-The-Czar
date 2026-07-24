@@ -60,6 +60,11 @@ export function normalizeRainSettings(raw, options) {
 
   return {
     rainStrength: clamp(finiteNumber(raw.rainStrength, 1), 0.25, 1.5),
+    rainMaxVolume: clamp(
+      finiteNumber(raw.rainMaxVolume, defaults.rainMaxVolume ?? 0.5),
+      0,
+      3,
+    ),
     rainBlendMode: mixBlendMode(
       raw.rainBlendMode,
       defaults.rainBlendMode || "multiply",

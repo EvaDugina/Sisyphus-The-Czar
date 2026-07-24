@@ -1192,8 +1192,13 @@ test("падение компенсируется при изменении вы
     return profile;
   }
 
+  const singleScreen = await profileForSceneHeight(1);
   const compact = await profileForSceneHeight(10);
   const legacy = await profileForSceneHeight(100);
+  expect(singleScreen.sceneHeightScreens).toBe(1);
+  expect(singleScreen.sceneMaxY).toBeGreaterThanOrEqual(0);
+  expect(Number.isFinite(singleScreen.localDeltaY)).toBe(true);
+  expect(singleScreen.motionScale).toBeCloseTo(1000, 6);
   expect(compact.motionScale).toBeCloseTo(100, 6);
   expect(legacy.motionScale).toBeCloseTo(10, 6);
   expect(compact.sceneMaxY).toBeLessThan(legacy.sceneMaxY);
@@ -1328,7 +1333,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -1337,6 +1342,7 @@ test("два браузера видят один камень и поднима
   await openControlGroup(first, "Дождь");
   const firstRain = first.getByTestId("weather-rain");
   await setRange(first, "rainStrength", 1.25);
+  await setRange(first, "rainMaxVolume", 2.5);
   await setField(first, "rainBlendMode", "screen");
   await setField(first, "rainBlurBlendMode", "overlay");
   await setRange(first, "rainBlurPx", 18);
@@ -1350,6 +1356,7 @@ test("два браузера видят один камень и поднима
   await setField(first, "rainDropColor", "#336699");
   await setField(first, "rainHighlightColor", "#ffcc00");
   await expect(first.locator('[data-output="rainStrength"]')).toHaveText("125%");
+  await expect(first.locator('[data-output="rainMaxVolume"]')).toHaveText("250%");
   await expect(first.locator('[data-output="rainBackgroundBlurSteps"]')).toHaveText("3");
   await expect(first.locator('[data-output="rainBlurPx"]')).toHaveText("18 px");
   await expect(first.locator('[data-output="rainBlurOpacity"]')).toHaveText("30%");
@@ -1365,7 +1372,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -1378,6 +1385,7 @@ test("два браузера видят один камень и поднима
           rainBlurOpacity: stored.rainBlurOpacity,
           rainBlurPx: stored.rainBlurPx,
           rainBlurSaturation: stored.rainBlurSaturation,
+          rainMaxVolume: stored.rainMaxVolume,
           rainStrength: stored.rainStrength,
           rainZIndex: stored.rainZIndex,
         };
@@ -1394,6 +1402,7 @@ test("два браузера видят один камень и поднима
       rainBlurOpacity: 0.3,
       rainBlurPx: 18,
       rainBlurSaturation: 1.25,
+      rainMaxVolume: 2.5,
       rainStrength: 1.25,
       rainZIndex: 9,
     });
@@ -1452,11 +1461,26 @@ test("два браузера видят один камень и поднима
   await setCheckbox(first, "rainEnabled", true);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   const rainAudioFadeIn = await first.evaluate(() => getRainAudioState());
+  expect(rainAudioFadeIn.amplificationAvailable).toBe(true);
+  expect(rainAudioFadeIn.elementVolume).toBe(1);
   expect(rainAudioFadeIn.fadeDurationMs).toBe(650);
   expect(rainAudioFadeIn.fadeActive).toBe(true);
-  expect(rainAudioFadeIn.fadeTargetVolume).toBe(0.42);
+  expect(rainAudioFadeIn.fadeTargetVolume).toBe(2.5);
   expect(rainAudioFadeIn.playing).toBe(true);
-  expect(rainAudioFadeIn.volume).toBeLessThan(0.42);
+  expect(rainAudioFadeIn.volume).toBeLessThan(2.5);
+  await expect
+    .poll(() =>
+      first.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
+    )
+    .toBe(1);
+  await setRange(first, "rainMaxVolume", 3);
+  await expect(first.locator('[data-output="rainMaxVolume"]')).toHaveText("300%");
+  const amplifiedRain = await first.evaluate(() => getRainAudioState());
+  expect(amplifiedRain.fadeDurationMs).toBe(650);
+  expect(amplifiedRain.fadeActive).toBe(true);
+  expect(amplifiedRain.fadeMode).toBe("volume");
+  expect(amplifiedRain.fadeTargetVolume).toBe(3);
+  expect(amplifiedRain.playing).toBe(true);
   await expect
     .poll(() =>
       first.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
@@ -1480,7 +1504,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -1515,7 +1539,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1532,7 +1556,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1602,6 +1626,7 @@ test("два браузера видят один камень и поднима
   await expect(second.locator('[name="rainBlurBlendMode"]')).toHaveValue(
     await first.locator('[name="rainBlurBlendMode"]').inputValue()
   );
+  await expect(second.locator('[name="rainMaxVolume"]')).toHaveValue("3");
   await expect(second.locator('[name="handWidthVw"]')).toHaveValue("40");
   await expect(second.locator('[name="slaveHandWidthPx"]')).toHaveValue("36");
   await setField(second, "rainExitMs", 300);

@@ -5,9 +5,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v15";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v16";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v15",
   "sisyphus-czar-settings-v14",
   "sisyphus-czar-settings-v13",
   "sisyphus-czar-settings-v12",
@@ -574,6 +575,17 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROOM_SETTINGS.rainStrength,
         output: `${Math.round(DEFAULT_ROOM_SETTINGS.rainStrength * 100)}%`,
         hint: "Плотность и заметность ливня. Больше значение — больше капель и сильнее дождевой эффект.",
+      },
+      {
+        name: "rainMaxVolume",
+        label: "Максимальная громкость",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rainMaxVolume[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rainMaxVolume[1],
+        step: 0.01,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rainMaxVolume,
+        output: `${Math.round(DEFAULT_ROOM_SETTINGS.rainMaxVolume * 100)}%`,
+        hint: "Целевая громкость звука дождя. Значения выше 100% усиливают сигнал через Web Audio.",
       },
       {
         name: "rainBlendMode",
