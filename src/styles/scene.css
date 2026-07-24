@@ -85,9 +85,8 @@
   margin: 0;
   overflow: hidden;
   color: color-mix(in srgb, var(--ink) 20%, transparent);
-  font-family:
-    "Cormorant Garamond", Georgia, "Times New Roman", serif;
-  font-size: 12rem;
+  font-family: fantasy;
+  font-size: 32rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: 0;
@@ -430,12 +429,6 @@ body.state-fallingToBottom .hand-cursor {
   .top-inscription {
     width: calc(100vw - 1rem);
     font-size: 4rem;
-  }
-
-  .summit-timer {
-    top: 7.35rem;
-    width: calc(100vw - 1rem);
-    font-size: 5rem;
   }
 
   .title2 {
