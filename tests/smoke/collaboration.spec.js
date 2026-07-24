@@ -371,6 +371,8 @@ async function expectReturnImprintScrollsToTop(page) {
     const imprint = document.querySelector(".rock-imprint");
     const x = Number.parseFloat(imprint.style.getPropertyValue("--imprint-x"));
     const y = Number.parseFloat(imprint.style.getPropertyValue("--imprint-y"));
+    params.returnScrollDurationSeconds = 0.1;
+    params.returnScrollEasing = "cubic-bezier(0, 0, 1, 1)";
     motion.suspended = false;
     setPosition(x, y);
     syncReturnTheme();
@@ -391,15 +393,9 @@ async function expectReturnImprintScrollsToTop(page) {
   await expect
     .poll(() =>
       page.evaluate(() =>
-        window.__returnScrollCalls.some(([options]) => {
-          return (
-            options &&
-            typeof options === "object" &&
-            options.top === 0 &&
-            options.left === 0 &&
-            options.behavior === "smooth"
-          );
-        })
+        window.__returnScrollCalls.some(
+          ([left, top]) => left === 0 && Number(top) === 0
+        )
       )
     )
     .toBe(true);
@@ -1396,7 +1392,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v18") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -1413,8 +1409,8 @@ test("два браузера видят один камень и поднима
   await setRange(first, "rainBlurSaturation", 1.25);
   await setField(first, "rainEnterEasing", "cubic-bezier(0.12, 0.8, 0.2, 1)");
   await setField(first, "rainExitEasing", "cubic-bezier(0.7, 0, 0.3, 1)");
-  await setField(first, "rainEnterMs", 650);
-  await setField(first, "rainExitMs", 700);
+  await setRange(first, "rainEnterMs", 0.7);
+  await setRange(first, "rainExitMs", 0.7);
   await setField(first, "rainZIndex", 9);
   await setField(first, "rainDropColor", "#336699");
   await setField(first, "rainHighlightColor", "#ffcc00");
@@ -1424,8 +1420,8 @@ test("два браузера видят один камень и поднима
   await expect(first.locator('[data-output="rainBlurPx"]')).toHaveText("18 px");
   await expect(first.locator('[data-output="rainBlurOpacity"]')).toHaveText("30%");
   await expect(first.locator('[data-output="rainBlurSaturation"]')).toHaveText("125%");
-  await expect(first.locator('[data-output="rainEnterMs"]')).toHaveText("650");
-  await expect(first.locator('[data-output="rainExitMs"]')).toHaveText("700");
+  await expect(first.locator('[data-output="rainEnterMs"]')).toHaveText("0.7 s");
+  await expect(first.locator('[data-output="rainExitMs"]')).toHaveText("0.7 s");
   await expect(first.locator('[name="rainAudioEnterMs"]')).toHaveCount(0);
   await expect(first.locator('[name="rainAudioExitMs"]')).toHaveCount(0);
   await expect(first.locator('[data-output="rainZIndex"]')).toHaveText("9");
@@ -1435,7 +1431,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v18") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -1456,7 +1452,7 @@ test("два браузера видят один камень и поднима
     )
     .toEqual({
       rainEnterEasing: "cubic-bezier(0.12, 0.8, 0.2, 1)",
-      rainEnterMs: 650,
+      rainEnterMs: 700,
       rainExitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
       rainExitMs: 700,
       rainBlendMode: "screen",
@@ -1507,7 +1503,7 @@ test("два браузера видят один камень и поднима
       })
     )
     .toEqual({
-      enterDuration: "650ms",
+      enterDuration: "700ms",
       enterEasing: "cubic-bezier(0.12, 0.8, 0.2, 1)",
       exitDuration: "700ms",
       exitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
@@ -1527,7 +1523,7 @@ test("два браузера видят один камень и поднима
   expect(rainAudioFadeIn.amplificationAvailable).toBe(true);
   expect(rainAudioFadeIn.backend).toBe("buffer");
   expect(rainAudioFadeIn.crossfadeRatio).toBe(0.2);
-  expect(rainAudioFadeIn.fadeDurationMs).toBe(650);
+  expect(rainAudioFadeIn.fadeDurationMs).toBe(700);
   expect(rainAudioFadeIn.fadeActive).toBe(true);
   expect(rainAudioFadeIn.fadeTargetVolume).toBe(2.5);
   expect(rainAudioFadeIn.playing).toBe(true);
@@ -1545,7 +1541,7 @@ test("два браузера видят один камень и поднима
   await setRange(first, "rainMaxVolume", 3);
   await expect(first.locator('[data-output="rainMaxVolume"]')).toHaveText("300%");
   const amplifiedRain = await first.evaluate(() => getRainAudioState());
-  expect(amplifiedRain.fadeDurationMs).toBe(650);
+  expect(amplifiedRain.fadeDurationMs).toBe(700);
   expect(amplifiedRain.fadeActive).toBe(true);
   expect(amplifiedRain.fadeMode).toBe("volume");
   expect(amplifiedRain.fadeTargetVolume).toBe(3);
@@ -1571,7 +1567,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v18") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -1606,7 +1602,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v18") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1623,7 +1619,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v18") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1735,9 +1731,9 @@ test("два браузера видят один камень и поднима
   await expect(second.locator('[name="handForceDeficitEasing"]')).toHaveValue(
     "cubic-bezier(0, 0, 1, 1)",
   );
-  await setField(second, "rainExitMs", 300);
-  await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("700");
-  await expect(first.locator('[name="rainExitMs"]')).toHaveValue("700");
+  await setRange(second, "rainExitMs", 0.3);
+  await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("0.7 s");
+  await expect(first.locator('[name="rainExitMs"]')).toHaveValue("0.7");
   await expect(first.getByTestId("session-status")).toContainText("2");
   const expectedPhysics = {
     mass: "10",

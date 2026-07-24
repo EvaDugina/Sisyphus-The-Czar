@@ -118,10 +118,10 @@ export function normalizeRainSettings(raw, options) {
       isTimingFunctionSupported,
     ),
     rainEnterMs: Math.round(
-      clamp(finiteNumber(raw.rainEnterMs, defaults.rainEnterMs), 0, 10000),
+      clamp(finiteNumber(raw.rainEnterMs, defaults.rainEnterMs), 0, 20000),
     ),
     rainExitMs: Math.round(
-      clamp(finiteNumber(raw.rainExitMs, defaults.rainExitMs), 0, 10000),
+      clamp(finiteNumber(raw.rainExitMs, defaults.rainExitMs), 0, 20000),
     ),
   };
 }

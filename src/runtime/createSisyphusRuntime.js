@@ -42,10 +42,11 @@ const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).ma
   (control) => control.name,
 );
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
-const SETTINGS_SCHEMA_VERSION = 17;
+const SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
+const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
 
 const chainHoverAudioModules = import.meta.glob(
   "../../assets/audio/Кандалы_*.mp3",
@@ -144,6 +145,7 @@ export function createSisyphusRuntime(elements = {}) {
     dirty: true,
     skipNextRecord: false,
   };
+  let returnScrollAnimationId = null;
   const summitTimer = {
     elapsedMs: 0,
     running: false,
@@ -172,10 +174,16 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
   const DEFAULT_THEME_TRANSITION_MS = 420;
   const DEFAULT_THEME_MODE = SharedRoomSettings.DEFAULT_ROOM_SETTINGS.themeMode;
+  const DEFAULT_RETURN_SCROLL_EASING =
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.returnScrollEasing;
+  const DEFAULT_RETURN_SCROLL_DURATION_SECONDS =
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.returnScrollDurationSeconds;
   const SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION = 0.5;
 
   const params = {
     themeMode: DEFAULT_THEME_MODE,
+    returnScrollDurationSeconds: DEFAULT_RETURN_SCROLL_DURATION_SECONDS,
+    returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     mass: SharedPhysics.DEFAULT_PHYSICS.mass,
     gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
     firstFallVelocity: SharedPhysics.DEFAULT_PHYSICS.firstFallVelocity,
@@ -504,6 +512,35 @@ export function createSisyphusRuntime(elements = {}) {
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
+  }
+
+  function secondsOutput(seconds) {
+    const value = Number(seconds);
+    return `${Number.isFinite(value) ? value.toFixed(1) : "0.0"} s`;
+  }
+
+  function settingValueToControlValue(key, value) {
+    if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
+      const seconds = Number(value) / 1000;
+      return Number.isFinite(seconds) ? String(seconds) : "0";
+    }
+    return String(value);
+  }
+
+  function controlValueToSettingValue(input, key) {
+    if (!input) {
+      return undefined;
+    }
+    if (input.type === "checkbox") {
+      return Boolean(input.checked);
+    }
+    if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
+      const seconds = Number(input.value);
+      return Number.isFinite(seconds)
+        ? Math.round(seconds * 1000)
+        : input.value;
+    }
+    return input.value;
   }
 
   function fitTopInscription() {
@@ -1675,7 +1712,7 @@ export function createSisyphusRuntime(elements = {}) {
       if (el.type === "checkbox") {
         el.checked = Boolean(stored[key]);
       } else {
-        el.value = stored[key];
+        el.value = settingValueToControlValue(key, stored[key]);
       }
     });
   }
@@ -1783,10 +1820,7 @@ export function createSisyphusRuntime(elements = {}) {
         if (!input) {
           return [key, params[key]];
         }
-        return [
-          key,
-          input.type === "checkbox" ? Boolean(input.checked) : input.value,
-        ];
+        return [key, controlValueToSettingValue(input, key)];
       }),
     );
   }
@@ -1805,7 +1839,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (input.type === "checkbox") {
       input.checked = Boolean(params[key]);
     } else {
-      input.value = String(params[key]);
+      input.value = settingValueToControlValue(key, params[key]);
     }
   }
 
@@ -1984,7 +2018,7 @@ export function createSisyphusRuntime(elements = {}) {
         }
         el.checked = checked;
       } else {
-        const value = String(nextValue);
+        const value = settingValueToControlValue(key, nextValue);
         if (String(el.value) !== value && previousValue !== value) {
           changedKeys.push(key);
         }
@@ -2026,6 +2060,9 @@ export function createSisyphusRuntime(elements = {}) {
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
+      returnScrollDurationSeconds: secondsOutput(
+        params.returnScrollDurationSeconds,
+      ),
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
       slaveHandWidthPx: `${params.slaveHandWidthPx.toFixed(0)}px`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
@@ -2035,8 +2072,8 @@ export function createSisyphusRuntime(elements = {}) {
       rainBlurOpacity: `${Math.round(params.rainBlurOpacity * 100)}%`,
       rainBlurSaturation: `${Math.round(params.rainBlurSaturation * 100)}%`,
       rainZIndex: params.rainZIndex.toFixed(0),
-      rainEnterMs: params.rainEnterMs.toFixed(0),
-      rainExitMs: params.rainExitMs.toFixed(0),
+      rainEnterMs: secondsOutput(params.rainEnterMs / 1000),
+      rainExitMs: secondsOutput(params.rainExitMs / 1000),
       lineDelay: params.lineDelay.toFixed(2),
       trailMaxPoints: params.trailMaxPoints.toFixed(0),
       trailSampleDist: params.trailSampleDist.toFixed(0),
@@ -2500,14 +2537,27 @@ export function createSisyphusRuntime(elements = {}) {
     setPosition(position.x, position.y);
   }
 
+  function cancelReturnScrollAnimation() {
+    if (returnScrollAnimationId === null) {
+      return;
+    }
+    window.cancelAnimationFrame(returnScrollAnimationId);
+    returnScrollAnimationId = null;
+  }
+
+  function syncAfterScroll() {
+    trail.dirty = true;
+    drawTrail();
+  }
+
   function scrollToSceneBottom() {
     window.requestAnimationFrame(() => {
       if (disposed) {
         return;
       }
+      cancelReturnScrollAnimation();
       window.scrollTo(0, document.documentElement.scrollHeight);
-      trail.dirty = true;
-      drawTrail();
+      syncAfterScroll();
     });
   }
 
@@ -2516,13 +2566,41 @@ export function createSisyphusRuntime(elements = {}) {
       if (disposed) {
         return;
       }
-      window.scrollTo({
-        top: 0,
-        left: 0,
-        behavior: reducedMotion.matches ? "auto" : "smooth",
-      });
-      trail.dirty = true;
-      drawTrail();
+      cancelReturnScrollAnimation();
+      const startTop = window.scrollY || document.documentElement.scrollTop || 0;
+      const durationMs = reducedMotion.matches
+        ? 0
+        : clamp(Number(params.returnScrollDurationSeconds) * 1000, 0, 10000);
+      if (durationMs <= 0 || startTop <= 0) {
+        window.scrollTo(0, 0);
+        syncAfterScroll();
+        return;
+      }
+
+      const curve =
+        SharedRoomSettings.parseCubicBezier(params.returnScrollEasing) ||
+        SharedRoomSettings.parseCubicBezier(DEFAULT_RETURN_SCROLL_EASING);
+      const startedAt = performance.now();
+      const step = (now) => {
+        if (disposed) {
+          returnScrollAnimationId = null;
+          return;
+        }
+        const progress = clamp((now - startedAt) / durationMs, 0, 1);
+        const eased = curve
+          ? SharedPhysics.cubicBezierProgress(progress, curve)
+          : progress;
+        window.scrollTo(0, startTop * (1 - eased));
+        syncAfterScroll();
+        if (progress < 1) {
+          returnScrollAnimationId = window.requestAnimationFrame(step);
+          return;
+        }
+        returnScrollAnimationId = null;
+        window.scrollTo(0, 0);
+        syncAfterScroll();
+      };
+      returnScrollAnimationId = window.requestAnimationFrame(step);
     });
   }
 
@@ -3095,13 +3173,12 @@ export function createSisyphusRuntime(elements = {}) {
         }
       }
       const input = settingsPanel.querySelector(`[name="${key}"]`);
-      const currentValue =
-        input?.type === "checkbox" ? Boolean(input.checked) : input?.value;
+      const currentValue = controlValueToSettingValue(input, key);
       if (input && !roomSettingValueEqual(key, currentValue, remoteValue)) {
         if (input.type === "checkbox") {
           input.checked = Boolean(remoteValue);
         } else {
-          input.value = String(remoteValue);
+          input.value = settingValueToControlValue(key, remoteValue);
         }
         changedKeys.push(key);
       }
@@ -5031,6 +5108,7 @@ export function createSisyphusRuntime(elements = {}) {
       disposed = true;
       collab.leaving = true;
       stopLoop();
+      cancelReturnScrollAnimation();
       stopRainRenderers();
       clearHoldTimer();
       clearFirstFallTimer();

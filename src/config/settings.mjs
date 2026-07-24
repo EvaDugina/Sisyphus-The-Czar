@@ -5,9 +5,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v17";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v18";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v17",
   "sisyphus-czar-settings-v16",
   "sisyphus-czar-settings-v15",
   "sisyphus-czar-settings-v14",
@@ -299,6 +300,29 @@ export const SETTINGS_GROUPS = [
         output: `${DEFAULT_ROOM_SETTINGS.sceneHeightScreens * 100}vh`,
         hint: "Общая высота сцены в экранах. При изменении автоматически применяется внутренний коэффициент скорости относительно старой длинной сцены 10000vh.",
         formulas: PHYSICS_FORMULAS.sceneHeightScreens,
+      },
+      {
+        name: "returnScrollDurationSeconds",
+        label: "Скролл наверх, с",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .returnScrollDurationSeconds[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .returnScrollDurationSeconds[1],
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.returnScrollDurationSeconds,
+        output: `${DEFAULT_ROOM_SETTINGS.returnScrollDurationSeconds.toFixed(
+          1,
+        )} s`,
+        hint: "Длительность автоматического скролла страницы к верху при возврате камня в полупрозрачный отпечаток. Ноль — мгновенный переход.",
+      },
+      {
+        name: "returnScrollEasing",
+        label: "Кривая скролла",
+        type: "text",
+        defaultValue: DEFAULT_ROOM_SETTINGS.returnScrollEasing,
+        spellCheck: false,
+        hint: "cubic-bezier кривая плавности автоматического скролла страницы к верху. Невалидное значение заменяется стандартной кривой.",
       },
     ],
   },
@@ -707,25 +731,25 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "rainEnterMs",
-        label: "Появление, мс",
-        type: "number",
+        label: "Появление, с",
+        type: "range",
         min: 0,
-        max: 10000,
-        step: 50,
-        defaultValue: DEFAULT_ROOM_SETTINGS.rainEnterMs,
-        output: String(DEFAULT_ROOM_SETTINGS.rainEnterMs),
-        hint: "Сколько миллисекунд одновременно проявляется дождь и нарастает громкость его звука.",
+        max: 20,
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rainEnterMs / 1000,
+        output: `${(DEFAULT_ROOM_SETTINGS.rainEnterMs / 1000).toFixed(1)} s`,
+        hint: "Сколько секунд одновременно проявляется дождь и нарастает громкость его звука.",
       },
       {
         name: "rainExitMs",
-        label: "Исчезновение, мс",
-        type: "number",
+        label: "Затухание, с",
+        type: "range",
         min: 0,
-        max: 10000,
-        step: 50,
-        defaultValue: DEFAULT_ROOM_SETTINGS.rainExitMs,
-        output: String(DEFAULT_ROOM_SETTINGS.rainExitMs),
-        hint: "Сколько миллисекунд одновременно исчезает дождь и затихает его звук.",
+        max: 20,
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rainExitMs / 1000,
+        output: `${(DEFAULT_ROOM_SETTINGS.rainExitMs / 1000).toFixed(1)} s`,
+        hint: "Сколько секунд одновременно затухает дождь и стихает его звук.",
       },
     ],
   },

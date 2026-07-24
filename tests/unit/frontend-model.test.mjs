@@ -112,6 +112,12 @@ test("настройка темы содержит автоматический 
   const themeMode = viewGroup.controls.find(
     (control) => control.name === "themeMode"
   );
+  const returnScrollDurationSeconds = viewGroup.controls.find(
+    (control) => control.name === "returnScrollDurationSeconds"
+  );
+  const returnScrollEasing = viewGroup.controls.find(
+    (control) => control.name === "returnScrollEasing"
+  );
 
   assert.equal(normalizeThemeMode("dark"), "dark");
   assert.equal(normalizeThemeMode("light"), "light");
@@ -124,6 +130,46 @@ test("настройка темы содержит автоматический 
     ["dark", "Тёмная"],
     ["light", "Светлая"],
   ]);
+  assert.deepEqual(
+    {
+      label: returnScrollDurationSeconds.label,
+      type: returnScrollDurationSeconds.type,
+      min: returnScrollDurationSeconds.min,
+      max: returnScrollDurationSeconds.max,
+      step: returnScrollDurationSeconds.step,
+      defaultValue: returnScrollDurationSeconds.defaultValue,
+    },
+    {
+      label: "Скролл наверх, с",
+      type: "range",
+      min: 0,
+      max: 10,
+      step: 0.1,
+      defaultValue: 4,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: returnScrollEasing.label,
+      type: returnScrollEasing.type,
+      defaultValue: returnScrollEasing.defaultValue,
+    },
+    {
+      label: "Кривая скролла",
+      type: "text",
+      defaultValue: "cubic-bezier(0.4, 0, 0.2, 1)",
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings({
+      returnScrollDurationSeconds: 15,
+      returnScrollEasing: "not-a-curve",
+    }),
+    {
+      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+      returnScrollDurationSeconds: 10,
+    },
+  );
 });
 
 test("session status сохраняет публичные тексты управления", () => {
@@ -198,7 +244,7 @@ test("настройки дождя ограничиваются и исполь
     rainEnterEasing: "ease-in",
     rainExitEasing: "linear",
     rainEnterMs: 0,
-    rainExitMs: 10000,
+    rainExitMs: 20000,
   });
 });
 
@@ -254,7 +300,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v17");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v18");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -526,7 +572,12 @@ test("общие визуальные настройки комнаты есть
   );
   assert.deepEqual(
     viewGroup.controls.map((control) => control.name),
-    ["themeMode", "sceneHeightScreens"],
+    [
+      "themeMode",
+      "sceneHeightScreens",
+      "returnScrollDurationSeconds",
+      "returnScrollEasing",
+    ],
   );
   assert.deepEqual(
     physicsGroup.controls.map((control) => control.name),
@@ -735,7 +786,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 9);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 10);
   assert.equal(
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
     "cubic-bezier(0.42, 0, 1, 1)",
@@ -795,12 +846,12 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: rainEnterMs.defaultValue,
     },
     {
-      label: "Появление, мс",
-      type: "number",
+      label: "Появление, с",
+      type: "range",
       min: 0,
-      max: 10000,
-      step: 50,
-      defaultValue: 1100,
+      max: 20,
+      step: 0.1,
+      defaultValue: 1.1,
     },
   );
   assert.deepEqual(
@@ -813,12 +864,12 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: rainExitMs.defaultValue,
     },
     {
-      label: "Исчезновение, мс",
-      type: "number",
+      label: "Затухание, с",
+      type: "range",
       min: 0,
-      max: 10000,
-      step: 50,
-      defaultValue: 2000,
+      max: 20,
+      step: 0.1,
+      defaultValue: 2,
     },
   );
   assert.equal(

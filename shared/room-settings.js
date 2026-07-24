@@ -12,13 +12,14 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 9;
+  const ROOM_SETTINGS_VERSION = 10;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
   const DEFAULT_ROCK_SCALE_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const DEFAULT_HAND_FORCE_DEFICIT_EASING =
     "cubic-bezier(0.42, 0, 1, 1)";
+  const DEFAULT_RETURN_SCROLL_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const ROCK_WIDTH_VW_LIMITS = Object.freeze([1, 150]);
 
   const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
@@ -44,6 +45,7 @@
 
   const ROOM_SETTINGS_LIMITS = Object.freeze({
     sceneHeightScreens: [1, 100],
+    returnScrollDurationSeconds: [0, 10],
     handWidthVw: [10, 90],
     slaveHandWidthPx: [8, 96],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
@@ -54,7 +56,7 @@
     rainBlurOpacity: [0, 1],
     rainBlurSaturation: [0, 2],
     rainZIndex: [0, 30],
-    rainTimingMs: [0, 10000],
+    rainTimingMs: [0, 20000],
     lineDelay: [0, 1],
     trailMaxPoints: [20, 2000],
     trailSampleDist: [1, 40],
@@ -69,6 +71,8 @@
   const DEFAULT_ROOM_SETTINGS = Object.freeze({
     themeMode: "auto",
     sceneHeightScreens: DEFAULT_SCENE_HEIGHT_SCREENS,
+    returnScrollDurationSeconds: 4,
+    returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
@@ -247,6 +251,8 @@
     const fallbackSource =
       fallback && typeof fallback === "object" ? fallback : DEFAULT_ROOM_SETTINGS;
     const [sceneMin, sceneMax] = ROOM_SETTINGS_LIMITS.sceneHeightScreens;
+    const [returnScrollMin, returnScrollMax] =
+      ROOM_SETTINGS_LIMITS.returnScrollDurationSeconds;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
     const [slaveHandMin, slaveHandMax] = ROOM_SETTINGS_LIMITS.slaveHandWidthPx;
     const [rainStrengthMin, rainStrengthMax] = ROOM_SETTINGS_LIMITS.rainStrength;
@@ -280,6 +286,18 @@
         "sceneHeightScreens",
         sceneMin,
         sceneMax
+      ),
+      returnScrollDurationSeconds: finiteSetting(
+        source,
+        fallbackSource,
+        "returnScrollDurationSeconds",
+        returnScrollMin,
+        returnScrollMax
+      ),
+      returnScrollEasing: cubicBezierSetting(
+        source,
+        fallbackSource,
+        "returnScrollEasing"
       ),
       rockScaleEasing: cubicBezierSetting(
         source,
