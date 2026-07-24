@@ -1,7 +1,7 @@
 .world {
   position: relative;
-  height: 10000vh;
-  min-height: 10000vh;
+  height: var(--scene-height-vh, 1000vh);
+  min-height: var(--scene-height-vh, 1000vh);
   overflow: hidden;
   background:
     linear-gradient(180deg, var(--surface) 0%, var(--surface-deep) 48%, var(--surface-low) 100%),
@@ -12,7 +12,8 @@
 .summit {
   position: absolute;
   left: 0;
-  top: 0;
+  top: auto;
+  bottom: 0;
   width: 100%;
   min-height: 100svh;
   pointer-events: none;
@@ -41,6 +42,7 @@
   pointer-events: none;
 }
 
+.top-inscription,
 .title,
 .title2 {
   position: absolute;
@@ -64,6 +66,36 @@
 .title {
   top: 15rem;
   font-size: 8.4rem;
+}
+
+.top-inscription {
+  top: 15rem;
+  left: 50vw;
+  width: calc(100vw - 2rem);
+  font-size: 8.4rem;
+  white-space: nowrap;
+}
+
+.summit-timer {
+  position: absolute;
+  top: 9.5rem;
+  left: 50vw;
+  z-index: 1;
+  width: calc(100vw - 2rem);
+  margin: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--ink) 20%, transparent);
+  font-family: fantasy;
+  font-size: 32rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 1;
+  text-align: center;
+  white-space: nowrap;
+  transform: translateX(-50%);
+  transition: color 420ms ease;
+  pointer-events: none;
 }
 
 .title2 {
@@ -98,6 +130,7 @@
 .rock-imprint {
   --imprint-x: 0px;
   --imprint-y: 0px;
+  --imprint-scale: 1;
 
   position: absolute;
   left: 0;
@@ -108,18 +141,26 @@
   opacity: 0;
   pointer-events: none;
   filter: grayscale(1) contrast(0.72);
-  transform: translate3d(var(--imprint-x), var(--imprint-y), 0);
+  transform: translate3d(var(--imprint-x), var(--imprint-y), 0) scale(var(--imprint-scale));
+  transform-origin: center;
   transition: opacity 220ms ease;
   user-select: none;
   will-change: transform, opacity;
 }
 
 .rock-imprint.is-visible {
-  opacity: 0.22;
+  opacity: 0.28;
+}
+
+body.theme-dark .rock-imprint {
+  filter:
+    grayscale(1)
+    sepia(0.24)
+    brightness(1.7)
+    drop-shadow(0 0 0.65rem rgba(240, 223, 170, 0.34));
 }
 
 .rock.is-dragging {
-  --rock-scale: 1;
   cursor: grabbing;
   filter: drop-shadow(0 1.35rem 1.3rem var(--shadow));
 }
@@ -136,7 +177,6 @@ body.state-fallingToBottom .rock {
 }
 
 body.state-won .rock {
-  --rock-scale: 1;
   cursor: default;
   filter: drop-shadow(0 0.8rem 0.9rem rgba(43, 34, 17, 0.24));
 }
@@ -241,10 +281,10 @@ body.theme-light .weather-rain__canvas--fallback {
 .hand-cursor {
   --cursor-x: -999px;
   --cursor-y: -999px;
-  --cursor-width: 184px;
-  --cursor-height: 244px;
-  --hotspot-x: 92px;
-  --hotspot-y: 84px;
+  --cursor-width: var(--hand-width-vw, 14.375vw);
+  --cursor-height: calc(var(--cursor-width) * 1.326087);
+  --hotspot-x: calc(var(--cursor-width) * 0.5);
+  --hotspot-y: calc(var(--cursor-width) * 0.456522);
 
   position: fixed;
   left: 0;
@@ -253,7 +293,7 @@ body.theme-light .weather-rain__canvas--fallback {
   display: none;
   width: var(--cursor-width);
   height: var(--cursor-height);
-  background-image: url("../../assets/cursor-grab.webp");
+  background-image: url("../../assets/cursor-grab.png");
   background-position: center top;
   background-repeat: no-repeat;
   background-size: contain;
@@ -284,15 +324,15 @@ body.theme-light .weather-rain__canvas--fallback {
 }
 
 .hand-cursor.is-alternate {
-  --hotspot-y: 72px;
+  --hotspot-y: calc(var(--cursor-width) * 0.391304);
 
-  background-image: url("../../assets/cursor-grabbing.webp");
+  background-image: url("../../assets/cursor-grabbing.png");
 }
 
 .hand-cursor.is-grabbing {
-  --hotspot-y: 72px;
+  --hotspot-y: calc(var(--cursor-width) * 0.391304);
 
-  background-image: url("../../assets/cursor-grabbing.webp");
+  background-image: url("../../assets/cursor-grabbing.png");
   filter: drop-shadow(0 1.25rem 1.35rem rgba(0, 0, 0, 0.62));
   transform: translate3d(
       calc(var(--cursor-x) - var(--hotspot-x)),
@@ -302,13 +342,29 @@ body.theme-light .weather-rain__canvas--fallback {
     scale(1.04);
 }
 
-.hand-cursor.is-partner {
-  background-image: url("../../assets/cursor-partner-grab.webp");
+.hand-cursor.is-slave {
+  --cursor-width: var(--slave-hand-width-px, 16px);
+  --cursor-height: var(--cursor-width);
+  --hotspot-x: calc(var(--cursor-width) * 0.5);
+  --hotspot-y: calc(var(--cursor-width) * 0.5);
+
+  background-image: url("../../assets/hand_open.png");
+  background-size: 100% 100%;
+  filter: drop-shadow(0 0.25rem 0.35rem rgba(0, 0, 0, 0.42));
 }
 
-.hand-cursor.is-partner.is-alternate,
-.hand-cursor.is-partner.is-grabbing {
-  background-image: url("../../assets/cursor-partner-grabbing.webp");
+.hand-cursor.is-slave.is-alternate,
+.hand-cursor.is-slave.is-grabbing {
+  --hotspot-y: calc(var(--cursor-width) * 0.5);
+
+  background-image: url("../../assets/hand_close.png");
+  filter: drop-shadow(0 0.3rem 0.4rem rgba(0, 0, 0, 0.52));
+  transform: translate3d(
+      calc(var(--cursor-x) - var(--hotspot-x)),
+      calc(var(--cursor-y) - var(--hotspot-y)),
+      0
+    )
+    scale(1);
 }
 
 .hand-cursor.is-remote {
@@ -337,7 +393,7 @@ body.state-fallingToBottom .hand-cursor {
   width: 100vw;
   height: 100vh;
   pointer-events: none;
-  mix-blend-mode: difference;
+  mix-blend-mode: normal;
 }
 
 @media (pointer: fine) {
@@ -361,11 +417,17 @@ body.state-fallingToBottom .hand-cursor {
     font-size: 1.5rem;
   }
 
+  .top-inscription,
   .title {
     top: 10.7rem;
     width: min(94vw, 28rem);
     font-size: 4.4rem;
     line-height: 0.88;
+  }
+
+  .top-inscription {
+    width: calc(100vw - 1rem);
+    font-size: 4rem;
   }
 
   .title2 {
@@ -376,21 +438,6 @@ body.state-fallingToBottom .hand-cursor {
   .rock,
   .rock-imprint {
     width: clamp(150px, 45vw, 260px);
-  }
-
-  .hand-cursor {
-    --cursor-width: 144px;
-    --cursor-height: 190px;
-    --hotspot-x: 72px;
-    --hotspot-y: 66px;
-  }
-
-  .hand-cursor.is-grabbing {
-    --hotspot-y: 56px;
-  }
-
-  .hand-cursor.is-alternate {
-    --hotspot-y: 56px;
   }
 
 }

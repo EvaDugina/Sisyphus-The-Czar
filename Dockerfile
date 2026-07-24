@@ -13,7 +13,7 @@ COPY server/ ./server/
 COPY shared/ ./shared/
 
 EXPOSE 8080 8081
-CMD ["npm", "run", "dev"]
+CMD ["npm", "run", "dev:container"]
 
 FROM node:24.18.0-alpine3.23 AS frontend-build
 

@@ -1,3 +1,11 @@
+import {
+  DEFAULT_ROCK_SCALE_EASING,
+  DEFAULT_ROCK_MAX_WIDTH_VW,
+  DEFAULT_ROCK_MIN_WIDTH_VW,
+  normalizeRockWidthVwRange,
+  normalizeRockScaleEasing,
+} from "./rockScale.mjs";
+
 function finiteNumber(value, fallback) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -23,6 +31,8 @@ export const MIX_BLEND_MODES = Object.freeze([
 ]);
 
 const MIX_BLEND_MODE_SET = new Set(MIX_BLEND_MODES);
+const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
+const THEME_MODE_SET = new Set(THEME_MODES);
 
 function mixBlendMode(value, fallback) {
   const normalized = String(value || "").trim();
@@ -37,11 +47,24 @@ function timingFunction(value, fallback, isSupported) {
   return trimmed && isSupported(trimmed) ? trimmed : fallback;
 }
 
+export function normalizeThemeMode(value, fallback = "auto") {
+  const normalized = String(value || "").trim();
+  if (THEME_MODE_SET.has(normalized)) {
+    return normalized;
+  }
+  return THEME_MODE_SET.has(fallback) ? fallback : "auto";
+}
+
 export function normalizeRainSettings(raw, options) {
   const { defaults, isTimingFunctionSupported = () => true } = options;
 
   return {
     rainStrength: clamp(finiteNumber(raw.rainStrength, 1), 0.25, 1.5),
+    rainMaxVolume: clamp(
+      finiteNumber(raw.rainMaxVolume, defaults.rainMaxVolume ?? 0.5),
+      0,
+      3,
+    ),
     rainBlendMode: mixBlendMode(
       raw.rainBlendMode,
       defaults.rainBlendMode || "multiply",
@@ -95,10 +118,31 @@ export function normalizeRainSettings(raw, options) {
       isTimingFunctionSupported,
     ),
     rainEnterMs: Math.round(
-      clamp(finiteNumber(raw.rainEnterMs, defaults.rainEnterMs), 0, 10000),
+      clamp(finiteNumber(raw.rainEnterMs, defaults.rainEnterMs), 0, 20000),
     ),
     rainExitMs: Math.round(
-      clamp(finiteNumber(raw.rainExitMs, defaults.rainExitMs), 0, 10000),
+      clamp(finiteNumber(raw.rainExitMs, defaults.rainExitMs), 0, 20000),
+    ),
+  };
+}
+
+export function normalizeRockScaleSettings(raw, options = {}) {
+  const source = raw && typeof raw === "object" ? raw : {};
+  const defaults = {
+    rockMinWidthVw:
+      options.defaults?.rockMinWidthVw || DEFAULT_ROCK_MIN_WIDTH_VW,
+    rockMaxWidthVw:
+      options.defaults?.rockMaxWidthVw || DEFAULT_ROCK_MAX_WIDTH_VW,
+    rockScaleEasing:
+      options.defaults?.rockScaleEasing || DEFAULT_ROCK_SCALE_EASING,
+  };
+  const sizeRange = normalizeRockWidthVwRange(source, defaults);
+
+  return {
+    ...sizeRange,
+    rockScaleEasing: normalizeRockScaleEasing(
+      source.rockScaleEasing,
+      defaults.rockScaleEasing,
     ),
   };
 }

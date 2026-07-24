@@ -2,6 +2,7 @@ export function SettingsControl({ control }) {
   const {
     defaultChecked,
     defaultValue,
+    formulas,
     hint,
     label,
     name,
@@ -10,10 +11,19 @@ export function SettingsControl({ control }) {
     type,
     ...inputProps
   } = control;
+  const formulasAttr =
+    Array.isArray(formulas) && formulas.length > 0
+      ? JSON.stringify(formulas)
+      : undefined;
 
   if (type === "checkbox") {
     return (
-      <label className="control is-check" data-hint={hint}>
+      <label
+        className="control is-check"
+        data-hint={hint}
+        data-formulas={formulasAttr}
+        data-setting-control
+      >
         <input name={name} type="checkbox" defaultChecked={defaultChecked} />
         <span>{label}</span>
       </label>
@@ -39,7 +49,12 @@ export function SettingsControl({ control }) {
     );
 
   return (
-    <label className="control" data-hint={hint}>
+    <label
+      className="control"
+      data-hint={hint}
+      data-formulas={formulasAttr}
+      data-setting-control
+    >
       <span className="control-label">
         <span>{label}</span>
         {output !== undefined && (

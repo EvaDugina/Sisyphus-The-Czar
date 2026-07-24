@@ -2,6 +2,10 @@
 
 const crypto = require("node:crypto");
 const Physics = require("../shared/physics");
+const RoomSettings = require("../shared/room-settings");
+const GachiSounds = require("../shared/gachi-sounds");
+const ChainSounds = require("../shared/chain-sounds");
+const Viewport = require("../shared/viewport");
 
 const SNAPSHOT_INTERVAL_MS = 1000 / 20;
 const DISCONNECT_GRACE_MS = 500;
@@ -9,16 +13,25 @@ const DISCONNECTED_CLIENT_TTL_MS = 60_000;
 const DEFAULT_EMPTY_SESSION_GRACE_MS = 10_000;
 const POINTER_VELOCITY_MAX_AGE_MS = 150;
 const MAX_TRAIL_POINTS = 1000;
+const MAX_ROCK_POINTER_OFFSET = 4;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
-const POINTER_SKINS = new Set(["primary", "partner"]);
+const CLIENT_ROLES = new Set(["master", "slave"]);
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
-const REQUIRED_HOLDERS = 2;
+const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const REQUIRED_HOLDERS = 1;
 const SLIP_DELAY_MIN_MS = 500;
 const SLIP_DELAY_MAX_MS = 2000;
+const STATIONARY_HOLD_RELEASE_MS = 200;
+const STATIONARY_POSITION_EPSILON = 0.01;
+const DEFAULT_AUDIO_LEAD_MS = 200;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function roundNetworkNumber(value, fallback = 0) {
+  return Math.round(finite(value, fallback) * 100) / 100;
 }
 
 function socketIsOpen(socket) {
@@ -36,6 +49,30 @@ function pointerVelocityAt(pointer, updatedAt, now) {
   };
 }
 
+function sceneMotionOptions(session) {
+  return {
+    motionScale: RoomSettings.sceneMotionMultiplier(session.roomSettings),
+  };
+}
+
+function rescaleSceneVerticalMotion(
+  session,
+  previousRoomSettings,
+  nextRoomSettings
+) {
+  const previousScale = RoomSettings.sceneMotionMultiplier(previousRoomSettings);
+  const nextScale = RoomSettings.sceneMotionMultiplier(nextRoomSettings);
+  if (previousScale <= 0 || Math.abs(previousScale - nextScale) < 1e-9) {
+    return;
+  }
+  const ratio = nextScale / previousScale;
+  session.state.vy *= ratio;
+  session.lastPointer.vy *= ratio;
+  session.holders.forEach((holder) => {
+    holder.vy *= ratio;
+  });
+}
+
 function tokensMatch(actual, expected) {
   if (typeof actual !== "string" || typeof expected !== "string") {
     return false;
@@ -48,8 +85,19 @@ function tokensMatch(actual, expected) {
   );
 }
 
-function pointerSkin(value) {
-  return POINTER_SKINS.has(value) ? value : "primary";
+function normalizeClientId(value) {
+  const clientId = String(value || "");
+  return CLIENT_ID_PATTERN.test(clientId) ? clientId : null;
+}
+
+function clientRole(value) {
+  if (value === "primary") {
+    return "master";
+  }
+  if (value === "partner") {
+    return "slave";
+  }
+  return CLIENT_ROLES.has(value) ? value : "slave";
 }
 
 function sanitizeTrail(input) {
@@ -82,15 +130,43 @@ class SessionManager {
       options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS;
     this.now = options.now || Date.now;
     this.random = options.random || Math.random;
+    this.soundRandom = options.soundRandom || Math.random;
+    this.slipDelayMinMs = Math.max(
+      0,
+      finite(options.slipDelayMinMs, SLIP_DELAY_MIN_MS)
+    );
+    this.slipDelayMaxMs = Math.max(
+      this.slipDelayMinMs,
+      finite(options.slipDelayMaxMs, SLIP_DELAY_MAX_MS)
+    );
+    this.stationaryHoldReleaseMs = Math.max(
+      0,
+      finite(options.stationaryHoldReleaseMs, STATIONARY_HOLD_RELEASE_MS)
+    );
+    this.audioLeadMs = Math.max(
+      0,
+      finite(options.audioLeadMs, DEFAULT_AUDIO_LEAD_MS)
+    );
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
+    this.slaveSoundAssignments = new Map();
   }
 
   createSession(payload = {}) {
     const now = this.now();
     const id = crypto.randomBytes(16).toString("base64url");
-    const state = Physics.sanitizeState(payload.state);
+    const state = Physics.sanitizeState(
+      payload.state ?? {
+        phase: Physics.PHASES.PLAY,
+        x: Physics.WORLD_WIDTH / 2,
+        y: Physics.WORLD_HEIGHT,
+      }
+    );
     const physics = Physics.sanitizePhysics(payload.physics);
+    const roomSettings = RoomSettings.sanitizeRoomSettings(payload.roomSettings);
+    const masterViewport = Viewport.sanitizeViewport(payload.masterViewport);
+    const imprint = Physics.createSummitImprint(payload.imprint);
+    const summitInside = Physics.stateInsideImprint(state, imprint);
 
     if (state.phase === Physics.PHASES.WON) {
       state.vx = 0;
@@ -101,8 +177,13 @@ class SessionManager {
       id,
       state,
       physics,
+      roomSettings,
+      masterViewport,
       trail: sanitizeTrail(payload.trail),
-      imprint: Physics.sanitizeImprint(payload.imprint),
+      imprint,
+      masterClientId: normalizeClientId(
+        payload.creatorClientId || payload.masterClientId
+      ),
       clients: new Map(),
       holders: new Map(),
       revision: 1,
@@ -114,8 +195,14 @@ class SessionManager {
       accumulator: 0,
       nextSnapshotAt: now,
       lastTrailAt: now,
+      groundTouchSeq: Math.max(0, Number(payload.groundTouchSeq) || 0),
       firstFallAt: null,
       holdReleaseAt: null,
+      stationaryHoldSince: null,
+      stationaryHoldPosition: null,
+      summitElapsedMs: 0,
+      summitRunningSince: summitInside ? now : null,
+      summitWasInside: summitInside,
       lastPointer: { vx: 0, vy: 0 },
       lastPointerAt: now,
       dirty: true,
@@ -132,8 +219,14 @@ class SessionManager {
       state: { ...session.state },
       physics: { ...session.physics },
       physicsVersion: Physics.PHYSICS_VERSION,
+      roomSettings: { ...session.roomSettings },
+      roomSettingsVersion: RoomSettings.ROOM_SETTINGS_VERSION,
+      masterViewport: session.masterViewport
+        ? { ...session.masterViewport }
+        : null,
       trail: session.trail.map((point) => [...point]),
       imprint: session.imprint ? { ...session.imprint } : null,
+      masterClientId: session.masterClientId,
       revision: session.revision,
       createdAt: session.createdAt,
       lastActivityAt: session.lastActivityAt,
@@ -141,6 +234,9 @@ class SessionManager {
       emptyDeleteAt: session.emptyDeleteAt,
       lastPointer: { ...session.lastPointer },
       lastPointerAt: session.lastPointerAt,
+      groundTouchSeq: session.groundTouchSeq,
+      summitElapsedMs: session.summitElapsedMs,
+      summitRunningSince: session.summitRunningSince,
     }));
   }
 
@@ -176,6 +272,30 @@ class SessionManager {
       const physics = Physics.sanitizePhysics(
         Physics.migratePhysics(record.physics, record.physicsVersion)
       );
+      const roomSettings = RoomSettings.sanitizeRoomSettings(
+        RoomSettings.migrateRoomSettings(
+          record.roomSettings,
+          record.roomSettingsVersion
+        )
+      );
+      const masterViewport = Viewport.sanitizeViewport(record.masterViewport);
+      const imprint = Physics.createSummitImprint(record.imprint);
+      const summitInside = Physics.stateInsideImprint(state, imprint);
+      const hasSummitTimer =
+        Object.hasOwn(record, "summitElapsedMs") ||
+        Object.hasOwn(record, "summitRunningSince");
+      const summitElapsedMs = Math.min(
+        Number.MAX_SAFE_INTEGER,
+        Math.max(0, finite(record.summitElapsedMs, 0))
+      );
+      const restoredRunningSince = finite(record.summitRunningSince, null);
+      const summitRunningSince =
+        hasSummitTimer && summitInside
+          ? Math.min(
+              restoredRunningSince === null ? now : restoredRunningSince,
+              now
+            )
+          : null;
       const lastPointer = {
         vx: finite(record.lastPointer?.vx, 0),
         vy: finite(record.lastPointer?.vy, 0),
@@ -185,12 +305,9 @@ class SessionManager {
 
       if (record.state?.dragging) {
         if (state.phase === Physics.PHASES.INTRO) {
-          Physics.beginFirstFall(
-            state,
-            physics,
-            releasePointer.vx,
-            releasePointer.vy
-          );
+          Physics.beginFirstFall(state, physics, {
+            motionScale: RoomSettings.sceneMotionMultiplier(roomSettings),
+          });
         } else if (state.phase === Physics.PHASES.PLAY) {
           Physics.applyReleaseImpulse(
             state,
@@ -209,8 +326,11 @@ class SessionManager {
         id: record.id,
         state,
         physics,
+        roomSettings,
+        masterViewport,
         trail: sanitizeTrail(record.trail),
-        imprint: Physics.sanitizeImprint(record.imprint),
+        imprint,
+        masterClientId: normalizeClientId(record.masterClientId),
         clients: new Map(),
         holders: new Map(),
         revision: Number.isSafeInteger(record.revision)
@@ -224,8 +344,14 @@ class SessionManager {
         accumulator: 0,
         nextSnapshotAt: now,
         lastTrailAt: now,
+        groundTouchSeq: Math.max(0, Number(record.groundTouchSeq) || 0),
         firstFallAt: null,
         holdReleaseAt: null,
+        stationaryHoldSince: null,
+        stationaryHoldPosition: null,
+        summitElapsedMs,
+        summitRunningSince,
+        summitWasInside: summitInside,
         lastPointer,
         lastPointerAt,
         dirty: true,
@@ -293,17 +419,42 @@ class SessionManager {
     });
   }
 
-  assignClientSkin(session, clientId) {
-    const primaryTaken = [...session.clients.values()].some(
-      (client) => client.id !== clientId && client.skin === "primary"
+  ensureMasterClientId(session, clientId) {
+    const normalizedClientId = normalizeClientId(clientId);
+    if (!session.masterClientId && normalizedClientId) {
+      session.masterClientId = normalizedClientId;
+      this.markChanged(session);
+    }
+    return session.masterClientId;
+  }
+
+  assignClientRole(session, clientId) {
+    this.ensureMasterClientId(session, clientId);
+    return session.masterClientId === clientId ? "master" : "slave";
+  }
+
+  assignSlaveSound(clientId) {
+    const existing = this.slaveSoundAssignments.get(clientId);
+    if (existing) {
+      return existing;
+    }
+    const filenames = GachiSounds.GACHI_SOUND_FILENAMES;
+    if (filenames.length === 0) {
+      return null;
+    }
+    const index = Math.min(
+      filenames.length - 1,
+      Math.floor(Math.max(0, this.soundRandom()) * filenames.length)
     );
-    return primaryTaken ? "partner" : "primary";
+    const filename = filenames[index];
+    this.slaveSoundAssignments.set(clientId, filename);
+    return filename;
   }
 
   slipDelayMs() {
     return Math.round(
-      SLIP_DELAY_MIN_MS +
-        this.random() * (SLIP_DELAY_MAX_MS - SLIP_DELAY_MIN_MS)
+      this.slipDelayMinMs +
+        this.random() * (this.slipDelayMaxMs - this.slipDelayMinMs)
     );
   }
 
@@ -325,6 +476,68 @@ class SessionManager {
     );
   }
 
+  summitElapsedAt(session, now = this.now()) {
+    const elapsedMs = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.max(0, finite(session.summitElapsedMs, 0))
+    );
+    if (session.summitRunningSince === null) {
+      return elapsedMs;
+    }
+    return Math.min(
+      Number.MAX_SAFE_INTEGER,
+      elapsedMs + Math.max(0, now - session.summitRunningSince)
+    );
+  }
+
+  syncSummitTimer(session, now = this.now()) {
+    const inside = Physics.stateInsideImprint(session.state, session.imprint);
+    if (inside === session.summitWasInside) {
+      return false;
+    }
+
+    session.summitWasInside = inside;
+    if (inside) {
+      session.summitRunningSince = now;
+    } else {
+      session.summitElapsedMs = this.summitElapsedAt(session, now);
+      session.summitRunningSince = null;
+    }
+    return true;
+  }
+
+  clearStationaryHold(session) {
+    session.stationaryHoldSince = null;
+    session.stationaryHoldPosition = null;
+  }
+
+  updateStationaryHold(session, now = this.now()) {
+    const state = session.state;
+    const isOnGround = state.y >= Physics.WORLD_HEIGHT - STATIONARY_POSITION_EPSILON;
+    if (
+      !state.dragging ||
+      this.holderCount(session) === 0 ||
+      isOnGround ||
+      Physics.stateInsideImprint(state, session.imprint)
+    ) {
+      this.clearStationaryHold(session);
+      return false;
+    }
+
+    const previous = session.stationaryHoldPosition;
+    const moved =
+      !previous ||
+      Math.abs(state.x - previous.x) > STATIONARY_POSITION_EPSILON ||
+      Math.abs(state.y - previous.y) > STATIONARY_POSITION_EPSILON;
+    if (moved) {
+      session.stationaryHoldPosition = { x: state.x, y: state.y };
+      session.stationaryHoldSince = now;
+      return false;
+    }
+
+    return now - session.stationaryHoldSince >= this.stationaryHoldReleaseMs;
+  }
+
   syncCooperativeDrag(session, now = this.now()) {
     const holderIds = this.holderIds(session);
     const state = session.state;
@@ -338,13 +551,23 @@ class SessionManager {
       return earliest === null ? holder.slipAt : Math.min(earliest, holder.slipAt);
     }, null);
 
-    if (holderIds.length < REQUIRED_HOLDERS) {
+    if (!Physics.canLift(session.physics, holderIds.length)) {
       state.dragging = false;
       state.controllerId = null;
-      if (wasDragging && state.phase === Physics.PHASES.PLAY) {
+      if (holderIds.length > 0 && state.phase === Physics.PHASES.PLAY) {
         state.vx = 0;
+          state.vy = Math.max(
+            state.vy,
+            Physics.dragDropSpeed(
+              session.physics,
+              holderIds.length,
+              sceneMotionOptions(session)
+            )
+          );
+      } else if (wasDragging && state.phase === Physics.PHASES.PLAY) {
         state.vy = Math.max(0, state.vy);
       }
+      this.updateStationaryHold(session, now);
       return;
     }
 
@@ -374,6 +597,7 @@ class SessionManager {
     };
     session.lastPointerAt = now;
     session.firstFallAt = null;
+    this.updateStationaryHold(session, now);
   }
 
   removeHolder(session, clientId, options = {}) {
@@ -382,16 +606,34 @@ class SessionManager {
       return false;
     }
 
+    const now = this.now();
+    const wasDragging = session.state.dragging;
+    const releaseVelocity = options.applyReleaseImpulse
+      ? this.holderVelocity(session, holder, now)
+      : { vx: 0, vy: 0 };
     const notify = options.notify !== false;
     const reason = options.reason || "released";
     const client = session.clients.get(clientId);
     session.holders.delete(clientId);
     if (client?.pointer) {
       client.pointer.mode = "grab";
-      client.pointer.updatedAt = this.now();
+      client.pointer.updatedAt = now;
       this.broadcastPointer(session, client);
     }
-    this.syncCooperativeDrag(session);
+    this.syncCooperativeDrag(session, now);
+    if (
+      options.applyReleaseImpulse &&
+      wasDragging &&
+      !session.state.dragging &&
+      session.state.phase === Physics.PHASES.PLAY
+    ) {
+      Physics.applyReleaseImpulse(
+        session.state,
+        session.physics,
+        releaseVelocity.vx,
+        releaseVelocity.vy
+      );
+    }
     this.markChanged(session);
     this.broadcastSnapshot(session);
     this.broadcastPresence(session);
@@ -418,10 +660,12 @@ class SessionManager {
       lastSeq: -1,
       connectedAt: now,
       disconnectedAt: null,
-      skin: null,
+      role: null,
     };
 
-    client.skin = pointerSkin(client.skin || this.assignClientSkin(session, clientId));
+    client.role = this.assignClientRole(session, clientId);
+    client.gachiSoundFilename =
+      client.role === "slave" ? this.assignSlaveSound(clientId) : null;
     client.socket = socket;
     client.lastSeq = -1;
     client.disconnectedAt = null;
@@ -441,7 +685,8 @@ class SessionManager {
     this.sendTo(client, "session.snapshot", {
       ...this.snapshot(session, true),
       leaveToken: client.leaveToken,
-      clientSkin: client.skin,
+      clientRole: client.role,
+      gachiSoundFilename: client.gachiSoundFilename,
     });
     this.broadcastPresence(session);
     this.logger("client_connected", {
@@ -552,13 +797,22 @@ class SessionManager {
         this.releaseControl(session, client, payload);
         break;
       case "physics.update":
-        this.updatePhysics(session, payload);
+        this.updatePhysics(session, client, payload);
+        break;
+      case "roomSettings.update":
+        this.updateRoomSettings(session, client, payload);
+        break;
+      case "viewport.update":
+        this.updateMasterViewport(session, client, payload);
         break;
       case "session.restart":
         this.restartSession(session, payload);
         break;
       case "pointer.update":
         this.updatePointer(session, client, payload);
+        break;
+      case "audio.play":
+        this.playSessionAudio(session, client);
         break;
       case "ping":
         this.sendTo(client, "pong", {
@@ -571,6 +825,47 @@ class SessionManager {
     }
   }
 
+  playSessionAudio(session, client) {
+    if (session.state.phase !== Physics.PHASES.PLAY) {
+      return false;
+    }
+    const role = clientRole(client.role);
+    const chainSoundIndex = Math.min(
+      ChainSounds.CHAIN_SOUND_FILENAMES.length - 1,
+      Math.max(
+        0,
+        Math.floor(
+          this.soundRandom() * ChainSounds.CHAIN_SOUND_FILENAMES.length
+        )
+      )
+    );
+    const filename =
+      role === "master"
+        ? ChainSounds.CHAIN_SOUND_FILENAMES[chainSoundIndex]
+        : client.gachiSoundFilename;
+    const validFilename =
+      role === "master"
+        ? ChainSounds.isChainSoundFilename(filename)
+        : GachiSounds.isGachiSoundFilename(filename);
+    if (!validFilename) {
+      return false;
+    }
+
+    const now = this.now();
+    const payload = {
+      eventId: crypto.randomBytes(12).toString("base64url"),
+      actorId: client.id,
+      role,
+      filename,
+      playAt: now + this.audioLeadMs,
+      serverTime: now,
+    };
+    session.clients.forEach((participant) => {
+      this.sendTo(participant, "audio.play", payload);
+    });
+    return payload;
+  }
+
   startSession(session, payload = {}) {
     const state = session.state;
     if (
@@ -581,14 +876,27 @@ class SessionManager {
       return false;
     }
 
-    session.imprint = Physics.createImprintAtState(state, payload.imprint);
+    session.imprint = Physics.createSummitImprint(payload.imprint);
+    if (payload.physics && typeof payload.physics === "object") {
+      session.physics = Physics.sanitizePhysics(
+        { ...session.physics, ...payload.physics },
+        session.physics
+      );
+    }
+    if (payload.roomSettings && typeof payload.roomSettings === "object") {
+      session.roomSettings = RoomSettings.sanitizeRoomSettings(
+        { ...session.roomSettings, ...payload.roomSettings },
+        session.roomSettings
+      );
+    }
     session.firstFallAt = null;
     session.holdReleaseAt = null;
+    this.clearStationaryHold(session);
     session.lastPointer = { vx: 0, vy: 0 };
     session.lastPointerAt = this.now();
-    Physics.beginFirstFall(state, session.physics, 0, 0);
+    Physics.beginFirstFall(state, session.physics, sceneMotionOptions(session));
     this.markChanged(session);
-    this.broadcastSnapshot(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
     return true;
   }
 
@@ -600,6 +908,7 @@ class SessionManager {
     }
 
     const now = this.now();
+    state.suspended = false;
     session.holders.set(client.id, {
       x: Physics.clamp(finite(payload.x, state.x), 0, Physics.WORLD_WIDTH),
       y: Physics.clamp(finite(payload.y, state.y), 0, Physics.WORLD_HEIGHT),
@@ -667,12 +976,35 @@ class SessionManager {
     }
     this.syncCooperativeDrag(session);
     return this.removeHolder(session, client.id, {
+      applyReleaseImpulse: true,
       notify: false,
       reason: "released",
     });
   }
 
-  updatePhysics(session, payload) {
+  clientCanEditSettings(session, client) {
+    return Boolean(
+      client &&
+        client.role === "master" &&
+        client.id === session.masterClientId,
+    );
+  }
+
+  rejectMasterOnly(client) {
+    this.sendError(
+      client,
+      "master_only",
+      "Параметры комнаты может изменять только царь",
+    );
+    return false;
+  }
+
+  updatePhysics(session, clientOrPayload, maybePayload) {
+    const client = maybePayload === undefined ? null : clientOrPayload;
+    const payload = maybePayload === undefined ? clientOrPayload : maybePayload;
+    if (client && !this.clientCanEditSettings(session, client)) {
+      return this.rejectMasterOnly(client);
+    }
     const sourcePayload =
       payload && typeof payload === "object" ? payload : {};
     const nextPayload =
@@ -684,42 +1016,89 @@ class SessionManager {
       { ...session.physics, ...nextPayload },
       session.physics
     );
+    this.syncCooperativeDrag(session);
     this.markChanged(session);
-    this.broadcastSnapshot(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
+  }
+
+  updateRoomSettings(session, clientOrPayload, maybePayload) {
+    const client = maybePayload === undefined ? null : clientOrPayload;
+    const payload = maybePayload === undefined ? clientOrPayload : maybePayload;
+    if (client && !this.clientCanEditSettings(session, client)) {
+      return this.rejectMasterOnly(client);
+    }
+    const sourcePayload =
+      payload && typeof payload === "object" ? payload : {};
+    const previousRoomSettings = session.roomSettings;
+    const nextRoomSettings = RoomSettings.sanitizeRoomSettings(
+      { ...session.roomSettings, ...sourcePayload },
+      session.roomSettings
+    );
+    rescaleSceneVerticalMotion(session, previousRoomSettings, nextRoomSettings);
+    session.roomSettings = nextRoomSettings;
+    this.markChanged(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
+  }
+
+  updateMasterViewport(session, client, payload = {}) {
+    if (!this.clientCanEditSettings(session, client)) {
+      return this.rejectMasterOnly(client);
+    }
+    const viewport = Viewport.sanitizeViewport(payload);
+    if (!viewport) {
+      this.sendError(client, "invalid_viewport", "Некорректный размер viewport");
+      return false;
+    }
+    if (
+      session.masterViewport?.width === viewport.width &&
+      session.masterViewport?.height === viewport.height
+    ) {
+      return true;
+    }
+    session.masterViewport = viewport;
+    this.markChanged(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
+    return true;
   }
 
   restartSession(session, payload = {}) {
+    const now = this.now();
     const state = Physics.sanitizeState({
-      phase: Physics.PHASES.INTRO,
-      x: payload.x,
-      y: payload.y,
+      phase: payload.phase || Physics.PHASES.PLAY,
+      x: payload.x ?? Physics.WORLD_WIDTH / 2,
+      y: payload.y ?? Physics.WORLD_HEIGHT,
       vx: 0,
       vy: 0,
+      suspended: Boolean(payload.suspended),
       turbTime: 0,
     });
-    state.phase = Physics.PHASES.INTRO;
+    if (state.phase === Physics.PHASES.INTRO || state.phase === Physics.PHASES.WON) {
+      state.phase = Physics.PHASES.PLAY;
+    }
     state.vx = 0;
     state.vy = 0;
     state.dragging = false;
     state.controllerId = null;
+    state.suspended = state.phase === Physics.PHASES.PLAY && state.suspended;
     state.turbTime = 0;
 
     session.state = state;
     session.trail = [];
-    session.imprint = null;
+    session.imprint = Physics.createSummitImprint(payload.imprint);
     session.holders.clear();
     session.firstFallAt = null;
     session.holdReleaseAt = null;
     session.lastPointer = { vx: 0, vy: 0 };
-    session.lastPointerAt = this.now();
+    session.lastPointerAt = now;
     session.accumulator = 0;
-    session.lastTickAt = this.now();
-    session.nextSnapshotAt = this.now();
-    session.lastTrailAt = this.now();
+    session.lastTickAt = now;
+    session.nextSnapshotAt = now;
+    session.lastTrailAt = now;
+    this.syncSummitTimer(session, now);
     session.clients.forEach((client) => {
       client.pointer.mode = "grab";
       client.pointer.visible = false;
-      client.pointer.updatedAt = this.now();
+      client.pointer.updatedAt = now;
     });
 
     this.markChanged(session);
@@ -731,6 +1110,11 @@ class SessionManager {
   updatePointer(session, client, payload = {}) {
     const x = Number(payload.x);
     const y = Number(payload.y);
+    const hasRockOffsetX = Object.hasOwn(payload, "rockOffsetX");
+    const hasRockOffsetY = Object.hasOwn(payload, "rockOffsetY");
+    const hasRockOffset = hasRockOffsetX || hasRockOffsetY;
+    const rockOffsetX = Number(payload.rockOffsetX);
+    const rockOffsetY = Number(payload.rockOffsetY);
     const visible = payload.visible;
     const mode = payload.mode;
     if (
@@ -740,6 +1124,13 @@ class SessionManager {
       x > Physics.WORLD_WIDTH ||
       y < 0 ||
       y > Physics.WORLD_HEIGHT ||
+      (hasRockOffset &&
+        (!hasRockOffsetX ||
+          !hasRockOffsetY ||
+          !Number.isFinite(rockOffsetX) ||
+          !Number.isFinite(rockOffsetY) ||
+          Math.abs(rockOffsetX) > MAX_ROCK_POINTER_OFFSET ||
+          Math.abs(rockOffsetY) > MAX_ROCK_POINTER_OFFSET)) ||
       typeof visible !== "boolean" ||
       !POINTER_MODES.has(mode)
     ) {
@@ -756,6 +1147,7 @@ class SessionManager {
       y,
       mode,
       visible,
+      ...(hasRockOffset ? { rockOffsetX, rockOffsetY } : {}),
       updatedAt: this.now(),
     };
     this.broadcastPointer(session, client);
@@ -827,6 +1219,15 @@ class SessionManager {
         }
       });
 
+      if (this.updateStationaryHold(session, now)) {
+        this.holderIds(session).forEach((clientId) => {
+          this.removeHolder(session, clientId, {
+            notify: true,
+            reason: "stationary",
+          });
+        });
+      }
+
       this.holderIds(session).forEach((clientId) => {
         const holder = session.holders.get(clientId);
         if (
@@ -850,20 +1251,31 @@ class SessionManager {
       );
 
       let physicsChanged = false;
+      let groundTouched = false;
       while (
         session.accumulator >= Physics.FIXED_STEP_SECONDS &&
         Physics.isMoving(session.state)
       ) {
+        const wasAboveGround = session.state.y < Physics.WORLD_HEIGHT - 0.01;
         Physics.stepState(
           session.state,
           session.physics,
-          Physics.FIXED_STEP_SECONDS
+          Physics.FIXED_STEP_SECONDS,
+          sceneMotionOptions(session)
         );
+        if (wasAboveGround && session.state.y >= Physics.WORLD_HEIGHT - 0.01) {
+          groundTouched = true;
+        }
         session.accumulator -= Physics.FIXED_STEP_SECONDS;
         physicsChanged = true;
       }
 
-      if (physicsChanged) {
+      if (groundTouched) {
+        session.groundTouchSeq += 1;
+      }
+
+      const summitTimerChanged = this.syncSummitTimer(session, now);
+      if (physicsChanged || summitTimerChanged) {
         this.markChanged(session);
       } else if (!Physics.isMoving(session.state)) {
         session.accumulator = 0;
@@ -880,25 +1292,58 @@ class SessionManager {
     }
   }
 
-  snapshot(session, includeTrail = false) {
+  snapshot(session, options = {}) {
+    const normalized =
+      typeof options === "boolean"
+        ? { includeTrail: options, includeConfig: true }
+        : {
+            includeTrail: Boolean(options.includeTrail),
+            includeConfig: options.includeConfig !== false,
+          };
+    const serverTime = this.now();
     const payload = {
-      ...session.state,
-      physics: { ...session.physics },
-      imprint: session.imprint ? { ...session.imprint } : null,
+      phase: session.state.phase,
+      x: roundNetworkNumber(session.state.x),
+      y: roundNetworkNumber(session.state.y),
+      vx: roundNetworkNumber(session.state.vx),
+      vy: roundNetworkNumber(session.state.vy),
+      dragging: Boolean(session.state.dragging),
+      controllerId: session.state.controllerId,
+      suspended: Boolean(session.state.suspended),
+      turbTime: roundNetworkNumber(session.state.turbTime),
       holderIds: this.holderIds(session),
       requiredHolders: REQUIRED_HOLDERS,
+      groundTouchSeq: session.groundTouchSeq,
+      summitElapsedMs: this.summitElapsedAt(session, serverTime),
+      summitTimerRunning: session.summitRunningSince !== null,
       revision: session.revision,
-      serverTime: this.now(),
-      expiresAt: session.expiresAt,
+      serverTime,
     };
-    if (includeTrail) {
+    if (normalized.includeConfig) {
+      payload.physics = { ...session.physics };
+      payload.roomSettings = { ...session.roomSettings };
+      payload.masterViewport = session.masterViewport
+        ? { ...session.masterViewport }
+        : null;
+      payload.imprint = session.imprint ? { ...session.imprint } : null;
+      payload.masterClientId = session.masterClientId;
+      payload.expiresAt = session.expiresAt;
+    }
+    if (normalized.includeTrail) {
       payload.trail = session.trail.map((point) => [...point]);
     }
     return payload;
   }
 
-  broadcastSnapshot(session, includeTrail = false) {
-    const payload = this.snapshot(session, includeTrail);
+  broadcastSnapshot(session, options = {}) {
+    const normalized =
+      typeof options === "boolean"
+        ? { includeTrail: options, includeConfig: true }
+        : {
+            includeTrail: Boolean(options.includeTrail),
+            includeConfig: Boolean(options.includeConfig),
+          };
+    const payload = this.snapshot(session, normalized);
     session.clients.forEach((client) => {
       this.sendTo(client, "session.snapshot", payload);
     });
@@ -921,13 +1366,22 @@ class SessionManager {
   }
 
   pointerPayload(client) {
+    const hasRockOffset =
+      Number.isFinite(client.pointer.rockOffsetX) &&
+      Number.isFinite(client.pointer.rockOffsetY);
     return {
       clientId: client.id,
-      x: client.pointer.x,
-      y: client.pointer.y,
+      x: roundNetworkNumber(client.pointer.x),
+      y: roundNetworkNumber(client.pointer.y),
+      ...(hasRockOffset
+        ? {
+            rockOffsetX: roundNetworkNumber(client.pointer.rockOffsetX),
+            rockOffsetY: roundNetworkNumber(client.pointer.rockOffsetY),
+          }
+        : {}),
       mode: client.pointer.mode,
       visible: client.pointer.visible,
-      skin: pointerSkin(client.skin),
+      role: clientRole(client.role),
       serverTime: this.now(),
     };
   }
@@ -935,6 +1389,9 @@ class SessionManager {
   broadcastPointer(session, client) {
     const payload = this.pointerPayload(client);
     session.clients.forEach((participant) => {
+      if (participant.id === client.id) {
+        return;
+      }
       this.sendTo(participant, "pointer.update", payload);
     });
   }
@@ -981,4 +1438,6 @@ module.exports = {
   REQUIRED_HOLDERS,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
+  STATIONARY_HOLD_RELEASE_MS,
+  DEFAULT_AUDIO_LEAD_MS,
 };

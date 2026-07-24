@@ -33,3 +33,61 @@ export function canonicalToLocalPosition(
     y: (clampCoordinate(y, 0, worldHeight) / worldHeight) * bounds.maxY,
   };
 }
+
+export function viewportToRockRelativePosition(
+  clientX,
+  clientY,
+  rockRect,
+  referenceWidth,
+  referenceHeight = referenceWidth,
+) {
+  const width = Number(referenceWidth);
+  const height = Number(referenceHeight);
+  const centerX = Number(rockRect?.left) + Number(rockRect?.width) / 2;
+  const centerY = Number(rockRect?.top) + Number(rockRect?.height) / 2;
+  if (
+    !Number.isFinite(clientX) ||
+    !Number.isFinite(clientY) ||
+    !Number.isFinite(centerX) ||
+    !Number.isFinite(centerY) ||
+    !Number.isFinite(width) ||
+    width <= 0 ||
+    !Number.isFinite(height) ||
+    height <= 0
+  ) {
+    return { x: 0, y: 0 };
+  }
+  return {
+    x: (clientX - centerX) / width,
+    y: (clientY - centerY) / height,
+  };
+}
+
+export function rockRelativeToViewportPosition(
+  relativeX,
+  relativeY,
+  rockRect,
+  referenceWidth,
+  referenceHeight = referenceWidth,
+) {
+  const width = Number(referenceWidth);
+  const height = Number(referenceHeight);
+  const centerX = Number(rockRect?.left) + Number(rockRect?.width) / 2;
+  const centerY = Number(rockRect?.top) + Number(rockRect?.height) / 2;
+  if (
+    !Number.isFinite(relativeX) ||
+    !Number.isFinite(relativeY) ||
+    !Number.isFinite(centerX) ||
+    !Number.isFinite(centerY) ||
+    !Number.isFinite(width) ||
+    width <= 0 ||
+    !Number.isFinite(height) ||
+    height <= 0
+  ) {
+    return { x: centerX || 0, y: centerY || 0 };
+  }
+  return {
+    x: centerX + relativeX * width,
+    y: centerY + relativeY * height,
+  };
+}

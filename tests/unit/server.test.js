@@ -3,6 +3,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 const {
+  createService,
   securityHeaders,
   WindowRateLimiter,
 } = require("../../server");
@@ -42,4 +43,31 @@ test("production CSP разрешает только внешние скрипт
 
   assert.match(headers["Content-Security-Policy"], /script-src 'self'/);
   assert.doesNotMatch(headers["Content-Security-Policy"], /script-src[^;]*unsafe-inline/);
+});
+
+test("backend публикует shared-модули клиента", async (context) => {
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+
+  const modules = [
+    ["gachi-sounds.js", /SisyphusGachiSounds/],
+    ["chain-sounds.js", /SisyphusChainSounds/],
+    ["viewport.js", /SisyphusViewport/],
+  ];
+  for (const [filename, exportName] of modules) {
+    const response = await fetch(
+      `http://127.0.0.1:${address.port}/shared/${filename}`,
+    );
+    const body = await response.text();
+
+    assert.equal(response.status, 200);
+    assert.match(response.headers.get("content-type"), /javascript/);
+    assert.match(body, exportName);
+  }
 });

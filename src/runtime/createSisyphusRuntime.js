@@ -1,8 +1,16 @@
 import "../../shared/physics.js";
+import "../../shared/room-settings.js";
+import "../../shared/gachi-sounds.js";
+import "../../shared/chain-sounds.js";
+import "../../shared/viewport.js";
+import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
+import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
+  rockRelativeToViewportPosition,
+  viewportToRockRelativePosition,
 } from "../lib/coordinates.mjs";
 import {
   getRainVisualProfile,
@@ -10,42 +18,112 @@ import {
 } from "../lib/rainProfile.mjs";
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
-import { normalizeRainSettings } from "../lib/settingsModel.mjs";
+import { formatSummitElapsedMs } from "../lib/summitTimer.mjs";
 import {
-  LEGACY_SETTINGS_STORAGE_KEYS,
-  SETTINGS_STORAGE_KEY,
-} from "../config/settings.mjs";
+  normalizeRainSettings,
+  normalizeRockScaleSettings,
+  normalizeThemeMode,
+} from "../lib/settingsModel.mjs";
+import {
+  rockScaleForY,
+} from "../lib/rockScale.mjs";
+import {
+  settings as productionSettings,
+} from "../config/production-preset.mjs";
+import { createSettingsController } from "./createSettingsController.js";
+
+const ROLE_AUDIO_FADE_IN_MS = 300;
+const ROLE_AUDIO_VOLUME = 1;
+const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
+
+const chainAudioLoaders = import.meta.glob(
+  "../../assets/audio/Кандалы_*.mp3",
+  {
+    import: "default",
+    query: "?url",
+  },
+);
+const CHAIN_AUDIO_LOADERS_BY_FILENAME = new Map(
+  Object.entries(chainAudioLoaders).map(([modulePath, loader]) => [
+    modulePath.split("/").at(-1),
+    loader,
+  ]),
+);
+const gachiAudioLoaders = import.meta.glob(
+  "../../assets/audio/gachi/*.mp3",
+  {
+    import: "default",
+    query: "?url",
+  },
+);
+const GACHI_AUDIO_LOADERS_BY_FILENAME = new Map(
+  Object.entries(gachiAudioLoaders).map(([modulePath, loader]) => [
+    modulePath.split("/").at(-1),
+    loader,
+  ]),
+);
+const audioUrlPromises = new Map();
+
+function loadAudioUrl(scope, loadersByFilename, filename) {
+  const loader = loadersByFilename.get(filename);
+  if (!loader) {
+    return Promise.resolve(null);
+  }
+  const key = `${scope}:${filename}`;
+  if (!audioUrlPromises.has(key)) {
+    audioUrlPromises.set(
+      key,
+      Promise.resolve(loader())
+        .then((url) => (typeof url === "string" ? url : null))
+        .catch(() => null),
+    );
+  }
+  return audioUrlPromises.get(key);
+}
 
 export function createSisyphusRuntime(elements = {}) {
-  // При обновлении страницы всегда открываем её сверху: запрещаем браузеру
-  // восстанавливать прежнюю позицию прокрутки (во время игры это не скроллит).
+  // При обновлении страницы всегда открываем заданную игровую позицию сами:
+  // запрещаем браузеру восстанавливать прежнюю прокрутку.
   if ("scrollRestoration" in history) {
     history.scrollRestoration = "manual";
   }
 
   const body = document.body;
   const world = elements.world || document.querySelector(".world");
+  const topInscription =
+    elements.topInscription || document.querySelector(".top-inscription");
+  const summitTimerElement =
+    elements.summitTimer || document.querySelector(".summit-timer");
   const rock = elements.rock || document.querySelector(".rock");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
   const handCursor = elements.handCursor || document.querySelector(".hand-cursor");
   const remoteCursorLayer = elements.remoteCursorLayer || document.querySelector(".remote-cursors");
-  const settingsPanel = elements.settingsPanel || document.querySelector(".settings-panel");
   const trailCanvas = elements.trailCanvas || document.querySelector(".trail");
   const trailCtx = trailCanvas.getContext("2d");
   const rainLayer = elements.rainLayer || document.querySelector(".weather-rain");
   const rainFxCanvas = elements.rainFxCanvas || document.querySelector(".weather-rain__canvas--fx");
   const rainFallbackCanvas = elements.rainFallbackCanvas || document.querySelector(".weather-rain__canvas--fallback");
-  const hintEl = elements.hint || document.querySelector(".hint");
   const sessionStatus = elements.sessionStatus || document.querySelector("[data-session-status]");
   const sessionShareToggle = elements.sessionShareToggle || document.querySelector(".session-share-toggle");
-  const sessionRestartButton = elements.sessionRestartButton || document.querySelector(".session-restart");
+  const onClientRoleChange =
+    typeof elements.onClientRoleChange === "function"
+      ? elements.onClientRoleChange
+      : () => {};
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
+  const SharedRoomSettings = window.SisyphusRoomSettings;
+  const SharedGachiSounds = window.SisyphusGachiSounds;
+  const SharedChainSounds = window.SisyphusChainSounds;
+  const SharedViewport = window.SisyphusViewport;
   const listenerDisposers = [];
   let disposed = false;
+  const productionRuntime = import.meta.env.PROD;
 
   function listen(target, type, listener, options) {
+    if (!target || typeof target.addEventListener !== "function") {
+      return;
+    }
     target.addEventListener(type, listener, options);
     listenerDisposers.push(() => {
       target.removeEventListener(type, listener, options);
@@ -60,19 +138,21 @@ export function createSisyphusRuntime(elements = {}) {
     followY: null,
     pixelRatio: 1,
     dirty: true,
+    skipNextRecord: false,
+  };
+  let returnScrollAnimationId = null;
+  const summitTimer = {
+    elapsedMs: 0,
+    running: false,
+    serverTime: 0,
+    lastText: "",
   };
 
   const PHASES = SharedPhysics.PHASES;
 
-  // DOM-сцена 10000vh равна 100 высотам viewport. Камень падает до этого
-  // фактического низа, но стартовая позиция остаётся в первом экране.
-  const SCENE_VIEWPORT_HEIGHTS = 100;
-  const INTRO_CANONICAL_Y = SharedPhysics.WORLD_HEIGHT * 0.0021;
+  // DOM-сцена по умолчанию равна 1000vh, но UI может менять высоту комнаты.
+  // Физика остаётся в каноническом мире, а скорость компенсируется отдельно.
   const FLOOR_INSET = 0;
-  const DRAG_LIFT_BASE_SPEED = 420;
-  const DRAG_LIFT_FORCE_SPEED = 880;
-  const DRAG_LIFT_MIN_SPEED = 220;
-  const DRAG_LIFT_MAX_SPEED = 2800;
   const MAX_FRAME_SECONDS = 0.032;
   const RAIN_VENDOR_SRC = rainVendorUrl;
   const RAIN_SCRIPT_ID = "sisyphus-raindrop-fx";
@@ -87,55 +167,90 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_BLUR_SATURATION = 1.1;
   const DEFAULT_RAIN_BLEND_MODE = "multiply";
   const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
+  const DEFAULT_THEME_TRANSITION_MS = 420;
+  const DEFAULT_THEME_MODE = SharedRoomSettings.DEFAULT_ROOM_SETTINGS.themeMode;
+  const DEFAULT_RETURN_SCROLL_EASING =
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.returnScrollEasing;
+  const DEFAULT_RETURN_SCROLL_DURATION_SECONDS =
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.returnScrollDurationSeconds;
+  const SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION = 0.5;
 
   const params = {
-    mass: 4,
-    gravity: 0.45,
-    handForce: 5,
+    themeMode: DEFAULT_THEME_MODE,
+    returnScrollDurationSeconds: DEFAULT_RETURN_SCROLL_DURATION_SECONDS,
+    returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
+    mass: SharedPhysics.DEFAULT_PHYSICS.mass,
+    gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
+    firstFallVelocity: SharedPhysics.DEFAULT_PHYSICS.firstFallVelocity,
+    handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
-    inertia: 90,
+    inertia: SharedPhysics.DEFAULT_PHYSICS.inertia,
+    horizontalInertia: SharedPhysics.DEFAULT_PHYSICS.horizontalInertia,
     groundFriction: 0.35,
     turbulence: 0.4,
+    rockScaleEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockScaleEasing,
+    rockMinWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
+    rockMaxWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMaxWidthVw,
+    sceneHeightScreens:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
+    handWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
+    slaveHandWidthPx:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
+    handForceDeficitEasing:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
 
     // Дождь
-    rainEnabled: false,
-    rainStrength: 1,
-    rainBlendMode: DEFAULT_RAIN_BLEND_MODE,
-    rainBlurBlendMode: DEFAULT_RAIN_BLUR_BLEND_MODE,
-    rainBackgroundBlurSteps: DEFAULT_RAIN_BACKGROUND_BLUR_STEPS,
-    rainBlurPx: DEFAULT_RAIN_BLUR_PX,
-    rainBlurOpacity: DEFAULT_RAIN_BLUR_OPACITY,
-    rainBlurSaturation: DEFAULT_RAIN_BLUR_SATURATION,
-    rainZIndex: DEFAULT_RAIN_Z_INDEX,
-    rainEnterEasing: DEFAULT_RAIN_ENTER_EASING,
-    rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
-    rainEnterMs: DEFAULT_RAIN_ENTER_MS,
-    rainExitMs: DEFAULT_RAIN_EXIT_MS,
+    rainEnabled: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnabled,
+    rainStrength: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainStrength,
+    rainMaxVolume: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainMaxVolume,
+    rainDropColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor,
+    rainHighlightColor:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainHighlightColor,
+    rainBlendMode: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlendMode,
+    rainBlurBlendMode: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlurBlendMode,
+    rainBackgroundBlurSteps:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBackgroundBlurSteps,
+    rainBlurPx: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlurPx,
+    rainBlurOpacity: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlurOpacity,
+    rainBlurSaturation:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlurSaturation,
+    rainZIndex: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainZIndex,
+    rainEnterEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnterEasing,
+    rainExitEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainExitEasing,
+    rainEnterMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnterMs,
+    rainExitMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainExitMs,
 
     // След
-    trailEnabled: false,
-    trailReset: false,
-    lineDelay: 0.5,
-    trailMaxPoints: 1000,
-    trailUnlimited: false,
-    trailSampleDist: 6,
+    trailEnabled: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailEnabled,
+    trailReset: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailReset,
+    lineDelay: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineDelay,
+    trailMaxPoints: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailMaxPoints,
+    trailUnlimited: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailUnlimited,
+    trailSampleDist: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailSampleDist,
 
     // След — стиль
-    blendMode: "difference",
-    lineColor: "#ffffff",
-    lineColorTail: "#ffffff",
-    useGradient: false,
-    lineWidth: 6,
-    lineOpacity: 0.9,
-    dashStyle: "solid",
-    dashLength: 12,
-    dashGap: 8,
-    lineCap: "round",
-    lineJoin: "round",
-    glow: 0,
-    glowColor: "#ffffff",
+    blendMode: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.blendMode,
+    lineColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineColor,
+    lineColorTail: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineColorTail,
+    useGradient: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.useGradient,
+    lineWidth: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineWidth,
+    lineOpacity: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineOpacity,
+    linePassOpacity: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.linePassOpacity,
+    dashStyle: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashStyle,
+    dashLength: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashLength,
+    dashGap: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashGap,
+    lineCap: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineCap,
+    lineJoin: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineJoin,
+    glow: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.glow,
+    glowColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.glowColor,
   };
+  if (productionRuntime) {
+    Object.assign(params, productionSettings);
+  }
+  let handForceDeficitCurve =
+    SharedRoomSettings.parseCubicBezier(params.handForceDeficitEasing) ||
+    SharedPhysics.DEFAULT_FORCE_DEFICIT_CURVE;
 
   const bounds = {
     worldWidth: 0,
@@ -157,11 +272,14 @@ export function createSisyphusRuntime(elements = {}) {
     dragTargetX: 0,
     dragTargetY: 0,
     dragging: false,
+    suspended: false,
     activePointerId: null,
     holdTimerId: null,
-    firstScrollHandled: false,
-    introScrollBaselineY: 0,
+    firstFallTriggered: false,
+    firstFallTouchY: null,
+    introFallTimerId: null,
     sceneReady: false,
+    rockScale: 1,
     animationId: null,
     lastFrameAt: null,
     lastPointerX: 0,
@@ -172,18 +290,32 @@ export function createSisyphusRuntime(elements = {}) {
     alternateHand: false,
     turbTime: 0,
     imprint: null,
+    wasAtReturnPlace: false,
   };
 
   const SHARED_PHYSICS_KEYS = [
     "mass",
     "gravity",
+    "firstFallVelocity",
     "handForce",
     "pointerInfluence",
     "bounce",
     "inertia",
+    "horizontalInertia",
     "groundFriction",
     "turbulence",
   ];
+  const SHARED_ROOM_SETTING_KEYS = SharedRoomSettings.ROOM_SETTINGS_KEYS;
+  const NUMERIC_ROOM_SETTING_KEYS = new Set(
+    SHARED_ROOM_SETTING_KEYS.filter(
+      (key) => typeof SharedRoomSettings.DEFAULT_ROOM_SETTINGS[key] === "number",
+    ),
+  );
+  const BOOLEAN_ROOM_SETTING_KEYS = new Set(
+    SHARED_ROOM_SETTING_KEYS.filter(
+      (key) => typeof SharedRoomSettings.DEFAULT_ROOM_SETTINGS[key] === "boolean",
+    ),
+  );
   const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
   const SNAPSHOT_DELAY_MS = 90;
   const POINTER_SEND_INTERVAL_MS = 1000 / 30;
@@ -228,15 +360,22 @@ export function createSisyphusRuntime(elements = {}) {
     hasControl: false,
     pendingControl: false,
     releasePending: false,
-    clientSkin: "primary",
+    clientRole: "pending",
+    masterViewport: null,
+    viewportSignature: "",
+    gachiSoundFilename: null,
     holderIds: new Set(),
-    requiredHolders: 2,
+    requiredHolders: 1,
     remoteControllerId: null,
     participants: 1,
     applyingRemotePhysics: false,
     physicsTimerId: null,
     physicsSignature: "",
     pendingPhysicsChanges: Object.create(null),
+    applyingRemoteRoomSettings: false,
+    roomSettingsTimerId: null,
+    roomSettingsSignature: "",
+    pendingRoomSettingsChanges: Object.create(null),
     sessionCreateInFlight: false,
     sessionCreateAbortController: null,
     firstFallRequestSent: false,
@@ -244,6 +383,7 @@ export function createSisyphusRuntime(elements = {}) {
     lastPointerSentAt: 0,
     lastRenderAt: 0,
     imprint: null,
+    groundTouchSeq: null,
     releaseHandoff: {
       active: false,
       fromX: 0,
@@ -253,12 +393,75 @@ export function createSisyphusRuntime(elements = {}) {
     localPointer: {
       x: SharedPhysics.WORLD_WIDTH / 2,
       y: 0,
+      rockOffsetX: 0,
+      rockOffsetY: 0,
       mode: "grab",
       visible: false,
     },
     remotePointers: new Map(),
   };
   collab.enabled = Boolean(collab.sessionId);
+
+  function currentSummitElapsedMs() {
+    if (!summitTimer.running) {
+      return summitTimer.elapsedMs;
+    }
+    const estimatedServerTime = Date.now() - collab.clockOffset;
+    return Math.min(
+      Number.MAX_SAFE_INTEGER,
+      summitTimer.elapsedMs +
+        Math.max(0, estimatedServerTime - summitTimer.serverTime),
+    );
+  }
+
+  function renderSummitTimer() {
+    if (!summitTimerElement) {
+      return;
+    }
+    const text = formatSummitElapsedMs(currentSummitElapsedMs());
+    if (text !== summitTimer.lastText) {
+      summitTimerElement.textContent = text;
+      summitTimer.lastText = text;
+    }
+  }
+
+  function applySummitTimerSnapshot(payload) {
+    summitTimer.elapsedMs = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.max(0, Number(payload.summitElapsedMs) || 0),
+    );
+    summitTimer.running = Boolean(payload.summitTimerRunning);
+    summitTimer.serverTime = Number(payload.serverTime) || Date.now();
+    if (summitTimerElement) {
+      summitTimerElement.dataset.running = String(summitTimer.running);
+    }
+    renderSummitTimer();
+  }
+
+  function currentViewport() {
+    return SharedViewport.sanitizeViewport({
+      width: window.innerWidth || document.documentElement.clientWidth,
+      height: window.innerHeight || document.documentElement.clientHeight,
+    });
+  }
+
+  function localCanEditSettings() {
+    return collab.clientRole === "master";
+  }
+
+  function slaveViewportScale() {
+    if (collab.clientRole !== "slave") {
+      return { x: 1, y: 1 };
+    }
+    return SharedViewport.viewportScale(
+      collab.masterViewport,
+      currentViewport(),
+    );
+  }
+
+  function scaledVisualPixel(value) {
+    return Number(value) * slaveViewportScale().x;
+  }
 
   const rain = {
     active: false,
@@ -271,10 +474,527 @@ export function createSisyphusRuntime(elements = {}) {
     resizeHandler: null,
   };
 
+  const chainHoverAudio = {
+    elements: [],
+    filenames: SharedChainSounds.CHAIN_SOUND_FILENAMES.filter((filename) =>
+      CHAIN_AUDIO_LOADERS_BY_FILENAME.has(filename),
+    ),
+    lastPlayedIndex: -1,
+  };
+  const sessionRoleAudio = {
+    elements: new Map(),
+    latest: null,
+    seenEventIds: new Set(),
+    timerIds: new Set(),
+  };
+  const roleAudioFade = {
+    entries: new Map(),
+    latest: null,
+  };
+  const rainLoopController = createCrossfadedAudioLoop({
+    src: rainAudioUrl,
+  });
+  const rainLoopAudio = {
+    fadeDurationMs: 0,
+    fadeFrameId: null,
+    fadeMode: null,
+    fadeTargetVolume: 0,
+    fadeToken: 0,
+    playing: false,
+    volume: 0,
+  };
+
   let rainFxScriptPromise = null;
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
+  }
+
+  function secondsOutput(seconds) {
+    const value = Number(seconds);
+    return `${Number.isFinite(value) ? value.toFixed(1) : "0.0"} s`;
+  }
+
+  function settingValueToControlValue(key, value) {
+    if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
+      const seconds = Number(value) / 1000;
+      return Number.isFinite(seconds) ? String(seconds) : "0";
+    }
+    return String(value);
+  }
+
+  function controlValueToSettingValue(input, key) {
+    if (!input) {
+      return undefined;
+    }
+    if (input.type === "checkbox") {
+      return Boolean(input.checked);
+    }
+    if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
+      const seconds = Number(input.value);
+      return Number.isFinite(seconds)
+        ? Math.round(seconds * 1000)
+        : input.value;
+    }
+    return input.value;
+  }
+
+  const settingsController = createSettingsController({
+    SharedPhysics,
+    SharedRoomSettings,
+    clamp,
+    collab,
+    controlValueToSettingValue,
+    hintEl: elements.hint,
+    listen,
+    localCanEditSettings,
+    params,
+    readControls,
+    resetTrail,
+    restartExperience,
+    secondsOutput,
+    sessionRestartButton: elements.sessionRestartButton,
+    settingValueToControlValue,
+    settingsPanel: elements.settingsPanel,
+  });
+  const settingsUiEnabled = settingsController.enabled;
+
+  function fitTopInscription() {
+    if (!topInscription) {
+      return;
+    }
+    topInscription.style.fontSize = "";
+    const maximumFontSize = Number.parseFloat(
+      window.getComputedStyle(topInscription).fontSize,
+    );
+    const availableWidth = Math.max(0, topInscription.clientWidth - 2);
+    const range = document.createRange();
+    range.selectNodeContents(topInscription);
+    const textWidth = range.getBoundingClientRect().width;
+    range.detach();
+    if (
+      Number.isFinite(maximumFontSize) &&
+      availableWidth > 0 &&
+      textWidth > availableWidth
+    ) {
+      topInscription.style.fontSize = `${
+        (maximumFontSize * availableWidth) / textWidth
+      }px`;
+    }
+  }
+
+  function cancelRoleAudioFade(audio) {
+    const state = roleAudioFade.entries.get(audio);
+    if (!state) {
+      return;
+    }
+    if (state.frameId !== null) {
+      window.cancelAnimationFrame(state.frameId);
+      state.frameId = null;
+    }
+    roleAudioFade.entries.delete(audio);
+  }
+
+  function cancelAllRoleAudioFades() {
+    Array.from(roleAudioFade.entries.keys()).forEach(cancelRoleAudioFade);
+  }
+
+  function fadeInRoleAudio(audio, role) {
+    cancelRoleAudioFade(audio);
+    const state = {
+      audio,
+      durationMs: ROLE_AUDIO_FADE_IN_MS,
+      frameId: null,
+      role,
+      targetVolume: ROLE_AUDIO_VOLUME,
+    };
+    const startedAt = performance.now();
+    const step = (now) => {
+      if (roleAudioFade.entries.get(audio) !== state) {
+        return;
+      }
+      const progress = clamp(
+        (now - startedAt) / ROLE_AUDIO_FADE_IN_MS,
+        0,
+        1,
+      );
+      audio.volume = ROLE_AUDIO_VOLUME * progress;
+      if (progress < 1) {
+        state.frameId = window.requestAnimationFrame(step);
+        return;
+      }
+      state.frameId = null;
+    };
+
+    audio.volume = 0;
+    roleAudioFade.entries.set(audio, state);
+    roleAudioFade.latest = state;
+    state.frameId = window.requestAnimationFrame(step);
+  }
+
+  function playRoleAudio(audio, role) {
+    cancelRoleAudioFade(audio);
+    try {
+      audio.currentTime = 0;
+      audio.volume = 0;
+      const promise = audio.play();
+      fadeInRoleAudio(audio, role);
+      if (promise && typeof promise.catch === "function") {
+        promise.catch(() => {
+          cancelRoleAudioFade(audio);
+          audio.volume = 0;
+        });
+      }
+    } catch {
+      audio.volume = 0;
+    }
+  }
+
+  function chooseChainHoverAudioIndex() {
+    const count = chainHoverAudio.filenames.length;
+    if (count === 0) {
+      return -1;
+    }
+    if (count === 1 || chainHoverAudio.lastPlayedIndex < 0) {
+      return Math.floor(Math.random() * count);
+    }
+    const offset = 1 + Math.floor(Math.random() * (count - 1));
+    return (chainHoverAudio.lastPlayedIndex + offset) % count;
+  }
+
+  function playChainHoverSound() {
+    if (
+      typeof Audio !== "function" ||
+      motion.phase !== PHASES.PLAY ||
+      motion.dragging
+    ) {
+      return;
+    }
+
+    const index = chooseChainHoverAudioIndex();
+    if (index < 0) {
+      return;
+    }
+
+    chainHoverAudio.lastPlayedIndex = index;
+    const filename = chainHoverAudio.filenames[index];
+    loadAudioUrl("chain", CHAIN_AUDIO_LOADERS_BY_FILENAME, filename).then(
+      (url) => {
+        if (
+          disposed ||
+          !url ||
+          motion.phase !== PHASES.PLAY ||
+          motion.dragging
+        ) {
+          return;
+        }
+        let audio = chainHoverAudio.elements[index];
+        if (!audio) {
+          audio = new Audio(url);
+          audio.preload = "auto";
+          chainHoverAudio.elements[index] = audio;
+        }
+        playRoleAudio(audio, "master");
+      },
+    );
+  }
+
+  function setSlaveClickSound(filename) {
+    collab.gachiSoundFilename = SharedGachiSounds.isGachiSoundFilename(filename)
+      ? filename
+      : null;
+    if (collab.gachiSoundFilename) {
+      preloadSessionRoleAudio("slave", collab.gachiSoundFilename);
+    }
+  }
+
+  function sessionRoleAudioAvailable(role, filename) {
+    if (role === "master" && SharedChainSounds.isChainSoundFilename(filename)) {
+      return CHAIN_AUDIO_LOADERS_BY_FILENAME.has(filename);
+    }
+    if (role === "slave" && SharedGachiSounds.isGachiSoundFilename(filename)) {
+      return GACHI_AUDIO_LOADERS_BY_FILENAME.has(filename);
+    }
+    return false;
+  }
+
+  function loadSessionRoleAudioUrl(role, filename) {
+    if (role === "master" && SharedChainSounds.isChainSoundFilename(filename)) {
+      return loadAudioUrl("chain", CHAIN_AUDIO_LOADERS_BY_FILENAME, filename);
+    }
+    if (role === "slave" && SharedGachiSounds.isGachiSoundFilename(filename)) {
+      return loadAudioUrl("gachi", GACHI_AUDIO_LOADERS_BY_FILENAME, filename);
+    }
+    return Promise.resolve(null);
+  }
+
+  function ensureSessionRoleAudio(role, filename) {
+    if (typeof Audio !== "function") {
+      return Promise.resolve(null);
+    }
+    const key = `${role}:${filename}`;
+    const existing = sessionRoleAudio.elements.get(key);
+    if (existing) {
+      return Promise.resolve(existing);
+    }
+    return loadSessionRoleAudioUrl(role, filename).then((url) => {
+      if (!url) {
+        return null;
+      }
+      const audio = new Audio(url);
+      audio.preload = "auto";
+      sessionRoleAudio.elements.set(key, audio);
+      return audio;
+    });
+  }
+
+  function preloadSessionRoleAudio(role, filename) {
+    const promise = ensureSessionRoleAudio(role, filename);
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(() => {});
+    }
+  }
+
+  function playSessionRoleAudio(payload) {
+    if (typeof Audio !== "function") {
+      return;
+    }
+    if (!sessionRoleAudioAvailable(payload.role, payload.filename)) {
+      return;
+    }
+    ensureSessionRoleAudio(payload.role, payload.filename).then((audio) => {
+      if (disposed || !audio) {
+        return;
+      }
+      sessionRoleAudio.latest = {
+        ...payload,
+        playedAt: Date.now(),
+        scheduled: false,
+      };
+      playRoleAudio(audio, payload.role);
+    });
+  }
+
+  function receiveSessionRoleAudio(payload) {
+    const eventId =
+      typeof payload.eventId === "string" ? payload.eventId : "";
+    const role =
+      payload.role === "master" || payload.role === "slave"
+        ? payload.role
+        : null;
+    const filename =
+      typeof payload.filename === "string" ? payload.filename : "";
+    const playAt = Number(payload.playAt);
+    if (
+      !/^[A-Za-z0-9_-]{16,64}$/.test(eventId) ||
+      !sessionRoleAudioAvailable(role, filename) ||
+      !Number.isFinite(playAt) ||
+      sessionRoleAudio.seenEventIds.has(eventId)
+    ) {
+      return false;
+    }
+
+    sessionRoleAudio.seenEventIds.add(eventId);
+    if (sessionRoleAudio.seenEventIds.size > 256) {
+      sessionRoleAudio.seenEventIds.delete(
+        sessionRoleAudio.seenEventIds.values().next().value,
+      );
+    }
+    const normalized = {
+      eventId,
+      actorId: typeof payload.actorId === "string" ? payload.actorId : null,
+      role,
+      filename,
+      playAt,
+    };
+    const localPlayAt =
+      playAt + (collab.clockOffsetReady ? collab.clockOffset : 0);
+    const delayMs = Math.max(0, localPlayAt - Date.now());
+    sessionRoleAudio.latest = {
+      ...normalized,
+      delayMs,
+      playedAt: null,
+      scheduled: true,
+    };
+    const play = () => {
+      playSessionRoleAudio(normalized);
+    };
+    if (delayMs <= 0) {
+      play();
+      return true;
+    }
+    const timerId = window.setTimeout(() => {
+      sessionRoleAudio.timerIds.delete(timerId);
+      play();
+    }, delayMs);
+    sessionRoleAudio.timerIds.add(timerId);
+    return true;
+  }
+
+  function playRockPointerDownSound() {
+    if (collab.enabled && collab.connected) {
+      sendShared("audio.play");
+      return;
+    }
+    const role = pointerRole(collab.clientRole);
+    const filename =
+      role === "master"
+        ? SharedChainSounds.CHAIN_SOUND_FILENAMES[
+            Math.floor(
+              Math.random() * SharedChainSounds.CHAIN_SOUND_FILENAMES.length,
+            )
+          ]
+        : collab.gachiSoundFilename;
+    playSessionRoleAudio({
+      eventId: `local-${Date.now()}`,
+      actorId: collab.clientId,
+      role,
+      filename,
+      playAt: Date.now(),
+    });
+  }
+
+  function setRainLoopVolume(value) {
+    const nextVolume = clamp(Number(value) || 0, 0, 3);
+    rainLoopAudio.volume = nextVolume;
+    rainLoopController.setVolume(nextVolume);
+  }
+
+  function cancelRainLoopFade() {
+    rainLoopAudio.fadeToken += 1;
+    if (rainLoopAudio.fadeFrameId !== null) {
+      window.cancelAnimationFrame(rainLoopAudio.fadeFrameId);
+      rainLoopAudio.fadeFrameId = null;
+    }
+    rainLoopAudio.fadeDurationMs = 0;
+    rainLoopAudio.fadeMode = null;
+  }
+
+  function fadeRainLoopVolume(targetVolume, durationMs, options = {}) {
+    const onDone =
+      typeof options.onDone === "function" ? options.onDone : () => {};
+    cancelRainLoopFade();
+    const token = rainLoopAudio.fadeToken;
+    const startVolume = clamp(rainLoopAudio.volume, 0, 3);
+    const endVolume = clamp(Number(targetVolume) || 0, 0, 3);
+    const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+    rainLoopAudio.fadeDurationMs = duration;
+    rainLoopAudio.fadeMode = options.mode || "volume";
+    rainLoopAudio.fadeTargetVolume = endVolume;
+
+    if (duration <= 0 || Math.abs(startVolume - endVolume) < 0.001) {
+      setRainLoopVolume(endVolume);
+      rainLoopAudio.fadeDurationMs = 0;
+      rainLoopAudio.fadeMode = null;
+      onDone();
+      return;
+    }
+
+    const startAt = performance.now();
+    const step = (now) => {
+      if (token !== rainLoopAudio.fadeToken) {
+        return;
+      }
+      const progress = clamp((now - startAt) / duration, 0, 1);
+      setRainLoopVolume(
+        startVolume + (endVolume - startVolume) * progress
+      );
+      if (progress < 1) {
+        rainLoopAudio.fadeFrameId = window.requestAnimationFrame(step);
+        return;
+      }
+      rainLoopAudio.fadeFrameId = null;
+      rainLoopAudio.fadeDurationMs = 0;
+      rainLoopAudio.fadeMode = null;
+      onDone();
+    };
+
+    rainLoopAudio.fadeFrameId = window.requestAnimationFrame(step);
+  }
+
+  function finishRainLoopSound() {
+    rainLoopController.stop();
+    setRainLoopVolume(0);
+    rainLoopAudio.fadeMode = null;
+    rainLoopAudio.fadeTargetVolume = 0;
+    rainLoopAudio.playing = false;
+  }
+
+  function playRainLoopSound() {
+    const wasStopped = !rainLoopAudio.playing;
+    if (wasStopped) {
+      setRainLoopVolume(0);
+    }
+    rainLoopAudio.playing = true;
+    const promise = rainLoopController.start();
+    if (promise && typeof promise.catch === "function") {
+      promise.then((started) => {
+        if (started || !rainLoopAudio.playing) {
+          return;
+        }
+        cancelRainLoopFade();
+        setRainLoopVolume(0);
+        rainLoopAudio.playing = false;
+      }).catch(() => {
+        cancelRainLoopFade();
+        setRainLoopVolume(0);
+        rainLoopAudio.playing = false;
+      });
+    }
+    fadeRainLoopVolume(params.rainMaxVolume, params.rainEnterMs, {
+      mode: "enter",
+    });
+  }
+
+  function stopRainLoopSound({ immediate = false } = {}) {
+    if (!rainLoopAudio.playing) {
+      rainLoopAudio.playing = false;
+      return;
+    }
+
+    if (immediate) {
+      cancelRainLoopFade();
+      finishRainLoopSound();
+      return;
+    }
+
+    fadeRainLoopVolume(0, params.rainExitMs, {
+      mode: "exit",
+      onDone: finishRainLoopSound,
+    });
+  }
+
+  function syncRainLoopFadeTiming(changedKeys) {
+    if (!rainLoopAudio.playing) {
+      return;
+    }
+    if (
+      changedKeys.has("rainMaxVolume") &&
+      rainLoopAudio.fadeMode !== "exit"
+    ) {
+      fadeRainLoopVolume(params.rainMaxVolume, params.rainEnterMs, {
+        mode: "volume",
+      });
+      return;
+    }
+    if (rainLoopAudio.fadeFrameId === null) {
+      return;
+    }
+    if (
+      changedKeys.has("rainEnterMs") &&
+      rainLoopAudio.fadeMode !== "exit"
+    ) {
+      fadeRainLoopVolume(params.rainMaxVolume, params.rainEnterMs, {
+        mode: rainLoopAudio.fadeMode || "enter",
+      });
+      return;
+    }
+    if (
+      changedKeys.has("rainExitMs") &&
+      rainLoopAudio.fadeMode === "exit"
+    ) {
+      stopRainLoopSound();
+    }
   }
 
   function getRainFxConstructor() {
@@ -396,6 +1116,71 @@ export function createSisyphusRuntime(elements = {}) {
     return body.classList.contains("theme-dark") ? "dark" : "light";
   }
 
+  function createRainProfile(theme = currentRainTheme()) {
+    return getRainVisualProfile({
+      rainStrength: params.rainStrength,
+      theme,
+      backgroundBlurSteps:
+        theme === "dark" ? params.rainBackgroundBlurSteps : undefined,
+      rainDropColor: params.rainDropColor,
+      rainHighlightColor: params.rainHighlightColor,
+    });
+  }
+
+  function rainFxOptionsForProfile(rainProfile) {
+    return {
+      dropletsPerSecond: rainProfile.dropletsPerSecond,
+      dropletsPerSeconds: rainProfile.dropletsPerSecond,
+      spawnInterval: rainProfile.spawnInterval,
+      spawnSize: rainProfile.spawnSize,
+      spawnLimit: rainProfile.spawnLimit,
+      mist: true,
+      mistColor: rainProfile.mistColor,
+      backgroundBlurSteps: rainProfile.backgroundBlurSteps,
+      raindropCompose: rainProfile.raindropCompose,
+      raindropDiffuseLight: rainProfile.raindropDiffuseLight,
+      raindropSpecularLight: rainProfile.raindropSpecularLight,
+    };
+  }
+
+  function syncActiveRainProfile({ updateBackground = false } = {}) {
+    if (!rain.active) {
+      return;
+    }
+
+    let rainProfile = createRainProfile();
+    rain.lastProfile = rainProfile;
+    rain.fallback?.setProfile?.(rainProfile);
+    setRainOpacity(rainFxCanvas, rainProfile.fxOpacity);
+    setRainOpacity(
+      rainFallbackCanvas,
+      rain.fallback ? rainProfile.fallbackOpacity : 0
+    );
+
+    if (!rain.rainFx?.options) {
+      return;
+    }
+
+    Object.assign(rain.rainFx.options, rainFxOptionsForProfile(rainProfile));
+    if (!updateBackground || typeof rain.rainFx.setBackground !== "function") {
+      return;
+    }
+
+    const token = rain.renderToken;
+    const background = createRainBackground(rainFxCanvas);
+    const promise = rain.rainFx.setBackground(background);
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(() => {});
+    }
+    if (promise && typeof promise.then === "function") {
+      promise.then(() => {
+        if (token !== rain.renderToken) {
+          background.remove?.();
+        }
+      });
+    }
+  }
+
   function restartRainRenderers() {
     if (!rain.active) {
       return;
@@ -420,7 +1205,10 @@ export function createSisyphusRuntime(elements = {}) {
       "--rain-blur-blend-mode",
       params.rainBlurBlendMode,
     );
-    rainLayer.style.setProperty("--rain-blur-radius", `${params.rainBlurPx}px`);
+    rainLayer.style.setProperty(
+      "--rain-blur-radius",
+      `${scaledVisualPixel(params.rainBlurPx)}px`,
+    );
     rainLayer.style.setProperty(
       "--rain-blur-opacity",
       params.rainBlurOpacity.toFixed(2),
@@ -431,9 +1219,40 @@ export function createSisyphusRuntime(elements = {}) {
     );
 
     if (restartIfActive && rain.active) {
-      stopRainRenderers();
-      startRainRenderers();
+      restartRainRenderers();
     }
+  }
+
+  function applyHandSize() {
+    document.documentElement.style.setProperty(
+      "--hand-width-vw",
+      `${params.handWidthVw}vw`
+    );
+    document.documentElement.style.setProperty(
+      "--slave-hand-width-px",
+      `${scaledVisualPixel(params.slaveHandWidthPx)}px`
+    );
+  }
+
+  function applyViewportScaledVisuals() {
+    applyHandSize();
+    applyRainSettings();
+    trail.dirty = true;
+    drawTrail();
+  }
+
+  function applySceneHeight() {
+    document.documentElement.style.setProperty(
+      "--scene-height-vh",
+      `${params.sceneHeightScreens * 100}vh`
+    );
+  }
+
+  function sceneMotionOptions() {
+    return {
+      forceDeficitCurve: handForceDeficitCurve,
+      motionScale: SharedRoomSettings.sceneMotionMultiplier(params),
+    };
   }
 
   function getRainExitDurationMs() {
@@ -560,13 +1379,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const theme = currentRainTheme();
-    const rainProfile = getRainVisualProfile({
-      rainStrength: params.rainStrength,
-      theme,
-      backgroundBlurSteps:
-        theme === "dark" ? params.rainBackgroundBlurSteps : undefined,
-    });
+    let rainProfile = createRainProfile();
     rain.lastProfile = rainProfile;
     rain.active = true;
     const token = ++rain.renderToken;
@@ -596,21 +1409,13 @@ export function createSisyphusRuntime(elements = {}) {
           throw new Error("RaindropFX constructor is unavailable");
         }
 
+        rainProfile = createRainProfile();
+        rain.lastProfile = rainProfile;
         resizeCanvasToCssPixels(rainFxCanvas);
         const instance = new RaindropFX({
           canvas: rainFxCanvas,
           background: createRainBackground(rainFxCanvas),
-          dropletsPerSecond: rainProfile.dropletsPerSecond,
-          dropletsPerSeconds: rainProfile.dropletsPerSecond,
-          spawnInterval: rainProfile.spawnInterval,
-          spawnSize: rainProfile.spawnSize,
-          spawnLimit: rainProfile.spawnLimit,
-          mist: true,
-          mistColor: rainProfile.mistColor,
-          backgroundBlurSteps: rainProfile.backgroundBlurSteps,
-          raindropCompose: rainProfile.raindropCompose,
-          raindropDiffuseLight: rainProfile.raindropDiffuseLight,
-          raindropSpecularLight: rainProfile.raindropSpecularLight,
+          ...rainFxOptionsForProfile(rainProfile),
         });
         rain.rainFx = instance;
 
@@ -655,10 +1460,24 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    const alreadyVisible =
+      rainLayer.classList.contains("is-rain-visible") &&
+      !rainLayer.classList.contains("is-rain-hiding");
     window.clearTimeout(rain.hideTimerId);
     rain.hideTimerId = null;
+    if (alreadyVisible) {
+      if (!rainLoopAudio.playing) {
+        playRainLoopSound();
+      }
+      if (!rain.active) {
+        startRainRenderers();
+      }
+      return;
+    }
+
     rainLayer.classList.remove("is-rain-hiding");
     rainLayer.classList.add("is-rain-visible");
+    playRainLoopSound();
     startRainRenderers();
   }
 
@@ -671,6 +1490,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(rain.hideTimerId);
       rain.hideTimerId = null;
       rainLayer.classList.remove("is-rain-visible", "is-rain-hiding");
+      stopRainLoopSound({ immediate: true });
       stopRainRenderers();
       return;
     }
@@ -688,6 +1508,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     rainLayer.classList.remove("is-rain-visible");
     rainLayer.classList.add("is-rain-hiding");
+    stopRainLoopSound();
     rain.hideTimerId = window.setTimeout(() => {
       if (shouldShowRain()) {
         return;
@@ -724,13 +1545,40 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function setTheme(theme) {
+  function setTheme(theme, options = {}) {
+    const requestedDuration = Number(options.durationMs);
+    const durationMs = reducedMotion.matches
+      ? 0
+      : clamp(
+          Number.isFinite(requestedDuration)
+            ? requestedDuration
+            : DEFAULT_THEME_TRANSITION_MS,
+          0,
+          10000,
+        );
+    body.style.setProperty("--theme-transition-duration", `${durationMs}ms`);
     const previousRainTheme = currentRainTheme();
     body.classList.toggle("theme-light", theme === "light");
     body.classList.toggle("theme-dark", theme === "dark");
+    applyTrailBlendMode();
+    trail.dirty = true;
     if (currentRainTheme() !== previousRainTheme) {
-      restartRainRenderers();
+      syncActiveRainProfile({ updateBackground: true });
     }
+  }
+
+  function resolveTheme(autoTheme) {
+    return params.themeMode === "auto" ? autoTheme : params.themeMode;
+  }
+
+  function returnThemeTransitionDuration(atReturnPlace, options = {}) {
+    if (options.immediate === true) {
+      return 0;
+    }
+    if (params.themeMode !== "auto") {
+      return DEFAULT_THEME_TRANSITION_MS;
+    }
+    return atReturnPlace ? params.rainEnterMs : params.rainExitMs;
   }
 
   function setPhase(phase) {
@@ -745,157 +1593,78 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function maxHoldMs() {
-    return clamp(
-      (3000 * params.handForce) / (params.mass * params.gravity * 5),
-      500,
-      3000
-    );
+    return SharedPhysics.maxHoldMs(params);
   }
 
-  function dragLiftSpeed() {
-    const load = Math.max(params.mass * params.gravity, 0.1);
-    return clamp(
-      DRAG_LIFT_BASE_SPEED + (DRAG_LIFT_FORCE_SPEED * params.handForce) / load,
-      DRAG_LIFT_MIN_SPEED,
-      DRAG_LIFT_MAX_SPEED
-    );
+  function activeHandCount() {
+    return collab.enabled ? collab.holderIds.size : 1;
   }
 
-  const STORAGE_KEY = SETTINGS_STORAGE_KEY;
-
-  function saveSettings() {
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(params));
-    } catch {
-      /* localStorage недоступен — тихо игнорируем */
-    }
-  }
-
-  function loadSettings() {
-    let stored = null;
-    let migratedLegacySettings = false;
-    try {
-      const current = localStorage.getItem(STORAGE_KEY);
-      const legacy = LEGACY_SETTINGS_STORAGE_KEYS.map((key) =>
-        localStorage.getItem(key)
-      ).find((value) => value !== null);
-      const raw = current ?? legacy;
-      migratedLegacySettings = current === null && raw !== null;
-      stored = JSON.parse(raw || "null");
-    } catch {
-      stored = null;
-    }
-    if (!stored || typeof stored !== "object") {
-      return;
-    }
-
-    if (migratedLegacySettings) {
-      const legacyInertia = Number(stored.inertia);
-      if (
-        Number.isFinite(legacyInertia) &&
-        legacyInertia >= 0 &&
-        legacyInertia <= 1
-      ) {
-        stored = { ...stored, inertia: legacyInertia * 100 };
-      }
-    }
-    if (
-      !Object.hasOwn(stored, "groundFriction") &&
-      Object.hasOwn(stored, "sliding")
-    ) {
-      stored = { ...stored, groundFriction: stored.sliding };
-    }
-    if (migratedLegacySettings) {
-      stored = { ...stored, trailEnabled: false };
-    }
-
-    settingsPanel.querySelectorAll("input, select").forEach((el) => {
-      const key = el.getAttribute("name");
-      if (!key || !(key in stored)) {
-        return;
-      }
-      if (el.type === "checkbox") {
-        el.checked = Boolean(stored[key]);
-      } else {
-        el.value = stored[key];
-      }
-    });
-  }
-
-  function updateControlOutputs() {
-    const outputs = {
-      mass: params.mass.toFixed(0),
-      gravity: params.gravity.toFixed(2),
-      handForce: params.handForce.toFixed(0),
-      pointerInfluence: params.pointerInfluence.toFixed(1),
-      bounce: params.bounce.toFixed(2),
-      inertia: params.inertia.toFixed(0),
-      groundFriction: params.groundFriction.toFixed(2),
-      turbulence: params.turbulence.toFixed(2),
-      rainStrength: `${Math.round(params.rainStrength * 100)}%`,
-      rainBackgroundBlurSteps: params.rainBackgroundBlurSteps.toFixed(0),
-      rainBlurPx: `${params.rainBlurPx.toFixed(0)} px`,
-      rainBlurOpacity: `${Math.round(params.rainBlurOpacity * 100)}%`,
-      rainBlurSaturation: `${Math.round(params.rainBlurSaturation * 100)}%`,
-      rainZIndex: params.rainZIndex.toFixed(0),
-      rainEnterMs: params.rainEnterMs.toFixed(0),
-      rainExitMs: params.rainExitMs.toFixed(0),
-      lineDelay: params.lineDelay.toFixed(2),
-      trailMaxPoints: params.trailMaxPoints.toFixed(0),
-      trailSampleDist: params.trailSampleDist.toFixed(0),
-      lineWidth: params.lineWidth.toFixed(0),
-      lineOpacity: params.lineOpacity.toFixed(2),
-      dashLength: params.dashLength.toFixed(0),
-      dashGap: params.dashGap.toFixed(0),
-      glow: params.glow.toFixed(0),
-    };
-
-    Object.entries(outputs).forEach(([key, value]) => {
-      document.querySelectorAll(`[data-output="${key}"]`).forEach((el) => {
-        el.textContent = value;
-      });
-    });
-  }
-
-  function readControls(options = {}) {
-    const num = (name) =>
-      Number(settingsPanel.querySelector(`[name="${name}"]`).value);
-    const str = (name) => settingsPanel.querySelector(`[name="${name}"]`).value;
-    const bool = (name) =>
-      settingsPanel.querySelector(`[name="${name}"]`).checked;
+  function settingsChangeContext(options = {}) {
     const changedKey = options.changedKey || "";
+    const hasExplicitChangedKeys = Array.isArray(options.changedKeys);
+    const acceptsKnownKey = (key) => Object.hasOwn(params, key);
+    const changedKeys = new Set(
+      hasExplicitChangedKeys
+        ? options.changedKeys.filter(acceptsKnownKey)
+        : changedKey
+          ? acceptsKnownKey(changedKey)
+            ? [changedKey]
+            : []
+          : [],
+    );
+    const fullRefresh = !hasExplicitChangedKeys && changedKey === "";
+    const hasTargetedChanges = hasExplicitChangedKeys || changedKey !== "";
+    const shouldHandleChange = (...keys) =>
+      fullRefresh || keys.some((key) => changedKeys.has(key));
 
-    params.mass = num("mass");
-    params.gravity = num("gravity");
-    params.handForce = num("handForce");
-    params.pointerInfluence = num("pointerInfluence");
-    params.bounce = num("bounce");
-    params.inertia = num("inertia");
-    params.groundFriction = num("groundFriction");
-    params.turbulence = num("turbulence");
-    params.rainEnabled = bool("rainEnabled");
+    return {
+      changedKeys,
+      fullRefresh,
+      hasTargetedChanges,
+      shouldHandleChange,
+    };
+  }
 
+  function normalizeCurrentParams(previousRoomSettings, preservedState) {
+    Object.assign(
+      params,
+      SharedPhysics.sanitizePhysics(params, params),
+      SharedRoomSettings.sanitizeRoomSettings(params, params),
+    );
+    handForceDeficitCurve =
+      SharedRoomSettings.parseCubicBezier(params.handForceDeficitEasing) ||
+      SharedPhysics.DEFAULT_FORCE_DEFICIT_CURVE;
+    params.themeMode = normalizeThemeMode(params.themeMode, DEFAULT_THEME_MODE);
+    Object.assign(
+      params,
+      normalizeRockScaleSettings(params, {
+        defaults: {
+          rockMinWidthVw:
+            SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
+          rockMaxWidthVw:
+            SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMaxWidthVw,
+          rockScaleEasing:
+            SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockScaleEasing,
+        },
+      }),
+    );
+    if (preservedState && previousRoomSettings) {
+      const previousScale =
+        SharedRoomSettings.sceneMotionMultiplier(previousRoomSettings);
+      const nextScale = SharedRoomSettings.sceneMotionMultiplier(params);
+      preservedState.vy *= previousScale > 0 ? nextScale / previousScale : 1;
+    }
     Object.assign(
       params,
       normalizeRainSettings(
-        {
-          rainStrength: num("rainStrength"),
-          rainBlendMode: str("rainBlendMode"),
-          rainBlurBlendMode: str("rainBlurBlendMode"),
-          rainBackgroundBlurSteps: num("rainBackgroundBlurSteps"),
-          rainBlurPx: num("rainBlurPx"),
-          rainBlurOpacity: num("rainBlurOpacity"),
-          rainBlurSaturation: num("rainBlurSaturation"),
-          rainZIndex: num("rainZIndex"),
-          rainEnterEasing: str("rainEnterEasing"),
-          rainExitEasing: str("rainExitEasing"),
-          rainEnterMs: num("rainEnterMs"),
-          rainExitMs: num("rainExitMs"),
-        },
+        params,
         {
           defaults: {
             rainBlendMode: DEFAULT_RAIN_BLEND_MODE,
             rainBlurBlendMode: DEFAULT_RAIN_BLUR_BLEND_MODE,
+            rainMaxVolume:
+              SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainMaxVolume,
             rainBackgroundBlurSteps: DEFAULT_RAIN_BACKGROUND_BLUR_STEPS,
             rainBlurPx: DEFAULT_RAIN_BLUR_PX,
             rainBlurOpacity: DEFAULT_RAIN_BLUR_OPACITY,
@@ -915,79 +1684,173 @@ export function createSisyphusRuntime(elements = {}) {
         },
       ),
     );
+  }
 
-    params.trailEnabled = bool("trailEnabled");
-    params.trailReset = bool("trailReset");
-    params.lineDelay = num("lineDelay");
-    params.trailMaxPoints = num("trailMaxPoints");
-    params.trailUnlimited = bool("trailUnlimited");
-    params.trailSampleDist = num("trailSampleDist");
+  function applyCurrentSettings({
+    changedKeys,
+    fullRefresh,
+    hasTargetedChanges,
+    shouldHandleChange,
+    previousRoomSettings,
+    preservedState,
+    preserveBottomScroll,
+    preserveSettingsVersionSelection = false,
+    syncControls = false,
+    updateUi = false,
+    persist = false,
+    broadcastChanges = false,
+  }) {
+    normalizeCurrentParams(previousRoomSettings, preservedState);
 
-    params.blendMode = str("blendMode");
-    params.lineColor = str("lineColor");
-    params.lineColorTail = str("lineColorTail");
-    params.useGradient = bool("useGradient");
-    params.lineWidth = num("lineWidth");
-    params.lineOpacity = num("lineOpacity");
-    params.dashStyle = str("dashStyle");
-    params.dashLength = num("dashLength");
-    params.dashGap = num("dashGap");
-    params.lineCap = str("lineCap");
-    params.lineJoin = str("lineJoin");
-    params.glow = num("glow");
-    params.glowColor = str("glowColor");
-
-    settingsPanel.querySelector('[name="rainStrength"]').value = params.rainStrength;
-    settingsPanel.querySelector('[name="rainBlendMode"]').value =
-      params.rainBlendMode;
-    settingsPanel.querySelector('[name="rainBlurBlendMode"]').value =
-      params.rainBlurBlendMode;
-    settingsPanel.querySelector('[name="rainBackgroundBlurSteps"]').value =
-      params.rainBackgroundBlurSteps;
-    settingsPanel.querySelector('[name="rainBlurPx"]').value = params.rainBlurPx;
-    settingsPanel.querySelector('[name="rainBlurOpacity"]').value =
-      params.rainBlurOpacity;
-    settingsPanel.querySelector('[name="rainBlurSaturation"]').value =
-      params.rainBlurSaturation;
-    settingsPanel.querySelector('[name="rainZIndex"]').value = params.rainZIndex;
-    settingsPanel.querySelector('[name="rainEnterEasing"]').value = params.rainEnterEasing;
-    settingsPanel.querySelector('[name="rainExitEasing"]').value = params.rainExitEasing;
-    settingsPanel.querySelector('[name="rainEnterMs"]').value = params.rainEnterMs;
-    settingsPanel.querySelector('[name="rainExitMs"]').value = params.rainExitMs;
+    if (syncControls) {
+      settingsController.syncRoomSettingControls();
+    }
     applyRainSettings({
       restartIfActive:
-        changedKey === "rainStrength" ||
-        changedKey === "rainBackgroundBlurSteps",
+        hasTargetedChanges &&
+        (shouldHandleChange("rainStrength") ||
+          shouldHandleChange("rainBackgroundBlurSteps") ||
+          shouldHandleChange("rainDropColor") ||
+          shouldHandleChange("rainHighlightColor")),
     });
-    if (changedKey === "rainEnabled" || changedKey === "") {
+    if (shouldHandleChange("rainEnabled")) {
       syncRainVisibility({
-        immediate: changedKey === "",
+        immediate: fullRefresh,
       });
     }
+    if (shouldHandleChange("themeMode", "rainEnterMs", "rainExitMs")) {
+      syncReturnTheme();
+    }
+    if (
+      hasTargetedChanges &&
+      shouldHandleChange("rainMaxVolume", "rainEnterMs", "rainExitMs")
+    ) {
+      syncRainLoopFadeTiming(changedKeys);
+    }
 
-    trailCanvas.style.mixBlendMode = params.blendMode;
+    applyTrailBlendMode();
 
-    const trailLengthInput = settingsPanel.querySelector(
-      '[name="trailMaxPoints"]'
-    );
-    trailLengthInput.disabled = params.trailUnlimited;
-    trailLengthInput
-      .closest(".control")
-      .classList.toggle("is-disabled", params.trailUnlimited);
+    if (updateUi) {
+      const trailLengthInput =
+        settingsController.roomSettingControlElement("trailMaxPoints");
+      if (trailLengthInput) {
+        trailLengthInput.disabled = params.trailUnlimited;
+        trailLengthInput
+          .closest(".control")
+          ?.classList.toggle("is-disabled", params.trailUnlimited);
+      }
+      settingsController.updateControlOutputs();
+    }
     trimTrailToLimit();
 
-    updateControlOutputs();
-    saveSettings();
-    trail.dirty = true;
-    drawTrail();
-    if (
-      collab.enabled &&
-      !collab.applyingRemotePhysics &&
-      SHARED_PHYSICS_KEYS.includes(changedKey)
-    ) {
-      collab.pendingPhysicsChanges[changedKey] = params[changedKey];
-      scheduleSharedPhysicsUpdate();
+    if (persist) {
+      settingsController.saveSettings();
     }
+    if (
+      updateUi &&
+      hasTargetedChanges &&
+      changedKeys.size > 0 &&
+      !preserveSettingsVersionSelection &&
+      !collab.applyingRemotePhysics &&
+      !collab.applyingRemoteRoomSettings
+    ) {
+      settingsController.markSettingsVersionDraft();
+    }
+    trail.dirty = true;
+    applySceneHeight();
+    if (preservedState) {
+      applyCanonicalMotion(preservedState);
+    } else {
+      applyRockScale();
+    }
+    applyHandSize();
+    renderImprint();
+    drawTrail();
+    if (preserveBottomScroll) {
+      scrollToSceneBottom();
+    }
+    if (
+      broadcastChanges &&
+      collab.enabled &&
+      localCanEditSettings() &&
+      !collab.applyingRemotePhysics
+    ) {
+      let hasPhysicsChanges = false;
+      changedKeys.forEach((key) => {
+        if (SHARED_PHYSICS_KEYS.includes(key)) {
+          collab.pendingPhysicsChanges[key] = params[key];
+          hasPhysicsChanges = true;
+        }
+      });
+      if (hasPhysicsChanges) {
+        scheduleSharedPhysicsUpdate();
+      }
+    }
+    if (
+      broadcastChanges &&
+      collab.enabled &&
+      localCanEditSettings() &&
+      !collab.applyingRemoteRoomSettings
+    ) {
+      let hasRoomSettingsChanges = false;
+      changedKeys.forEach((key) => {
+        if (SHARED_ROOM_SETTING_KEYS.includes(key)) {
+          collab.pendingRoomSettingsChanges[key] = params[key];
+          hasRoomSettingsChanges = true;
+        }
+      });
+      if (hasRoomSettingsChanges) {
+        scheduleSharedRoomSettingsUpdate();
+      }
+    }
+  }
+
+  function readControls(options = {}) {
+    const {
+      changedKeys,
+      fullRefresh,
+      hasTargetedChanges,
+      shouldHandleChange,
+    } = settingsChangeContext(options);
+    const sceneHeightChanging = shouldHandleChange("sceneHeightScreens");
+
+    const previousRoomSettings =
+      sceneHeightChanging ? sharedRoomSettingsPayload() : null;
+    const preservedState =
+      sceneHeightChanging ? currentSharedState() : null;
+    const preserveBottomScroll =
+      sceneHeightChanging &&
+      Math.abs(
+        window.scrollY +
+          window.innerHeight -
+          document.documentElement.scrollHeight
+      ) <= 4;
+
+    if (settingsUiEnabled) {
+      Object.assign(params, settingsController.readPhysicsControls());
+      Object.assign(
+        params,
+        SharedRoomSettings.sanitizeRoomSettings(
+          settingsController.readRoomSettingsControls(),
+          params,
+        ),
+      );
+    }
+    applyCurrentSettings({
+      changedKeys,
+      fullRefresh,
+      hasTargetedChanges,
+      shouldHandleChange,
+      previousRoomSettings,
+      preservedState,
+      preserveBottomScroll,
+      preserveSettingsVersionSelection:
+        Boolean(options.preserveSettingsVersionSelection),
+      syncControls: settingsUiEnabled,
+      updateUi: settingsUiEnabled,
+      persist: settingsUiEnabled,
+      broadcastChanges: settingsUiEnabled,
+    });
   }
 
   function canShowPhotoCursor(event) {
@@ -998,13 +1861,20 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function setHandCursorViewportPosition(position) {
+    handCursor.style.setProperty("--cursor-x", `${position.x}px`);
+    handCursor.style.setProperty("--cursor-y", `${position.y}px`);
+  }
+
   function moveHandCursor(event) {
     if (!canShowPhotoCursor(event)) {
       return;
     }
 
-    handCursor.style.setProperty("--cursor-x", `${event.clientX}px`);
-    handCursor.style.setProperty("--cursor-y", `${event.clientY}px`);
+    setHandCursorViewportPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
   }
 
   function showHandCursor(event) {
@@ -1039,11 +1909,38 @@ export function createSisyphusRuntime(elements = {}) {
     bounds.rockWidth = rock.offsetWidth;
     bounds.rockHeight = rock.offsetHeight;
     bounds.maxX = Math.max(0, bounds.worldWidth - bounds.rockWidth);
+    const bottomScale = rockScaleForY(1, 1, {
+      easing: params.rockScaleEasing,
+      minWidthVw: params.rockMinWidthVw,
+      maxWidthVw: params.rockMaxWidthVw,
+      baseWidthPx: bounds.rockWidth,
+      viewportWidthPx: bounds.worldWidth,
+    });
+    const visualBottomOffset =
+      (bounds.rockHeight * (1 + bottomScale)) / 2 + FLOOR_INSET;
     bounds.worldHeight = Math.max(
-      window.innerHeight * SCENE_VIEWPORT_HEIGHTS,
-      bounds.rockHeight + FLOOR_INSET
+      window.innerHeight * params.sceneHeightScreens,
+      visualBottomOffset
     );
-    bounds.maxY = Math.max(0, bounds.worldHeight - bounds.rockHeight - FLOOR_INSET);
+    bounds.maxY = Math.max(0, bounds.worldHeight - visualBottomOffset);
+  }
+
+  function scaleForLocalY(y) {
+    return rockScaleForY(y, bounds.maxY, {
+      easing: params.rockScaleEasing,
+      minWidthVw: params.rockMinWidthVw,
+      maxWidthVw: params.rockMaxWidthVw,
+      baseWidthPx: bounds.rockWidth,
+      viewportWidthPx: bounds.worldWidth,
+    });
+  }
+
+  function applyRockScale() {
+    updateBounds();
+    const scale = scaleForLocalY(motion.y);
+    const roundedScale = Math.round(scale * 10000) / 10000;
+    motion.rockScale = scale;
+    rock.style.setProperty("--rock-scale", `${roundedScale}`);
   }
 
   function setPosition(x, y) {
@@ -1052,6 +1949,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.y = clamp(y, 0, bounds.maxY);
     rock.style.setProperty("--rock-x", `${motion.x}px`);
     rock.style.setProperty("--rock-y", `${motion.y}px`);
+    applyRockScale();
   }
 
   function localImprintToCanonical(imprint) {
@@ -1073,22 +1971,23 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
-  function sharedImprintAt(position) {
+  function createSummitSharedImprint(input = {}) {
     updateBounds();
-    return SharedPhysics.sanitizeImprint({
-      ...position,
-      toleranceX:
-        bounds.maxX > 0
-          ? ((bounds.rockWidth * SharedPhysics.IMPRINT_TOLERANCE_FRACTION) /
-              bounds.maxX) *
-            SharedPhysics.WORLD_WIDTH
-          : SharedPhysics.WORLD_WIDTH,
-      toleranceY:
-        bounds.maxY > 0
-          ? ((bounds.rockHeight * SharedPhysics.IMPRINT_TOLERANCE_FRACTION) /
-              bounds.maxY) *
-            SharedPhysics.WORLD_HEIGHT
-          : 1,
+    const targetVisualCenterY =
+      window.innerHeight * SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION;
+    const targetY = clamp(
+      targetVisualCenterY - bounds.rockHeight / 2,
+      0,
+      bounds.maxY
+    );
+    const position = localToCanonical(
+      bounds.maxX / 2,
+      targetY
+    );
+    const source = input && typeof input === "object" ? input : {};
+    return SharedPhysics.createSummitImprint({
+      ...source,
+      y: position.y,
     });
   }
 
@@ -1102,67 +2001,107 @@ export function createSisyphusRuntime(elements = {}) {
       const position = canonicalToLocal(imprint.x, imprint.y);
       return {
         ...position,
+        scale: scaleForLocalY(position.y),
         toleranceX:
           (imprint.toleranceX / SharedPhysics.WORLD_WIDTH) * bounds.maxX,
         toleranceY:
           (imprint.toleranceY / SharedPhysics.WORLD_HEIGHT) * bounds.maxY,
       };
     }
-    return motion.imprint;
+    return motion.imprint
+      ? {
+          ...motion.imprint,
+          scale: scaleForLocalY(motion.imprint.y),
+        }
+      : null;
   }
 
   function renderImprint() {
     const imprint = activeLocalImprint();
-    rockImprint.classList.toggle("is-visible", Boolean(imprint));
+    rockImprint.classList.remove("is-visible");
     if (!imprint) {
+      rockImprint.style.setProperty("--imprint-scale", "1");
       return;
     }
     rockImprint.style.setProperty("--imprint-x", `${imprint.x}px`);
     rockImprint.style.setProperty("--imprint-y", `${imprint.y}px`);
+    const roundedScale = Math.round(imprint.scale * 10000) / 10000;
+    rockImprint.style.setProperty("--imprint-scale", `${roundedScale}`);
+    rockImprint.classList.add("is-visible");
   }
 
-  function createLocalImprint() {
-    if (motion.imprint) {
-      return motion.imprint;
-    }
+  function setGrabPointFromPointer(event) {
     updateBounds();
-    motion.imprint = {
-      x: motion.x,
-      y: motion.y,
-      toleranceX:
-        bounds.rockWidth * SharedPhysics.IMPRINT_TOLERANCE_FRACTION,
-      toleranceY:
-        bounds.rockHeight * SharedPhysics.IMPRINT_TOLERANCE_FRACTION,
-    };
-    renderImprint();
-    return motion.imprint;
+    const rect = rock.getBoundingClientRect();
+    const scaleX =
+      bounds.rockWidth > 0 && rect.width > 0 ? rect.width / bounds.rockWidth : 1;
+    const scaleY =
+      bounds.rockHeight > 0 && rect.height > 0 ? rect.height / bounds.rockHeight : 1;
+    motion.grabX = clamp(
+      (event.clientX - rect.left) / scaleX,
+      0,
+      bounds.rockWidth
+    );
+    motion.grabY = clamp(
+      (event.clientY - rect.top) / scaleY,
+      0,
+      bounds.rockHeight
+    );
   }
 
   function setDragTargetFromPointer(event) {
-    motion.dragTargetX = event.clientX + window.scrollX - motion.grabX;
-    motion.dragTargetY = event.clientY + window.scrollY - motion.grabY;
+    updateBounds();
+    const targetPointX = event.clientX + window.scrollX;
+    const targetPointY = event.clientY + window.scrollY;
+    let targetY = motion.dragTargetY;
+
+    for (let index = 0; index < 5; index += 1) {
+      const scale = scaleForLocalY(targetY);
+      const scaledOffsetY = (bounds.rockHeight * (1 - scale)) / 2;
+      targetY = clamp(
+        targetPointY - scaledOffsetY - motion.grabY * scale,
+        0,
+        bounds.maxY
+      );
+    }
+
+    const scale = scaleForLocalY(targetY);
+    const scaledOffsetX = (bounds.rockWidth * (1 - scale)) / 2;
+    motion.dragTargetX = clamp(
+      targetPointX - scaledOffsetX - motion.grabX * scale,
+      0,
+      bounds.maxX
+    );
+    motion.dragTargetY = targetY;
   }
 
-  function applyDragTargetMovement(deltaSeconds) {
+  function applyDragTargetMovement(deltaSeconds, handCount = activeHandCount()) {
     if (!motion.dragging) {
       return;
     }
 
-    const maxLiftDistance = dragLiftSpeed() * deltaSeconds;
-    const nextY =
-      motion.dragTargetY < motion.y
-        ? Math.max(motion.dragTargetY, motion.y - maxLiftDistance)
-        : motion.dragTargetY;
+    const verticalSpeed =
+      (SharedPhysics.dragVerticalSpeed(params, handCount, sceneMotionOptions()) /
+        SharedPhysics.WORLD_HEIGHT) *
+      bounds.maxY;
+    let nextY = motion.dragTargetY;
+    if (motion.dragTargetY < motion.y) {
+      nextY =
+        verticalSpeed < 0
+          ? Math.max(motion.dragTargetY, motion.y + verticalSpeed * deltaSeconds)
+          : Math.min(bounds.maxY, motion.y + verticalSpeed * deltaSeconds);
+    }
 
     setPosition(motion.dragTargetX, nextY);
   }
 
   function initialLocalPosition() {
     updateBounds();
-    return canonicalToLocal(
-      SharedPhysics.WORLD_WIDTH / 2,
-      INTRO_CANONICAL_Y
-    );
+    const viewportCenterY = bounds.worldHeight - window.innerHeight / 2;
+    return {
+      x: bounds.maxX / 2,
+      y: clamp(viewportCenterY - bounds.rockHeight / 2, 0, bounds.maxY),
+    };
   }
 
   function centerIntroRock() {
@@ -1170,18 +2109,93 @@ export function createSisyphusRuntime(elements = {}) {
     setPosition(position.x, position.y);
   }
 
+  function cancelReturnScrollAnimation() {
+    if (returnScrollAnimationId === null) {
+      return;
+    }
+    window.cancelAnimationFrame(returnScrollAnimationId);
+    returnScrollAnimationId = null;
+  }
+
+  function syncAfterScroll() {
+    trail.dirty = true;
+    drawTrail();
+  }
+
+  function scrollToSceneBottom() {
+    window.requestAnimationFrame(() => {
+      if (disposed) {
+        return;
+      }
+      cancelReturnScrollAnimation();
+      window.scrollTo(0, document.documentElement.scrollHeight);
+      syncAfterScroll();
+    });
+  }
+
+  function scrollToSceneTopOnReturn() {
+    window.requestAnimationFrame(() => {
+      if (disposed) {
+        return;
+      }
+      cancelReturnScrollAnimation();
+      const startTop = window.scrollY || document.documentElement.scrollTop || 0;
+      const durationMs = reducedMotion.matches
+        ? 0
+        : clamp(Number(params.returnScrollDurationSeconds) * 1000, 0, 10000);
+      if (durationMs <= 0 || startTop <= 0) {
+        window.scrollTo(0, 0);
+        syncAfterScroll();
+        return;
+      }
+
+      const curve =
+        SharedRoomSettings.parseCubicBezier(params.returnScrollEasing) ||
+        SharedRoomSettings.parseCubicBezier(DEFAULT_RETURN_SCROLL_EASING);
+      const startedAt = performance.now();
+      const step = (now) => {
+        if (disposed) {
+          returnScrollAnimationId = null;
+          return;
+        }
+        const progress = clamp((now - startedAt) / durationMs, 0, 1);
+        const eased = curve
+          ? SharedPhysics.cubicBezierProgress(progress, curve)
+          : progress;
+        window.scrollTo(0, startTop * (1 - eased));
+        syncAfterScroll();
+        if (progress < 1) {
+          returnScrollAnimationId = window.requestAnimationFrame(step);
+          return;
+        }
+        returnScrollAnimationId = null;
+        window.scrollTo(0, 0);
+        syncAfterScroll();
+      };
+      returnScrollAnimationId = window.requestAnimationFrame(step);
+    });
+  }
+
   function setSessionStatus(text, state = "local") {
+    if (!sessionStatus) {
+      return;
+    }
     sessionStatus.textContent = text;
     sessionStatus.dataset.state = state;
   }
 
   function updateSessionStatus() {
-    sessionShareToggle.setAttribute("aria-label", "Скопировать ссылку");
-    sessionShareToggle.title = "Скопировать ссылку";
-    sessionShareToggle.dataset.state = collab.connected ? "online" : "local";
+    if (sessionShareToggle) {
+      sessionShareToggle.setAttribute("aria-label", "Скопировать ссылку");
+      sessionShareToggle.title = "Скопировать ссылку";
+      sessionShareToggle.dataset.state = collab.connected ? "online" : "local";
+    }
+    const holderCount = collab.holderIds.size;
     const status = deriveSessionStatus({
       ...collab,
       holderIds: [...collab.holderIds],
+      liftReady:
+        holderCount > 0 && SharedPhysics.canLift(params, holderCount),
     });
     setSessionStatus(status.text, status.state);
   }
@@ -1218,15 +2232,15 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
-  function pointerEventToCanonical(event) {
+  function viewportPointToCanonical(clientX, clientY) {
     const rect = world.getBoundingClientRect();
     updateBounds();
-    const localY = event.clientY - rect.top;
+    const localY = clientY - rect.top;
     return {
       x:
         rect.width > 0
           ? clamp(
-              ((event.clientX - rect.left) / rect.width) * SharedPhysics.WORLD_WIDTH,
+              ((clientX - rect.left) / rect.width) * SharedPhysics.WORLD_WIDTH,
               0,
               SharedPhysics.WORLD_WIDTH
             )
@@ -1271,30 +2285,88 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function cooperativeDragActive() {
-    return (
-      localIsHolder() &&
-      collab.holderIds.size >= collab.requiredHolders
-    );
+    return localIsHolder() && SharedPhysics.canLift(params, collab.holderIds.size);
   }
 
-  function pointerSkin(value) {
-    return value === "partner" ? "partner" : "primary";
+  function pointerRole(value) {
+    if (value === "slave" || value === "partner") {
+      return "slave";
+    }
+    return "master";
   }
 
-  function applyCursorSkin(element, skin) {
-    element.classList.toggle("is-partner", pointerSkin(skin) === "partner");
+  function applyCursorRole(element, role) {
+    element.classList.toggle("is-slave", pointerRole(role) === "slave");
   }
 
-  function setLocalCursorSkin(skin) {
-    collab.clientSkin = pointerSkin(skin);
-    applyCursorSkin(handCursor, collab.clientSkin);
+  function setLocalCursorRole(role) {
+    const nextRole = pointerRole(role);
+    collab.clientRole = nextRole;
+    applyCursorRole(handCursor, collab.clientRole);
+    body.dataset.clientRole = nextRole;
+    onClientRoleChange(nextRole);
+    if (nextRole === "slave") {
+      window.clearTimeout(collab.physicsTimerId);
+      window.clearTimeout(collab.roomSettingsTimerId);
+      collab.physicsTimerId = null;
+      collab.roomSettingsTimerId = null;
+      collab.pendingPhysicsChanges = Object.create(null);
+      collab.pendingRoomSettingsChanges = Object.create(null);
+    }
+    applyViewportScaledVisuals();
+    sendMasterViewport(true);
+  }
+
+  function applyMasterViewport(viewport) {
+    const next = SharedViewport.sanitizeViewport(viewport);
+    const previous = collab.masterViewport;
+    if (
+      !next ||
+      (previous?.width === next.width && previous?.height === next.height)
+    ) {
+      return false;
+    }
+    collab.masterViewport = next;
+    applyViewportScaledVisuals();
+    return true;
+  }
+
+  function sendMasterViewport(force = false) {
+    if (
+      !collab.enabled ||
+      !collab.connected ||
+      !localCanEditSettings()
+    ) {
+      return false;
+    }
+    const viewport = currentViewport();
+    if (!viewport) {
+      return false;
+    }
+    const signature = `${viewport.width}x${viewport.height}`;
+    if (!force && signature === collab.viewportSignature) {
+      return false;
+    }
+    collab.viewportSignature = signature;
+    sendShared("viewport.update", viewport);
+    return true;
   }
 
   function updateLocalSharedPointer(event, mode, visible) {
     if (event) {
-      const position = pointerEventToCanonical(event);
+      const position = viewportPointToCanonical(event.clientX, event.clientY);
+      const viewport = currentViewport();
+      const rockOffset = viewportToRockRelativePosition(
+        event.clientX,
+        event.clientY,
+        rock.getBoundingClientRect(),
+        viewport?.width || window.innerWidth,
+        viewport?.height || window.innerHeight,
+      );
       collab.localPointer.x = position.x;
       collab.localPointer.y = position.y;
+      collab.localPointer.rockOffsetX = rockOffset.x;
+      collab.localPointer.rockOffsetY = rockOffset.y;
     }
     collab.localPointer.mode = mode === "grabbing" ? "grabbing" : "grab";
     collab.localPointer.visible = Boolean(visible);
@@ -1336,8 +2408,12 @@ export function createSisyphusRuntime(elements = {}) {
     const clientId = String(payload.clientId || "");
     const x = Number(payload.x);
     const y = Number(payload.y);
+    const rockOffsetX = Number(payload.rockOffsetX);
+    const rockOffsetY = Number(payload.rockOffsetY);
+    const hasRockOffset =
+      Number.isFinite(rockOffsetX) && Number.isFinite(rockOffsetY);
     const mode = payload.mode;
-    const skin = pointerSkin(payload.skin);
+    const role = pointerRole(payload.role || payload.skin);
     if (
       !clientId ||
       !Number.isFinite(x) ||
@@ -1362,12 +2438,32 @@ export function createSisyphusRuntime(elements = {}) {
       element.dataset.remoteCursor = clientId;
       element.dataset.testid = "remote-cursor";
       remoteCursorLayer.appendChild(element);
-      pointer = { element, x, y, targetX: x, targetY: y };
+      pointer = {
+        element,
+        x,
+        y,
+        targetX: x,
+        targetY: y,
+        rockOffsetX: hasRockOffset ? rockOffsetX : null,
+        rockOffsetY: hasRockOffset ? rockOffsetY : null,
+        targetRockOffsetX: hasRockOffset ? rockOffsetX : null,
+        targetRockOffsetY: hasRockOffset ? rockOffsetY : null,
+      };
       collab.remotePointers.set(clientId, pointer);
     }
-    applyCursorSkin(pointer.element, skin);
+    applyCursorRole(pointer.element, role);
     pointer.targetX = x;
     pointer.targetY = y;
+    pointer.targetRockOffsetX = hasRockOffset ? rockOffsetX : null;
+    pointer.targetRockOffsetY = hasRockOffset ? rockOffsetY : null;
+    if (
+      hasRockOffset &&
+      (!Number.isFinite(pointer.rockOffsetX) ||
+        !Number.isFinite(pointer.rockOffsetY))
+    ) {
+      pointer.rockOffsetX = rockOffsetX;
+      pointer.rockOffsetY = rockOffsetY;
+    }
     pointer.element.classList.toggle("is-grabbing", mode === "grabbing");
   }
 
@@ -1393,15 +2489,42 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     const rect = world.getBoundingClientRect();
+    const viewport = currentViewport();
     updateBounds();
     collab.remotePointers.forEach((pointer) => {
       pointer.x += (pointer.targetX - pointer.x) * 0.42;
       pointer.y += (pointer.targetY - pointer.y) * 0.42;
-      const local = canonicalToLocal(pointer.x, pointer.y);
-      const viewportX = rect.left + local.x;
-      const viewportY = rect.top + local.y;
-      pointer.element.style.setProperty("--cursor-x", `${viewportX}px`);
-      pointer.element.style.setProperty("--cursor-y", `${viewportY}px`);
+      let viewportPosition;
+      if (
+        Number.isFinite(pointer.targetRockOffsetX) &&
+        Number.isFinite(pointer.targetRockOffsetY)
+      ) {
+        pointer.rockOffsetX +=
+          (pointer.targetRockOffsetX - pointer.rockOffsetX) * 0.42;
+        pointer.rockOffsetY +=
+          (pointer.targetRockOffsetY - pointer.rockOffsetY) * 0.42;
+        viewportPosition = rockRelativeToViewportPosition(
+          pointer.rockOffsetX,
+          pointer.rockOffsetY,
+          rock.getBoundingClientRect(),
+          viewport?.width || window.innerWidth,
+          viewport?.height || window.innerHeight,
+        );
+      } else {
+        const local = canonicalToLocal(pointer.x, pointer.y);
+        viewportPosition = {
+          x: rect.left + local.x,
+          y: rect.top + local.y,
+        };
+      }
+      pointer.element.style.setProperty(
+        "--cursor-x",
+        `${viewportPosition.x}px`,
+      );
+      pointer.element.style.setProperty(
+        "--cursor-y",
+        `${viewportPosition.y}px`,
+      );
     });
   }
 
@@ -1427,6 +2550,15 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function sharedRoomSettingsPayload() {
+    return SharedRoomSettings.sanitizeRoomSettings(
+      Object.fromEntries(
+        SHARED_ROOM_SETTING_KEYS.map((key) => [key, params[key]])
+      ),
+      params
+    );
+  }
+
   function currentSharedState() {
     const position = localToCanonical(motion.x, motion.y);
     const velocity = localVelocityToCanonical(motion.vx, motion.vy);
@@ -1436,16 +2568,20 @@ export function createSisyphusRuntime(elements = {}) {
       y: position.y,
       vx: velocity.vx,
       vy: velocity.vy,
+      suspended: motion.suspended,
       turbTime: motion.turbTime,
     };
   }
 
   function applyCanonicalMotion(state) {
-    const position = canonicalToLocal(state.x, state.y);
+    const position = state.suspended
+      ? initialLocalPosition()
+      : canonicalToLocal(state.x, state.y);
     const velocity = canonicalVelocityToLocal(state.vx, state.vy);
     setPosition(position.x, position.y);
     motion.vx = velocity.vx;
     motion.vy = velocity.vy;
+    motion.suspended = Boolean(state.suspended);
     motion.turbTime = state.turbTime;
   }
 
@@ -1453,11 +2589,12 @@ export function createSisyphusRuntime(elements = {}) {
     const position = initialLocalPosition();
     const canonical = localToCanonical(position.x, position.y);
     return {
-      phase: PHASES.INTRO,
+      phase: PHASES.PLAY,
       x: canonical.x,
       y: canonical.y,
       vx: 0,
       vy: 0,
+      suspended: true,
       turbTime: 0,
     };
   }
@@ -1540,6 +2677,28 @@ export function createSisyphusRuntime(elements = {}) {
       Number(physics[key])
     ).join(":");
     collab.physicsSignature = signature;
+    if (!settingsUiEnabled) {
+      const changedKeys = [];
+      SHARED_PHYSICS_KEYS.forEach((key) => {
+        const remoteValue = Number(physics[key]);
+        if (!Number.isFinite(remoteValue)) {
+          return;
+        }
+        if (Math.abs(Number(params[key]) - remoteValue) >= 1e-9) {
+          params[key] = remoteValue;
+          changedKeys.push(key);
+        }
+      });
+      if (changedKeys.length > 0) {
+        applyCurrentSettings({
+          ...settingsChangeContext({ changedKeys }),
+          previousRoomSettings: null,
+          preservedState: null,
+          preserveBottomScroll: false,
+        });
+      }
+      return;
+    }
     let controlsChanged = false;
     SHARED_PHYSICS_KEYS.forEach((key) => {
       const remoteValue = Number(physics[key]);
@@ -1557,7 +2716,7 @@ export function createSisyphusRuntime(elements = {}) {
           return;
         }
       }
-      const input = settingsPanel.querySelector(`[name="${key}"]`);
+      const input = settingsController.roomSettingControlElement(key);
       if (input && Number(input.value) !== remoteValue) {
         input.value = String(remoteValue);
         controlsChanged = true;
@@ -1573,9 +2732,91 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function roomSettingValueEqual(key, left, right) {
+    if (BOOLEAN_ROOM_SETTING_KEYS.has(key)) {
+      const leftBool = left === true || left === "true";
+      const rightBool = right === true || right === "true";
+      return leftBool === rightBool;
+    }
+    if (NUMERIC_ROOM_SETTING_KEYS.has(key)) {
+      return Math.abs(Number(left) - Number(right)) < 1e-9;
+    }
+    return String(left || "").toLowerCase() === String(right || "").toLowerCase();
+  }
+
+  function roomSettingsSignature(settings) {
+    const clean = SharedRoomSettings.sanitizeRoomSettings(settings, params);
+    return SHARED_ROOM_SETTING_KEYS.map((key) => clean[key]).join(":");
+  }
+
+  function applySharedRoomSettings(roomSettings) {
+    if (!roomSettings || typeof roomSettings !== "object") {
+      return;
+    }
+    const clean = SharedRoomSettings.sanitizeRoomSettings(roomSettings, params);
+    collab.roomSettingsSignature = roomSettingsSignature(clean);
+    const changedKeys = [];
+    const previousRoomSettings = sharedRoomSettingsPayload();
+    const preservedState = !settingsUiEnabled
+      ? currentSharedState()
+      : null;
+    SHARED_ROOM_SETTING_KEYS.forEach((key) => {
+      const remoteValue = clean[key];
+      if (Object.hasOwn(collab.pendingRoomSettingsChanges, key)) {
+        if (
+          roomSettingValueEqual(
+            key,
+            collab.pendingRoomSettingsChanges[key],
+            remoteValue
+          )
+        ) {
+          delete collab.pendingRoomSettingsChanges[key];
+        } else {
+          return;
+        }
+      }
+      if (!settingsUiEnabled) {
+        if (!roomSettingValueEqual(key, params[key], remoteValue)) {
+          params[key] = remoteValue;
+          changedKeys.push(key);
+        }
+        return;
+      }
+      const input = settingsController.roomSettingControlElement(key);
+      const currentValue = controlValueToSettingValue(input, key);
+      if (input && !roomSettingValueEqual(key, currentValue, remoteValue)) {
+        if (input.type === "checkbox") {
+          input.checked = Boolean(remoteValue);
+        } else {
+          input.value = settingValueToControlValue(key, remoteValue);
+        }
+        changedKeys.push(key);
+      }
+    });
+    if (changedKeys.length > 0) {
+      if (!settingsUiEnabled) {
+        applyCurrentSettings({
+          ...settingsChangeContext({ changedKeys }),
+          previousRoomSettings,
+          preservedState,
+          preserveBottomScroll: false,
+        });
+        return;
+      }
+      collab.applyingRemoteRoomSettings = true;
+      try {
+        readControls({ changedKeys });
+        applyRainSettings({ restartIfActive: true });
+      } finally {
+        collab.applyingRemoteRoomSettings = false;
+      }
+    }
+  }
+
   function scheduleSharedPhysicsUpdate() {
     if (
       !collab.enabled ||
+      !localCanEditSettings() ||
       collab.applyingRemotePhysics
     ) {
       return;
@@ -1589,6 +2830,27 @@ export function createSisyphusRuntime(elements = {}) {
       const payload = { ...collab.pendingPhysicsChanges };
       if (Object.keys(payload).length > 0) {
         sendShared("physics.update", payload);
+      }
+    }, 100);
+  }
+
+  function scheduleSharedRoomSettingsUpdate() {
+    if (
+      !collab.enabled ||
+      !localCanEditSettings() ||
+      collab.applyingRemoteRoomSettings
+    ) {
+      return;
+    }
+    if (!collab.connected) {
+      return;
+    }
+    window.clearTimeout(collab.roomSettingsTimerId);
+    collab.roomSettingsTimerId = window.setTimeout(() => {
+      collab.roomSettingsTimerId = null;
+      const payload = { ...collab.pendingRoomSettingsChanges };
+      if (Object.keys(payload).length > 0) {
+        sendShared("roomSettings.update", payload);
       }
     }, 100);
   }
@@ -1661,8 +2923,11 @@ export function createSisyphusRuntime(elements = {}) {
         headers: { "Content-Type": "application/json" },
         signal: abortController.signal,
         body: JSON.stringify({
+          creatorClientId: collab.clientId,
           state: currentSharedState(),
           physics: sharedPhysicsPayload(),
+          roomSettings: sharedRoomSettingsPayload(),
+          masterViewport: currentViewport(),
           trail: currentSharedTrail(),
           imprint: currentSharedImprint(),
         }),
@@ -1780,7 +3045,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function sharedSnapshotTheme(snapshot) {
-    return sharedSnapshotAtReturnPlace(snapshot) ? "light" : "dark";
+    return resolveTheme(sharedSnapshotAtReturnPlace(snapshot) ? "light" : "dark");
   }
 
   function resetLocalExperience() {
@@ -1791,18 +3056,20 @@ export function createSisyphusRuntime(elements = {}) {
     motion.activePointerId = null;
     motion.vx = 0;
     motion.vy = 0;
+    motion.suspended = true;
     motion.pointerVx = 0;
     motion.pointerVy = 0;
     motion.turbTime = 0;
     motion.imprint = null;
-    collab.imprint = null;
+    motion.wasAtReturnPlace = false;
+    collab.imprint = createSummitSharedImprint(collab.imprint);
     collab.snapshots = [];
     clearSharedReleaseHandoff();
     collab.hasControl = false;
     collab.pendingControl = false;
     collab.releasePending = false;
     collab.holderIds.clear();
-    collab.requiredHolders = 2;
+    collab.requiredHolders = 1;
     collab.remoteControllerId = null;
     rock.classList.remove("is-dragging", "is-falling");
     releasePointerCapture(pointerId);
@@ -1810,19 +3077,27 @@ export function createSisyphusRuntime(elements = {}) {
     setHandToGrab();
     hideHandCursor();
     updateLocalSharedPointer(null, "grab", false);
-    setPhase(PHASES.INTRO);
-    setTheme("dark");
+    setPhase(PHASES.PLAY);
+    setTheme(resolveTheme("dark"));
     hideReturnRain({ immediate: true });
     resetTrail();
     renderImprint();
     centerIntroRock();
-    resetFirstScrollTrigger({ scrollToTop: true });
+    motion.firstFallTriggered = false;
+    motion.firstFallTouchY = null;
+    collab.firstFallRequestSent = false;
+    scrollToSceneBottom();
     updateSessionStatus();
   }
 
   function restartExperience() {
     if (collab.enabled) {
-      if (sendShared("session.restart", initialSharedState())) {
+      if (
+        sendShared("session.restart", {
+          ...initialSharedState(),
+          imprint: createSummitSharedImprint(collab.imprint),
+        })
+      ) {
         resetLocalExperience();
       } else {
         updateSessionStatus();
@@ -1834,8 +3109,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function clearSharedConnectionTimers() {
     window.clearTimeout(collab.reconnectTimerId);
+    window.clearTimeout(collab.roomSettingsTimerId);
     window.clearInterval(collab.pingTimerId);
     collab.reconnectTimerId = null;
+    collab.roomSettingsTimerId = null;
     collab.pingTimerId = null;
   }
 
@@ -1897,7 +3174,6 @@ export function createSisyphusRuntime(elements = {}) {
         collab.localPointer.visible,
         true
       );
-      scheduleSharedPhysicsUpdate();
       updateSessionStatus();
     });
 
@@ -1973,6 +3249,8 @@ export function createSisyphusRuntime(elements = {}) {
       updateSessionStatus();
     } else if (message.type === "pointer.update") {
       receiveRemotePointer(payload);
+    } else if (message.type === "audio.play") {
+      receiveSessionRoleAudio(payload);
     } else if (message.type === "pong") {
       const sample = Date.now() - Number(payload.serverTime || Date.now());
       collab.clockOffset = collab.clockOffsetReady
@@ -1996,8 +3274,12 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       collab.leaveToken = payload.leaveToken;
     }
-    if (typeof payload.clientSkin === "string") {
-      setLocalCursorSkin(payload.clientSkin);
+    const incomingRole = payload.clientRole || payload.clientSkin;
+    if (typeof incomingRole === "string") {
+      setLocalCursorRole(incomingRole);
+    }
+    if (Object.hasOwn(payload, "gachiSoundFilename")) {
+      setSlaveClickSound(payload.gachiSoundFilename);
     }
 
     const revision = Number(payload.revision);
@@ -2015,12 +3297,24 @@ export function createSisyphusRuntime(elements = {}) {
       ? collab.clockOffset * 0.8 + offsetSample * 0.2
       : offsetSample;
     collab.clockOffsetReady = true;
-    applySharedPhysics(payload.physics);
+    applySummitTimerSnapshot(payload);
+    if (Object.hasOwn(payload, "masterViewport")) {
+      applyMasterViewport(payload.masterViewport);
+    }
+    if (Object.hasOwn(payload, "physics")) {
+      applySharedPhysics(payload.physics);
+    }
+    if (Object.hasOwn(payload, "roomSettings")) {
+      applySharedRoomSettings(payload.roomSettings);
+    }
     const holderIds = normalizeHolderIds(payload.holderIds);
     updateSharedHolders(holderIds, payload.requiredHolders);
+    syncSharedGroundTouchSeq(payload.groundTouchSeq);
 
-    collab.imprint = SharedPhysics.sanitizeImprint(payload.imprint);
-    renderImprint();
+    if (Object.hasOwn(payload, "imprint")) {
+      collab.imprint = SharedPhysics.sanitizeImprint(payload.imprint);
+      renderImprint();
+    }
 
     if (Array.isArray(payload.trail)) {
       loadSharedTrail(payload.trail);
@@ -2041,6 +3335,7 @@ export function createSisyphusRuntime(elements = {}) {
       vy: Number(payload.vy) || 0,
       dragging: Boolean(payload.dragging),
       controllerId: payload.controllerId || null,
+      suspended: Boolean(payload.suspended),
       holderIds,
       requiredHolders: collab.requiredHolders,
       revision,
@@ -2060,7 +3355,7 @@ export function createSisyphusRuntime(elements = {}) {
       collab.releasePending = false;
     }
     const localControlWasEnding =
-      (collab.hasControl || collab.pendingControl || motion.dragging) &&
+      (collab.hasControl || (motion.dragging && !collab.pendingControl)) &&
       !ownsHold &&
       snapshot.phase !== PHASES.INTRO &&
       snapshot.phase !== PHASES.WON;
@@ -2094,10 +3389,17 @@ export function createSisyphusRuntime(elements = {}) {
 
     const snapshotAtReturnPlace = sharedSnapshotAtReturnPlace(snapshot);
     setPhase(snapshot.phase);
-    setTheme(sharedSnapshotTheme(snapshot));
+    setTheme(sharedSnapshotTheme(snapshot), {
+      durationMs: returnThemeTransitionDuration(snapshotAtReturnPlace, {
+        immediate: snapshot.phase === PHASES.INTRO,
+      }),
+    });
     if (snapshot.phase === PHASES.INTRO) {
       if (previousPhase !== PHASES.INTRO) {
-        resetFirstScrollTrigger({ scrollToTop: true });
+        clearFirstFallTimer();
+        motion.firstFallTriggered = false;
+        motion.firstFallTouchY = null;
+        collab.firstFallRequestSent = false;
       }
       hideReturnRain({ immediate: true });
     } else {
@@ -2110,13 +3412,12 @@ export function createSisyphusRuntime(elements = {}) {
       collab.pendingControl = false;
       cancelSharedLocalDrag();
       collab.snapshots = [snapshot];
-      applySharedFrame(snapshot);
+      applySharedFrame(snapshot, { previousPhase });
     } else if (collab.snapshots.length === 1 && !motion.dragging) {
-      applySharedFrame(snapshot);
+      applySharedFrame(snapshot, { previousPhase });
     }
 
     startSharedRenderLoop();
-    requestSharedFirstFall();
     updateSessionStatus();
   }
 
@@ -2161,22 +3462,34 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function applySharedFrame(snapshot) {
-    if (!snapshot || (motion.dragging && collab.pendingControl)) {
+    if (
+      !snapshot ||
+      (motion.dragging && (collab.pendingControl || collab.hasControl))
+    ) {
       return;
     }
-    const local = canonicalToLocal(snapshot.x, snapshot.y);
+    const local = snapshot.suspended
+      ? initialLocalPosition()
+      : canonicalToLocal(snapshot.x, snapshot.y);
     const velocity = canonicalVelocityToLocal(snapshot.vx, snapshot.vy);
-    const position = applySharedReleaseHandoff(local, snapshot.phase);
+    if (snapshot.suspended) {
+      clearSharedReleaseHandoff();
+    }
+    const position = snapshot.suspended
+      ? local
+      : applySharedReleaseHandoff(local, snapshot.phase);
     setPosition(position.x, position.y);
     motion.vx = velocity.vx;
     motion.vy = velocity.vy;
+    motion.suspended = Boolean(snapshot.suspended);
     motion.turbTime = 0;
 
     const visiblyDragging =
       Boolean(snapshot.dragging) &&
-      snapshot.holderIds.length >= snapshot.requiredHolders;
+      SharedPhysics.canLift(params, snapshot.holderIds.length);
     const visiblyFalling =
       !visiblyDragging &&
+      !motion.suspended &&
       snapshot.phase !== PHASES.INTRO &&
       snapshot.phase !== PHASES.WON &&
       (snapshot.phase === PHASES.FALLING ||
@@ -2227,11 +3540,12 @@ export function createSisyphusRuntime(elements = {}) {
       }
     }
 
-    if (motion.phase === PHASES.FALLING || motion.phase === PHASES.PLAY) {
+    if (shouldRecordTrailPoint()) {
       recordTrailPoint(deltaSeconds);
     }
     drawTrail();
     renderRemotePointers();
+    renderSummitTimer();
   }
 
   function startSharedRenderLoop() {
@@ -2269,19 +3583,15 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     event.preventDefault();
-    if (params.trailReset) {
-      resetTrail();
-    }
     clearSharedReleaseHandoff();
     collab.releasePending = false;
     toggleHandVariant();
     updateBounds();
     const position = localToCanonical(motion.x, motion.y);
-    const rect = rock.getBoundingClientRect();
+    motion.suspended = false;
     motion.dragging = true;
     motion.activePointerId = event.pointerId;
-    motion.grabX = event.clientX - rect.left;
-    motion.grabY = event.clientY - rect.top;
+    setGrabPointFromPointer(event);
     motion.dragTargetX = motion.x;
     motion.dragTargetY = motion.y;
     motion.pointerVx = 0;
@@ -2319,7 +3629,7 @@ export function createSisyphusRuntime(elements = {}) {
     setDragTargetFromPointer(event);
     const activeTogether = cooperativeDragActive();
     if (activeTogether) {
-      applyDragTargetMovement(MAX_FRAME_SECONDS);
+      applyDragTargetMovement(MAX_FRAME_SECONDS, collab.holderIds.size);
       syncReturnTheme();
     }
 
@@ -2348,17 +3658,18 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    recordPointerVelocity(event);
-    const pointerVelocity = currentPointerVelocity();
-    const velocity = localVelocityToCanonical(
-      pointerVelocity.vx,
-      pointerVelocity.vy
-    );
+    const canReleaseWithImpulse = cooperativeDragActive();
+    const pointerVelocity = canReleaseWithImpulse
+      ? currentPointerVelocity()
+      : { vx: 0, vy: 0 };
+    const velocity = canReleaseWithImpulse
+      ? localVelocityToCanonical(pointerVelocity.vx, pointerVelocity.vy)
+      : { vx: 0, vy: 0 };
     const position = localToCanonical(motion.x, motion.y);
     const pointerVisible =
       event.type !== "pointercancel" && pointerIsOverRock(event);
     const pointer = updateLocalSharedPointer(event, "grab", pointerVisible);
-    if (cooperativeDragActive()) {
+    if (canReleaseWithImpulse) {
       startSharedReleaseHandoff();
     }
     collab.releasePending = true;
@@ -2382,18 +3693,20 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    const pointerVelocity = currentPointerVelocity();
-    const velocity = localVelocityToCanonical(
-      pointerVelocity.vx,
-      pointerVelocity.vy
-    );
+    const canReleaseWithImpulse = cooperativeDragActive();
+    const pointerVelocity = canReleaseWithImpulse
+      ? currentPointerVelocity()
+      : { vx: 0, vy: 0 };
+    const velocity = canReleaseWithImpulse
+      ? localVelocityToCanonical(pointerVelocity.vx, pointerVelocity.vy)
+      : { vx: 0, vy: 0 };
     const position = localToCanonical(motion.x, motion.y);
     const pointer = updateLocalSharedPointer(
       null,
       "grab",
       hidePointer ? false : collab.localPointer.visible
     );
-    if (cooperativeDragActive()) {
+    if (canReleaseWithImpulse) {
       startSharedReleaseHandoff();
     }
     collab.releasePending = true;
@@ -2449,14 +3762,46 @@ export function createSisyphusRuntime(elements = {}) {
     drawTrail();
   }
 
+  function applyTrailBlendMode() {
+    trailCanvas.style.mixBlendMode = body.classList.contains("theme-dark")
+      ? "normal"
+      : params.blendMode;
+    trailCanvas.style.opacity = String(params.lineOpacity);
+  }
+
   function resetTrail() {
     trail.points.length = 0;
     trail.lastX = null;
     trail.lastY = null;
     trail.followX = null;
     trail.followY = null;
+    trail.skipNextRecord = false;
     clearTrailCanvas();
     trail.dirty = false;
+  }
+
+  function resetTrailOnGroundTouch(touchedGround) {
+    if (!params.trailReset || !touchedGround) {
+      return false;
+    }
+    resetTrail();
+    trail.skipNextRecord = true;
+    return true;
+  }
+
+  function normalizeGroundTouchSeq(value) {
+    const number = Number(value);
+    return Number.isSafeInteger(number) && number >= 0 ? number : null;
+  }
+
+  function syncSharedGroundTouchSeq(value) {
+    const next = normalizeGroundTouchSeq(value);
+    if (next === null) {
+      return false;
+    }
+    const previous = collab.groundTouchSeq;
+    collab.groundTouchSeq = next;
+    return resetTrailOnGroundTouch(previous !== null && next > previous);
   }
 
   function trimTrailToLimit() {
@@ -2500,7 +3845,8 @@ export function createSisyphusRuntime(elements = {}) {
     if (trail.lastX !== null) {
       const dx = x - trail.lastX;
       const dy = y - trail.lastY;
-      const threshold = params.trailSampleDist * params.trailSampleDist;
+      const sampleDistance = scaledVisualPixel(params.trailSampleDist);
+      const threshold = sampleDistance * sampleDistance;
       if (dx * dx + dy * dy < threshold) {
         return;
       }
@@ -2516,14 +3862,88 @@ export function createSisyphusRuntime(elements = {}) {
     trimTrailToLimit();
   }
 
+  function shouldRecordTrailPoint() {
+    if (trail.skipNextRecord) {
+      trail.skipNextRecord = false;
+      return false;
+    }
+    if (motion.suspended) {
+      return false;
+    }
+    return (
+      motion.dragging ||
+      motion.phase === PHASES.FALLING ||
+      (motion.phase === PHASES.PLAY &&
+        (motion.y < bounds.maxY - 0.75 ||
+          Math.abs(motion.vx) >= 0.5 ||
+          Math.abs(motion.vy) >= 0.5))
+    );
+  }
+
   function trailDashArray() {
+    const scale = slaveViewportScale().x;
     if (params.dashStyle === "dashed") {
-      return [params.dashLength, params.dashGap];
+      return [params.dashLength * scale, params.dashGap * scale];
     }
     if (params.dashStyle === "dotted") {
-      return [1, Math.max(params.dashGap, 2)];
+      return [scale, Math.max(params.dashGap * scale, 2 * scale)];
     }
     return [];
+  }
+
+  function drawTrailStartPoint(point) {
+    trailCtx.fillStyle = params.useGradient
+      ? params.lineColorTail
+      : params.lineColor;
+    trailCtx.beginPath();
+    trailCtx.arc(
+      point.x,
+      point.y,
+      Math.max(
+        scaledVisualPixel(2.5),
+        scaledVisualPixel(params.lineWidth) * 0.75,
+      ),
+      0,
+      Math.PI * 2
+    );
+    trailCtx.fill();
+  }
+
+  function quadraticSegmentLength(start, control, end) {
+    let length = 0;
+    let previousX = start.x;
+    let previousY = start.y;
+    for (let step = 1; step <= 8; step += 1) {
+      const t = step / 8;
+      const inverse = 1 - t;
+      const x =
+        inverse * inverse * start.x +
+        2 * inverse * t * control.x +
+        t * t * end.x;
+      const y =
+        inverse * inverse * start.y +
+        2 * inverse * t * control.y +
+        t * t * end.y;
+      length += Math.hypot(x - previousX, y - previousY);
+      previousX = x;
+      previousY = y;
+    }
+    return length;
+  }
+
+  function strokeTrailSegment(start, control, end, dashOffset) {
+    trailCtx.lineDashOffset = -dashOffset;
+    trailCtx.beginPath();
+    trailCtx.moveTo(start.x, start.y);
+    if (control) {
+      trailCtx.quadraticCurveTo(control.x, control.y, end.x, end.y);
+    } else {
+      trailCtx.lineTo(end.x, end.y);
+    }
+    trailCtx.stroke();
+    return control
+      ? quadraticSegmentLength(start, control, end)
+      : Math.hypot(end.x - start.x, end.y - start.y);
   }
 
   function drawTrail() {
@@ -2548,44 +3968,25 @@ export function createSisyphusRuntime(elements = {}) {
       -window.scrollX * trail.pixelRatio,
       -window.scrollY * trail.pixelRatio
     );
-    trailCtx.globalAlpha = params.lineOpacity;
+    trailCtx.globalAlpha = params.linePassOpacity;
+    trailCtx.globalCompositeOperation = "lighter";
     trailCtx.lineCap = params.lineCap;
     trailCtx.lineJoin = params.lineJoin;
-    trailCtx.lineWidth = params.lineWidth;
+    trailCtx.lineWidth = scaledVisualPixel(params.lineWidth);
 
     if (params.glow > 0) {
-      trailCtx.shadowBlur = params.glow;
+      trailCtx.shadowBlur = scaledVisualPixel(params.glow);
       trailCtx.shadowColor = params.glowColor;
     }
 
     if (points.length < 2) {
       // Одна точка — рисуем кружок, чтобы след был виден.
-      trailCtx.fillStyle = params.lineColor;
-      trailCtx.beginPath();
-      trailCtx.arc(
-        points[0].x,
-        points[0].y,
-        Math.max(0.5, params.lineWidth / 2),
-        0,
-        Math.PI * 2
-      );
-      trailCtx.fill();
+      drawTrailStartPoint(points[0]);
       trailCtx.restore();
       return;
     }
 
-    // Линия строится кривыми Безье через середины отрезков — плавная кривая.
-    trailCtx.setLineDash(trailDashArray());
-    trailCtx.beginPath();
-    trailCtx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length - 1; i++) {
-      const midX = (points[i].x + points[i + 1].x) / 2;
-      const midY = (points[i].y + points[i + 1].y) / 2;
-      trailCtx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
-    }
     const last = points[points.length - 1];
-    trailCtx.lineTo(last.x, last.y);
-
     if (params.useGradient) {
       const first = points[0];
       const grad = trailCtx.createLinearGradient(
@@ -2601,36 +4002,31 @@ export function createSisyphusRuntime(elements = {}) {
       trailCtx.strokeStyle = params.lineColor;
     }
 
-    trailCtx.stroke();
+    // Отдельные additive-сегменты позволяют повторным проходам накапливать альфу.
+    trailCtx.setLineDash(trailDashArray());
+    let segmentStart = points[0];
+    let dashOffset = 0;
+    for (let i = 1; i < points.length - 1; i++) {
+      const segmentEnd = {
+        x: (points[i].x + points[i + 1].x) / 2,
+        y: (points[i].y + points[i + 1].y) / 2,
+      };
+      dashOffset += strokeTrailSegment(
+        segmentStart,
+        points[i],
+        segmentEnd,
+        dashOffset
+      );
+      segmentStart = segmentEnd;
+    }
+    strokeTrailSegment(segmentStart, null, last, dashOffset);
     trailCtx.setLineDash([]);
+    trailCtx.lineDashOffset = 0;
+    drawTrailStartPoint(points[0]);
     trailCtx.restore();
   }
 
-  function showHint(target) {
-    const text = target.getAttribute("data-hint");
-    if (!text) {
-      return;
-    }
-
-    hintEl.textContent = text;
-    hintEl.classList.add("is-visible");
-
-    const panelRect = settingsPanel.getBoundingClientRect();
-    const targetRect = target.getBoundingClientRect();
-    const hintRect = hintEl.getBoundingClientRect();
-    const top = clamp(targetRect.top, 8, window.innerHeight - hintRect.height - 8);
-    const right = window.innerWidth - panelRect.left + 10;
-
-    hintEl.style.left = "auto";
-    hintEl.style.right = `${right}px`;
-    hintEl.style.top = `${top}px`;
-  }
-
-  function hideHint() {
-    hintEl.classList.remove("is-visible");
-  }
-
-  function startLoop() {
+ function startLoop() {
     if (motion.animationId !== null) {
       return;
     }
@@ -2691,112 +4087,38 @@ export function createSisyphusRuntime(elements = {}) {
 
   function syncReturnTheme() {
     if (motion.phase === PHASES.INTRO) {
-      setTheme("dark");
+      motion.wasAtReturnPlace = false;
+      setTheme(resolveTheme("dark"), { durationMs: 0 });
       hideReturnRain({ immediate: true });
       return;
     }
     const atReturnPlace =
       (motion.phase === PHASES.PLAY || motion.phase === PHASES.WON) &&
       rockInsideImprint();
-    setTheme(atReturnPlace ? "light" : "dark");
+    const nextTheme = resolveTheme(atReturnPlace ? "light" : "dark");
+    const enteredReturnPlace = atReturnPlace && !motion.wasAtReturnPlace;
+    motion.wasAtReturnPlace = atReturnPlace;
+    setTheme(nextTheme, {
+      durationMs: returnThemeTransitionDuration(atReturnPlace),
+    });
     syncReturnRain(atReturnPlace);
+    if (enteredReturnPlace && nextTheme === "light") {
+      scrollToSceneTopOnReturn();
+    }
   }
 
   function enterPlayPhase() {
     setPhase(PHASES.PLAY);
-    setTheme("dark");
+    setTheme(resolveTheme("dark"));
     hideReturnRain();
-    motion.vx = 0;
-    motion.vy = 0;
-    setPosition(motion.x, bounds.maxY);
     rock.classList.remove("is-falling");
   }
 
-  function resetFirstScrollTrigger({ scrollToTop = false } = {}) {
-    motion.firstScrollHandled = false;
-    motion.introScrollBaselineY = 0;
-    collab.firstFallRequestSent = false;
-    if (scrollToTop && window.scrollY !== 0) {
-      window.scrollTo(0, 0);
+  function clearFirstFallTimer() {
+    if (motion.introFallTimerId !== null) {
+      window.clearTimeout(motion.introFallTimerId);
+      motion.introFallTimerId = null;
     }
-  }
-
-  function requestSharedFirstFall() {
-    if (
-      !motion.sceneReady ||
-      !motion.firstScrollHandled ||
-      motion.phase !== PHASES.INTRO ||
-      !collab.enabled ||
-      !collab.connected ||
-      collab.firstFallRequestSent
-    ) {
-      return false;
-    }
-
-    const position = localToCanonical(motion.x, motion.y);
-    const proposedImprint = collab.imprint || sharedImprintAt(position);
-    collab.imprint = proposedImprint;
-    renderImprint();
-    const sent = sendShared("session.start", { imprint: proposedImprint });
-    collab.firstFallRequestSent = sent;
-    return sent;
-  }
-
-  function beginFirstFall() {
-    if (motion.phase !== PHASES.INTRO) {
-      return false;
-    }
-
-    const pointerId = motion.activePointerId;
-    motion.dragging = false;
-    motion.activePointerId = null;
-    rock.classList.remove("is-dragging");
-    setGrabbingCursor(false);
-    releasePointerCapture(pointerId);
-
-    const state = SharedPhysics.sanitizeState(currentSharedState());
-    SharedPhysics.beginFirstFall(
-      state,
-      SharedPhysics.sanitizePhysics(params),
-      0,
-      0
-    );
-    setPhase(state.phase);
-    setTheme("dark");
-    hideReturnRain();
-    applyCanonicalMotion(state);
-    setHandToGrab();
-    rock.classList.add("is-falling");
-    startLoop();
-    return true;
-  }
-
-  function continueFirstFallFromScroll() {
-    if (
-      !motion.sceneReady ||
-      !motion.firstScrollHandled ||
-      motion.phase !== PHASES.INTRO
-    ) {
-      return false;
-    }
-    if (collab.enabled) {
-      return requestSharedFirstFall();
-    }
-    createLocalImprint();
-    return beginFirstFall();
-  }
-
-  function handleFirstScroll() {
-    if (
-      motion.firstScrollHandled ||
-      motion.phase !== PHASES.INTRO ||
-      window.scrollY === motion.introScrollBaselineY
-    ) {
-      return false;
-    }
-    motion.firstScrollHandled = true;
-    continueFirstFallFromScroll();
-    return true;
   }
 
   function applyPhysics(deltaSeconds) {
@@ -2806,9 +4128,22 @@ export function createSisyphusRuntime(elements = {}) {
 
     const state = SharedPhysics.sanitizeState(currentSharedState());
     const previousPhase = state.phase;
+    const previousY = motion.y;
+    const wasAboveGround = state.y < SharedPhysics.WORLD_HEIGHT - 0.01;
     state.turbTime = motion.turbTime;
-    SharedPhysics.stepState(state, SharedPhysics.sanitizePhysics(params), deltaSeconds);
+    SharedPhysics.stepState(
+      state,
+      SharedPhysics.sanitizePhysics(params),
+      deltaSeconds,
+      sceneMotionOptions()
+    );
+    const touchedGroundCanonical =
+      wasAboveGround && state.y >= SharedPhysics.WORLD_HEIGHT - 0.01;
     applyCanonicalMotion(state);
+    const touchedGround =
+      touchedGroundCanonical ||
+      (previousY < bounds.maxY - 0.75 && motion.y >= bounds.maxY - 0.75);
+    resetTrailOnGroundTouch(touchedGround);
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
       enterPlayPhase();
     } else {
@@ -2837,7 +4172,9 @@ export function createSisyphusRuntime(elements = {}) {
 
     if (motion.phase === PHASES.FALLING || motion.phase === PHASES.PLAY) {
       applyPhysics(deltaSeconds);
-      recordTrailPoint(deltaSeconds);
+      if (shouldRecordTrailPoint()) {
+        recordTrailPoint(deltaSeconds);
+      }
     }
 
     drawTrail();
@@ -2879,9 +4216,14 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function applyReleaseImpulse() {
+  function applyReleaseImpulse(pointerVelocity = currentPointerVelocity()) {
     const state = SharedPhysics.sanitizeState(currentSharedState());
-    const pointerVelocity = currentPointerVelocity();
+    if (!SharedPhysics.canLift(params, activeHandCount())) {
+      motion.vx = 0;
+      motion.vy = 0;
+      motion.suspended = false;
+      return;
+    }
     const velocity = localVelocityToCanonical(
       pointerVelocity.vx,
       pointerVelocity.vy
@@ -2895,6 +4237,7 @@ export function createSisyphusRuntime(elements = {}) {
     const localVelocity = canonicalVelocityToLocal(state.vx, state.vy);
     motion.vx = localVelocity.vx;
     motion.vy = localVelocity.vy;
+    motion.suspended = false;
   }
 
   function forceReleaseRock({ pauseInsideImprint = false } = {}) {
@@ -2949,22 +4292,20 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    playRockPointerDownSound();
+
     if (collab.enabled) {
       beginSharedDrag(event);
       return;
     }
 
     event.preventDefault();
-    if (params.trailReset) {
-      resetTrail();
-    }
     toggleHandVariant();
     updateBounds();
-    const rect = rock.getBoundingClientRect();
+    motion.suspended = false;
     motion.dragging = true;
     motion.activePointerId = event.pointerId;
-    motion.grabX = event.clientX - rect.left;
-    motion.grabY = event.clientY - rect.top;
+    setGrabPointFromPointer(event);
     motion.dragTargetX = motion.x;
     motion.dragTargetY = motion.y;
     motion.pointerVx = 0;
@@ -3017,13 +4358,13 @@ export function createSisyphusRuntime(elements = {}) {
     rock.classList.remove("is-dragging");
     setGrabbingCursor(false);
     releasePointerCapture(event.pointerId);
-    recordPointerVelocity(event);
+    const pointerVelocity = currentPointerVelocity();
 
     if (releasedInImprint) {
       motion.vx = 0;
       motion.vy = 0;
     } else {
-      applyReleaseImpulse();
+      applyReleaseImpulse(pointerVelocity);
     }
     setHandToGrab();
     rock.classList.add("is-falling");
@@ -3036,6 +4377,9 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    if (pointerRole(collab.clientRole) !== "slave") {
+      playChainHoverSound();
+    }
     showHandCursor(event);
     if (collab.enabled) {
       sendSharedPointer(event, "grab", true, true);
@@ -3069,39 +4413,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  settingsPanel.querySelectorAll("input, select").forEach((el) => {
-    const handleControlChange = () =>
-      readControls({ changedKey: el.name });
-    listen(el, "input", handleControlChange);
-    listen(el, "change", handleControlChange);
-  });
-
-  listen(settingsPanel.querySelector(".trail-clear"), "click", resetTrail);
-  listen(sessionRestartButton, "click", restartExperience);
-
-  listen(settingsPanel, "pointerover", (event) => {
-    const target = event.target.closest("[data-hint]");
-    if (target) {
-      showHint(target);
-    }
-  });
-  listen(settingsPanel, "pointerout", (event) => {
-    const target = event.target.closest("[data-hint]");
-    const next =
-      event.relatedTarget && event.relatedTarget.closest
-        ? event.relatedTarget.closest("[data-hint]")
-        : null;
-    if (target && next !== target) {
-      hideHint();
-    }
-  });
-  listen(settingsPanel, "focusin", (event) => {
-    const target = event.target.closest("[data-hint]");
-    if (target) {
-      showHint(target);
-    }
-  });
-  listen(settingsPanel, "focusout", hideHint);
+  settingsController.bind();
 
   // Открытием панели управляет React-хук useSettings.
   listen(sessionShareToggle, "click", copyCurrentSessionLink);
@@ -3125,18 +4437,20 @@ export function createSisyphusRuntime(elements = {}) {
     window,
     "scroll",
     () => {
-      handleFirstScroll();
       trail.dirty = true;
       drawTrail();
     },
     { passive: true }
   );
   listen(window, "resize", () => {
+    fitTopInscription();
     updateBounds();
+    applyViewportScaledVisuals();
+    sendMasterViewport();
     resizeTrailCanvas();
     if (collab.enabled && collab.snapshots.length > 0) {
       applySharedFrame(collab.snapshots.at(-1));
-    } else if (motion.phase === PHASES.INTRO) {
+    } else if (motion.phase === PHASES.INTRO || motion.suspended) {
       centerIntroRock();
     } else {
       setPosition(motion.x, motion.y);
@@ -3145,51 +4459,115 @@ export function createSisyphusRuntime(elements = {}) {
   });
 
   function initScene() {
+    fitTopInscription();
+    renderSummitTimer();
     centerIntroRock();
+    collab.imprint = createSummitSharedImprint();
+    renderImprint();
+    setPhase(PHASES.PLAY);
+    motion.suspended = true;
+    motion.wasAtReturnPlace = false;
+    setTheme(resolveTheme("dark"));
+    hideReturnRain({ immediate: true });
     motion.sceneReady = true;
     resizeTrailCanvas();
+    scrollToSceneBottom();
     updateSessionStatus();
     if (collab.enabled) {
       connectSharedSession();
     } else {
       createSharedSession();
     }
-    continueFirstFallFromScroll();
   }
 
-  const testApi = {
-    SharedPhysics,
-    bounds,
-    canonicalToLocal,
-    collab,
-    initialSharedState,
-    motion,
-    params,
-    getLastRainRendererProfile: () => {
-      const profile = rain.lastProfile;
-      return profile
-        ? {
-            theme: profile.theme,
-            raindropDiffuseLight: [...profile.raindropDiffuseLight],
-            raindropSpecularLight: [...profile.raindropSpecularLight],
-          }
-        : null;
-    },
-    getRainRenderToken: () => rain.renderToken,
-    resetTrail,
-    sendShared,
-    setPosition,
-    syncReturnTheme,
-    trail,
-    trimTrailToLimit,
-    updateBounds,
-  };
-  window.__sisyphusTestApi = testApi;
-  Object.assign(window, testApi);
-
-  loadSettings();
+  let testApi = null;
+  if (import.meta.env.DEV) {
+    testApi = {
+      SharedPhysics,
+      applyPhysics,
+      applyDragTargetMovement,
+      bounds,
+      canonicalToLocal,
+      collab,
+      currentSharedState,
+      initialSharedState,
+      motion,
+      params,
+      getLastRainRendererProfile: () => {
+        const profile = rain.lastProfile;
+        return profile
+          ? {
+              theme: profile.theme,
+              fallbackColor: [...profile.fallbackColor],
+              raindropDiffuseLight: [...profile.raindropDiffuseLight],
+              raindropSpecularLight: [...profile.raindropSpecularLight],
+            }
+          : null;
+      },
+      getViewportScale: () => ({ ...slaveViewportScale() }),
+      getRenderedVisualSettings: () => ({
+        lineWidth: scaledVisualPixel(params.lineWidth),
+        rainBlurPx: scaledVisualPixel(params.rainBlurPx),
+        slaveHandWidthPx: scaledVisualPixel(params.slaveHandWidthPx),
+      }),
+      getRoleAudioState: () => {
+        const state = roleAudioFade.latest;
+        return {
+          fadeActive: state?.frameId !== null && state?.frameId !== undefined,
+          fadeDurationMs: state?.durationMs ?? 0,
+          fadeTargetVolume: state?.targetVolume ?? 0,
+          role: state?.role ?? null,
+          volume: state?.audio?.volume ?? 0,
+        };
+      },
+      getSessionAudioState: () =>
+        sessionRoleAudio.latest ? { ...sessionRoleAudio.latest } : null,
+      getSummitTimerState: () => ({
+        elapsedMs: currentSummitElapsedMs(),
+        running: summitTimer.running,
+        serverTime: summitTimer.serverTime,
+        text: summitTimerElement?.textContent || "",
+      }),
+      fitTopInscription,
+      drawTrail,
+      getRoomSettings: sharedRoomSettingsPayload,
+      getRainAudioState: () => {
+        const loopState = rainLoopController.getState();
+        return {
+          ...loopState,
+          elementVolume: loopState.fallbackElementVolume,
+          fadeDurationMs: rainLoopAudio.fadeDurationMs,
+          fadeActive: rainLoopAudio.fadeFrameId !== null,
+          fadeMode: rainLoopAudio.fadeMode,
+          fadeTargetVolume: rainLoopAudio.fadeTargetVolume,
+          gain: loopState.volume,
+          paused: !loopState.running,
+          playing: rainLoopAudio.playing,
+          volume: rainLoopAudio.volume,
+        };
+      },
+      getRainRenderToken: () => rain.renderToken,
+      getSettingsVersions: settingsController.getSettingsVersions,
+      getLatestSettingsVersionPreset:
+        settingsController.getLatestSettingsVersionPreset,
+      resetTrail,
+      sendShared,
+      setPosition,
+      syncReturnTheme,
+      trail,
+      trimTrailToLimit,
+      updateBounds,
+    };
+    window.__sisyphusTestApi = testApi;
+    Object.assign(window, testApi);
+  }
+  settingsController.load();
   readControls();
-  window.scrollTo(0, 0);
+  document.fonts?.ready.then(() => {
+    if (!disposed) {
+      fitTopInscription();
+    }
+  });
 
   if (rock.complete) {
     initScene();
@@ -3205,13 +4583,25 @@ export function createSisyphusRuntime(elements = {}) {
       disposed = true;
       collab.leaving = true;
       stopLoop();
+      cancelReturnScrollAnimation();
       stopRainRenderers();
       clearHoldTimer();
+      clearFirstFallTimer();
       clearSharedConnectionTimers();
       clearSharedReleaseHandoff();
       window.clearTimeout(collab.copyFeedbackTimerId);
       window.clearTimeout(collab.statusResetTimerId);
       window.clearTimeout(collab.physicsTimerId);
+      window.clearTimeout(collab.roomSettingsTimerId);
+      stopRainLoopSound({ immediate: true });
+      rainLoopController.dispose();
+      cancelAllRoleAudioFades();
+      chainHoverAudio.elements.forEach((audio) => audio?.pause());
+      sessionRoleAudio.timerIds.forEach((timerId) => {
+        window.clearTimeout(timerId);
+      });
+      sessionRoleAudio.timerIds.clear();
+      sessionRoleAudio.elements.forEach((audio) => audio.pause());
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {
@@ -3226,14 +4616,16 @@ export function createSisyphusRuntime(elements = {}) {
       if (socket && socket.readyState < WebSocket.CLOSING) {
         socket.close(1000, "react_unmount");
       }
-      if (window.__sisyphusTestApi === testApi) {
-        Reflect.deleteProperty(window, "__sisyphusTestApi");
-      }
-      Object.entries(testApi).forEach(([name, value]) => {
-        if (window[name] === value) {
-          Reflect.deleteProperty(window, name);
+      if (import.meta.env.DEV && testApi) {
+        if (window.__sisyphusTestApi === testApi) {
+          Reflect.deleteProperty(window, "__sisyphusTestApi");
         }
-      });
+        Object.entries(testApi).forEach(([name, value]) => {
+          if (window[name] === value) {
+            Reflect.deleteProperty(window, name);
+          }
+        });
+      }
       if (rain.hideTimerId !== null) {
         window.clearTimeout(rain.hideTimerId);
         rain.hideTimerId = null;

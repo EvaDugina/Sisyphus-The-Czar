@@ -8,6 +8,9 @@ const path = require("node:path");
 const WebSocket = require("ws");
 const { createService } = require("../../server");
 const Physics = require("../../shared/physics");
+const RoomSettings = require("../../shared/room-settings");
+const GachiSounds = require("../../shared/gachi-sounds");
+const ChainSounds = require("../../shared/chain-sounds");
 
 function connect(url) {
   const socket = new WebSocket(url);
@@ -53,6 +56,92 @@ function connect(url) {
   return { socket, opened, waitFor };
 }
 
+test("клик роли запускает один общий звук у всех клиентов с общим playAt", async (context) => {
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    audioLeadMs: 40,
+    soundRandom: () => 0,
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+  const base = `http://127.0.0.1:${address.port}`;
+  const created = await fetch(`${base}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      creatorClientId: "integration-audio-master",
+      state: {
+        phase: Physics.PHASES.PLAY,
+        x: Physics.WORLD_WIDTH / 2,
+        y: Physics.WORLD_HEIGHT,
+      },
+    }),
+  });
+  assert.equal(created.status, 201);
+  const { sessionId } = await created.json();
+  const wsBase = `ws://127.0.0.1:${address.port}/realtime?session=${sessionId}`;
+  const master = connect(`${wsBase}&client=integration-audio-master`);
+  const slave = connect(`${wsBase}&client=integration-audio-slave`);
+  await Promise.all([master.opened, slave.opened]);
+  const [, slaveSnapshot] = await Promise.all([
+    master.waitFor("session.snapshot"),
+    slave.waitFor("session.snapshot"),
+  ]);
+
+  master.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "audio.play",
+      seq: 1,
+      payload: {},
+    })
+  );
+  const [masterChain, slaveChain] = await Promise.all([
+    master.waitFor("audio.play", (payload) => payload.role === "master"),
+    slave.waitFor("audio.play", (payload) => payload.role === "master"),
+  ]);
+  assert.deepEqual(slaveChain.payload, masterChain.payload);
+  assert.equal(
+    masterChain.payload.filename,
+    ChainSounds.CHAIN_SOUND_FILENAMES[0]
+  );
+  assert.equal(masterChain.payload.actorId, "integration-audio-master");
+  assert.equal(
+    masterChain.payload.playAt - masterChain.payload.serverTime,
+    40
+  );
+
+  slave.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "audio.play",
+      seq: 1,
+      payload: {},
+    })
+  );
+  const [masterGachi, slaveGachi] = await Promise.all([
+    master.waitFor("audio.play", (payload) => payload.role === "slave"),
+    slave.waitFor("audio.play", (payload) => payload.role === "slave"),
+  ]);
+  assert.deepEqual(slaveGachi.payload, masterGachi.payload);
+  assert.equal(
+    masterGachi.payload.filename,
+    slaveSnapshot.payload.gachiSoundFilename
+  );
+  assert.equal(masterGachi.payload.actorId, "integration-audio-slave");
+  assert.notEqual(masterGachi.payload.eventId, masterChain.payload.eventId);
+  assert.equal(
+    masterGachi.payload.playAt - masterGachi.payload.serverTime,
+    40
+  );
+
+  master.socket.close();
+  slave.socket.close();
+});
+
 test("два WebSocket-клиента делят состояние и передают управление", async (context) => {
   const service = createService({
     port: 0,
@@ -69,12 +158,27 @@ test("два WebSocket-клиента делят состояние и пере�
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
+      creatorClientId: "integration-client-a",
       state: { phase: Physics.PHASES.PLAY, x: 500, y: Physics.WORLD_HEIGHT },
       physics: { gravity: 1, bounce: 0 },
+      masterViewport: { width: 1905, height: 899 },
+      roomSettings: {
+        sceneHeightScreens:
+          RoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
+        handWidthVw: RoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
+        slaveHandWidthPx: RoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
+        rainDropColor: RoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor,
+        rainHighlightColor:
+          RoomSettings.DEFAULT_ROOM_SETTINGS.rainHighlightColor,
+      },
     }),
   });
   assert.equal(created.status, 201);
   const { sessionId } = await created.json();
+  assert.equal(
+    service.manager.getSession(sessionId).masterClientId,
+    "integration-client-a"
+  );
 
   const wsBase = `ws://127.0.0.1:${address.port}/realtime?session=${sessionId}`;
   const first = connect(`${wsBase}&client=integration-client-a`);
@@ -84,8 +188,34 @@ test("два WebSocket-клиента делят состояние и пере�
     first.waitFor("session.snapshot"),
     second.waitFor("session.snapshot"),
   ]);
-  assert.equal(firstSnapshot.payload.clientSkin, "primary");
-  assert.equal(secondSnapshot.payload.clientSkin, "partner");
+  assert.equal(firstSnapshot.payload.clientRole, "master");
+  assert.equal(secondSnapshot.payload.clientRole, "slave");
+  assert.deepEqual(firstSnapshot.payload.masterViewport, {
+    width: 1905,
+    height: 899,
+  });
+  assert.deepEqual(secondSnapshot.payload.masterViewport, {
+    width: 1905,
+    height: 899,
+  });
+  assert.equal(firstSnapshot.payload.gachiSoundFilename, null);
+  assert.ok(
+    GachiSounds.isGachiSoundFilename(
+      secondSnapshot.payload.gachiSoundFilename
+    )
+  );
+  assert.equal(
+    firstSnapshot.payload.roomSettings.sceneHeightScreens,
+    RoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens
+  );
+  assert.equal(
+    firstSnapshot.payload.roomSettings.handWidthVw,
+    RoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw
+  );
+  assert.equal(
+    firstSnapshot.payload.roomSettings.slaveHandWidthPx,
+    RoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx
+  );
 
   first.socket.send(
     JSON.stringify({
@@ -95,6 +225,8 @@ test("два WebSocket-клиента делят состояние и пере�
       payload: {
         x: 480,
         y: Physics.WORLD_HEIGHT - 100,
+        rockOffsetX: -0.12,
+        rockOffsetY: -0.08,
         mode: "grab",
         visible: true,
       },
@@ -105,7 +237,9 @@ test("два WebSocket-клиента делят состояние и пере�
     (payload) => payload.clientId === "integration-client-a" && payload.mode === "grab"
   );
   assert.equal(sharedPointer.payload.x, 480);
-  assert.equal(sharedPointer.payload.skin, "primary");
+  assert.equal(sharedPointer.payload.rockOffsetX, -0.12);
+  assert.equal(sharedPointer.payload.rockOffsetY, -0.08);
+  assert.equal(sharedPointer.payload.role, "master");
 
   first.socket.send(
     JSON.stringify({
@@ -195,8 +329,8 @@ test("два WebSocket-клиента делят состояние и пере�
   const released = await second.waitFor(
     "session.snapshot",
     (payload) =>
-      payload.dragging === false &&
-      payload.controllerId === null &&
+      payload.dragging === true &&
+      payload.controllerId === "integration-client-b" &&
       payload.holderIds?.length === 1 &&
       payload.holderIds.includes("integration-client-b") &&
       !payload.holderIds.includes("integration-client-a")
@@ -213,11 +347,11 @@ test("два WebSocket-клиента делят состояние и пере�
   );
   await first.waitFor("control.granted");
 
-  second.socket.send(
+  first.socket.send(
     JSON.stringify({
       v: 1,
       type: "physics.update",
-      seq: 3,
+      seq: 6,
       payload: { gravity: 10 },
     })
   );
@@ -230,16 +364,51 @@ test("два WebSocket-клиента делят состояние и пере�
   first.socket.send(
     JSON.stringify({
       v: 1,
+      type: "roomSettings.update",
+      seq: 7,
+      payload: {
+        sceneHeightScreens: 50,
+        handWidthVw: 42.5,
+        slaveHandWidthPx: 48,
+        rainDropColor: "#123456",
+        rainHighlightColor: "#fedcba",
+        trailUnlimited: true,
+        lineWidth: 3,
+      },
+    })
+  );
+  const roomSettingsSynced = await first.waitFor(
+    "session.snapshot",
+    (payload) =>
+      payload.roomSettings &&
+      payload.roomSettings.sceneHeightScreens === 50 &&
+      payload.roomSettings.handWidthVw === 42.5 &&
+      payload.roomSettings.slaveHandWidthPx === 48 &&
+      payload.roomSettings.rainDropColor === "#123456" &&
+      payload.roomSettings.rainHighlightColor === "#fedcba" &&
+      payload.roomSettings.trailUnlimited === true &&
+      payload.roomSettings.lineWidth === 3
+  );
+
+  first.socket.send(
+    JSON.stringify({
+      v: 1,
       type: "session.restart",
-      seq: 6,
+      seq: 8,
       payload: { x: 321, y: 654 },
     })
   );
   const restarted = await second.waitFor(
     "session.snapshot",
     (payload) =>
-      payload.revision > synced.payload.revision &&
-      payload.phase === Physics.PHASES.INTRO
+      payload.revision > roomSettingsSynced.payload.revision &&
+      payload.phase === Physics.PHASES.PLAY &&
+      payload.x === 321 &&
+      payload.y === 654 &&
+      payload.physics &&
+      payload.roomSettings &&
+      payload.imprint &&
+      Array.isArray(payload.trail)
   );
   assert.equal(restarted.payload.x, 321);
   assert.equal(restarted.payload.y, 654);
@@ -247,44 +416,41 @@ test("два WebSocket-клиента делят состояние и пере�
   assert.equal(restarted.payload.controllerId, null);
   assert.deepEqual(restarted.payload.holderIds, []);
   assert.equal(restarted.payload.physics.gravity, 10);
+  assert.deepEqual(restarted.payload.roomSettings, {
+    ...RoomSettings.DEFAULT_ROOM_SETTINGS,
+    sceneHeightScreens: 50,
+    handWidthVw: 42.5,
+    slaveHandWidthPx: 48,
+    rainDropColor: "#123456",
+    rainHighlightColor: "#fedcba",
+    trailUnlimited: true,
+    lineWidth: 3,
+  });
   assert.deepEqual(restarted.payload.trail, []);
-  assert.equal(restarted.payload.imprint, null);
+  assert.deepEqual(
+    restarted.payload.imprint,
+    Physics.createSummitImprint()
+  );
 
   second.socket.send(
     JSON.stringify({
       v: 1,
       type: "control.acquire",
-      seq: 4,
+      seq: 5,
       payload: { x: 321, y: 654 },
     })
   );
-  await second.waitFor(
-    "control.denied",
-    (payload) => payload.reason === "phase_locked"
-  );
-
-  first.socket.send(
-    JSON.stringify({
-      v: 1,
-      type: "session.start",
-      seq: 7,
-      payload: { imprint: { toleranceX: 45, toleranceY: 35 } },
-    })
-  );
-  const startedByScroll = await second.waitFor(
+  await second.waitFor("control.granted");
+  const acquiredAfterRestart = await first.waitFor(
     "session.snapshot",
     (payload) =>
       payload.revision > restarted.payload.revision &&
-      payload.phase === Physics.PHASES.FALLING
+      payload.phase === Physics.PHASES.PLAY &&
+      payload.dragging === true &&
+      payload.holderIds?.includes("integration-client-b")
   );
-  assert.equal(startedByScroll.payload.dragging, false);
-  assert.equal(startedByScroll.payload.controllerId, null);
-  assert.deepEqual(startedByScroll.payload.imprint, {
-    x: 321,
-    y: 654,
-    toleranceX: 45,
-    toleranceY: 35,
-  });
+  assert.equal(acquiredAfterRestart.payload.controllerId, "integration-client-b");
+  assert.equal(Object.hasOwn(acquiredAfterRestart.payload, "imprint"), false);
 
   const invalidLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
     method: "POST",
@@ -362,7 +528,14 @@ test("сессия переживает restart сервиса с тем же х
           vx: 0,
           vy: 0,
         },
-        physics: { mass: 77, gravity: 8, turbulence: 0 },
+        physics: { mass: 10, gravity: 8, turbulence: 0 },
+        roomSettings: {
+          sceneHeightScreens: 60,
+          handWidthVw: 38,
+          slaveHandWidthPx: 44,
+          rainDropColor: "#234567",
+          rainHighlightColor: "#abcdef",
+        },
         imprint: { x: 300, y: 700, toleranceX: 40, toleranceY: 30 },
         trail: [[10, 20], [30, 40]],
       }),
@@ -394,9 +567,22 @@ test("сессия переживает restart сервиса с тем же х
   assert.equal(snapshot.payload.phase, Physics.PHASES.PLAY);
   assert.equal(snapshot.payload.x, 321);
   assert.equal(snapshot.payload.y, Physics.WORLD_HEIGHT);
-  assert.equal(snapshot.payload.physics.mass, 77);
+  assert.equal(snapshot.payload.physics.mass, 10);
   assert.equal(snapshot.payload.physics.gravity, 8);
-  assert.equal(snapshot.payload.imprint.x, 300);
+  assert.deepEqual(snapshot.payload.roomSettings, {
+    ...RoomSettings.DEFAULT_ROOM_SETTINGS,
+    sceneHeightScreens: 60,
+    handWidthVw: 38,
+    slaveHandWidthPx: 44,
+    rainDropColor: "#234567",
+    rainHighlightColor: "#abcdef",
+  });
+  assert.deepEqual(snapshot.payload.imprint, {
+    x: Physics.WORLD_WIDTH / 2,
+    y: 700,
+    toleranceX: 40,
+    toleranceY: 30,
+  });
   assert.deepEqual(snapshot.payload.trail, [[10, 20], [30, 40]]);
   restored.socket.close();
 });

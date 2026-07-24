@@ -1,17 +1,49 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import "../../shared/viewport.js";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
+  rockRelativeToViewportPosition,
+  viewportToRockRelativePosition,
 } from "../../src/lib/coordinates.mjs";
 import { getRainVisualProfile } from "../../src/lib/rainProfile.mjs";
+import {
+  DEFAULT_ROCK_MAX_WIDTH_VW,
+  DEFAULT_ROCK_MIN_WIDTH_VW,
+  DEFAULT_ROCK_SCALE_EASING,
+  parseCubicBezier,
+  rockScaleForY,
+} from "../../src/lib/rockScale.mjs";
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
-import { normalizeRainSettings } from "../../src/lib/settingsModel.mjs";
+import { formatSummitElapsedMs } from "../../src/lib/summitTimer.mjs";
+import {
+  formatSettingsVersionOptionLabel,
+  formatSettingsVersionSavedAt,
+} from "../../src/lib/settingsVersions.mjs";
+import {
+  selectLatestSettingsVersionEntry,
+  settingsFromLatestVersionEntry,
+} from "../../src/lib/settingsVersionSelection.mjs";
+import {
+  normalizeRainSettings,
+  normalizeRockScaleSettings,
+  normalizeThemeMode,
+} from "../../src/lib/settingsModel.mjs";
+import {
+  settings as productionSettings,
+  settingsSchemaVersion as productionSettingsSchemaVersion,
+} from "../../src/config/production-preset.mjs";
 import {
   SETTINGS_GROUPS,
   SETTINGS_STORAGE_KEY,
+  SETTINGS_VERSIONS_STORAGE_KEY,
+  settingsGroupControls,
 } from "../../src/config/settings.mjs";
+
+const SharedRoomSettings = globalThis.SisyphusRoomSettings;
+const SharedViewport = globalThis.SisyphusViewport;
 
 test("координаты сохраняют каноническое положение между viewport", () => {
   const world = { width: 1000, height: 2000 };
@@ -36,6 +68,118 @@ test("координаты сохраняют каноническое поло�
   assert.deepEqual(local, { x: 450, y: 1200 });
 });
 
+test("курсор сохраняет положение относительно камня между viewport", () => {
+  const sourceRock = { left: 1075, top: 450, width: 100, height: 100 };
+  const sourceCursor = { x: 930, y: 340 };
+  const relative = viewportToRockRelativePosition(
+    sourceCursor.x,
+    sourceCursor.y,
+    sourceRock,
+    1905,
+    899,
+  );
+  const targetRock = { left: 890, top: 636, width: 100, height: 100 };
+  const targetCursor = rockRelativeToViewportPosition(
+    relative.x,
+    relative.y,
+    targetRock,
+    1580,
+    745,
+  );
+  const targetRelative = viewportToRockRelativePosition(
+    targetCursor.x,
+    targetCursor.y,
+    targetRock,
+    1580,
+    745,
+  );
+
+  assert.ok(Math.abs(relative.x - -195 / 1905) < 1e-12);
+  assert.ok(Math.abs(relative.y - -160 / 899) < 1e-12);
+  assert.ok(Math.abs(targetRelative.x - relative.x) < 1e-12);
+  assert.ok(Math.abs(targetRelative.y - relative.y) < 1e-12);
+});
+
+test("slave масштабирует пиксельные значения по отношению viewport", () => {
+  const scale = SharedViewport.viewportScale(
+    { width: 1905, height: 899 },
+    { width: 1580, height: 745 },
+  );
+
+  assert.ok(Math.abs(scale.x - 1580 / 1905) < 1e-12);
+  assert.ok(Math.abs(scale.y - 745 / 899) < 1e-12);
+  assert.equal(SharedViewport.viewportScale(null, null).x, 1);
+  assert.deepEqual(
+    SharedViewport.sanitizeViewport({ width: 1905.4, height: 898.6 }),
+    { width: 1905, height: 899 },
+  );
+});
+
+test("настройка темы содержит автоматический и ручные режимы", () => {
+  const viewGroup = SETTINGS_GROUPS.find((group) => group.title === "Вид");
+  const themeMode = viewGroup.controls.find(
+    (control) => control.name === "themeMode"
+  );
+  const returnScrollDurationSeconds = viewGroup.controls.find(
+    (control) => control.name === "returnScrollDurationSeconds"
+  );
+  const returnScrollEasing = viewGroup.controls.find(
+    (control) => control.name === "returnScrollEasing"
+  );
+
+  assert.equal(normalizeThemeMode("dark"), "dark");
+  assert.equal(normalizeThemeMode("light"), "light");
+  assert.equal(normalizeThemeMode("invalid"), "auto");
+  assert.equal(themeMode.type, "select");
+  assert.equal(themeMode.label, "Тема");
+  assert.equal(themeMode.defaultValue, "auto");
+  assert.deepEqual(themeMode.options, [
+    ["auto", "Авто"],
+    ["dark", "Тёмная"],
+    ["light", "Светлая"],
+  ]);
+  assert.deepEqual(
+    {
+      label: returnScrollDurationSeconds.label,
+      type: returnScrollDurationSeconds.type,
+      min: returnScrollDurationSeconds.min,
+      max: returnScrollDurationSeconds.max,
+      step: returnScrollDurationSeconds.step,
+      defaultValue: returnScrollDurationSeconds.defaultValue,
+    },
+    {
+      label: "Скролл наверх, с",
+      type: "range",
+      min: 0,
+      max: 10,
+      step: 0.1,
+      defaultValue: 4,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: returnScrollEasing.label,
+      type: returnScrollEasing.type,
+      defaultValue: returnScrollEasing.defaultValue,
+    },
+    {
+      label: "Кривая скролла",
+      type: "text",
+      defaultValue: "cubic-bezier(0.4, 0, 0.2, 1)",
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings({
+      returnScrollDurationSeconds: 15,
+      returnScrollEasing: "not-a-curve",
+    }),
+    {
+      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+      returnScrollDurationSeconds: 10,
+    },
+  );
+});
+
 test("session status сохраняет публичные тексты управления", () => {
   assert.deepEqual(
     deriveSessionStatus({
@@ -46,10 +190,11 @@ test("session status сохраняет публичные тексты упра
       pendingControl: false,
       remoteControllerId: "other",
       holderIds: ["other"],
-      requiredHolders: 2,
+      requiredHolders: 1,
+      liftReady: false,
     }),
     {
-      text: "В сессии: 2 · камень держат 1/2",
+      text: "В сессии: 2 · камень держат (1 рука)",
       state: "online",
     },
   );
@@ -61,6 +206,7 @@ test("настройки дождя ограничиваются и исполь
     rainExitEasing: "ease-out",
     rainEnterMs: 1100,
     rainExitMs: 2000,
+    rainMaxVolume: 0.5,
     rainZIndex: 5,
     rainBlendMode: "multiply",
     rainBlurBlendMode: "normal",
@@ -72,6 +218,7 @@ test("настройки дождя ограничиваются и исполь
   const settings = normalizeRainSettings(
     {
       rainStrength: 8,
+      rainMaxVolume: 8,
       rainBlendMode: "invalid",
       rainBlurBlendMode: "also-invalid",
       rainBackgroundBlurSteps: 100,
@@ -83,6 +230,8 @@ test("настройки дождя ограничиваются и исполь
       rainExitEasing: " linear ",
       rainEnterMs: -10,
       rainExitMs: 100000,
+      rainAudioEnterMs: -25,
+      rainAudioExitMs: 100000,
     },
     {
       defaults,
@@ -92,6 +241,7 @@ test("настройки дождя ограничиваются и исполь
 
   assert.deepEqual(settings, {
     rainStrength: 1.5,
+    rainMaxVolume: 3,
     rainBlendMode: "multiply",
     rainBlurBlendMode: "normal",
     rainBackgroundBlurSteps: 8,
@@ -102,7 +252,7 @@ test("настройки дождя ограничиваются и исполь
     rainEnterEasing: "ease-in",
     rainExitEasing: "linear",
     rainEnterMs: 0,
-    rainExitMs: 10000,
+    rainExitMs: 20000,
   });
 });
 
@@ -120,6 +270,7 @@ test("mix blend дождя и blur нормализуются независим
         rainExitEasing: "ease-out",
         rainEnterMs: 1100,
         rainExitMs: 2000,
+        rainMaxVolume: 0.5,
         rainZIndex: 5,
       },
     },
@@ -148,12 +299,20 @@ test("повторный hide не перезапускает таймер ис�
   );
 });
 
-test("настройка инерции отображает целочисленную шкалу 0–100", () => {
-  const inertia = SETTINGS_GROUPS.flatMap((group) => group.controls).find(
+test("настройки инерции отображают шкалу 0–1", () => {
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const inertia = controls.find(
     (control) => control.name === "inertia"
   );
+  const horizontalInertia = controls.find(
+    (control) => control.name === "horizontalInertia"
+  );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v5");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v18");
+  assert.equal(
+    SETTINGS_VERSIONS_STORAGE_KEY,
+    "sisyphus-czar-settings-versions-v1"
+  );
   assert.deepEqual(
     {
       min: inertia.min,
@@ -161,15 +320,100 @@ test("настройка инерции отображает целочисле�
       step: inertia.step,
       defaultValue: inertia.defaultValue,
     },
-    { min: 0, max: 100, step: 1, defaultValue: 90 }
+    { min: 0, max: 1, step: 0.01, defaultValue: 0.9 }
+  );
+  assert.deepEqual(
+    {
+      min: horizontalInertia.min,
+      max: horizontalInertia.max,
+      step: horizontalInertia.step,
+      defaultValue: horizontalInertia.defaultValue,
+    },
+    { min: 0, max: 1, step: 0.01, defaultValue: 0.02 }
   );
 });
 
-test("настройка тяготения позволяет замедлить падение через UI", () => {
-  const gravity = SETTINGS_GROUPS.flatMap((group) => group.controls).find(
-    (control) => control.name === "gravity"
+test("сохраненная версия настроек показывает дату без года в option select", () => {
+  assert.equal(
+    formatSettingsVersionSavedAt(new Date(2026, 6, 23, 12, 53)),
+    "23.07 12:53",
+  );
+  assert.equal(
+    formatSettingsVersionOptionLabel({
+      name: "Проверка",
+      updatedAt: new Date(2026, 6, 23, 12, 53),
+    }),
+    "Проверка — 23.07 12:53",
+  );
+  assert.equal(formatSettingsVersionSavedAt(""), "");
+  assert.equal(formatSettingsVersionSavedAt("не дата"), "");
+  assert.equal(
+    formatSettingsVersionOptionLabel({ name: "Черновик" }),
+    "Черновик",
+  );
+});
+
+test("production preset совместим с актуальной схемой и shared payload", () => {
+  assert.equal(productionSettingsSchemaVersion, 18);
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings(productionSettings),
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+  );
+  assert.equal(productionSettings.mass, 1);
+  assert.equal(productionSettings.gravity, 9.8);
+  assert.equal(productionSettings.requiredHolders, undefined);
+});
+
+test("production preset source выбирает последнюю версию по updatedAt", () => {
+  const older = {
+    id: "older",
+    createdAt: "2026-07-20T10:00:00.000Z",
+    updatedAt: "2026-07-22T10:00:00.000Z",
+    settings: { gravity: 7 },
+  };
+  const fallbackByCreatedAt = {
+    id: "fallback",
+    createdAt: "2026-07-23T10:00:00.000Z",
+    settings: { gravity: 8 },
+  };
+  const latest = {
+    id: "latest",
+    createdAt: "2026-07-21T10:00:00.000Z",
+    updatedAt: "2026-07-24T10:00:00.000Z",
+    settings: { gravity: 9 },
+  };
+
+  assert.equal(
+    selectLatestSettingsVersionEntry([older, latest, fallbackByCreatedAt]),
+    latest,
+  );
+  assert.deepEqual(
+    settingsFromLatestVersionEntry([older, fallbackByCreatedAt]),
+    { gravity: 8 },
+  );
+});
+
+test("параметры формул подъёма и падения имеют ожидаемые диапазоны в UI", () => {
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const mass = controls.find((control) => control.name === "mass");
+  const gravity = controls.find((control) => control.name === "gravity");
+  const handForce = controls.find((control) => control.name === "handForce");
+  const handForceDeficitEasing = controls.find(
+    (control) => control.name === "handForceDeficitEasing",
+  );
+  const pointerInfluence = controls.find(
+    (control) => control.name === "pointerInfluence",
   );
 
+  assert.deepEqual(
+    {
+      min: mass.min,
+      max: mass.max,
+      step: mass.step,
+      defaultValue: mass.defaultValue,
+    },
+    { min: 0.1, max: 100, step: 0.1, defaultValue: 1 }
+  );
   assert.deepEqual(
     {
       min: gravity.min,
@@ -177,21 +421,339 @@ test("настройка тяготения позволяет замедлит�
       step: gravity.step,
       defaultValue: gravity.defaultValue,
     },
-    { min: 0.2, max: 10, step: 0.05, defaultValue: 0.45 }
+    { min: 0.1, max: 100, step: 0.05, defaultValue: 9.8 }
+  );
+  assert.deepEqual(
+    {
+      min: handForce.min,
+      max: handForce.max,
+      step: handForce.step,
+      defaultValue: handForce.defaultValue,
+    },
+    { min: 1, max: 1000, step: 1, defaultValue: 50 }
+  );
+  assert.deepEqual(
+    {
+      min: pointerInfluence.min,
+      max: pointerInfluence.max,
+      step: pointerInfluence.step,
+      defaultValue: pointerInfluence.defaultValue,
+    },
+    { min: 0, max: 10, step: 0.1, defaultValue: 1 }
+  );
+  assert.ok(mass.formulas.includes("F_g = m \\cdot g"));
+  assert.ok(gravity.formulas.includes("a_g = \\frac{F_g}{m} = g"));
+  assert.equal(
+    controls.some((control) => control.name === "firstFallVelocity"),
+    false,
+  );
+  assert.ok(handForce.formulas.some((formula) => formula.includes("F_{hand}")));
+  assert.deepEqual(
+    {
+      label: handForceDeficitEasing.label,
+      type: handForceDeficitEasing.type,
+      defaultValue: handForceDeficitEasing.defaultValue,
+      spellCheck: handForceDeficitEasing.spellCheck,
+    },
+    {
+      label: "Кривая нехватки силы",
+      type: "text",
+      defaultValue: "cubic-bezier(0.42, 0, 1, 1)",
+      spellCheck: false,
+    },
+  );
+  assert.ok(
+    handForceDeficitEasing.formulas.some((formula) =>
+      formula.includes("bezier(r)"),
+    ),
+  );
+  assert.ok(
+    pointerInfluence.formulas.some((formula) => formula.includes("\\cdot p")),
   );
 });
 
-test("след скрыт по умолчанию и включается через настройку", () => {
-  const trailEnabled = SETTINGS_GROUPS.flatMap((group) => group.controls).find(
-    (control) => control.name === "trailEnabled"
+test("физика содержит только параметры мира без начальной скорости", () => {
+  const physicsGroup = SETTINGS_GROUPS.find((group) => group.title === "Физика");
+  const controls = physicsGroup.controls.map((control) => control.name);
+  const visiblePhysicsNames = ["gravity", "turbulence"];
+
+  assert.deepEqual(controls, visiblePhysicsNames);
+  assert.equal(
+    SETTINGS_GROUPS.flatMap(settingsGroupControls).some(
+      (control) => control.name === "firstFallVelocity",
+    ),
+    false,
+  );
+  visiblePhysicsNames.forEach((name) => {
+    const control = physicsGroup.controls.find((item) => item.name === name);
+    assert.equal(control.type, "range");
+    assert.ok(Array.isArray(control.formulas));
+    assert.ok(control.formulas.length > 0);
+  });
+});
+
+test("масштаб камня считается по высоте и размеру viewport", () => {
+  const linear = "cubic-bezier(0, 0, 1, 1)";
+  const options = {
+    easing: linear,
+    minWidthVw: 10,
+    maxWidthVw: 40,
+    baseWidthPx: 200,
+    viewportWidthPx: 1000,
+  };
+
+  assert.equal(rockScaleForY(0, 900, options), 2);
+  assert.equal(rockScaleForY(900, 900, options), 0.5);
+  assert.equal(
+    Math.round(rockScaleForY(450, 900, options) * 1000) / 1000,
+    1.25,
+  );
+  assert.deepEqual(parseCubicBezier("cubic-bezier(0.4, 0, 0.2, 1)"), [
+    0.4,
+    0,
+    0.2,
+    1,
+  ]);
+  assert.equal(parseCubicBezier("linear"), null);
+});
+
+test("настройки размера камня есть в UI и получают fallback", () => {
+  const rockSizeGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Камень",
+  );
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const rockScaleEasing = controls.find(
+    (control) => control.name === "rockScaleEasing",
+  );
+  const rockMinWidthVw = controls.find(
+    (control) => control.name === "rockMinWidthVw",
+  );
+  const rockMaxWidthVw = controls.find(
+    (control) => control.name === "rockMaxWidthVw",
   );
 
-  assert.equal(trailEnabled.label, "Показывать след");
-  assert.equal(trailEnabled.defaultChecked, false);
+  assert.deepEqual(
+    normalizeRockScaleSettings(
+      {
+        rockMinWidthVw: 80,
+        rockMaxWidthVw: 20,
+        rockScaleEasing: "invalid",
+      },
+      {
+        defaults: {
+          rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
+          rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
+          rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
+        },
+      },
+    ),
+    {
+      rockMinWidthVw: 20,
+      rockMaxWidthVw: 80,
+      rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
+    },
+  );
+  assert.ok(rockSizeGroup);
+  assert.deepEqual(
+    rockSizeGroup.controls.map((control) => control.name),
+    [
+      "mass",
+      "bounce",
+      "inertia",
+      "horizontalInertia",
+      "groundFriction",
+      "rockScaleEasing",
+      "rockMinWidthVw",
+      "rockMaxWidthVw",
+    ],
+  );
+  assert.equal(rockScaleEasing.type, "text");
+  assert.equal(rockScaleEasing.label, "Кривая размера");
+  assert.equal(rockScaleEasing.defaultValue, DEFAULT_ROCK_SCALE_EASING);
+  assert.equal(rockMinWidthVw.type, "number");
+  assert.equal(rockMinWidthVw.defaultValue, DEFAULT_ROCK_MIN_WIDTH_VW);
+  assert.equal(rockMaxWidthVw.type, "number");
+  assert.equal(rockMaxWidthVw.defaultValue, DEFAULT_ROCK_MAX_WIDTH_VW);
+});
+
+test("общие визуальные настройки комнаты есть в UI", () => {
+  const viewGroup = SETTINGS_GROUPS.find((group) => group.title === "Вид");
+  const physicsGroup = SETTINGS_GROUPS.find((group) => group.title === "Физика");
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const sceneHeightScreens = controls.find(
+    (control) => control.name === "sceneHeightScreens"
+  );
+  const rainDropColor = controls.find(
+    (control) => control.name === "rainDropColor"
+  );
+  const rainHighlightColor = controls.find(
+    (control) => control.name === "rainHighlightColor"
+  );
+
+  assert.deepEqual(
+    {
+      type: sceneHeightScreens.type,
+      min: sceneHeightScreens.min,
+      max: sceneHeightScreens.max,
+      step: sceneHeightScreens.step,
+      defaultValue: sceneHeightScreens.defaultValue,
+    },
+    {
+      type: "range",
+      min: 1,
+      max: 100,
+      step: 1,
+      defaultValue: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
+    }
+  );
+  assert.equal(
+    SharedRoomSettings.sceneMotionMultiplier({ sceneHeightScreens: 1 }),
+    1000
+  );
+  assert.equal(
+    SharedRoomSettings.sceneMotionMultiplier({ sceneHeightScreens: 10 }),
+    100
+  );
+  assert.equal(
+    SharedRoomSettings.sceneMotionMultiplier({ sceneHeightScreens: 100 }),
+    10
+  );
+  assert.deepEqual(
+    viewGroup.controls.map((control) => control.name),
+    [
+      "themeMode",
+      "sceneHeightScreens",
+      "returnScrollDurationSeconds",
+      "returnScrollEasing",
+    ],
+  );
+  assert.deepEqual(
+    physicsGroup.controls.map((control) => control.name),
+    ["gravity", "turbulence"],
+  );
+  assert.equal(rainDropColor.type, "color");
+  assert.equal(
+    rainDropColor.defaultValue,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor
+  );
+  assert.equal(rainHighlightColor.type, "color");
+  assert.equal(
+    rainHighlightColor.defaultValue,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainHighlightColor
+  );
+});
+
+test("размеры рук вынесены в отдельную категорию UI", () => {
+  const handSizeGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Руки",
+  );
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const handWidthVw = controls.find((control) => control.name === "handWidthVw");
+  const slaveHandWidthPx = controls.find(
+    (control) => control.name === "slaveHandWidthPx"
+  );
+
+  assert.ok(handSizeGroup);
+  assert.deepEqual(
+    handSizeGroup.controls.map((control) => control.name),
+    [
+      "handForce",
+      "handForceDeficitEasing",
+      "pointerInfluence",
+      "handWidthVw",
+      "slaveHandWidthPx",
+    ],
+  );
+  assert.deepEqual(
+    {
+      type: handWidthVw.type,
+      min: handWidthVw.min,
+      max: handWidthVw.max,
+      step: handWidthVw.step,
+      defaultValue: handWidthVw.defaultValue,
+    },
+    {
+      type: "range",
+      min: 10,
+      max: 90,
+      step: 0.125,
+      defaultValue: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
+    }
+  );
+  assert.deepEqual(
+    {
+      type: slaveHandWidthPx.type,
+      min: slaveHandWidthPx.min,
+      max: slaveHandWidthPx.max,
+      step: slaveHandWidthPx.step,
+      defaultValue: slaveHandWidthPx.defaultValue,
+    },
+    {
+      type: "range",
+      min: 8,
+      max: 96,
+      step: 1,
+      defaultValue: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
+    }
+  );
+  assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw, 28.75 / 2);
+  assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx, 32 / 2);
+});
+
+test("траектория включена по умолчанию и выключается через настройку", () => {
+  const trailGroup = SETTINGS_GROUPS.find((group) => group.title === "Траектория");
+  const trailStyleGroup = trailGroup?.subgroups?.find(
+    (group) => group.title === "Стиль"
+  );
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const trailEnabled = controls.find((control) => control.name === "trailEnabled");
+  const trailReset = controls.find((control) => control.name === "trailReset");
+  const trailMaxPoints = controls.find(
+    (control) => control.name === "trailMaxPoints"
+  );
+  const lineOpacity = controls.find(
+    (control) => control.name === "lineOpacity"
+  );
+  const linePassOpacity = controls.find(
+    (control) => control.name === "linePassOpacity"
+  );
+
+  assert.ok(trailGroup);
+  assert.ok(trailStyleGroup);
+  assert.equal(
+    SETTINGS_GROUPS.some((group) => group.title === "Траектория — стиль"),
+    false,
+  );
+  assert.ok(
+    trailStyleGroup.controls.some((control) => control.name === "blendMode"),
+  );
+  assert.equal(trailEnabled.label, "Показывать траекторию");
+  assert.equal(trailEnabled.defaultChecked, true);
+  assert.equal(trailReset.label, "Сбрасывать при касании земли");
+  assert.equal(trailMaxPoints.label, "Длина траектории");
+  assert.equal(lineOpacity.label, "Общая непрозрачность");
+  assert.equal(linePassOpacity.label, "Непрозрачность линии");
+  assert.equal(linePassOpacity.defaultValue, 1);
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings({
+      lineOpacity: 0.4,
+    }),
+    {
+      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+      lineOpacity: 0.4,
+      linePassOpacity: 1,
+    }
+  );
+  assert.equal(
+    SharedRoomSettings.sanitizeRoomSettings({
+      linePassOpacity: 2,
+    }).linePassOpacity,
+    1
+  );
 });
 
 test("настройка трения земли заменяет скольжение", () => {
-  const controls = SETTINGS_GROUPS.flatMap((group) => group.controls);
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const groundFriction = controls.find(
     (control) => control.name === "groundFriction"
   );
@@ -207,15 +769,21 @@ test("настройка трения земли заменяет скольже
     },
     { min: 0, max: 1, step: 0.05, defaultValue: 0.35 }
   );
+  assert.ok(
+    groundFriction.formulas.some((formula) => formula.includes("k_{scene}"))
+  );
 });
 
-test("группа дождя содержит локальный toggle и blur тёмной темы", () => {
+test("группа дождя содержит общий toggle и blur тёмной темы", () => {
   const rainGroup = SETTINGS_GROUPS.find((group) => group.title === "Дождь");
   const rainEnabled = rainGroup.controls.find(
     (control) => control.name === "rainEnabled"
   );
   const rainBackgroundBlurSteps = rainGroup.controls.find(
     (control) => control.name === "rainBackgroundBlurSteps"
+  );
+  const rainMaxVolume = rainGroup.controls.find(
+    (control) => control.name === "rainMaxVolume"
   );
   const rainBlendMode = rainGroup.controls.find(
     (control) => control.name === "rainBlendMode"
@@ -235,10 +803,43 @@ test("группа дождя содержит локальный toggle и blur
   const rainZIndex = rainGroup.controls.find(
     (control) => control.name === "rainZIndex"
   );
+  const rainEnterMs = rainGroup.controls.find(
+    (control) => control.name === "rainEnterMs"
+  );
+  const rainExitMs = rainGroup.controls.find(
+    (control) => control.name === "rainExitMs"
+  );
 
   assert.equal(rainEnabled.type, "checkbox");
   assert.equal(rainEnabled.label, "Включить дождь");
-  assert.equal(rainEnabled.defaultChecked, undefined);
+  assert.equal(
+    rainEnabled.defaultChecked,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnabled
+  );
+  assert.deepEqual(
+    {
+      label: rainMaxVolume.label,
+      type: rainMaxVolume.type,
+      min: rainMaxVolume.min,
+      max: rainMaxVolume.max,
+      step: rainMaxVolume.step,
+      defaultValue: rainMaxVolume.defaultValue,
+    },
+    {
+      label: "Максимальная громкость",
+      type: "range",
+      min: 0,
+      max: 3,
+      step: 0.01,
+      defaultValue: 0.5,
+    },
+  );
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 10);
+  assert.equal(
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
+    "cubic-bezier(0.42, 0, 1, 1)",
+  );
+  assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainMaxVolume, 0.5);
   assert.equal(rainBlendMode.label, "Mix blend дождя");
   assert.equal(rainBlendMode.type, "select");
   assert.equal(rainBlendMode.defaultValue, "multiply");
@@ -283,6 +884,57 @@ test("группа дождя содержит локальный toggle и blur
     },
     { min: 0, max: 30, step: 1, defaultValue: 5 },
   );
+  assert.deepEqual(
+    {
+      label: rainEnterMs.label,
+      type: rainEnterMs.type,
+      min: rainEnterMs.min,
+      max: rainEnterMs.max,
+      step: rainEnterMs.step,
+      defaultValue: rainEnterMs.defaultValue,
+    },
+    {
+      label: "Появление, с",
+      type: "range",
+      min: 0,
+      max: 20,
+      step: 0.1,
+      defaultValue: 1.1,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: rainExitMs.label,
+      type: rainExitMs.type,
+      min: rainExitMs.min,
+      max: rainExitMs.max,
+      step: rainExitMs.step,
+      defaultValue: rainExitMs.defaultValue,
+    },
+    {
+      label: "Затухание, с",
+      type: "range",
+      min: 0,
+      max: 20,
+      step: 0.1,
+      defaultValue: 2,
+    },
+  );
+  assert.equal(
+    rainGroup.controls.some((control) => control.name === "rainAudioEnterMs"),
+    false,
+  );
+  assert.equal(
+    rainGroup.controls.some((control) => control.name === "rainAudioExitMs"),
+    false,
+  );
+});
+
+test("секундомер вершины форматирует накопленное время без сброса часов", () => {
+  assert.equal(formatSummitElapsedMs(0), "00:00:00");
+  assert.equal(formatSummitElapsedMs(3_661_000), "01:01:01");
+  assert.equal(formatSummitElapsedMs(25 * 60 * 60 * 1000), "25:00:00");
+  assert.equal(formatSummitElapsedMs(-1000), "00:00:00");
 });
 
 test("профиль дождя различает светлую и тёмную тему", () => {
@@ -313,6 +965,22 @@ test("профиль дождя различает светлую и тёмну�
   assert.deepEqual(darkProfile.mistColor, [0.04, 0.04, 0.04, 0.8]);
   assert.deepEqual(darkProfile.raindropDiffuseLight, [0.55, 0.55, 0.55]);
   assert.deepEqual(darkProfile.raindropSpecularLight, [1, 1, 1]);
+});
+
+test("профиль дождя принимает общий цвет капель и блика", () => {
+  const profile = getRainVisualProfile({
+    rainStrength: 1,
+    theme: "dark",
+    rainDropColor: "#336699",
+    rainHighlightColor: "#ffcc00",
+  });
+
+  assert.deepEqual(profile.fallbackColor, [51, 102, 153]);
+  assert.deepEqual(profile.raindropDiffuseLight, [0.27, 0.54, 0.81]);
+  assert.deepEqual(profile.raindropSpecularLight, [1, 1, 0]);
+  assert.deepEqual(profile.mistColor, [0.16, 0.128, 0.02, 0.8]);
+  assert.equal(profile.fxOpacity, 0.59);
+  assert.ok(profile.fallbackAlpha[1] > 0.46);
 });
 
 test("тёмный профиль принимает число blur-шагов raindrop-fx", () => {

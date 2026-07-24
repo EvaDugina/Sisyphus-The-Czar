@@ -7,14 +7,18 @@
   "scripts": {
     "start": "node server/index.js",
     "dev": "concurrently --kill-others --names server,client \"npm:dev:server\" \"npm:dev:client\"",
+    "dev:container": "concurrently --kill-others --names server,client \"npm:dev:server\" \"npm:dev:client:watch\"",
     "dev:server": "cross-env PORT=8081 DEBUG=true nodemon --legacy-watch --delay 100ms --watch server --watch shared --ext js --exec node server/index.js",
     "dev:client": "vite",
+    "dev:client:watch": "nodemon --legacy-watch --delay 100ms --watch vite.config.mjs --watch index.html --watch package.json --watch package-lock.json --ext js,mjs,json,html --exec \"npm run dev:client\"",
     "build": "vite build",
     "lint": "npm run lint:server && npm run lint:frontend",
     "lint:server": "node --check server/index.js && node --check server/session-manager.js && node --check server/session-store.js && node --check shared/physics.js",
     "lint:frontend": "eslint src vite.config.mjs",
-    "test": "node --test tests/unit/physics.test.js tests/unit/session-manager.test.js tests/unit/session-store.test.js tests/unit/server.test.js tests/unit/frontend-model.test.mjs tests/integration/realtime.test.js",
-    "test:smoke": "playwright test tests/smoke",
+    "test": "node --test tests/unit/physics.test.js tests/unit/session-manager.test.js tests/unit/session-store.test.js tests/unit/server.test.js tests/unit/frontend-model.test.mjs tests/unit/crossfaded-audio-loop.test.mjs tests/integration/realtime.test.js",
+    "test:smoke": "npm run test:smoke:prod",
+    "test:smoke:prod": "playwright test tests/smoke/prod.spec.js",
+    "test:smoke:dev": "playwright test --config=playwright.dev.config.js",
     "test:soak": "playwright test --config=playwright.soak.config.js",
     "test:all": "npm run lint && npm run build && npm test && npm run test:smoke",
     "commitlint": "commitlint"
@@ -24,6 +28,7 @@
   },
   "dependencies": {
     "express": "5.2.1",
+    "katex": "^0.18.1",
     "react": "19.2.7",
     "react-dom": "19.2.7",
     "ws": "8.21.0"

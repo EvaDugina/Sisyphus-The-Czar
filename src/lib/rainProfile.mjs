@@ -1,7 +1,9 @@
 const MIN_RAIN_STRENGTH = 0.25;
 const MAX_RAIN_STRENGTH = 1.5;
 
-export const MAX_RAIN_FX_OPACITY = 0.5;
+const BASE_RAIN_FX_OPACITY_LIMIT = 0.5;
+
+export const MAX_RAIN_FX_OPACITY = 0.62;
 
 const LIGHT_RAIN_PROFILE = {
   dropletsPerSecond: 1300,
@@ -45,6 +47,38 @@ function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
 
+function isHexColor(value) {
+  const raw = String(value || "").trim();
+  return /^#[0-9a-fA-F]{6}$/.test(raw);
+}
+
+function hexToRgb255(value) {
+  const normalized = String(value || "").trim();
+  return [1, 3, 5].map((index) =>
+    Number.parseInt(normalized.slice(index, index + 2), 16)
+  );
+}
+
+function rgb255ToUnit(rgb) {
+  return rgb.map((channel) => Number((channel / 255).toFixed(4)));
+}
+
+function boostDarkRainLight(rgb) {
+  return rgb255ToUnit(rgb).map((channel) =>
+    Number(clamp(channel * 1.35, 0, 1).toFixed(4))
+  );
+}
+
+function tintDarkMistColor(baseMistColor, tintRgb) {
+  const tint = rgb255ToUnit(tintRgb);
+  return [
+    Number(clamp(tint[0] * 0.16, 0.02, 0.2).toFixed(4)),
+    Number(clamp(tint[1] * 0.16, 0.02, 0.2).toFixed(4)),
+    Number(clamp(tint[2] * 0.16, 0.02, 0.2).toFixed(4)),
+    baseMistColor[3],
+  ];
+}
+
 function scaleRainRange(range, scale) {
   return range.map((value) => Number((value * scale).toFixed(3)));
 }
@@ -57,8 +91,33 @@ export function getRainVisualProfile({
   rainStrength = 1,
   theme = "light",
   backgroundBlurSteps,
+  rainDropColor,
+  rainHighlightColor,
 } = {}) {
   const baseProfile = rainProfileForTheme(theme);
+  const isDarkTheme = theme === "dark";
+  const hasDropColor = isHexColor(rainDropColor);
+  const hasHighlightColor = isHexColor(rainHighlightColor);
+  const dropRgb = hasDropColor
+    ? hexToRgb255(rainDropColor)
+    : [...baseProfile.fallbackColor];
+  const highlightRgb = hasHighlightColor
+    ? hexToRgb255(rainHighlightColor)
+    : null;
+  const hasCustomDarkColor = isDarkTheme && (hasDropColor || hasHighlightColor);
+  const diffuseLight = hasDropColor
+    ? hasCustomDarkColor
+      ? boostDarkRainLight(dropRgb)
+      : rgb255ToUnit(dropRgb)
+    : baseProfile.raindropDiffuseLight;
+  const specularLight = hasHighlightColor
+    ? hasCustomDarkColor
+      ? boostDarkRainLight(highlightRgb)
+      : rgb255ToUnit(highlightRgb)
+    : baseProfile.raindropSpecularLight;
+  const mistColor = hasCustomDarkColor
+    ? tintDarkMistColor(baseProfile.mistColor, highlightRgb || dropRgb)
+    : baseProfile.mistColor;
   const strength = clamp(
     finiteNumber(rainStrength, 1),
     MIN_RAIN_STRENGTH,
@@ -68,33 +127,38 @@ export function getRainVisualProfile({
   const sizeScale = 0.9 + strength * 0.1;
   const speedScale = 0.9 + strength * 0.12;
   const widthScale = Math.min(1.18, 0.86 + strength * 0.14);
-  const mistAlpha = clamp(baseProfile.mistColor[3] * opacityScale, 0.12, 0.8);
+  const visibilityScale = hasCustomDarkColor ? 1.18 : 1;
+  const fallbackVisibilityScale = hasCustomDarkColor ? 1.25 : 1;
+  const mistAlpha = clamp(mistColor[3] * opacityScale, 0.12, 0.82);
+  const opacityLimit = hasCustomDarkColor
+    ? MAX_RAIN_FX_OPACITY
+    : BASE_RAIN_FX_OPACITY_LIMIT;
 
   return {
-    theme: theme === "dark" ? "dark" : "light",
+    theme: isDarkTheme ? "dark" : "light",
     dropletsPerSecond: Math.round(baseProfile.dropletsPerSecond * strength),
     fallbackDropCount: Math.round(baseProfile.fallbackDropCount * strength),
     fallbackOpacity: clamp(
-      baseProfile.fallbackOpacity * opacityScale,
+      baseProfile.fallbackOpacity * opacityScale * fallbackVisibilityScale,
       0.06,
       MAX_RAIN_FX_OPACITY
     ),
     fallbackAlpha: baseProfile.fallbackAlpha.map((alpha) =>
-      clamp(alpha * opacityScale, 0.04, 0.72)
+      clamp(alpha * opacityScale * fallbackVisibilityScale, 0.04, 0.82)
     ),
-    fallbackColor: [...baseProfile.fallbackColor],
+    fallbackColor: dropRgb,
     fallbackLength: scaleRainRange(baseProfile.fallbackLength, sizeScale),
     fallbackSpeed: scaleRainRange(baseProfile.fallbackSpeed, speedScale),
     fallbackWidth: scaleRainRange(baseProfile.fallbackWidth, widthScale),
     fxOpacity: clamp(
-      baseProfile.fxOpacity * opacityScale,
+      baseProfile.fxOpacity * opacityScale * visibilityScale,
       0.08,
-      MAX_RAIN_FX_OPACITY
+      opacityLimit
     ),
     mistColor: [
-      baseProfile.mistColor[0],
-      baseProfile.mistColor[1],
-      baseProfile.mistColor[2],
+      mistColor[0],
+      mistColor[1],
+      mistColor[2],
       mistAlpha,
     ],
     spawnInterval: [
@@ -111,7 +175,7 @@ export function getRainVisualProfile({
       ),
     ),
     raindropCompose: baseProfile.raindropCompose,
-    raindropDiffuseLight: baseProfile.raindropDiffuseLight,
-    raindropSpecularLight: baseProfile.raindropSpecularLight,
+    raindropDiffuseLight: diffuseLight,
+    raindropSpecularLight: specularLight,
   };
 }

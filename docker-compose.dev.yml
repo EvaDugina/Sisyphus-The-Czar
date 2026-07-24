@@ -5,6 +5,7 @@ services:
       target: development
     container_name: sisyphus-the-czar-dev
     init: true
+    command: npm run dev:container
     environment:
       PORT: "8080"
       DEBUG: "true"

@@ -41,7 +41,7 @@ async function grabVisibleRock(page) {
     await page.mouse.move(point.x, point.y);
     await page.mouse.down();
     try {
-      await expect(status).toContainText(/держите|тащите вместе/, {
+      await expect(status).toContainText(/держите|тяните/, {
         timeout: 1500,
       });
       return;
@@ -70,10 +70,10 @@ test("два браузера работают 10 минут без зависш
   await setRange(first, "bounce", 0);
 
   await second.goto(first.url());
-  await second.locator(".settings-toggle").click();
   await expect(first.getByTestId("session-status")).toContainText("2");
+  await expect(second.locator(".settings-toggle")).toBeHidden();
+  await expect(second.locator("#settings-panel")).toBeHidden();
   await first.locator(".settings-toggle").click();
-  await second.locator(".settings-toggle").click();
   await first.evaluate(() => {
     window.scrollTo(0, Math.max(1, Math.floor(window.innerHeight / 2)));
   });
@@ -88,14 +88,14 @@ test("два браузера работают 10 минут без зависш
     const observer = pages[(iteration + 1) % pages.length];
     await scrollToRock(actor);
     await grabVisibleRock(actor);
-    await expect(actor.getByTestId("session-status")).toContainText(/держите|тащите вместе/);
+    await expect(actor.getByTestId("session-status")).toContainText(/держите|тяните/);
     await expect(observer.getByTestId("session-status")).toContainText("другой участник");
     await actor.mouse.up();
     await expect(actor.getByTestId("session-status")).toContainText("камень свободен");
 
     const gravity = iteration % 2 === 0 ? 1.2 : 1.3;
-    await setRange(actor, "gravity", gravity);
-    await expect(observer.locator('[name="gravity"]')).toHaveValue(String(gravity));
+    await setRange(first, "gravity", gravity);
+    await expect(second.locator('[name="gravity"]')).toHaveValue(String(gravity));
     iteration += 1;
     await actor.waitForTimeout(CONTROL_INTERVAL_MS);
   }
