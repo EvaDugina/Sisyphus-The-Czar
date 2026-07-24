@@ -90,9 +90,8 @@
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: 0;
-  line-height: 0.84;
+  line-height: 1;
   text-align: center;
-  text-shadow: 0 0.08em 0.16em var(--shadow);
   white-space: nowrap;
   transform: translateX(-50%);
   transition: color 420ms ease;
