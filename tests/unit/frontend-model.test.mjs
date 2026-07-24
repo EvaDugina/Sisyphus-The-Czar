@@ -17,6 +17,7 @@ import {
 } from "../../src/lib/rockScale.mjs";
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
+import { formatSummitElapsedMs } from "../../src/lib/summitTimer.mjs";
 import {
   formatSettingsVersionOptionLabel,
   formatSettingsVersionSavedAt,
@@ -151,8 +152,6 @@ test("настройки дождя ограничиваются и исполь
     rainExitEasing: "ease-out",
     rainEnterMs: 1100,
     rainExitMs: 2000,
-    rainAudioEnterMs: 1100,
-    rainAudioExitMs: 2000,
     rainZIndex: 5,
     rainBlendMode: "multiply",
     rainBlurBlendMode: "normal",
@@ -197,8 +196,6 @@ test("настройки дождя ограничиваются и исполь
     rainExitEasing: "linear",
     rainEnterMs: 0,
     rainExitMs: 10000,
-    rainAudioEnterMs: 0,
-    rainAudioExitMs: 10000,
   });
 });
 
@@ -216,8 +213,6 @@ test("mix blend дождя и blur нормализуются независим
         rainExitEasing: "ease-out",
         rainEnterMs: 1100,
         rainExitMs: 2000,
-        rainAudioEnterMs: 1100,
-        rainAudioExitMs: 2000,
         rainZIndex: 5,
       },
     },
@@ -255,7 +250,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v14");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v15");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -357,23 +352,18 @@ test("параметры формул подъёма и падения имею�
   );
 });
 
-test("физические UI-параметры не показывают неиспользуемую начальную скорость", () => {
+test("физика содержит только параметры мира без начальной скорости", () => {
   const physicsGroup = SETTINGS_GROUPS.find((group) => group.title === "Физика");
   const controls = physicsGroup.controls.map((control) => control.name);
-  const visiblePhysicsNames = [
-    "mass",
-    "gravity",
-    "handForce",
-    "pointerInfluence",
-    "bounce",
-    "inertia",
-    "horizontalInertia",
-    "groundFriction",
-    "turbulence",
-  ];
+  const visiblePhysicsNames = ["gravity", "turbulence"];
 
-  assert.deepEqual(controls.slice(0, visiblePhysicsNames.length), visiblePhysicsNames);
-  assert.equal(controls.includes("firstFallVelocity"), false);
+  assert.deepEqual(controls, visiblePhysicsNames);
+  assert.equal(
+    SETTINGS_GROUPS.flatMap(settingsGroupControls).some(
+      (control) => control.name === "firstFallVelocity",
+    ),
+    false,
+  );
   visiblePhysicsNames.forEach((name) => {
     const control = physicsGroup.controls.find((item) => item.name === name);
     assert.equal(control.type, "range");
@@ -446,7 +436,16 @@ test("настройки размера камня есть в UI и получ�
   assert.ok(rockSizeGroup);
   assert.deepEqual(
     rockSizeGroup.controls.map((control) => control.name),
-    ["rockScaleEasing", "rockMinWidthVw", "rockMaxWidthVw"],
+    [
+      "mass",
+      "bounce",
+      "inertia",
+      "horizontalInertia",
+      "groundFriction",
+      "rockScaleEasing",
+      "rockMinWidthVw",
+      "rockMaxWidthVw",
+    ],
   );
   assert.equal(rockScaleEasing.type, "text");
   assert.equal(rockScaleEasing.label, "Кривая размера");
@@ -458,6 +457,8 @@ test("настройки размера камня есть в UI и получ�
 });
 
 test("общие визуальные настройки комнаты есть в UI", () => {
+  const viewGroup = SETTINGS_GROUPS.find((group) => group.title === "Вид");
+  const physicsGroup = SETTINGS_GROUPS.find((group) => group.title === "Физика");
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const sceneHeightScreens = controls.find(
     (control) => control.name === "sceneHeightScreens"
@@ -493,6 +494,14 @@ test("общие визуальные настройки комнаты есть
     SharedRoomSettings.sceneMotionMultiplier({ sceneHeightScreens: 100 }),
     10
   );
+  assert.deepEqual(
+    viewGroup.controls.map((control) => control.name),
+    ["themeMode", "sceneHeightScreens"],
+  );
+  assert.deepEqual(
+    physicsGroup.controls.map((control) => control.name),
+    ["gravity", "turbulence"],
+  );
   assert.equal(rainDropColor.type, "color");
   assert.equal(
     rainDropColor.defaultValue,
@@ -518,7 +527,7 @@ test("размеры рук вынесены в отдельную катего�
   assert.ok(handSizeGroup);
   assert.deepEqual(
     handSizeGroup.controls.map((control) => control.name),
-    ["handWidthVw", "slaveHandWidthPx"],
+    ["handForce", "pointerInfluence", "handWidthVw", "slaveHandWidthPx"],
   );
   assert.deepEqual(
     {
@@ -656,11 +665,11 @@ test("группа дождя содержит общий toggle и blur тём�
   const rainZIndex = rainGroup.controls.find(
     (control) => control.name === "rainZIndex"
   );
-  const rainAudioEnterMs = rainGroup.controls.find(
-    (control) => control.name === "rainAudioEnterMs"
+  const rainEnterMs = rainGroup.controls.find(
+    (control) => control.name === "rainEnterMs"
   );
-  const rainAudioExitMs = rainGroup.controls.find(
-    (control) => control.name === "rainAudioExitMs"
+  const rainExitMs = rainGroup.controls.find(
+    (control) => control.name === "rainExitMs"
   );
 
   assert.equal(rainEnabled.type, "checkbox");
@@ -715,15 +724,15 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   assert.deepEqual(
     {
-      label: rainAudioEnterMs.label,
-      type: rainAudioEnterMs.type,
-      min: rainAudioEnterMs.min,
-      max: rainAudioEnterMs.max,
-      step: rainAudioEnterMs.step,
-      defaultValue: rainAudioEnterMs.defaultValue,
+      label: rainEnterMs.label,
+      type: rainEnterMs.type,
+      min: rainEnterMs.min,
+      max: rainEnterMs.max,
+      step: rainEnterMs.step,
+      defaultValue: rainEnterMs.defaultValue,
     },
     {
-      label: "Звук: появление, мс",
+      label: "Появление, мс",
       type: "number",
       min: 0,
       max: 10000,
@@ -733,15 +742,15 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   assert.deepEqual(
     {
-      label: rainAudioExitMs.label,
-      type: rainAudioExitMs.type,
-      min: rainAudioExitMs.min,
-      max: rainAudioExitMs.max,
-      step: rainAudioExitMs.step,
-      defaultValue: rainAudioExitMs.defaultValue,
+      label: rainExitMs.label,
+      type: rainExitMs.type,
+      min: rainExitMs.min,
+      max: rainExitMs.max,
+      step: rainExitMs.step,
+      defaultValue: rainExitMs.defaultValue,
     },
     {
-      label: "Звук: затухание, мс",
+      label: "Исчезновение, мс",
       type: "number",
       min: 0,
       max: 10000,
@@ -749,6 +758,21 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 2000,
     },
   );
+  assert.equal(
+    rainGroup.controls.some((control) => control.name === "rainAudioEnterMs"),
+    false,
+  );
+  assert.equal(
+    rainGroup.controls.some((control) => control.name === "rainAudioExitMs"),
+    false,
+  );
+});
+
+test("секундомер вершины форматирует накопленное время без сброса часов", () => {
+  assert.equal(formatSummitElapsedMs(0), "00:00:00");
+  assert.equal(formatSummitElapsedMs(3_661_000), "01:01:01");
+  assert.equal(formatSummitElapsedMs(25 * 60 * 60 * 1000), "25:00:00");
+  assert.equal(formatSummitElapsedMs(-1000), "00:00:00");
 });
 
 test("профиль дождя различает светлую и тёмную тему", () => {

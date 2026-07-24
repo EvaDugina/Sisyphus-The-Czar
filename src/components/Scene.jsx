@@ -7,6 +7,13 @@ export function Scene({ scene, trail, rain }) {
   return (
     <main ref={scene.worldRef} className="world" aria-label="Сцена Пути Царей">
       <TrailCanvas canvasRef={trail.trailCanvasRef} />
+      <div
+        className="summit-timer"
+        data-testid="summit-timer"
+        aria-hidden="true"
+      >
+        00:00:00
+      </div>
       <h1 className="top-inscription">СМЕРТИЮ СМЕРТЬ ПОПРАВ</h1>
       <section className="summit">
         <div className="target-zone" aria-hidden="true" />

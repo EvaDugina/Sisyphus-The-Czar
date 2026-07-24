@@ -76,6 +76,30 @@
   white-space: nowrap;
 }
 
+.summit-timer {
+  position: absolute;
+  top: 9.5rem;
+  left: 50vw;
+  z-index: 1;
+  width: calc(100vw - 2rem);
+  margin: 0;
+  overflow: hidden;
+  color: color-mix(in srgb, var(--ink) 20%, transparent);
+  font-family:
+    "Cormorant Garamond", Georgia, "Times New Roman", serif;
+  font-size: 12rem;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+  letter-spacing: 0;
+  line-height: 0.84;
+  text-align: center;
+  text-shadow: 0 0.08em 0.16em var(--shadow);
+  white-space: nowrap;
+  transform: translateX(-50%);
+  transition: color 420ms ease;
+  pointer-events: none;
+}
+
 .title2 {
   top: 11.5rem;
   font-size: 3.2rem;
@@ -405,6 +429,13 @@ body.state-fallingToBottom .hand-cursor {
 
   .top-inscription {
     width: calc(100vw - 1rem);
+    font-size: 4rem;
+  }
+
+  .summit-timer {
+    top: 7.35rem;
+    width: calc(100vw - 1rem);
+    font-size: 5rem;
   }
 
   .title2 {

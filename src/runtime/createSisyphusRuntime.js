@@ -20,6 +20,7 @@ import {
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import { formatSettingsVersionOptionLabel } from "../lib/settingsVersions.mjs";
+import { formatSummitElapsedMs } from "../lib/summitTimer.mjs";
 import {
   normalizeRainSettings,
   normalizeRockScaleSettings,
@@ -40,7 +41,7 @@ const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).ma
   (control) => control.name,
 );
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
-const SETTINGS_SCHEMA_VERSION = 14;
+const SETTINGS_SCHEMA_VERSION = 15;
 const SETTINGS_VERSION_LIMIT = 50;
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
@@ -90,6 +91,8 @@ export function createSisyphusRuntime(elements = {}) {
   const world = elements.world || document.querySelector(".world");
   const topInscription =
     elements.topInscription || document.querySelector(".top-inscription");
+  const summitTimerElement =
+    elements.summitTimer || document.querySelector(".summit-timer");
   const rock = elements.rock || document.querySelector(".rock");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
   const handCursor = elements.handCursor || document.querySelector(".hand-cursor");
@@ -140,6 +143,12 @@ export function createSisyphusRuntime(elements = {}) {
     dirty: true,
     skipNextRecord: false,
   };
+  const summitTimer = {
+    elapsedMs: 0,
+    running: false,
+    serverTime: 0,
+    lastText: "",
+  };
 
   const PHASES = SharedPhysics.PHASES;
 
@@ -154,8 +163,6 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_EXIT_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const DEFAULT_RAIN_ENTER_MS = 1100;
   const DEFAULT_RAIN_EXIT_MS = 2000;
-  const DEFAULT_RAIN_AUDIO_ENTER_MS = 1100;
-  const DEFAULT_RAIN_AUDIO_EXIT_MS = 2000;
   const DEFAULT_RAIN_Z_INDEX = 5;
   const DEFAULT_RAIN_BACKGROUND_BLUR_STEPS = 3;
   const DEFAULT_RAIN_BLUR_PX = 14;
@@ -206,8 +213,6 @@ export function createSisyphusRuntime(elements = {}) {
     rainExitEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainExitEasing,
     rainEnterMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnterMs,
     rainExitMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainExitMs,
-    rainAudioEnterMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainAudioEnterMs,
-    rainAudioExitMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainAudioExitMs,
 
     // След
     trailEnabled: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailEnabled,
@@ -388,6 +393,42 @@ export function createSisyphusRuntime(elements = {}) {
     remotePointers: new Map(),
   };
   collab.enabled = Boolean(collab.sessionId);
+
+  function currentSummitElapsedMs() {
+    if (!summitTimer.running) {
+      return summitTimer.elapsedMs;
+    }
+    const estimatedServerTime = Date.now() - collab.clockOffset;
+    return Math.min(
+      Number.MAX_SAFE_INTEGER,
+      summitTimer.elapsedMs +
+        Math.max(0, estimatedServerTime - summitTimer.serverTime),
+    );
+  }
+
+  function renderSummitTimer() {
+    if (!summitTimerElement) {
+      return;
+    }
+    const text = formatSummitElapsedMs(currentSummitElapsedMs());
+    if (text !== summitTimer.lastText) {
+      summitTimerElement.textContent = text;
+      summitTimer.lastText = text;
+    }
+  }
+
+  function applySummitTimerSnapshot(payload) {
+    summitTimer.elapsedMs = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.max(0, Number(payload.summitElapsedMs) || 0),
+    );
+    summitTimer.running = Boolean(payload.summitTimerRunning);
+    summitTimer.serverTime = Number(payload.serverTime) || Date.now();
+    if (summitTimerElement) {
+      summitTimerElement.dataset.running = String(summitTimer.running);
+    }
+    renderSummitTimer();
+  }
 
   function currentViewport() {
     return SharedViewport.sanitizeViewport({
@@ -803,7 +844,7 @@ export function createSisyphusRuntime(elements = {}) {
         rainLoopAudio.playing = false;
       });
     }
-    fadeRainLoopVolume(RAIN_AUDIO_VOLUME, params.rainAudioEnterMs);
+    fadeRainLoopVolume(RAIN_AUDIO_VOLUME, params.rainEnterMs);
   }
 
   function stopRainLoopSound({ immediate = false } = {}) {
@@ -819,7 +860,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    fadeRainLoopVolume(0, params.rainAudioExitMs, finishRainLoopSound);
+    fadeRainLoopVolume(0, params.rainExitMs, finishRainLoopSound);
   }
 
   function syncRainLoopFadeTiming(changedKeys) {
@@ -831,14 +872,14 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     if (
-      changedKeys.has("rainAudioEnterMs") &&
+      changedKeys.has("rainEnterMs") &&
       rainLoopAudio.fadeTargetVolume > rainLoopAudio.element.volume
     ) {
-      fadeRainLoopVolume(RAIN_AUDIO_VOLUME, params.rainAudioEnterMs);
+      fadeRainLoopVolume(RAIN_AUDIO_VOLUME, params.rainEnterMs);
       return;
     }
     if (
-      changedKeys.has("rainAudioExitMs") &&
+      changedKeys.has("rainExitMs") &&
       rainLoopAudio.fadeTargetVolume < rainLoopAudio.element.volume
     ) {
       stopRainLoopSound();
@@ -1957,8 +1998,6 @@ export function createSisyphusRuntime(elements = {}) {
       rainZIndex: params.rainZIndex.toFixed(0),
       rainEnterMs: params.rainEnterMs.toFixed(0),
       rainExitMs: params.rainExitMs.toFixed(0),
-      rainAudioEnterMs: params.rainAudioEnterMs.toFixed(0),
-      rainAudioExitMs: params.rainAudioExitMs.toFixed(0),
       lineDelay: params.lineDelay.toFixed(2),
       trailMaxPoints: params.trailMaxPoints.toFixed(0),
       trailSampleDist: params.trailSampleDist.toFixed(0),
@@ -2056,8 +2095,6 @@ export function createSisyphusRuntime(elements = {}) {
             rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
             rainEnterMs: DEFAULT_RAIN_ENTER_MS,
             rainExitMs: DEFAULT_RAIN_EXIT_MS,
-            rainAudioEnterMs: DEFAULT_RAIN_AUDIO_ENTER_MS,
-            rainAudioExitMs: DEFAULT_RAIN_AUDIO_EXIT_MS,
             rainZIndex: DEFAULT_RAIN_Z_INDEX,
           },
           isTimingFunctionSupported: (value) =>
@@ -2089,7 +2126,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (
       hasTargetedChanges &&
-      shouldHandleChange("rainAudioEnterMs", "rainAudioExitMs")
+      shouldHandleChange("rainEnterMs", "rainExitMs")
     ) {
       syncRainLoopFadeTiming(changedKeys);
     }
@@ -3526,6 +3563,7 @@ export function createSisyphusRuntime(elements = {}) {
       ? collab.clockOffset * 0.8 + offsetSample * 0.2
       : offsetSample;
     collab.clockOffsetReady = true;
+    applySummitTimerSnapshot(payload);
     applyMasterViewport(payload.masterViewport);
     applySharedPhysics(payload.physics);
     applySharedRoomSettings(payload.roomSettings);
@@ -3761,6 +3799,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     drawTrail();
     renderRemotePointers();
+    renderSummitTimer();
   }
 
   function startSharedRenderLoop() {
@@ -4822,6 +4861,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function initScene() {
     fitTopInscription();
+    renderSummitTimer();
     centerIntroRock();
     collab.imprint = createSummitSharedImprint();
     renderImprint();
@@ -4881,6 +4921,12 @@ export function createSisyphusRuntime(elements = {}) {
     },
     getSessionAudioState: () =>
       sessionRoleAudio.latest ? { ...sessionRoleAudio.latest } : null,
+    getSummitTimerState: () => ({
+      elapsedMs: currentSummitElapsedMs(),
+      running: summitTimer.running,
+      serverTime: summitTimer.serverTime,
+      text: summitTimerElement?.textContent || "",
+    }),
     fitTopInscription,
     drawTrail,
     getRoomSettings: sharedRoomSettingsPayload,

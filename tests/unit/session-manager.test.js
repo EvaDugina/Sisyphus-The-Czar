@@ -269,6 +269,131 @@ test("подвешенный play-старт не двигается до пер
   assert.equal(session.state.dragging, true);
 });
 
+test("секундомер вершины синхронно накапливается, ставится на паузу и переживает restart", () => {
+  const { clock, manager } = setup();
+  clock.value = 1000;
+  const session = manager.createSession({
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: Physics.WORLD_WIDTH / 2,
+      y: 300,
+      suspended: true,
+    },
+  });
+  const master = connect(manager, session, "client-timer-master");
+  const slave = connect(manager, session, "client-timer-slave1");
+
+  session.state.x = session.imprint.x;
+  session.state.y = session.imprint.y;
+  manager.tick();
+
+  const masterStart = master.socket.messages.findLast(
+    (message) => message.type === "session.snapshot"
+  );
+  const slaveStart = slave.socket.messages.findLast(
+    (message) => message.type === "session.snapshot"
+  );
+  assert.equal(masterStart.payload.summitElapsedMs, 0);
+  assert.equal(masterStart.payload.summitTimerRunning, true);
+  assert.equal(masterStart.payload.serverTime, 1000);
+  assert.deepEqual(slaveStart.payload, masterStart.payload);
+
+  clock.value = 3000;
+  session.state.y = session.imprint.y + session.imprint.toleranceY + 1;
+  manager.tick();
+  assert.equal(session.summitElapsedMs, 2000);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
+
+  clock.value = 5000;
+  manager.tick();
+  assert.equal(manager.snapshot(session).summitElapsedMs, 2000);
+
+  clock.value = 6000;
+  session.state.y = session.imprint.y;
+  manager.tick();
+  clock.value = 7500;
+  assert.equal(manager.snapshot(session).summitElapsedMs, 3500);
+  assert.equal(manager.snapshot(session).summitTimerRunning, true);
+
+  clock.value = 8000;
+  manager.restartSession(session, {
+    x: Physics.WORLD_WIDTH / 2,
+    y: Physics.WORLD_HEIGHT,
+    suspended: true,
+  });
+  const restarted = manager.snapshot(session);
+  assert.equal(restarted.summitElapsedMs, 4000);
+  assert.equal(restarted.summitTimerRunning, false);
+});
+
+test("активный секундомер вершины сохраняется и продолжается после restore", () => {
+  const firstSetup = setup();
+  firstSetup.clock.value = 1000;
+  const session = firstSetup.manager.createSession({
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: Physics.WORLD_WIDTH / 2,
+      y: 300,
+      suspended: true,
+    },
+  });
+  session.state.x = session.imprint.x;
+  session.state.y = session.imprint.y;
+  firstSetup.manager.tick();
+
+  firstSetup.clock.value = 3000;
+  const record = firstSetup.manager.serializeSessions()[0];
+  assert.equal(record.summitElapsedMs, 0);
+  assert.equal(record.summitRunningSince, 1000);
+
+  const restoredSetup = setup();
+  restoredSetup.clock.value = 4000;
+  assert.equal(restoredSetup.manager.restoreSessions([record]), 1);
+  const restored = restoredSetup.manager.getSession(record.id);
+  assert.equal(restoredSetup.manager.snapshot(restored).summitElapsedMs, 3000);
+  assert.equal(restoredSetup.manager.snapshot(restored).summitTimerRunning, true);
+
+  restoredSetup.clock.value = 4500;
+  restored.state.y = restored.imprint.y + restored.imprint.toleranceY + 1;
+  restoredSetup.manager.tick();
+  assert.equal(restored.summitElapsedMs, 3500);
+  assert.equal(restoredSetup.manager.snapshot(restored).summitTimerRunning, false);
+});
+
+test("старая сессия внутри вершины получает нулевой таймер на паузе", () => {
+  const { clock, manager } = setup();
+  const restored = manager.restoreSessions([
+    {
+      id: "timerlegacy00000000000",
+      state: {
+        phase: Physics.PHASES.PLAY,
+        x: Physics.WORLD_WIDTH / 2,
+        y: Physics.SUMMIT_IMPRINT_Y,
+        suspended: true,
+      },
+      imprint: Physics.createSummitImprint(),
+      expiresAt: 5000,
+      emptyDeleteAt: null,
+    },
+  ]);
+  assert.equal(restored, 1);
+
+  const session = manager.getSession("timerlegacy00000000000");
+  assert.equal(manager.snapshot(session).summitElapsedMs, 0);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
+
+  clock.value = 1000;
+  manager.tick();
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
+
+  session.state.y = session.imprint.y + session.imprint.toleranceY + 1;
+  manager.tick();
+  clock.value = 2000;
+  session.state.y = session.imprint.y;
+  manager.tick();
+  assert.equal(manager.snapshot(session).summitTimerRunning, true);
+});
+
 test("master сохраняется после restore, leave и новых подключений", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
@@ -312,6 +437,10 @@ test("общие визуальные настройки комнаты норм
       lineWidth: 99,
       rainDropColor: "bad",
       rainHighlightColor: "#ABCDEF",
+      rainEnterMs: 650,
+      rainExitMs: 700,
+      rainAudioEnterMs: 450,
+      rainAudioExitMs: 550,
     },
   });
   const first = connect(manager, session, "client-room-settings-a1");
@@ -321,6 +450,10 @@ test("общие визуальные настройки комнаты норм
   assert.equal(session.roomSettings.slaveHandWidthPx, 96);
   assert.equal(session.roomSettings.trailUnlimited, true);
   assert.equal(session.roomSettings.lineWidth, 60);
+  assert.equal(session.roomSettings.rainEnterMs, 650);
+  assert.equal(session.roomSettings.rainExitMs, 700);
+  assert.equal(Object.hasOwn(session.roomSettings, "rainAudioEnterMs"), false);
+  assert.equal(Object.hasOwn(session.roomSettings, "rainAudioExitMs"), false);
   assert.equal(
     session.roomSettings.rainDropColor,
     RoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor

@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 6;
+  const ROOM_SETTINGS_VERSION = 7;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -86,8 +86,6 @@
     rainExitEasing: "cubic-bezier(0.4, 0, 0.2, 1)",
     rainEnterMs: 1100,
     rainExitMs: 2000,
-    rainAudioEnterMs: 1100,
-    rainAudioExitMs: 2000,
     trailEnabled: true,
     trailReset: false,
     lineDelay: 0.5,
@@ -380,20 +378,6 @@
         source,
         fallbackSource,
         "rainExitMs",
-        timingMin,
-        timingMax
-      ),
-      rainAudioEnterMs: integerSetting(
-        source,
-        fallbackSource,
-        "rainAudioEnterMs",
-        timingMin,
-        timingMax
-      ),
-      rainAudioExitMs: integerSetting(
-        source,
-        fallbackSource,
-        "rainAudioExitMs",
         timingMin,
         timingMax
       ),

@@ -161,6 +161,8 @@ class SessionManager {
     const physics = Physics.sanitizePhysics(payload.physics);
     const roomSettings = RoomSettings.sanitizeRoomSettings(payload.roomSettings);
     const masterViewport = Viewport.sanitizeViewport(payload.masterViewport);
+    const imprint = Physics.createSummitImprint(payload.imprint);
+    const summitInside = Physics.stateInsideImprint(state, imprint);
 
     if (state.phase === Physics.PHASES.WON) {
       state.vx = 0;
@@ -174,8 +176,7 @@ class SessionManager {
       roomSettings,
       masterViewport,
       trail: sanitizeTrail(payload.trail),
-      imprint:
-        Physics.createSummitImprint(payload.imprint),
+      imprint,
       masterClientId: normalizeClientId(
         payload.creatorClientId || payload.masterClientId
       ),
@@ -195,6 +196,9 @@ class SessionManager {
       holdReleaseAt: null,
       stationaryHoldSince: null,
       stationaryHoldPosition: null,
+      summitElapsedMs: 0,
+      summitRunningSince: summitInside ? now : null,
+      summitWasInside: summitInside,
       lastPointer: { vx: 0, vy: 0 },
       lastPointerAt: now,
       dirty: true,
@@ -227,6 +231,8 @@ class SessionManager {
       lastPointer: { ...session.lastPointer },
       lastPointerAt: session.lastPointerAt,
       groundTouchSeq: session.groundTouchSeq,
+      summitElapsedMs: session.summitElapsedMs,
+      summitRunningSince: session.summitRunningSince,
     }));
   }
 
@@ -269,6 +275,23 @@ class SessionManager {
         )
       );
       const masterViewport = Viewport.sanitizeViewport(record.masterViewport);
+      const imprint = Physics.createSummitImprint(record.imprint);
+      const summitInside = Physics.stateInsideImprint(state, imprint);
+      const hasSummitTimer =
+        Object.hasOwn(record, "summitElapsedMs") ||
+        Object.hasOwn(record, "summitRunningSince");
+      const summitElapsedMs = Math.min(
+        Number.MAX_SAFE_INTEGER,
+        Math.max(0, finite(record.summitElapsedMs, 0))
+      );
+      const restoredRunningSince = finite(record.summitRunningSince, null);
+      const summitRunningSince =
+        hasSummitTimer && summitInside
+          ? Math.min(
+              restoredRunningSince === null ? now : restoredRunningSince,
+              now
+            )
+          : null;
       const lastPointer = {
         vx: finite(record.lastPointer?.vx, 0),
         vy: finite(record.lastPointer?.vy, 0),
@@ -302,8 +325,7 @@ class SessionManager {
         roomSettings,
         masterViewport,
         trail: sanitizeTrail(record.trail),
-        imprint:
-          Physics.createSummitImprint(record.imprint),
+        imprint,
         masterClientId: normalizeClientId(record.masterClientId),
         clients: new Map(),
         holders: new Map(),
@@ -323,6 +345,9 @@ class SessionManager {
         holdReleaseAt: null,
         stationaryHoldSince: null,
         stationaryHoldPosition: null,
+        summitElapsedMs,
+        summitRunningSince,
+        summitWasInside: summitInside,
         lastPointer,
         lastPointerAt,
         dirty: true,
@@ -445,6 +470,36 @@ class SessionManager {
       holder.lastMoveAt,
       now
     );
+  }
+
+  summitElapsedAt(session, now = this.now()) {
+    const elapsedMs = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.max(0, finite(session.summitElapsedMs, 0))
+    );
+    if (session.summitRunningSince === null) {
+      return elapsedMs;
+    }
+    return Math.min(
+      Number.MAX_SAFE_INTEGER,
+      elapsedMs + Math.max(0, now - session.summitRunningSince)
+    );
+  }
+
+  syncSummitTimer(session, now = this.now()) {
+    const inside = Physics.stateInsideImprint(session.state, session.imprint);
+    if (inside === session.summitWasInside) {
+      return false;
+    }
+
+    session.summitWasInside = inside;
+    if (inside) {
+      session.summitRunningSince = now;
+    } else {
+      session.summitElapsedMs = this.summitElapsedAt(session, now);
+      session.summitRunningSince = null;
+    }
+    return true;
   }
 
   clearStationaryHold(session) {
@@ -1003,6 +1058,7 @@ class SessionManager {
   }
 
   restartSession(session, payload = {}) {
+    const now = this.now();
     const state = Physics.sanitizeState({
       phase: payload.phase || Physics.PHASES.PLAY,
       x: payload.x ?? Physics.WORLD_WIDTH / 2,
@@ -1029,15 +1085,16 @@ class SessionManager {
     session.firstFallAt = null;
     session.holdReleaseAt = null;
     session.lastPointer = { vx: 0, vy: 0 };
-    session.lastPointerAt = this.now();
+    session.lastPointerAt = now;
     session.accumulator = 0;
-    session.lastTickAt = this.now();
-    session.nextSnapshotAt = this.now();
-    session.lastTrailAt = this.now();
+    session.lastTickAt = now;
+    session.nextSnapshotAt = now;
+    session.lastTrailAt = now;
+    this.syncSummitTimer(session, now);
     session.clients.forEach((client) => {
       client.pointer.mode = "grab";
       client.pointer.visible = false;
-      client.pointer.updatedAt = this.now();
+      client.pointer.updatedAt = now;
     });
 
     this.markChanged(session);
@@ -1213,7 +1270,8 @@ class SessionManager {
         session.groundTouchSeq += 1;
       }
 
-      if (physicsChanged) {
+      const summitTimerChanged = this.syncSummitTimer(session, now);
+      if (physicsChanged || summitTimerChanged) {
         this.markChanged(session);
       } else if (!Physics.isMoving(session.state)) {
         session.accumulator = 0;
@@ -1231,6 +1289,7 @@ class SessionManager {
   }
 
   snapshot(session, includeTrail = false) {
+    const serverTime = this.now();
     const payload = {
       ...session.state,
       physics: { ...session.physics },
@@ -1243,8 +1302,10 @@ class SessionManager {
       requiredHolders: REQUIRED_HOLDERS,
       masterClientId: session.masterClientId,
       groundTouchSeq: session.groundTouchSeq,
+      summitElapsedMs: this.summitElapsedAt(session, serverTime),
+      summitTimerRunning: session.summitRunningSince !== null,
       revision: session.revision,
-      serverTime: this.now(),
+      serverTime,
       expiresAt: session.expiresAt,
     };
     if (includeTrail) {

@@ -641,6 +641,7 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(page).toHaveTitle("ПУТЬ ЦАРЕЙ");
   await expect(page.locator("h1")).toHaveText("СМЕРТИЮ СМЕРТЬ ПОПРАВ");
+  await expect(page.getByTestId("summit-timer")).toHaveText("00:00:00");
   await expect(page.locator(".title")).toHaveText("ПУТЬ ЦАРЕЙ");
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).not.toHaveClass(/is-scroll-locked/);
@@ -668,6 +669,30 @@ test("вход на корень перенаправляет в рабочую 
   expect(startState.pointerEvents).toBe("auto");
   expect(startState.scale).toBeGreaterThan(0);
   expect(startState.scrollable).toBe(true);
+  const summitTimerLayout = await page.getByTestId("summit-timer").evaluate(
+    (timer) => {
+      const title = document.querySelector(".top-inscription");
+      const timerRect = timer.getBoundingClientRect();
+      const timerStyle = getComputedStyle(timer);
+      const titleStyle = getComputedStyle(title);
+      return {
+        centerDelta: Math.abs(
+          timerRect.left + timerRect.width / 2 - window.innerWidth / 2
+        ),
+        fitsViewport: timerRect.width <= window.innerWidth,
+        fontSize: Number.parseFloat(timerStyle.fontSize),
+        titleFontSize: Number.parseFloat(titleStyle.fontSize),
+        zIndex: Number.parseInt(timerStyle.zIndex, 10),
+        titleZIndex: Number.parseInt(titleStyle.zIndex, 10),
+      };
+    }
+  );
+  expect(summitTimerLayout.centerDelta).toBeLessThan(2);
+  expect(summitTimerLayout.fitsViewport).toBe(true);
+  expect(summitTimerLayout.fontSize).toBeGreaterThan(
+    summitTimerLayout.titleFontSize
+  );
+  expect(summitTimerLayout.zIndex).toBeLessThan(summitTimerLayout.titleZIndex);
   await expect.poll(() => documentRequests.length).toBeGreaterThanOrEqual(2);
   expect(documentRequests[0]).toBe("/");
   expect(documentRequests.at(-1)).toMatch(/^\/\?session=[A-Za-z0-9_-]{22}$/);
@@ -703,7 +728,7 @@ test("вход на корень перенаправляет в рабочую 
     )
     .toBe(false);
   await openControlGroup(page, "Физика");
-  await page.locator('[name="mass"]').hover();
+  await page.locator('[name="gravity"]').hover();
   await expect(page.locator(".hint .katex").first()).toBeVisible();
   await expect(page.locator(".hint__formulas code")).toHaveCount(0);
   await setRange(page, "gravity", 10);
@@ -1303,7 +1328,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -1321,8 +1346,6 @@ test("два браузера видят один камень и поднима
   await setField(first, "rainExitEasing", "cubic-bezier(0.7, 0, 0.3, 1)");
   await setField(first, "rainEnterMs", 650);
   await setField(first, "rainExitMs", 700);
-  await setField(first, "rainAudioEnterMs", 450);
-  await setField(first, "rainAudioExitMs", 550);
   await setField(first, "rainZIndex", 9);
   await setField(first, "rainDropColor", "#336699");
   await setField(first, "rainHighlightColor", "#ffcc00");
@@ -1333,8 +1356,8 @@ test("два браузера видят один камень и поднима
   await expect(first.locator('[data-output="rainBlurSaturation"]')).toHaveText("125%");
   await expect(first.locator('[data-output="rainEnterMs"]')).toHaveText("650");
   await expect(first.locator('[data-output="rainExitMs"]')).toHaveText("700");
-  await expect(first.locator('[data-output="rainAudioEnterMs"]')).toHaveText("450");
-  await expect(first.locator('[data-output="rainAudioExitMs"]')).toHaveText("550");
+  await expect(first.locator('[name="rainAudioEnterMs"]')).toHaveCount(0);
+  await expect(first.locator('[name="rainAudioExitMs"]')).toHaveCount(0);
   await expect(first.locator('[data-output="rainZIndex"]')).toHaveText("9");
   await expect(first.locator('[name="rainBlendMode"]')).toHaveValue("screen");
   await expect(first.locator('[name="rainBlurBlendMode"]')).toHaveValue("overlay");
@@ -1342,13 +1365,11 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
           rainEnterMs: stored.rainEnterMs,
-          rainAudioEnterMs: stored.rainAudioEnterMs,
-          rainAudioExitMs: stored.rainAudioExitMs,
           rainExitEasing: stored.rainExitEasing,
           rainExitMs: stored.rainExitMs,
           rainBlendMode: stored.rainBlendMode,
@@ -1365,8 +1386,6 @@ test("два браузера видят один камень и поднима
     .toEqual({
       rainEnterEasing: "cubic-bezier(0.12, 0.8, 0.2, 1)",
       rainEnterMs: 650,
-      rainAudioEnterMs: 450,
-      rainAudioExitMs: 550,
       rainExitEasing: "cubic-bezier(0.7, 0, 0.3, 1)",
       rainExitMs: 700,
       rainBlendMode: "screen",
@@ -1433,7 +1452,7 @@ test("два браузера видят один камень и поднима
   await setCheckbox(first, "rainEnabled", true);
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   const rainAudioFadeIn = await first.evaluate(() => getRainAudioState());
-  expect(rainAudioFadeIn.fadeDurationMs).toBe(450);
+  expect(rainAudioFadeIn.fadeDurationMs).toBe(650);
   expect(rainAudioFadeIn.fadeActive).toBe(true);
   expect(rainAudioFadeIn.fadeTargetVolume).toBe(0.42);
   expect(rainAudioFadeIn.playing).toBe(true);
@@ -1461,7 +1480,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -1496,7 +1515,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1504,7 +1523,7 @@ test("два браузера видят один камень и поднима
     .toBe(true);
   await setCheckbox(first, "rainEnabled", false);
   const rainAudioFadeOut = await first.evaluate(() => getRainAudioState());
-  expect(rainAudioFadeOut.fadeDurationMs).toBe(550);
+  expect(rainAudioFadeOut.fadeDurationMs).toBe(700);
   expect(rainAudioFadeOut.fadeActive).toBe(true);
   expect(rainAudioFadeOut.fadeTargetVolume).toBe(0);
   expect(rainAudioFadeOut.playing).toBe(true);
@@ -1513,7 +1532,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v15") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1535,16 +1554,17 @@ test("два браузера видят один камень и поднима
     .poll(() => first.evaluate(() => getRainAudioState()))
     .toMatchObject({ fadeActive: false, playing: false, volume: 0 });
   await openControlGroup(first, "Физика");
-  await setRange(first, "mass", 10);
   await setRange(first, "gravity", 10);
-  await setRange(first, "handForce", 500);
-  await setRange(first, "pointerInfluence", 1.8);
+  await setRange(first, "turbulence", 0.3);
+  await openControlGroup(first, "Камень");
+  await setRange(first, "mass", 10);
   await setRange(first, "bounce", 0.1);
   await setRange(first, "inertia", 0.8);
   await setRange(first, "horizontalInertia", 0.3);
   await setRange(first, "groundFriction", 0.2);
-  await setRange(first, "turbulence", 0.3);
   await openControlGroup(first, "Руки");
+  await setRange(first, "handForce", 500);
+  await setRange(first, "pointerInfluence", 1.8);
   await setRange(first, "handWidthVw", 40);
   await setRange(first, "slaveHandWidthPx", 36);
   await expect(first.locator('[data-output="handWidthVw"]')).toHaveText("40.0vw");
@@ -1563,6 +1583,16 @@ test("два браузера видят один камень и поднима
   await expectReadyAtBottom(second);
   await expect.poll(() => first.evaluate(() => collab.clientRole)).toBe("master");
   await expect.poll(() => second.evaluate(() => collab.clientRole)).toBe("slave");
+  await expect(first.getByTestId("summit-timer")).toHaveText("00:00:00");
+  await expect(second.getByTestId("summit-timer")).toHaveText("00:00:00");
+  await expect(first.getByTestId("summit-timer")).toHaveAttribute(
+    "data-running",
+    "false"
+  );
+  await expect(second.getByTestId("summit-timer")).toHaveAttribute(
+    "data-running",
+    "false"
+  );
   await expect(second.locator(".settings-toggle")).toBeHidden();
   await expect(second.locator(".settings-toggle")).toBeDisabled();
   await expect(second.locator("#settings-panel")).toBeHidden();
@@ -1738,6 +1768,7 @@ test("два браузера видят один камень и поднима
     .toBeLessThanOrEqual(3);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await grabVisibleRock(second);
+  await expect.poll(() => second.evaluate(() => collab.hasControl)).toBe(true);
   await moveSharedDragToBottom(first, second);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await expect(second.getByTestId("session-status")).toContainText("силы хватает");
