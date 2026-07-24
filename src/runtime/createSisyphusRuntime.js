@@ -579,7 +579,7 @@ export function createSisyphusRuntime(elements = {}) {
     playRoleAudio(slaveClickAudio.element, "slave");
   }
 
-  function playRockClickSound() {
+  function playRockPointerDownSound() {
     if (pointerRole(collab.clientRole) === "slave") {
       playSlaveClickSound();
       return;
@@ -4411,6 +4411,8 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    playRockPointerDownSound();
+
     if (collab.enabled) {
       beginSharedDrag(event);
       return;
@@ -4617,7 +4619,6 @@ export function createSisyphusRuntime(elements = {}) {
   listen(sessionShareToggle, "click", copyCurrentSessionLink);
   listen(rock, "pointerenter", enterRock);
   listen(rock, "pointerleave", leaveRock);
-  listen(rock, "click", playRockClickSound);
   listen(rock, "pointerdown", startDrag);
   listen(rock, "pointermove", moveDrag);
   listen(rock, "pointerup", stopDrag);

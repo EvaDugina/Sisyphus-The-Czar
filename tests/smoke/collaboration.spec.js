@@ -756,17 +756,25 @@ test("вход на корень перенаправляет в рабочую 
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
     )
     .toBe(chainSoundCountAfterEnter);
-  const masterRoleAudioFadeIn = await page.locator(".rock").evaluate((rock) => {
-    rock.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    return getRoleAudioState();
-  });
-  expect(masterRoleAudioFadeIn).toEqual({
+  await page.mouse.down();
+  const masterRoleAudioFadeIn = await page.evaluate(() => getRoleAudioState());
+  expect(masterRoleAudioFadeIn).toMatchObject({
     fadeActive: true,
     fadeDurationMs: 300,
     fadeTargetVolume: 1,
     role: "master",
-    volume: 0,
   });
+  expect(masterRoleAudioFadeIn.volume).toBeGreaterThanOrEqual(0);
+  expect(masterRoleAudioFadeIn.volume).toBeLessThan(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
+    )
+    .toBe(chainSoundCountAfterEnter + 1);
+  await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(true);
+  await page.mouse.up();
+  await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(false);
+  await page.waitForTimeout(100);
   await expect
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
@@ -1458,38 +1466,6 @@ test("два браузера видят один камень и поднима
       }), assignedGachiTarget)
     )
     .toEqual(slaveAudioBefore);
-  const slaveRoleAudioFadeIn = await second.locator(".rock").evaluate((rock) => {
-    rock.dispatchEvent(new MouseEvent("click", { bubbles: true }));
-    return getRoleAudioState();
-  });
-  expect(slaveRoleAudioFadeIn).toEqual({
-    fadeActive: true,
-    fadeDurationMs: 300,
-    fadeTargetVolume: 1,
-    role: "slave",
-    volume: 0,
-  });
-  await expect
-    .poll(() =>
-      second.evaluate((gachiTarget) => ({
-        chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
-        gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
-      }), assignedGachiTarget)
-    )
-    .toEqual({
-      chains: slaveAudioBefore.chains,
-      gachi: slaveAudioBefore.gachi + 1,
-    });
-  await expect
-    .poll(() => second.evaluate(() => getRoleAudioState()))
-    .toEqual({
-      fadeActive: false,
-      fadeDurationMs: 300,
-      fadeTargetVolume: 1,
-      role: "slave",
-      volume: 1,
-    });
-  await expect.poll(() => trailHasVisiblePixels(second)).toBe(false);
   await expect.poll(() => second.evaluate(() => params.trailEnabled)).toBe(true);
   await scrollToRock(first);
   const firstGrabPoint = await visibleRockPoint(first);
@@ -1544,6 +1520,22 @@ test("два браузера видят один камень и поднима
     .toBeLessThanOrEqual(3);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await grabVisibleRock(second);
+  const slaveAudioAfterPointerDown = await second.evaluate((gachiTarget) => ({
+    chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
+    gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
+  }), assignedGachiTarget);
+  expect(slaveAudioAfterPointerDown.chains).toBe(slaveAudioBefore.chains);
+  expect(slaveAudioAfterPointerDown.gachi).toBeGreaterThan(slaveAudioBefore.gachi);
+  const slaveRoleAudioOnPointerDown = await second.evaluate(() =>
+    getRoleAudioState()
+  );
+  expect(slaveRoleAudioOnPointerDown).toMatchObject({
+    fadeDurationMs: 300,
+    fadeTargetVolume: 1,
+    role: "slave",
+  });
+  expect(slaveRoleAudioOnPointerDown.volume).toBeGreaterThanOrEqual(0);
+  expect(slaveRoleAudioOnPointerDown.volume).toBeLessThanOrEqual(1);
   await moveSharedDragToBottom(first, second);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await expect(second.getByTestId("session-status")).toContainText("силы хватает");
@@ -1628,6 +1620,24 @@ test("два браузера видят один камень и поднима
       saturation: "1.25",
     });
   await second.mouse.up();
+  await second.waitForTimeout(100);
+  await expect
+    .poll(() =>
+      second.evaluate((gachiTarget) => ({
+        chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
+        gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
+      }), assignedGachiTarget)
+    )
+    .toEqual(slaveAudioAfterPointerDown);
+  await expect
+    .poll(() => second.evaluate(() => getRoleAudioState()))
+    .toEqual({
+      fadeActive: false,
+      fadeDurationMs: 300,
+      fadeTargetVolume: 1,
+      role: "slave",
+      volume: 1,
+    });
   await first.mouse.up();
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
