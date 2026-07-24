@@ -5,9 +5,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v16";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v17";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v16",
   "sisyphus-czar-settings-v15",
   "sisyphus-czar-settings-v14",
   "sisyphus-czar-settings-v13",
@@ -53,8 +54,9 @@ const PHYSICS_FORMULAS = {
     "v_{x,release} = v_{x,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
     "v_{y,release} = v_{y,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_y}{10} \\cdot k",
     "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
-    "v_y = F_{surplus} > 0 ? -v_{lift} : v_{drop}",
-    "v_{lift/drop} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{|F_{surplus}|}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
+    "r = clamp\\left(\\frac{F_{hands}}{F_g}, 0, 1\\right)",
+    "v_y = F_{surplus} > 0 ? -v_{lift} : -v_{min} \\cdot bezier(r)",
+    "v_{lift} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{F_{surplus}}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
   ],
   gravity: [
     "F_g = m \\cdot g",
@@ -70,8 +72,14 @@ const PHYSICS_FORMULAS = {
     "v_{x,release} = v_{x,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
     "v_{y,release} = v_{y,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_y}{10} \\cdot k",
     "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
-    "v_y = F_{surplus} > 0 ? -v_{lift} : v_{drop}",
-    "v_{lift/drop} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{|F_{surplus}|}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
+    "r = clamp\\left(\\frac{F_{hands}}{F_g}, 0, 1\\right)",
+    "v_y = F_{surplus} > 0 ? -v_{lift} : -v_{min} \\cdot bezier(r)",
+    "v_{lift} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{F_{surplus}}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
+  ],
+  handForceDeficitEasing: [
+    "r = clamp\\left(\\frac{F_{hands}}{F_g}, 0, 1\\right)",
+    "k_{deficit} = bezier(r)",
+    "v_{deficit} = v_{min} \\cdot k_{deficit}",
   ],
   pointerInfluence: [
     "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
@@ -433,8 +441,17 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: 50,
         output: "50",
-        hint: "Сила одной руки в шкале от 1 до 1000. Руки суммируются: камень поднимается только когда их суммарная сила больше тяжести, а избыток силы ускоряет подъём.",
+        hint: "Сила одной руки в шкале от 1 до 1000. Руки суммируются: при нехватке силы камень поднимается медленнее, а избыток силы ускоряет подъём.",
         formulas: PHYSICS_FORMULAS.handForce,
+      },
+      {
+        name: "handForceDeficitEasing",
+        label: "Кривая нехватки силы",
+        type: "text",
+        defaultValue: DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
+        spellCheck: false,
+        hint: "cubic-bezier кривая замедления подъёма, когда суммарная сила рук меньше силы тяжести. Невалидное значение заменяется последней корректной или стандартной кривой.",
+        formulas: PHYSICS_FORMULAS.handForceDeficitEasing,
       },
       {
         name: "pointerInfluence",

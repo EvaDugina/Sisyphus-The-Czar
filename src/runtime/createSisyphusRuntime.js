@@ -41,7 +41,7 @@ const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).ma
   (control) => control.name,
 );
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
-const SETTINGS_SCHEMA_VERSION = 16;
+const SETTINGS_SCHEMA_VERSION = 17;
 const SETTINGS_VERSION_LIMIT = 50;
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
@@ -169,6 +169,7 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_BLUR_SATURATION = 1.1;
   const DEFAULT_RAIN_BLEND_MODE = "multiply";
   const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
+  const DEFAULT_THEME_TRANSITION_MS = 420;
   const DEFAULT_THEME_MODE = SharedRoomSettings.DEFAULT_ROOM_SETTINGS.themeMode;
   const SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION = 0.5;
 
@@ -192,6 +193,8 @@ export function createSisyphusRuntime(elements = {}) {
     handWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
     slaveHandWidthPx:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
+    handForceDeficitEasing:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
 
     // Дождь
     rainEnabled: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnabled,
@@ -238,6 +241,9 @@ export function createSisyphusRuntime(elements = {}) {
     glow: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.glow,
     glowColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.glowColor,
   };
+  let handForceDeficitCurve =
+    SharedRoomSettings.parseCubicBezier(params.handForceDeficitEasing) ||
+    SharedPhysics.DEFAULT_FORCE_DEFICIT_CURVE;
 
   const settingsVersions = {
     entries: [],
@@ -1237,6 +1243,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function sceneMotionOptions() {
     return {
+      forceDeficitCurve: handForceDeficitCurve,
       motionScale: SharedRoomSettings.sceneMotionMultiplier(params),
     };
   }
@@ -1531,7 +1538,18 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function setTheme(theme) {
+  function setTheme(theme, options = {}) {
+    const requestedDuration = Number(options.durationMs);
+    const durationMs = reducedMotion.matches
+      ? 0
+      : clamp(
+          Number.isFinite(requestedDuration)
+            ? requestedDuration
+            : DEFAULT_THEME_TRANSITION_MS,
+          0,
+          10000,
+        );
+    body.style.setProperty("--theme-transition-duration", `${durationMs}ms`);
     const previousRainTheme = currentRainTheme();
     body.classList.toggle("theme-light", theme === "light");
     body.classList.toggle("theme-dark", theme === "dark");
@@ -1544,6 +1562,16 @@ export function createSisyphusRuntime(elements = {}) {
 
   function resolveTheme(autoTheme) {
     return params.themeMode === "auto" ? autoTheme : params.themeMode;
+  }
+
+  function returnThemeTransitionDuration(atReturnPlace, options = {}) {
+    if (options.immediate === true) {
+      return 0;
+    }
+    if (params.themeMode !== "auto") {
+      return DEFAULT_THEME_TRANSITION_MS;
+    }
+    return atReturnPlace ? params.rainEnterMs : params.rainExitMs;
   }
 
   function setPhase(phase) {
@@ -2158,6 +2186,9 @@ export function createSisyphusRuntime(elements = {}) {
       params,
       SharedRoomSettings.sanitizeRoomSettings(readRoomSettingsControls(), params),
     );
+    handForceDeficitCurve =
+      SharedRoomSettings.parseCubicBezier(params.handForceDeficitEasing) ||
+      SharedPhysics.DEFAULT_FORCE_DEFICIT_CURVE;
     params.themeMode = normalizeThemeMode(params.themeMode, DEFAULT_THEME_MODE);
     Object.assign(
       params,
@@ -2222,7 +2253,7 @@ export function createSisyphusRuntime(elements = {}) {
         immediate: fullRefresh,
       });
     }
-    if (shouldHandleChange("themeMode")) {
+    if (shouldHandleChange("themeMode", "rainEnterMs", "rainExitMs")) {
       syncReturnTheme();
     }
     if (
@@ -3742,7 +3773,11 @@ export function createSisyphusRuntime(elements = {}) {
 
     const snapshotAtReturnPlace = sharedSnapshotAtReturnPlace(snapshot);
     setPhase(snapshot.phase);
-    setTheme(sharedSnapshotTheme(snapshot));
+    setTheme(sharedSnapshotTheme(snapshot), {
+      durationMs: returnThemeTransitionDuration(snapshotAtReturnPlace, {
+        immediate: snapshot.phase === PHASES.INTRO,
+      }),
+    });
     if (snapshot.phase === PHASES.INTRO) {
       if (previousPhase !== PHASES.INTRO) {
         clearFirstFallTimer();
@@ -4505,7 +4540,7 @@ export function createSisyphusRuntime(elements = {}) {
   function syncReturnTheme() {
     if (motion.phase === PHASES.INTRO) {
       motion.wasAtReturnPlace = false;
-      setTheme(resolveTheme("dark"));
+      setTheme(resolveTheme("dark"), { durationMs: 0 });
       hideReturnRain({ immediate: true });
       return;
     }
@@ -4515,7 +4550,9 @@ export function createSisyphusRuntime(elements = {}) {
     const nextTheme = resolveTheme(atReturnPlace ? "light" : "dark");
     const enteredReturnPlace = atReturnPlace && !motion.wasAtReturnPlace;
     motion.wasAtReturnPlace = atReturnPlace;
-    setTheme(nextTheme);
+    setTheme(nextTheme, {
+      durationMs: returnThemeTransitionDuration(atReturnPlace),
+    });
     syncReturnRain(atReturnPlace);
     if (enteredReturnPlace && nextTheme === "light") {
       scrollToSceneTopOnReturn();

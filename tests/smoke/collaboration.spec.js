@@ -376,12 +376,16 @@ async function expectReturnImprintScrollsToTop(page) {
     syncReturnTheme();
     return {
       bodyClassAfterSync: document.body.className,
+      themeTransitionDuration: getComputedStyle(document.body)
+        .getPropertyValue("--theme-transition-duration")
+        .trim(),
       x,
       y,
     };
   });
 
   expect(returnState.bodyClassAfterSync).toContain("theme-light");
+  expect(returnState.themeTransitionDuration).toBe("1100ms");
   expect(Number.isFinite(returnState.x)).toBe(true);
   expect(Number.isFinite(returnState.y)).toBe(true);
   await expect
@@ -400,6 +404,21 @@ async function expectReturnImprintScrollsToTop(page) {
     )
     .toBe(true);
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  const exitState = await page.evaluate(({ x, y }) => {
+    setPosition(bounds.maxX / 2, bounds.maxY);
+    syncReturnTheme();
+    const result = {
+      bodyClassAfterExit: document.body.className,
+      themeTransitionDuration: getComputedStyle(document.body)
+        .getPropertyValue("--theme-transition-duration")
+        .trim(),
+    };
+    setPosition(x, y);
+    syncReturnTheme();
+    return result;
+  }, returnState);
+  expect(exitState.bodyClassAfterExit).toContain("theme-dark");
+  expect(exitState.themeTransitionDuration).toBe("2000ms");
   await page.evaluate(() => window.__restoreScrollTo?.());
 }
 
@@ -619,6 +638,52 @@ test("общая и проходная прозрачность траектор
   expect(result.lineAlpha).toBeGreaterThanOrEqual(24);
   expect(result.lineAlpha).toBeLessThanOrEqual(27);
   expect(result.additiveAlpha).toBe(255);
+
+  await context.close();
+});
+
+test("кривая нехватки силы замедляет фактический подъём камня", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+  });
+  const page = await context.newPage();
+
+  await page.goto("/");
+  await expectReadyAtBottom(page);
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Руки");
+  const easingInput = page.locator('[name="handForceDeficitEasing"]');
+  await expect(easingInput).toHaveValue("cubic-bezier(0.42, 0, 1, 1)");
+
+  const sampleLiftDistance = () =>
+    page.evaluate(() => {
+      params.mass = 10;
+      params.gravity = 10;
+      params.handForce = 50;
+      updateBounds();
+      const startY = bounds.maxY * 0.75;
+      setPosition(bounds.maxX / 2, startY);
+      motion.phase = SharedPhysics.PHASES.PLAY;
+      motion.suspended = false;
+      motion.dragging = true;
+      motion.dragTargetX = motion.x;
+      motion.dragTargetY = Math.max(0, startY - 500);
+      window.__sisyphusTestApi.applyDragTargetMovement(0.001, 1);
+      const distance = startY - motion.y;
+      motion.dragging = false;
+      return distance;
+    });
+
+  const easedDistance = await sampleLiftDistance();
+  await setField(page, "handForceDeficitEasing", "cubic-bezier(0, 0, 1, 1)");
+  const linearDistance = await sampleLiftDistance();
+  await setField(page, "handForceDeficitEasing", "invalid");
+
+  expect(easedDistance).toBeGreaterThan(0);
+  expect(linearDistance).toBeGreaterThan(easedDistance);
+  await expect(easingInput).toHaveValue("cubic-bezier(0, 0, 1, 1)");
 
   await context.close();
 });
@@ -1333,7 +1398,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -1372,7 +1437,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -1504,7 +1569,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -1539,7 +1604,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1556,7 +1621,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v16") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v17") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1588,6 +1653,11 @@ test("два браузера видят один камень и поднима
   await setRange(first, "groundFriction", 0.2);
   await openControlGroup(first, "Руки");
   await setRange(first, "handForce", 500);
+  await setField(
+    first,
+    "handForceDeficitEasing",
+    "cubic-bezier(0, 0, 1, 1)",
+  );
   await setRange(first, "pointerInfluence", 1.8);
   await setRange(first, "handWidthVw", 40);
   await setRange(first, "slaveHandWidthPx", 36);
@@ -1629,6 +1699,9 @@ test("два браузера видят один камень и поднима
   await expect(second.locator('[name="rainMaxVolume"]')).toHaveValue("3");
   await expect(second.locator('[name="handWidthVw"]')).toHaveValue("40");
   await expect(second.locator('[name="slaveHandWidthPx"]')).toHaveValue("36");
+  await expect(second.locator('[name="handForceDeficitEasing"]')).toHaveValue(
+    "cubic-bezier(0, 0, 1, 1)",
+  );
   await setField(second, "rainExitMs", 300);
   await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("700");
   await expect(first.locator('[name="rainExitMs"]')).toHaveValue("700");

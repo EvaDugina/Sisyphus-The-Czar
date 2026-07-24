@@ -127,12 +127,58 @@ test("подъём зависит от превышения суммарной �
   assert.equal(Physics.canLift(heavy, 2), true);
   assert.equal(Physics.dragLiftSpeed(heavy, 1), 0);
   assert.ok(Physics.dragDropSpeed(heavy, 1) >= Physics.DRAG_LIFT.minSpeed);
-  assert.ok(Physics.dragVerticalSpeed(heavy, 1) > 0);
+  assert.equal(Physics.handForceRatio(heavy, 1), 0.9);
+  assert.ok(Physics.dragDeficitLiftSpeed(heavy, 1) > 0);
+  assert.ok(
+    Physics.dragDeficitLiftSpeed(heavy, 1) < Physics.DRAG_LIFT.minSpeed
+  );
+  assert.ok(Physics.dragVerticalSpeed(heavy, 1) < 0);
   assert.ok(Physics.dragVerticalSpeed(heavy, 2) < 0);
   assert.ok(Physics.dragLiftSpeed(heavy, 2) >= Physics.DRAG_LIFT.minSpeed);
   assert.ok(
     Physics.dragLiftSpeed(strong, 1) >
       Physics.dragLiftSpeed(barelyEnough, 1)
+  );
+});
+
+test("кривая нехватки силы управляет скоростью замедленного подъёма", () => {
+  const linear = [0, 0, 1, 1];
+  const heavy = Physics.sanitizePhysics({
+    mass: 10,
+    gravity: 10,
+    handForce: 50,
+  });
+  const equal = Physics.sanitizePhysics({
+    mass: 10,
+    gravity: 10,
+    handForce: 100,
+  });
+
+  assert.equal(Physics.cubicBezierProgress(0, linear), 0);
+  assert.ok(Math.abs(Physics.cubicBezierProgress(0.5, linear) - 0.5) < 1e-6);
+  assert.equal(Physics.cubicBezierProgress(1, linear), 1);
+  assert.ok(
+    Physics.cubicBezierProgress(
+      0.5,
+      Physics.DEFAULT_FORCE_DEFICIT_CURVE
+    ) < 0.5
+  );
+  assert.equal(Physics.dragDeficitLiftSpeed(heavy, 0), 0);
+  assert.ok(
+    Math.abs(
+      Physics.dragDeficitLiftSpeed(heavy, 1, {
+        forceDeficitCurve: linear,
+      }) -
+        Physics.DRAG_LIFT.minSpeed * 0.5
+    ) < 1e-4
+  );
+  assert.equal(
+    Physics.dragDeficitLiftSpeed(equal, 1),
+    Physics.DRAG_LIFT.minSpeed
+  );
+  assert.equal(
+    Physics.dragVerticalSpeed(equal, 1),
+    -Physics.DRAG_LIFT.minSpeed
   );
 });
 

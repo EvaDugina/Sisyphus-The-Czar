@@ -36,6 +36,8 @@
     maxSpeed: 2800,
     loadFloor: 0.1,
   });
+  const DEFAULT_FORCE_DEFICIT_CURVE = Object.freeze([0.42, 0, 1, 1]);
+  const CUBIC_BEZIER_SOLVE_ITERATIONS = 24;
   const PHYSICS_VERSION = 10;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const HORIZONTAL_INERTIA_EFFECT_SCALE = 0.001;
@@ -89,6 +91,51 @@
       return 1;
     }
     return Math.max(0, finiteNumber(options.motionScale, 1));
+  }
+
+  function cubicCoordinate(t, point1, point2) {
+    const inverse = 1 - t;
+    return (
+      3 * inverse * inverse * t * point1 +
+      3 * inverse * t * t * point2 +
+      t * t * t
+    );
+  }
+
+  function normalizeCubicBezierPoints(points) {
+    if (!Array.isArray(points) || points.length !== 4) {
+      return DEFAULT_FORCE_DEFICIT_CURVE;
+    }
+    const clean = points.map(Number);
+    if (
+      !clean.every(Number.isFinite) ||
+      clean[0] < 0 ||
+      clean[0] > 1 ||
+      clean[2] < 0 ||
+      clean[2] > 1
+    ) {
+      return DEFAULT_FORCE_DEFICIT_CURVE;
+    }
+    return clean;
+  }
+
+  function cubicBezierProgress(progress, points = DEFAULT_FORCE_DEFICIT_CURVE) {
+    const targetX = clamp(finiteNumber(progress, 0), 0, 1);
+    if (targetX === 0 || targetX === 1) {
+      return targetX;
+    }
+    const [x1, y1, x2, y2] = normalizeCubicBezierPoints(points);
+    let lower = 0;
+    let upper = 1;
+    for (let index = 0; index < CUBIC_BEZIER_SOLVE_ITERATIONS; index += 1) {
+      const midpoint = (lower + upper) / 2;
+      if (cubicCoordinate(midpoint, x1, x2) < targetX) {
+        lower = midpoint;
+      } else {
+        upper = midpoint;
+      }
+    }
+    return clamp(cubicCoordinate((lower + upper) / 2, y1, y2), 0, 1);
   }
 
   function hasOwn(source, key) {
@@ -212,6 +259,15 @@
     return totalHandForce(physics, handCount) - gravityForce(physics);
   }
 
+  function handForceRatio(physics, handCount = 1) {
+    const params = sanitizePhysics(physics);
+    return clamp(
+      totalHandForce(params, handCount) / gravityForce(params),
+      0,
+      1
+    );
+  }
+
   function canLift(physics, handCount = 1) {
     return liftForceSurplus(physics, handCount) > 0;
   }
@@ -266,10 +322,22 @@
     return speed * motionScale(options);
   }
 
+  function dragDeficitLiftSpeed(physics, handCount = 1, options) {
+    const params = sanitizePhysics(physics);
+    if (liftForceSurplus(params, handCount) > 0) {
+      return 0;
+    }
+    const multiplier = cubicBezierProgress(
+      handForceRatio(params, handCount),
+      options?.forceDeficitCurve
+    );
+    return DRAG_LIFT.minSpeed * multiplier * motionScale(options);
+  }
+
   function dragVerticalSpeed(physics, handCount = 1, options) {
     return canLift(physics, handCount)
       ? -dragLiftSpeed(physics, handCount, options)
-      : dragDropSpeed(physics, handCount, options);
+      : -dragDeficitLiftSpeed(physics, handCount, options);
   }
 
   function sanitizeImprint(input) {
@@ -488,6 +556,7 @@
     WORLD_HEIGHT,
     PHYSICS_VERSION,
     DRAG_LIFT,
+    DEFAULT_FORCE_DEFICIT_CURVE,
     IMPRINT_TOLERANCE_FRACTION,
     FIXED_STEP_SECONDS,
     FIRST_FALL_DELAY_MS,
@@ -502,13 +571,16 @@
     effectiveHandForce,
     totalHandForce,
     liftForceSurplus,
+    handForceRatio,
     canLift,
     handAcceleration,
     groundFrictionAcceleration,
     maxHoldMs,
     dragLiftSpeed,
     dragDropSpeed,
+    dragDeficitLiftSpeed,
     dragVerticalSpeed,
+    cubicBezierProgress,
     sanitizeImprint,
     createImprintAtState,
     createSummitImprint,

@@ -254,7 +254,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v16");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v17");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -304,6 +304,9 @@ test("параметры формул подъёма и падения имею�
   const mass = controls.find((control) => control.name === "mass");
   const gravity = controls.find((control) => control.name === "gravity");
   const handForce = controls.find((control) => control.name === "handForce");
+  const handForceDeficitEasing = controls.find(
+    (control) => control.name === "handForceDeficitEasing",
+  );
   const pointerInfluence = controls.find(
     (control) => control.name === "pointerInfluence",
   );
@@ -351,6 +354,25 @@ test("параметры формул подъёма и падения имею�
     false,
   );
   assert.ok(handForce.formulas.some((formula) => formula.includes("F_{hand}")));
+  assert.deepEqual(
+    {
+      label: handForceDeficitEasing.label,
+      type: handForceDeficitEasing.type,
+      defaultValue: handForceDeficitEasing.defaultValue,
+      spellCheck: handForceDeficitEasing.spellCheck,
+    },
+    {
+      label: "Кривая нехватки силы",
+      type: "text",
+      defaultValue: "cubic-bezier(0.42, 0, 1, 1)",
+      spellCheck: false,
+    },
+  );
+  assert.ok(
+    handForceDeficitEasing.formulas.some((formula) =>
+      formula.includes("bezier(r)"),
+    ),
+  );
   assert.ok(
     pointerInfluence.formulas.some((formula) => formula.includes("\\cdot p")),
   );
@@ -535,7 +557,13 @@ test("размеры рук вынесены в отдельную катего�
   assert.ok(handSizeGroup);
   assert.deepEqual(
     handSizeGroup.controls.map((control) => control.name),
-    ["handForce", "pointerInfluence", "handWidthVw", "slaveHandWidthPx"],
+    [
+      "handForce",
+      "handForceDeficitEasing",
+      "pointerInfluence",
+      "handWidthVw",
+      "slaveHandWidthPx",
+    ],
   );
   assert.deepEqual(
     {
@@ -707,7 +735,11 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 8);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 9);
+  assert.equal(
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
+    "cubic-bezier(0.42, 0, 1, 1)",
+  );
   assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainMaxVolume, 0.5);
   assert.equal(rainBlendMode.label, "Mix blend дождя");
   assert.equal(rainBlendMode.type, "select");

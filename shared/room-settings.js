@@ -12,11 +12,13 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 8;
+  const ROOM_SETTINGS_VERSION = 9;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
   const DEFAULT_ROCK_SCALE_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
+  const DEFAULT_HAND_FORCE_DEFICIT_EASING =
+    "cubic-bezier(0.42, 0, 1, 1)";
   const ROCK_WIDTH_VW_LIMITS = Object.freeze([1, 150]);
 
   const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
@@ -72,6 +74,7 @@
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     handWidthVw: 14.375,
     slaveHandWidthPx: 16,
+    handForceDeficitEasing: DEFAULT_HAND_FORCE_DEFICIT_EASING,
     rainEnabled: false,
     rainStrength: 1,
     rainMaxVolume: 0.5,
@@ -298,6 +301,11 @@
         slaveHandMin,
         slaveHandMax
       ),
+      handForceDeficitEasing: cubicBezierSetting(
+        source,
+        fallbackSource,
+        "handForceDeficitEasing"
+      ),
       rainEnabled: boolSetting(source, fallbackSource, "rainEnabled"),
       rainStrength: finiteSetting(
         source,
@@ -501,6 +509,7 @@
     ROOM_SETTINGS_LIMITS,
     DEFAULT_ROOM_SETTINGS,
     normalizeHexColor,
+    parseCubicBezier,
     migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,

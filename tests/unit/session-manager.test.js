@@ -433,6 +433,7 @@ test("общие визуальные настройки комнаты норм
       sceneHeightScreens: 200,
       handWidthVw: 120,
       slaveHandWidthPx: 200,
+      handForceDeficitEasing: "not-a-curve",
       trailUnlimited: true,
       lineWidth: 99,
       rainDropColor: "bad",
@@ -449,6 +450,10 @@ test("общие визуальные настройки комнаты норм
   assert.equal(session.roomSettings.sceneHeightScreens, 100);
   assert.equal(session.roomSettings.handWidthVw, 90);
   assert.equal(session.roomSettings.slaveHandWidthPx, 96);
+  assert.equal(
+    session.roomSettings.handForceDeficitEasing,
+    RoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing
+  );
   assert.equal(session.roomSettings.trailUnlimited, true);
   assert.equal(session.roomSettings.lineWidth, 60);
   assert.equal(session.roomSettings.rainEnterMs, 650);
@@ -492,6 +497,7 @@ test("roomSettings.update синхронизирует размер руки и 
     sceneHeightScreens: 50,
     handWidthVw: 42.5,
     slaveHandWidthPx: 40,
+    handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
     rainMaxVolume: 2.5,
     rainDropColor: "#123456",
     rainHighlightColor: "#fedcba",
@@ -511,6 +517,7 @@ test("roomSettings.update синхронизирует размер руки и 
       sceneHeightScreens: 50,
       handWidthVw: 42.5,
       slaveHandWidthPx: 40,
+      handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
       rainMaxVolume: 2.5,
       rainDropColor: "#123456",
       rainHighlightColor: "#fedcba",

@@ -48,6 +48,7 @@ body {
   --target: rgba(138, 107, 49, 0.18);
   --target-line: rgba(138, 107, 49, 0.56);
   --shadow: rgba(23, 20, 17, 0.18);
+  --theme-transition-duration: 420ms;
 
   min-height: var(--scene-height-vh, 1000vh);
   margin: 0;
@@ -56,8 +57,8 @@ body {
   color: var(--ink);
   user-select: none;
   transition:
-    background-color 420ms ease,
-    color 420ms ease;
+    background-color var(--theme-transition-duration) ease,
+    color var(--theme-transition-duration) ease;
 }
 
 body.theme-dark {
