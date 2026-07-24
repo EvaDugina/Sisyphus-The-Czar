@@ -9,6 +9,7 @@ const {
   SessionManager,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
+  STATIONARY_HOLD_RELEASE_MS,
 } = require("./session-manager");
 const { SessionStore } = require("./session-store");
 
@@ -164,6 +165,11 @@ function createService(options = {}) {
         process.env.SLIP_DELAY_MAX_MS ??
         SLIP_DELAY_MAX_MS
     ),
+    stationaryHoldReleaseMs: Number(
+      options.stationaryHoldReleaseMs ??
+        process.env.STATIONARY_HOLD_RELEASE_MS ??
+        STATIONARY_HOLD_RELEASE_MS
+    ),
     sessionStorePath: String(
       options.sessionStorePath ?? process.env.SESSION_STORE_PATH ?? ""
     ).trim(),
@@ -191,6 +197,7 @@ function createService(options = {}) {
       emptyGraceMs: config.emptyGraceMs,
       slipDelayMinMs: config.slipDelayMinMs,
       slipDelayMaxMs: config.slipDelayMaxMs,
+      stationaryHoldReleaseMs: config.stationaryHoldReleaseMs,
       audioLeadMs: options.audioLeadMs,
       soundRandom: options.soundRandom,
       logger: log,

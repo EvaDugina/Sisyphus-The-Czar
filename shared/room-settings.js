@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 5;
+  const ROOM_SETTINGS_VERSION = 6;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -57,6 +57,7 @@
     trailSampleDist: [1, 40],
     lineWidth: [1, 60],
     lineOpacity: [0, 1],
+    linePassOpacity: [0, 1],
     dashLength: [1, 40],
     dashGap: [0, 40],
     glow: [0, 40],
@@ -99,6 +100,7 @@
     useGradient: false,
     lineWidth: 2,
     lineOpacity: 0.9,
+    linePassOpacity: 1,
     dashStyle: "solid",
     dashLength: 12,
     dashGap: 8,
@@ -258,6 +260,8 @@
     const [sampleMin, sampleMax] = ROOM_SETTINGS_LIMITS.trailSampleDist;
     const [lineWidthMin, lineWidthMax] = ROOM_SETTINGS_LIMITS.lineWidth;
     const [lineOpacityMin, lineOpacityMax] = ROOM_SETTINGS_LIMITS.lineOpacity;
+    const [linePassOpacityMin, linePassOpacityMax] =
+      ROOM_SETTINGS_LIMITS.linePassOpacity;
     const [dashLengthMin, dashLengthMax] = ROOM_SETTINGS_LIMITS.dashLength;
     const [dashGapMin, dashGapMax] = ROOM_SETTINGS_LIMITS.dashGap;
     const [glowMin, glowMax] = ROOM_SETTINGS_LIMITS.glow;
@@ -437,6 +441,13 @@
         "lineOpacity",
         lineOpacityMin,
         lineOpacityMax
+      ),
+      linePassOpacity: finiteSetting(
+        source,
+        fallbackSource,
+        "linePassOpacity",
+        linePassOpacityMin,
+        linePassOpacityMax
       ),
       dashStyle: enumSetting(
         source,

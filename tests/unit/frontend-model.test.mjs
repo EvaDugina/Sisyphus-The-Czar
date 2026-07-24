@@ -255,7 +255,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v13");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v14");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -567,6 +567,12 @@ test("траектория включена по умолчанию и выкл�
   const trailMaxPoints = controls.find(
     (control) => control.name === "trailMaxPoints"
   );
+  const lineOpacity = controls.find(
+    (control) => control.name === "lineOpacity"
+  );
+  const linePassOpacity = controls.find(
+    (control) => control.name === "linePassOpacity"
+  );
 
   assert.ok(trailGroup);
   assert.ok(trailStyleGroup);
@@ -581,6 +587,25 @@ test("траектория включена по умолчанию и выкл�
   assert.equal(trailEnabled.defaultChecked, true);
   assert.equal(trailReset.label, "Сбрасывать при касании земли");
   assert.equal(trailMaxPoints.label, "Длина траектории");
+  assert.equal(lineOpacity.label, "Общая непрозрачность");
+  assert.equal(linePassOpacity.label, "Непрозрачность линии");
+  assert.equal(linePassOpacity.defaultValue, 1);
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings({
+      lineOpacity: 0.4,
+    }),
+    {
+      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+      lineOpacity: 0.4,
+      linePassOpacity: 1,
+    }
+  );
+  assert.equal(
+    SharedRoomSettings.sanitizeRoomSettings({
+      linePassOpacity: 2,
+    }).linePassOpacity,
+    1
+  );
 });
 
 test("настройка трения земли заменяет скольжение", () => {

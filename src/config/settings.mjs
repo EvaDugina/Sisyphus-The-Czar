@@ -5,9 +5,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v13";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v14";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v13",
   "sisyphus-czar-settings-v12",
   "sisyphus-czar-settings-v11",
   "sisyphus-czar-settings-v10",
@@ -154,14 +155,25 @@ const TRAIL_STYLE_CONTROLS = [
   },
   {
     name: "lineOpacity",
-    label: "Непрозрачность",
+    label: "Общая непрозрачность",
     type: "range",
     min: 0,
     max: 1,
     step: 0.05,
     defaultValue: DEFAULT_ROOM_SETTINGS.lineOpacity,
     output: DEFAULT_ROOM_SETTINGS.lineOpacity.toFixed(2),
-    hint: "Общая видимость линии. Меньше значение — бледнее и прозрачнее.",
+    hint: "Прозрачность всего слоя траектории после накопления проходов.",
+  },
+  {
+    name: "linePassOpacity",
+    label: "Непрозрачность линии",
+    type: "range",
+    min: 0,
+    max: 1,
+    step: 0.05,
+    defaultValue: DEFAULT_ROOM_SETTINGS.linePassOpacity,
+    output: DEFAULT_ROOM_SETTINGS.linePassOpacity.toFixed(2),
+    hint: "Вклад одного прохода линии. Повторные проходы по одному месту складываются до полной непрозрачности.",
   },
   {
     name: "dashStyle",

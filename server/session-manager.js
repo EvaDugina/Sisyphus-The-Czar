@@ -21,6 +21,8 @@ const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const REQUIRED_HOLDERS = 1;
 const SLIP_DELAY_MIN_MS = 500;
 const SLIP_DELAY_MAX_MS = 2000;
+const STATIONARY_HOLD_RELEASE_MS = 200;
+const STATIONARY_POSITION_EPSILON = 0.01;
 const DEFAULT_AUDIO_LEAD_MS = 200;
 
 function finite(value, fallback = 0) {
@@ -133,6 +135,10 @@ class SessionManager {
       this.slipDelayMinMs,
       finite(options.slipDelayMaxMs, SLIP_DELAY_MAX_MS)
     );
+    this.stationaryHoldReleaseMs = Math.max(
+      0,
+      finite(options.stationaryHoldReleaseMs, STATIONARY_HOLD_RELEASE_MS)
+    );
     this.audioLeadMs = Math.max(
       0,
       finite(options.audioLeadMs, DEFAULT_AUDIO_LEAD_MS)
@@ -187,6 +193,8 @@ class SessionManager {
       groundTouchSeq: Math.max(0, Number(payload.groundTouchSeq) || 0),
       firstFallAt: null,
       holdReleaseAt: null,
+      stationaryHoldSince: null,
+      stationaryHoldPosition: null,
       lastPointer: { vx: 0, vy: 0 },
       lastPointerAt: now,
       dirty: true,
@@ -313,6 +321,8 @@ class SessionManager {
         groundTouchSeq: Math.max(0, Number(record.groundTouchSeq) || 0),
         firstFallAt: null,
         holdReleaseAt: null,
+        stationaryHoldSince: null,
+        stationaryHoldPosition: null,
         lastPointer,
         lastPointerAt,
         dirty: true,
@@ -437,6 +447,38 @@ class SessionManager {
     );
   }
 
+  clearStationaryHold(session) {
+    session.stationaryHoldSince = null;
+    session.stationaryHoldPosition = null;
+  }
+
+  updateStationaryHold(session, now = this.now()) {
+    const state = session.state;
+    const isOnGround = state.y >= Physics.WORLD_HEIGHT - STATIONARY_POSITION_EPSILON;
+    if (
+      !state.dragging ||
+      this.holderCount(session) === 0 ||
+      isOnGround ||
+      Physics.stateInsideImprint(state, session.imprint)
+    ) {
+      this.clearStationaryHold(session);
+      return false;
+    }
+
+    const previous = session.stationaryHoldPosition;
+    const moved =
+      !previous ||
+      Math.abs(state.x - previous.x) > STATIONARY_POSITION_EPSILON ||
+      Math.abs(state.y - previous.y) > STATIONARY_POSITION_EPSILON;
+    if (moved) {
+      session.stationaryHoldPosition = { x: state.x, y: state.y };
+      session.stationaryHoldSince = now;
+      return false;
+    }
+
+    return now - session.stationaryHoldSince >= this.stationaryHoldReleaseMs;
+  }
+
   syncCooperativeDrag(session, now = this.now()) {
     const holderIds = this.holderIds(session);
     const state = session.state;
@@ -466,6 +508,7 @@ class SessionManager {
       } else if (wasDragging && state.phase === Physics.PHASES.PLAY) {
         state.vy = Math.max(0, state.vy);
       }
+      this.updateStationaryHold(session, now);
       return;
     }
 
@@ -495,6 +538,7 @@ class SessionManager {
     };
     session.lastPointerAt = now;
     session.firstFallAt = null;
+    this.updateStationaryHold(session, now);
   }
 
   removeHolder(session, clientId, options = {}) {
@@ -788,6 +832,7 @@ class SessionManager {
     }
     session.firstFallAt = null;
     session.holdReleaseAt = null;
+    this.clearStationaryHold(session);
     session.lastPointer = { vx: 0, vy: 0 };
     session.lastPointerAt = this.now();
     Physics.beginFirstFall(state, session.physics, sceneMotionOptions(session));
@@ -1113,6 +1158,15 @@ class SessionManager {
         }
       });
 
+      if (this.updateStationaryHold(session, now)) {
+        this.holderIds(session).forEach((clientId) => {
+          this.removeHolder(session, clientId, {
+            notify: true,
+            reason: "stationary",
+          });
+        });
+      }
+
       this.holderIds(session).forEach((clientId) => {
         const holder = session.holders.get(clientId);
         if (
@@ -1292,5 +1346,6 @@ module.exports = {
   REQUIRED_HOLDERS,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
+  STATIONARY_HOLD_RELEASE_MS,
   DEFAULT_AUDIO_LEAD_MS,
 };

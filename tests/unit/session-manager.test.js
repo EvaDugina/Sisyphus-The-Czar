@@ -16,6 +16,7 @@ const {
   REQUIRED_HOLDERS,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
+  STATIONARY_HOLD_RELEASE_MS,
 } = require("../../server/session-manager");
 
 class FakeSocket {
@@ -43,6 +44,7 @@ function setup(options = {}) {
     soundRandom: options.soundRandom || (() => 0.5),
     slipDelayMinMs: options.slipDelayMinMs,
     slipDelayMaxMs: options.slipDelayMaxMs,
+    stationaryHoldReleaseMs: options.stationaryHoldReleaseMs ?? 10_000,
     audioLeadMs: options.audioLeadMs,
   });
   return { clock, manager };
@@ -356,6 +358,8 @@ test("roomSettings.update синхронизирует размер руки и 
     trailUnlimited: true,
     trailMaxPoints: 1500,
     lineWidth: 3,
+    lineOpacity: 0.8,
+    linePassOpacity: 0.1,
   };
 
   manager.handleMessage(session, first.client, {
@@ -372,6 +376,8 @@ test("roomSettings.update синхронизирует размер руки и 
       trailUnlimited: true,
       trailMaxPoints: 1500,
       lineWidth: 3,
+      lineOpacity: 0.8,
+      linePassOpacity: 0.1,
     },
   });
 
@@ -1084,6 +1090,152 @@ test("границы соскальзывания можно зафиксиро�
   });
 
   assert.equal(manager.slipDelayMs(), 10_000);
+});
+
+test("неподвижный камень в воздухе выпадает из всех рук через 200 мс", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 10_000,
+    slipDelayMaxMs: 10_000,
+    stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
+  });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
+    physics: { turbulence: 0 },
+  });
+  const first = connect(manager, session, "client-still-drop-01");
+  const second = connect(manager, session, "client-still-drop-02");
+
+  manager.acquireControl(session, first.client, { x: 500, y: 700 });
+  manager.acquireControl(session, second.client, { x: 500, y: 700 });
+  assert.equal(STATIONARY_HOLD_RELEASE_MS, 200);
+
+  clock.value = STATIONARY_HOLD_RELEASE_MS - 1;
+  manager.tick();
+  assert.equal(session.holders.size, 2);
+
+  clock.value = STATIONARY_HOLD_RELEASE_MS;
+  manager.tick();
+  assert.equal(session.holders.size, 0);
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.controllerId, null);
+  assert.equal(
+    first.socket.messages.findLast(
+      (message) => message.type === "control.slipped"
+    ).payload.reason,
+    "stationary"
+  );
+  assert.equal(
+    second.socket.messages.findLast(
+      (message) => message.type === "control.slipped"
+    ).payload.reason,
+    "stationary"
+  );
+
+  clock.value += 20;
+  manager.tick();
+  assert.ok(session.state.y > 700);
+});
+
+test("фактическое движение камня перезапускает таймер неподвижного удержания", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 10_000,
+    slipDelayMaxMs: 10_000,
+    stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
+  });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
+  });
+  const holder = connect(manager, session, "client-still-reset01");
+  manager.acquireControl(session, holder.client, { x: 500, y: 700 });
+
+  clock.value = 150;
+  manager.moveControl(session, holder.client, { x: 510, y: 700 });
+
+  clock.value = 349;
+  manager.tick();
+  assert.equal(session.holders.size, 1);
+
+  clock.value = 350;
+  manager.tick();
+  assert.equal(session.holders.size, 0);
+});
+
+test("неподвижное удержание на земле не запускает дополнительное выпадение", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 10_000,
+    slipDelayMaxMs: 10_000,
+    stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
+  });
+  const session = manager.createSession({
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: 500,
+      y: Physics.WORLD_HEIGHT,
+    },
+  });
+  const holder = connect(manager, session, "client-ground-hold01");
+  manager.acquireControl(session, holder.client, {
+    x: 500,
+    y: Physics.WORLD_HEIGHT,
+  });
+
+  clock.value = 1000;
+  manager.tick();
+
+  assert.equal(session.holders.size, 1);
+  assert.equal(session.stationaryHoldSince, null);
+});
+
+test("победный отпечаток блокирует stationary и случайное выпадение", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 500,
+    slipDelayMaxMs: 500,
+    stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
+  });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
+    imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
+  });
+  const holder = connect(manager, session, "client-imprint-hold1");
+  manager.acquireControl(session, holder.client, { x: 500, y: 100 });
+
+  clock.value = 1000;
+  manager.tick();
+
+  assert.equal(session.holders.size, 1);
+  assert.equal(session.stationaryHoldSince, null);
+});
+
+test("движущийся камень сохраняет независимое случайное соскальзывание", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 500,
+    slipDelayMaxMs: 500,
+    stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
+  });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
+  });
+  const holder = connect(manager, session, "client-moving-slip01");
+  manager.acquireControl(session, holder.client, { x: 500, y: 700 });
+
+  for (const [time, x] of [
+    [150, 510],
+    [300, 520],
+    [450, 530],
+    [501, 540],
+  ]) {
+    clock.value = time;
+    manager.moveControl(session, holder.client, { x, y: 700 });
+  }
+  manager.tick();
+
+  assert.equal(session.holders.size, 0);
+  assert.equal(
+    holder.socket.messages.findLast(
+      (message) => message.type === "control.slipped"
+    ).payload.reason,
+    "slipped"
+  );
 });
 
 test("соскальзывание одной руки пересчитывает оставшуюся суммарную силу", () => {

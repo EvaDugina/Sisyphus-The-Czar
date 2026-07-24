@@ -550,6 +550,79 @@ test("траектория сбрасывается при касании зем
   await context.close();
 });
 
+test("общая и проходная прозрачность траектории применяются раздельно", async ({
+  browser,
+}) => {
+  const context = await browser.newContext({
+    viewport: { width: 1280, height: 900 },
+  });
+  const page = await context.newPage();
+
+  await page.goto("/");
+  await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expectReadyAtBottom(page);
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Траектория");
+  await setRange(page, "lineOpacity", 0.4);
+  await setRange(page, "linePassOpacity", 0.1);
+
+  const result = await page.evaluate(() => {
+    params.lineColor = "#ffffff";
+    params.useGradient = false;
+    params.dashStyle = "solid";
+    params.glow = 0;
+    params.lineWidth = 12;
+    params.lineCap = "butt";
+    trail.points = [
+      { x: window.scrollX + 100, y: window.scrollY + 100 },
+      { x: window.scrollX + 300, y: window.scrollY + 100 },
+    ];
+    trail.dirty = true;
+    window.__sisyphusTestApi.drawTrail();
+
+    const canvas = document.querySelector(".trail");
+    const ratio = canvas.width / window.innerWidth;
+    const context2d = canvas.getContext("2d");
+    const pixel = context2d.getImageData(
+      Math.round(200 * ratio),
+      Math.round(100 * ratio),
+      1,
+      1
+    ).data;
+
+    const additiveCanvas = document.createElement("canvas");
+    additiveCanvas.width = 4;
+    additiveCanvas.height = 4;
+    const additiveContext = additiveCanvas.getContext("2d");
+    additiveContext.globalCompositeOperation = "lighter";
+    additiveContext.globalAlpha = 0.1;
+    additiveContext.fillStyle = "#ffffff";
+    for (let pass = 0; pass < 10; pass += 1) {
+      additiveContext.fillRect(0, 0, 4, 4);
+    }
+
+    return {
+      additiveAlpha: additiveContext.getImageData(2, 2, 1, 1).data[3],
+      canvasOpacity: getComputedStyle(canvas).opacity,
+      lineAlpha: pixel[3],
+      lineOpacity: params.lineOpacity,
+      linePassOpacity: params.linePassOpacity,
+    };
+  });
+
+  expect(result).toMatchObject({
+    canvasOpacity: "0.4",
+    lineOpacity: 0.4,
+    linePassOpacity: 0.1,
+  });
+  expect(result.lineAlpha).toBeGreaterThanOrEqual(24);
+  expect(result.lineAlpha).toBeLessThanOrEqual(27);
+  expect(result.additiveAlpha).toBe(255);
+
+  await context.close();
+});
+
 test("вход на корень перенаправляет в рабочую сессию", async ({ browser }) => {
   test.setTimeout(90_000);
   const context = await browser.newContext();
@@ -1230,7 +1303,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -1269,7 +1342,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -1388,7 +1461,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -1423,7 +1496,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -1440,7 +1513,7 @@ test("два браузера видят один камень и поднима
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v13") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v14") || "{}"
         );
         return stored.rainEnabled;
       })

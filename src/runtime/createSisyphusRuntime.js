@@ -40,7 +40,7 @@ const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).ma
   (control) => control.name,
 );
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
-const SETTINGS_SCHEMA_VERSION = 13;
+const SETTINGS_SCHEMA_VERSION = 14;
 const SETTINGS_VERSION_LIMIT = 50;
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
@@ -224,6 +224,7 @@ export function createSisyphusRuntime(elements = {}) {
     useGradient: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.useGradient,
     lineWidth: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineWidth,
     lineOpacity: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineOpacity,
+    linePassOpacity: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.linePassOpacity,
     dashStyle: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashStyle,
     dashLength: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashLength,
     dashGap: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashGap,
@@ -1963,6 +1964,7 @@ export function createSisyphusRuntime(elements = {}) {
       trailSampleDist: params.trailSampleDist.toFixed(0),
       lineWidth: params.lineWidth.toFixed(0),
       lineOpacity: params.lineOpacity.toFixed(2),
+      linePassOpacity: params.linePassOpacity.toFixed(2),
       dashLength: params.dashLength.toFixed(0),
       dashGap: params.dashGap.toFixed(0),
       glow: params.glow.toFixed(0),
@@ -3979,6 +3981,7 @@ export function createSisyphusRuntime(elements = {}) {
     trailCanvas.style.mixBlendMode = body.classList.contains("theme-dark")
       ? "normal"
       : params.blendMode;
+    trailCanvas.style.opacity = String(params.lineOpacity);
   }
 
   function resetTrail() {
@@ -4121,6 +4124,43 @@ export function createSisyphusRuntime(elements = {}) {
     trailCtx.fill();
   }
 
+  function quadraticSegmentLength(start, control, end) {
+    let length = 0;
+    let previousX = start.x;
+    let previousY = start.y;
+    for (let step = 1; step <= 8; step += 1) {
+      const t = step / 8;
+      const inverse = 1 - t;
+      const x =
+        inverse * inverse * start.x +
+        2 * inverse * t * control.x +
+        t * t * end.x;
+      const y =
+        inverse * inverse * start.y +
+        2 * inverse * t * control.y +
+        t * t * end.y;
+      length += Math.hypot(x - previousX, y - previousY);
+      previousX = x;
+      previousY = y;
+    }
+    return length;
+  }
+
+  function strokeTrailSegment(start, control, end, dashOffset) {
+    trailCtx.lineDashOffset = -dashOffset;
+    trailCtx.beginPath();
+    trailCtx.moveTo(start.x, start.y);
+    if (control) {
+      trailCtx.quadraticCurveTo(control.x, control.y, end.x, end.y);
+    } else {
+      trailCtx.lineTo(end.x, end.y);
+    }
+    trailCtx.stroke();
+    return control
+      ? quadraticSegmentLength(start, control, end)
+      : Math.hypot(end.x - start.x, end.y - start.y);
+  }
+
   function drawTrail() {
     ensureTrailCanvasSize();
     if (!trail.dirty) {
@@ -4143,7 +4183,8 @@ export function createSisyphusRuntime(elements = {}) {
       -window.scrollX * trail.pixelRatio,
       -window.scrollY * trail.pixelRatio
     );
-    trailCtx.globalAlpha = params.lineOpacity;
+    trailCtx.globalAlpha = params.linePassOpacity;
+    trailCtx.globalCompositeOperation = "lighter";
     trailCtx.lineCap = params.lineCap;
     trailCtx.lineJoin = params.lineJoin;
     trailCtx.lineWidth = scaledVisualPixel(params.lineWidth);
@@ -4160,18 +4201,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    // Линия строится кривыми Безье через середины отрезков — плавная кривая.
-    trailCtx.setLineDash(trailDashArray());
-    trailCtx.beginPath();
-    trailCtx.moveTo(points[0].x, points[0].y);
-    for (let i = 1; i < points.length - 1; i++) {
-      const midX = (points[i].x + points[i + 1].x) / 2;
-      const midY = (points[i].y + points[i + 1].y) / 2;
-      trailCtx.quadraticCurveTo(points[i].x, points[i].y, midX, midY);
-    }
     const last = points[points.length - 1];
-    trailCtx.lineTo(last.x, last.y);
-
     if (params.useGradient) {
       const first = points[0];
       const grad = trailCtx.createLinearGradient(
@@ -4187,8 +4217,26 @@ export function createSisyphusRuntime(elements = {}) {
       trailCtx.strokeStyle = params.lineColor;
     }
 
-    trailCtx.stroke();
+    // Отдельные additive-сегменты позволяют повторным проходам накапливать альфу.
+    trailCtx.setLineDash(trailDashArray());
+    let segmentStart = points[0];
+    let dashOffset = 0;
+    for (let i = 1; i < points.length - 1; i++) {
+      const segmentEnd = {
+        x: (points[i].x + points[i + 1].x) / 2,
+        y: (points[i].y + points[i + 1].y) / 2,
+      };
+      dashOffset += strokeTrailSegment(
+        segmentStart,
+        points[i],
+        segmentEnd,
+        dashOffset
+      );
+      segmentStart = segmentEnd;
+    }
+    strokeTrailSegment(segmentStart, null, last, dashOffset);
     trailCtx.setLineDash([]);
+    trailCtx.lineDashOffset = 0;
     drawTrailStartPoint(points[0]);
     trailCtx.restore();
   }
@@ -4834,6 +4882,7 @@ export function createSisyphusRuntime(elements = {}) {
     getSessionAudioState: () =>
       sessionRoleAudio.latest ? { ...sessionRoleAudio.latest } : null,
     fitTopInscription,
+    drawTrail,
     getRoomSettings: sharedRoomSettingsPayload,
     getRainAudioState: () => ({
       fadeDurationMs: rainLoopAudio.fadeDurationMs,
