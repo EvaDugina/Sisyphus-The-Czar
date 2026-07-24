@@ -4,6 +4,7 @@ const crypto = require("node:crypto");
 const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
 const GachiSounds = require("../shared/gachi-sounds");
+const ChainSounds = require("../shared/chain-sounds");
 const Viewport = require("../shared/viewport");
 
 const SNAPSHOT_INTERVAL_MS = 1000 / 20;
@@ -20,6 +21,7 @@ const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const REQUIRED_HOLDERS = 1;
 const SLIP_DELAY_MIN_MS = 500;
 const SLIP_DELAY_MAX_MS = 2000;
+const DEFAULT_AUDIO_LEAD_MS = 200;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -123,6 +125,18 @@ class SessionManager {
     this.now = options.now || Date.now;
     this.random = options.random || Math.random;
     this.soundRandom = options.soundRandom || Math.random;
+    this.slipDelayMinMs = Math.max(
+      0,
+      finite(options.slipDelayMinMs, SLIP_DELAY_MIN_MS)
+    );
+    this.slipDelayMaxMs = Math.max(
+      this.slipDelayMinMs,
+      finite(options.slipDelayMaxMs, SLIP_DELAY_MAX_MS)
+    );
+    this.audioLeadMs = Math.max(
+      0,
+      finite(options.audioLeadMs, DEFAULT_AUDIO_LEAD_MS)
+    );
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
     this.slaveSoundAssignments = new Map();
@@ -400,8 +414,8 @@ class SessionManager {
 
   slipDelayMs() {
     return Math.round(
-      SLIP_DELAY_MIN_MS +
-        this.random() * (SLIP_DELAY_MAX_MS - SLIP_DELAY_MIN_MS)
+      this.slipDelayMinMs +
+        this.random() * (this.slipDelayMaxMs - this.slipDelayMinMs)
     );
   }
 
@@ -694,6 +708,9 @@ class SessionManager {
       case "pointer.update":
         this.updatePointer(session, client, payload);
         break;
+      case "audio.play":
+        this.playSessionAudio(session, client);
+        break;
       case "ping":
         this.sendTo(client, "pong", {
           serverTime: this.now(),
@@ -703,6 +720,47 @@ class SessionManager {
       default:
         this.sendError(client, "unknown_type", "Неизвестный тип сообщения");
     }
+  }
+
+  playSessionAudio(session, client) {
+    if (session.state.phase !== Physics.PHASES.PLAY) {
+      return false;
+    }
+    const role = clientRole(client.role);
+    const chainSoundIndex = Math.min(
+      ChainSounds.CHAIN_SOUND_FILENAMES.length - 1,
+      Math.max(
+        0,
+        Math.floor(
+          this.soundRandom() * ChainSounds.CHAIN_SOUND_FILENAMES.length
+        )
+      )
+    );
+    const filename =
+      role === "master"
+        ? ChainSounds.CHAIN_SOUND_FILENAMES[chainSoundIndex]
+        : client.gachiSoundFilename;
+    const validFilename =
+      role === "master"
+        ? ChainSounds.isChainSoundFilename(filename)
+        : GachiSounds.isGachiSoundFilename(filename);
+    if (!validFilename) {
+      return false;
+    }
+
+    const now = this.now();
+    const payload = {
+      eventId: crypto.randomBytes(12).toString("base64url"),
+      actorId: client.id,
+      role,
+      filename,
+      playAt: now + this.audioLeadMs,
+      serverTime: now,
+    };
+    session.clients.forEach((participant) => {
+      this.sendTo(participant, "audio.play", payload);
+    });
+    return payload;
   }
 
   startSession(session, payload = {}) {
@@ -1234,4 +1292,5 @@ module.exports = {
   REQUIRED_HOLDERS,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
+  DEFAULT_AUDIO_LEAD_MS,
 };

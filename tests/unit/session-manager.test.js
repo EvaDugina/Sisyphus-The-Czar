@@ -7,10 +7,12 @@ const path = require("node:path");
 const Physics = require("../../shared/physics");
 const RoomSettings = require("../../shared/room-settings");
 const GachiSounds = require("../../shared/gachi-sounds");
+const ChainSounds = require("../../shared/chain-sounds");
 const {
   SessionManager,
   DISCONNECTED_CLIENT_TTL_MS,
   DEFAULT_EMPTY_SESSION_GRACE_MS,
+  DEFAULT_AUDIO_LEAD_MS,
   REQUIRED_HOLDERS,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
@@ -39,6 +41,9 @@ function setup(options = {}) {
     now: () => clock.value,
     random: options.random || (() => 0.5),
     soundRandom: options.soundRandom || (() => 0.5),
+    slipDelayMinMs: options.slipDelayMinMs,
+    slipDelayMaxMs: options.slipDelayMaxMs,
+    audioLeadMs: options.audioLeadMs,
   });
   return { clock, manager };
 }
@@ -57,6 +62,16 @@ test("реестр gachi-звуков совпадает с файлами ас�
     .sort();
 
   assert.deepEqual(filenames, [...GachiSounds.GACHI_SOUND_FILENAMES]);
+});
+
+test("реестр звуков цепей совпадает с файлами ассетов", () => {
+  const directory = path.resolve(__dirname, "../../assets/audio");
+  const filenames = fs
+    .readdirSync(directory)
+    .filter((filename) => /^Кандалы_\d{2}\.mp3$/u.test(filename))
+    .sort();
+
+  assert.deepEqual(filenames, [...ChainSounds.CHAIN_SOUND_FILENAMES]);
 });
 
 test("создатель комнаты закрепляется как master, остальные получают slave", () => {
@@ -118,6 +133,80 @@ test("gachi-звук slave стабилен во всех комнатах те�
     GachiSounds.isGachiSoundFilename(first.client.gachiSoundFilename)
   );
   assert.equal(manager.slaveSoundAssignments.size, 1);
+});
+
+test("audio.play рассылает один звук роли всем участникам с общим playAt", () => {
+  const { clock, manager } = setup({
+    soundRandom: () => 0,
+    audioLeadMs: DEFAULT_AUDIO_LEAD_MS,
+  });
+  clock.value = 1000;
+  const session = manager.createSession({
+    creatorClientId: "client-audio-master",
+  });
+  const master = connect(manager, session, "client-audio-master");
+  const slave = connect(manager, session, "client-audio-slave1");
+
+  manager.handleMessage(session, master.client, {
+    v: 1,
+    type: "audio.play",
+    seq: 1,
+    payload: {},
+  });
+  const masterEvent = master.socket.messages.findLast(
+    (message) => message.type === "audio.play"
+  );
+  const slaveCopy = slave.socket.messages.findLast(
+    (message) => message.type === "audio.play"
+  );
+
+  assert.deepEqual(slaveCopy, masterEvent);
+  assert.match(masterEvent.payload.eventId, /^[A-Za-z0-9_-]{16}$/);
+  assert.deepEqual(masterEvent.payload, {
+    eventId: masterEvent.payload.eventId,
+    actorId: master.client.id,
+    role: "master",
+    filename: ChainSounds.CHAIN_SOUND_FILENAMES[0],
+    playAt: 1000 + DEFAULT_AUDIO_LEAD_MS,
+    serverTime: 1000,
+  });
+
+  clock.value = 1500;
+  manager.handleMessage(session, slave.client, {
+    v: 1,
+    type: "audio.play",
+    seq: 1,
+    payload: {},
+  });
+  const slaveEventAtMaster = master.socket.messages.findLast(
+    (message) => message.type === "audio.play"
+  );
+  const slaveEvent = slave.socket.messages.findLast(
+    (message) => message.type === "audio.play"
+  );
+
+  assert.deepEqual(slaveEventAtMaster, slaveEvent);
+  assert.deepEqual(slaveEvent.payload, {
+    eventId: slaveEvent.payload.eventId,
+    actorId: slave.client.id,
+    role: "slave",
+    filename: slave.client.gachiSoundFilename,
+    playAt: 1500 + DEFAULT_AUDIO_LEAD_MS,
+    serverTime: 1500,
+  });
+
+  session.state.phase = Physics.PHASES.FALLING;
+  manager.handleMessage(session, slave.client, {
+    v: 1,
+    type: "audio.play",
+    seq: 2,
+    payload: {},
+  });
+  assert.equal(
+    slave.socket.messages.filter((message) => message.type === "audio.play")
+      .length,
+    2
+  );
 });
 
 test("старая комната без master получает fallback по первому подключению", () => {
@@ -985,6 +1074,16 @@ test("каждый захват получает случайное окно с�
   assert.equal(SLIP_DELAY_MIN_MS, 500);
   assert.equal(SLIP_DELAY_MAX_MS, 2000);
   assert.equal(session.state.dragging, true);
+});
+
+test("границы соскальзывания можно зафиксировать для детерминированной сессии", () => {
+  const { manager } = setup({
+    random: () => 0,
+    slipDelayMinMs: 10_000,
+    slipDelayMaxMs: 10_000,
+  });
+
+  assert.equal(manager.slipDelayMs(), 10_000);
 });
 
 test("соскальзывание одной руки пересчитывает оставшуюся суммарную силу", () => {

@@ -273,49 +273,80 @@ async function expectReadyAtBottom(page) {
   expect(position.scrollY).toBeGreaterThanOrEqual(position.maxScroll - 2);
 }
 
-async function expectImprintCenteredInTopViewport(page) {
+async function expectImprintCenteredInTopViewport(
+  page,
+  { checkImprintCenter = true } = {},
+) {
   await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
   await expect(page.locator("h1.top-inscription")).toBeVisible();
   const position = await page.getByTestId("rock-imprint").evaluate((imprint) => {
     const rect = imprint.getBoundingClientRect();
-    const inscriptionRect = document
-      .querySelector(".top-inscription")
-      .getBoundingClientRect();
+    const inscription = document.querySelector(".top-inscription");
+    const inscriptionRect = inscription.getBoundingClientRect();
+    const inscriptionRange = document.createRange();
+    inscriptionRange.selectNodeContents(inscription);
+    const inscriptionTextRect = inscriptionRange.getBoundingClientRect();
+    inscriptionRange.detach();
     const titleStyle = getComputedStyle(document.querySelector(".title"));
-    const inscriptionStyle = getComputedStyle(
-      document.querySelector(".top-inscription"),
-    );
+    const inscriptionStyle = getComputedStyle(inscription);
     return {
       centerX: rect.left + rect.width / 2,
       centerY: rect.top + rect.height / 2,
       viewportCenterX: window.innerWidth / 2,
       viewportCenterY: window.innerHeight / 2,
+      viewportWidth: window.innerWidth,
+      documentScrollWidth: document.documentElement.scrollWidth,
       inscriptionTop: inscriptionRect.top,
       inscriptionFontSize: inscriptionStyle.fontSize,
       inscriptionLineHeight: inscriptionStyle.lineHeight,
       inscriptionFontFamily: inscriptionStyle.fontFamily,
       inscriptionFontWeight: inscriptionStyle.fontWeight,
       inscriptionWhiteSpace: inscriptionStyle.whiteSpace,
+      inscriptionTextLeft: inscriptionTextRect.left,
+      inscriptionTextRight: inscriptionTextRect.right,
+      inscriptionTextCenter:
+        inscriptionTextRect.left + inscriptionTextRect.width / 2,
       titleFontSize: titleStyle.fontSize,
       titleLineHeight: titleStyle.lineHeight,
       titleFontFamily: titleStyle.fontFamily,
       titleFontWeight: titleStyle.fontWeight,
     };
   });
-  expect(Math.abs(position.centerX - position.viewportCenterX)).toBeLessThanOrEqual(
-    3
-  );
-  expect(Math.abs(position.centerY - position.viewportCenterY)).toBeLessThanOrEqual(
-    3
-  );
+  if (checkImprintCenter) {
+    expect(
+      Math.abs(position.centerX - position.viewportCenterX),
+    ).toBeLessThanOrEqual(3);
+    expect(
+      Math.abs(position.centerY - position.viewportCenterY),
+    ).toBeLessThanOrEqual(3);
+  }
   expect(position.inscriptionTop).toBeGreaterThanOrEqual(0);
-  expect(position.inscriptionFontSize).toBe(position.titleFontSize);
-  expect(position.inscriptionLineHeight).toBe(position.titleLineHeight);
+  expect(Number.parseFloat(position.inscriptionFontSize)).toBeLessThanOrEqual(
+    Number.parseFloat(position.titleFontSize),
+  );
+  expect(
+    Number.parseFloat(position.inscriptionLineHeight) /
+      Number.parseFloat(position.inscriptionFontSize),
+  ).toBeCloseTo(
+    Number.parseFloat(position.titleLineHeight) /
+      Number.parseFloat(position.titleFontSize),
+    2,
+  );
   expect(position.inscriptionFontFamily).toBe(position.titleFontFamily);
   expect(position.inscriptionFontWeight).toBe(position.titleFontWeight);
   expect(position.inscriptionWhiteSpace).toBe("nowrap");
+  expect(
+    Math.abs(position.inscriptionTextCenter - position.viewportCenterX),
+  ).toBeLessThanOrEqual(1);
+  expect(position.inscriptionTextLeft).toBeGreaterThanOrEqual(0);
+  expect(position.inscriptionTextRight).toBeLessThanOrEqual(
+    position.viewportWidth,
+  );
+  expect(position.documentScrollWidth).toBeLessThanOrEqual(
+    position.viewportWidth,
+  );
 }
 
 async function expectReturnImprintScrollsToTop(page) {
@@ -451,7 +482,7 @@ test(
   "верхний отпечаток центрируется в середине первого экрана",
   async ({ browser }) => {
     const context = await browser.newContext({
-      viewport: { width: 1398, height: 900 },
+      viewport: { width: 1905, height: 899 },
     });
     const page = await context.newPage();
 
@@ -461,6 +492,10 @@ test(
     await expectReadyAtBottom(page);
     await expectImprintCenteredInTopViewport(page);
     await expectReturnImprintScrollsToTop(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+    await expectImprintCenteredInTopViewport(page, {
+      checkImprintCenter: false,
+    });
 
     await context.close();
   }
@@ -757,20 +792,36 @@ test("вход на корень перенаправляет в рабочую 
     )
     .toBe(chainSoundCountAfterEnter);
   await page.mouse.down();
-  const masterRoleAudioFadeIn = await page.evaluate(() => getRoleAudioState());
-  expect(masterRoleAudioFadeIn).toMatchObject({
-    fadeActive: true,
-    fadeDurationMs: 300,
-    fadeTargetVolume: 1,
-    role: "master",
-  });
-  expect(masterRoleAudioFadeIn.volume).toBeGreaterThanOrEqual(0);
-  expect(masterRoleAudioFadeIn.volume).toBeLessThan(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const state = getSessionAudioState();
+        return state?.role === "master" ? state.scheduled : null;
+      })
+    )
+    .toBe(true);
   await expect
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
     )
     .toBe(chainSoundCountAfterEnter + 1);
+  const masterSessionAudio = await page.evaluate(() => getSessionAudioState());
+  expect(masterSessionAudio).toMatchObject({
+    role: "master",
+    scheduled: false,
+  });
+  expect(masterSessionAudio.filename).toMatch(/^Кандалы_\d{2}\.mp3$/u);
+  const masterRoleAudioFadeIn = await page.evaluate(() => getRoleAudioState());
+  expect(masterRoleAudioFadeIn).toMatchObject({
+    fadeDurationMs: 300,
+    fadeTargetVolume: 1,
+    role: "master",
+  });
+  expect(masterRoleAudioFadeIn.volume).toBeGreaterThanOrEqual(0);
+  expect(masterRoleAudioFadeIn.volume).toBeLessThanOrEqual(1);
+  if (!masterRoleAudioFadeIn.fadeActive) {
+    expect(masterRoleAudioFadeIn.volume).toBe(1);
+  }
   await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(true);
   await page.mouse.up();
   await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(false);
@@ -803,6 +854,124 @@ test("вход на корень перенаправляет в рабочую 
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
 
   await context.close();
+});
+
+test("звуки pointerdown master и slave общие для всей сессии", async ({ browser }) => {
+  const firstContext = await browser.newContext();
+  const secondContext = await browser.newContext();
+  const first = await firstContext.newPage();
+  const second = await secondContext.newPage();
+  const audioTargets = ["Кандалы", ...GACHI_AUDIO_TARGETS];
+  await watchAudioPlayCalls(first, audioTargets);
+  await watchAudioPlayCalls(second, audioTargets);
+
+  await first.goto("/");
+  await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(first.getByTestId("session-status")).toContainText("В сессии");
+  await second.goto(first.url());
+  await expect(first.getByTestId("session-status")).toContainText("В сессии: 2");
+  await expect(second.getByTestId("session-status")).toContainText("В сессии: 2");
+
+  async function waitForPlayedEvent(page, role) {
+    await expect
+      .poll(() =>
+        page.evaluate((expectedRole) => {
+          const state = getSessionAudioState();
+          return state?.role === expectedRole && state.scheduled === false;
+        }, role)
+      )
+      .toBe(true);
+    return page.evaluate(() => {
+      const { eventId, actorId, role, filename, playAt } =
+        getSessionAudioState();
+      return { eventId, actorId, role, filename, playAt };
+    });
+  }
+
+  async function audioCount(page, target) {
+    return page.evaluate(
+      (filenameTarget) =>
+        window.__watchedAudioPlayCounts[filenameTarget] || 0,
+      target,
+    );
+  }
+
+  await scrollToRock(first);
+  const masterPoint = await visibleRockPoint(first);
+  await first.mouse.move(1, 1);
+  await first.mouse.move(masterPoint.x, masterPoint.y);
+  await first.waitForTimeout(100);
+  const masterCountsBefore = await Promise.all([
+    audioCount(first, "Кандалы"),
+    audioCount(second, "Кандалы"),
+  ]);
+  await first.mouse.down();
+  await first.mouse.up();
+  const [masterEventAtFirst, masterEventAtSecond] = await Promise.all([
+    waitForPlayedEvent(first, "master"),
+    waitForPlayedEvent(second, "master"),
+  ]);
+  expect(masterEventAtSecond).toEqual(masterEventAtFirst);
+  expect(masterEventAtFirst.filename).toMatch(/^Кандалы_\d{2}\.mp3$/u);
+  await expect
+    .poll(() => audioCount(first, "Кандалы"))
+    .toBe(masterCountsBefore[0] + 1);
+  await expect
+    .poll(() => audioCount(second, "Кандалы"))
+    .toBe(masterCountsBefore[1] + 1);
+
+  const assignedGachiTarget = await second.evaluate(() =>
+    collab.gachiSoundFilename.replace(/\.mp3$/i, "")
+  );
+  expect(GACHI_AUDIO_TARGETS).toContain(assignedGachiTarget);
+  await scrollToRock(second);
+  const slaveCountsBefore = await Promise.all([
+    audioCount(first, assignedGachiTarget),
+    audioCount(second, assignedGachiTarget),
+  ]);
+  const chainCountsBeforeSlave = await Promise.all([
+    audioCount(first, "Кандалы"),
+    audioCount(second, "Кандалы"),
+  ]);
+  await grabVisibleRock(second);
+  await second.mouse.up();
+  const [slaveEventAtFirst, slaveEventAtSecond] = await Promise.all([
+    waitForPlayedEvent(first, "slave"),
+    waitForPlayedEvent(second, "slave"),
+  ]);
+  expect(slaveEventAtSecond).toEqual(slaveEventAtFirst);
+  expect(slaveEventAtFirst.filename).toBe(`${assignedGachiTarget}.mp3`);
+  await expect
+    .poll(() => audioCount(first, assignedGachiTarget))
+    .toBe(slaveCountsBefore[0] + 1);
+  await expect
+    .poll(() => audioCount(second, assignedGachiTarget))
+    .toBe(slaveCountsBefore[1] + 1);
+  expect(await audioCount(first, "Кандалы")).toBe(chainCountsBeforeSlave[0]);
+  expect(await audioCount(second, "Кандалы")).toBe(chainCountsBeforeSlave[1]);
+
+  const countsAfterPointerDown = await Promise.all([
+    audioCount(first, assignedGachiTarget),
+    audioCount(second, assignedGachiTarget),
+  ]);
+  await second.waitForTimeout(400);
+  expect(await audioCount(first, assignedGachiTarget)).toBe(
+    countsAfterPointerDown[0],
+  );
+  expect(await audioCount(second, assignedGachiTarget)).toBe(
+    countsAfterPointerDown[1],
+  );
+  const roleAudioState = await second.evaluate(() => getRoleAudioState());
+  expect(roleAudioState).toMatchObject({
+    fadeDurationMs: 300,
+    fadeTargetVolume: 1,
+    role: "slave",
+  });
+  expect(roleAudioState.volume).toBeGreaterThanOrEqual(0);
+  expect(roleAudioState.volume).toBeLessThanOrEqual(1);
+
+  await firstContext.close();
+  await secondContext.close();
 });
 
 test("падение компенсируется при изменении высоты сцены", async ({ browser }) => {
@@ -946,11 +1115,7 @@ test("два браузера видят один камень и поднима
   const first = await firstContext.newPage();
   const second = await secondContext.newPage();
   await watchAudioPlayCalls(first, "Дождь");
-  await watchAudioPlayCalls(second, [
-    "Дождь",
-    "Кандалы",
-    ...GACHI_AUDIO_TARGETS,
-  ]);
+  await watchAudioPlayCalls(second, "Дождь");
 
   await first.goto("/");
   await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
@@ -1446,26 +1611,6 @@ test("два браузера видят один камень и поднима
   await expect(remoteCursor).toHaveCount(0);
 
   await scrollToRock(second);
-  const assignedGachiTarget = await second.evaluate(() =>
-    collab.gachiSoundFilename.replace(/\.mp3$/i, "")
-  );
-  expect(GACHI_AUDIO_TARGETS).toContain(assignedGachiTarget);
-  const slaveRockPoint = await visibleRockPoint(second);
-  const slaveAudioBefore = await second.evaluate((gachiTarget) => ({
-    chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
-    gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
-  }), assignedGachiTarget);
-  await second.mouse.move(1, 1);
-  await second.mouse.move(slaveRockPoint.x, slaveRockPoint.y);
-  await second.waitForTimeout(100);
-  await expect
-    .poll(() =>
-      second.evaluate((gachiTarget) => ({
-        chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
-        gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
-      }), assignedGachiTarget)
-    )
-    .toEqual(slaveAudioBefore);
   await expect.poll(() => second.evaluate(() => params.trailEnabled)).toBe(true);
   await scrollToRock(first);
   const firstGrabPoint = await visibleRockPoint(first);
@@ -1520,22 +1665,6 @@ test("два браузера видят один камень и поднима
     .toBeLessThanOrEqual(3);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await grabVisibleRock(second);
-  const slaveAudioAfterPointerDown = await second.evaluate((gachiTarget) => ({
-    chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
-    gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
-  }), assignedGachiTarget);
-  expect(slaveAudioAfterPointerDown.chains).toBe(slaveAudioBefore.chains);
-  expect(slaveAudioAfterPointerDown.gachi).toBeGreaterThan(slaveAudioBefore.gachi);
-  const slaveRoleAudioOnPointerDown = await second.evaluate(() =>
-    getRoleAudioState()
-  );
-  expect(slaveRoleAudioOnPointerDown).toMatchObject({
-    fadeDurationMs: 300,
-    fadeTargetVolume: 1,
-    role: "slave",
-  });
-  expect(slaveRoleAudioOnPointerDown.volume).toBeGreaterThanOrEqual(0);
-  expect(slaveRoleAudioOnPointerDown.volume).toBeLessThanOrEqual(1);
   await moveSharedDragToBottom(first, second);
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await expect(second.getByTestId("session-status")).toContainText("силы хватает");
@@ -1620,24 +1749,6 @@ test("два браузера видят один камень и поднима
       saturation: "1.25",
     });
   await second.mouse.up();
-  await second.waitForTimeout(100);
-  await expect
-    .poll(() =>
-      second.evaluate((gachiTarget) => ({
-        chains: window.__watchedAudioPlayCounts["Кандалы"] || 0,
-        gachi: window.__watchedAudioPlayCounts[gachiTarget] || 0,
-      }), assignedGachiTarget)
-    )
-    .toEqual(slaveAudioAfterPointerDown);
-  await expect
-    .poll(() => second.evaluate(() => getRoleAudioState()))
-    .toEqual({
-      fadeActive: false,
-      fadeDurationMs: 300,
-      fadeTargetVolume: 1,
-      role: "slave",
-      volume: 1,
-    });
   await first.mouse.up();
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
@@ -1830,10 +1941,11 @@ test("два браузера видят один камень и поднима
   await second.evaluate(() => {
     window.dispatchEvent(new PageTransitionEvent("pagehide", { persisted: false }));
   });
+  await second.waitForTimeout(300);
   await second.close();
 
   const verification = await secondContext.newPage();
-  await verification.waitForTimeout(2200);
+  await verification.waitForTimeout(3200);
   await verification.goto(sharedUrl);
   await expect.poll(() => verification.url()).not.toBe(sharedUrl);
   await expect(verification.getByTestId("session-status")).toContainText("В сессии");

@@ -5,7 +5,11 @@ const http = require("node:http");
 const path = require("node:path");
 const express = require("express");
 const { WebSocketServer } = require("ws");
-const { SessionManager } = require("./session-manager");
+const {
+  SessionManager,
+  SLIP_DELAY_MIN_MS,
+  SLIP_DELAY_MAX_MS,
+} = require("./session-manager");
 const { SessionStore } = require("./session-store");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -142,6 +146,24 @@ function createService(options = {}) {
     emptyGraceMs:
       options.emptyGraceMs ??
       Number(process.env.EMPTY_SESSION_GRACE_SECONDS || 10) * 1000,
+    sessionCreateRateLimit: Math.max(
+      1,
+      Number(
+        options.sessionCreateRateLimit ??
+          process.env.SESSION_CREATE_RATE_LIMIT ??
+          10
+      )
+    ),
+    slipDelayMinMs: Number(
+      options.slipDelayMinMs ??
+        process.env.SLIP_DELAY_MIN_MS ??
+        SLIP_DELAY_MIN_MS
+    ),
+    slipDelayMaxMs: Number(
+      options.slipDelayMaxMs ??
+        process.env.SLIP_DELAY_MAX_MS ??
+        SLIP_DELAY_MAX_MS
+    ),
     sessionStorePath: String(
       options.sessionStorePath ?? process.env.SESSION_STORE_PATH ?? ""
     ).trim(),
@@ -167,6 +189,10 @@ function createService(options = {}) {
     new SessionManager({
       ttlMs: config.ttlMs,
       emptyGraceMs: config.emptyGraceMs,
+      slipDelayMinMs: config.slipDelayMinMs,
+      slipDelayMaxMs: config.slipDelayMaxMs,
+      audioLeadMs: options.audioLeadMs,
+      soundRandom: options.soundRandom,
       logger: log,
     });
   const sessionStore =
@@ -175,7 +201,10 @@ function createService(options = {}) {
   manager.restoreSessions(sessionStore.load());
   const persistSessions = (force = false) =>
     sessionStore.save(manager.serializeSessions(), { force });
-  const createLimiter = new WindowRateLimiter(10, 60_000);
+  const createLimiter = new WindowRateLimiter(
+    config.sessionCreateRateLimit,
+    60_000
+  );
   const connectLimiter = new WindowRateLimiter(30, 60_000);
   const app = express();
   app.disable("x-powered-by");
@@ -275,6 +304,15 @@ function createService(options = {}) {
       config.debug ? "no-store" : "public, max-age=3600"
     );
     response.sendFile(path.join(ROOT_DIR, "shared", "gachi-sounds.js"));
+  });
+
+  app.get("/shared/chain-sounds.js", (_request, response) => {
+    response.type("application/javascript");
+    response.setHeader(
+      "Cache-Control",
+      config.debug ? "no-store" : "public, max-age=3600"
+    );
+    response.sendFile(path.join(ROOT_DIR, "shared", "chain-sounds.js"));
   });
 
   app.get("/shared/viewport.js", (_request, response) => {

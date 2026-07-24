@@ -57,6 +57,7 @@ test("backend публикует shared-модули клиента", async (con
 
   const modules = [
     ["gachi-sounds.js", /SisyphusGachiSounds/],
+    ["chain-sounds.js", /SisyphusChainSounds/],
     ["viewport.js", /SisyphusViewport/],
   ];
   for (const [filename, exportName] of modules) {

@@ -70,6 +70,8 @@
 
 .top-inscription {
   top: 15rem;
+  left: 50vw;
+  width: calc(100vw - 2rem);
   font-size: 8.4rem;
   white-space: nowrap;
 }
@@ -399,6 +401,10 @@ body.state-fallingToBottom .hand-cursor {
     width: min(94vw, 28rem);
     font-size: 4.4rem;
     line-height: 0.88;
+  }
+
+  .top-inscription {
+    width: calc(100vw - 1rem);
   }
 
   .title2 {

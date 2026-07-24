@@ -10,6 +10,7 @@ const { createService } = require("../../server");
 const Physics = require("../../shared/physics");
 const RoomSettings = require("../../shared/room-settings");
 const GachiSounds = require("../../shared/gachi-sounds");
+const ChainSounds = require("../../shared/chain-sounds");
 
 function connect(url) {
   const socket = new WebSocket(url);
@@ -54,6 +55,92 @@ function connect(url) {
 
   return { socket, opened, waitFor };
 }
+
+test("клик роли запускает один общий звук у всех клиентов с общим playAt", async (context) => {
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    audioLeadMs: 40,
+    soundRandom: () => 0,
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+  const base = `http://127.0.0.1:${address.port}`;
+  const created = await fetch(`${base}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      creatorClientId: "integration-audio-master",
+      state: {
+        phase: Physics.PHASES.PLAY,
+        x: Physics.WORLD_WIDTH / 2,
+        y: Physics.WORLD_HEIGHT,
+      },
+    }),
+  });
+  assert.equal(created.status, 201);
+  const { sessionId } = await created.json();
+  const wsBase = `ws://127.0.0.1:${address.port}/realtime?session=${sessionId}`;
+  const master = connect(`${wsBase}&client=integration-audio-master`);
+  const slave = connect(`${wsBase}&client=integration-audio-slave`);
+  await Promise.all([master.opened, slave.opened]);
+  const [, slaveSnapshot] = await Promise.all([
+    master.waitFor("session.snapshot"),
+    slave.waitFor("session.snapshot"),
+  ]);
+
+  master.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "audio.play",
+      seq: 1,
+      payload: {},
+    })
+  );
+  const [masterChain, slaveChain] = await Promise.all([
+    master.waitFor("audio.play", (payload) => payload.role === "master"),
+    slave.waitFor("audio.play", (payload) => payload.role === "master"),
+  ]);
+  assert.deepEqual(slaveChain.payload, masterChain.payload);
+  assert.equal(
+    masterChain.payload.filename,
+    ChainSounds.CHAIN_SOUND_FILENAMES[0]
+  );
+  assert.equal(masterChain.payload.actorId, "integration-audio-master");
+  assert.equal(
+    masterChain.payload.playAt - masterChain.payload.serverTime,
+    40
+  );
+
+  slave.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "audio.play",
+      seq: 1,
+      payload: {},
+    })
+  );
+  const [masterGachi, slaveGachi] = await Promise.all([
+    master.waitFor("audio.play", (payload) => payload.role === "slave"),
+    slave.waitFor("audio.play", (payload) => payload.role === "slave"),
+  ]);
+  assert.deepEqual(slaveGachi.payload, masterGachi.payload);
+  assert.equal(
+    masterGachi.payload.filename,
+    slaveSnapshot.payload.gachiSoundFilename
+  );
+  assert.equal(masterGachi.payload.actorId, "integration-audio-slave");
+  assert.notEqual(masterGachi.payload.eventId, masterChain.payload.eventId);
+  assert.equal(
+    masterGachi.payload.playAt - masterGachi.payload.serverTime,
+    40
+  );
+
+  master.socket.close();
+  slave.socket.close();
+});
 
 test("два WebSocket-клиента делят состояние и передают управление", async (context) => {
   const service = createService({

@@ -1,6 +1,7 @@
 import "../../shared/physics.js";
 import "../../shared/room-settings.js";
 import "../../shared/gachi-sounds.js";
+import "../../shared/chain-sounds.js";
 import "../../shared/viewport.js";
 import katex from "katex";
 import "katex/dist/katex.min.css";
@@ -55,6 +56,13 @@ const chainHoverAudioModules = import.meta.glob(
 const CHAIN_HOVER_AUDIO_URLS = Object.values(chainHoverAudioModules).filter(
   (url) => typeof url === "string",
 );
+const CHAIN_AUDIO_URLS_BY_FILENAME = new Map(
+  Object.entries(chainHoverAudioModules).flatMap(([modulePath, url]) =>
+    typeof url === "string"
+      ? [[modulePath.split("/").at(-1), url]]
+      : [],
+  ),
+);
 const gachiAudioModules = import.meta.glob(
   "../../assets/audio/gachi/*.mp3",
   {
@@ -80,6 +88,8 @@ export function createSisyphusRuntime(elements = {}) {
 
   const body = document.body;
   const world = elements.world || document.querySelector(".world");
+  const topInscription =
+    elements.topInscription || document.querySelector(".top-inscription");
   const rock = elements.rock || document.querySelector(".rock");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
   const handCursor = elements.handCursor || document.querySelector(".hand-cursor");
@@ -108,6 +118,7 @@ export function createSisyphusRuntime(elements = {}) {
   const SharedPhysics = window.SisyphusPhysics;
   const SharedRoomSettings = window.SisyphusRoomSettings;
   const SharedGachiSounds = window.SisyphusGachiSounds;
+  const SharedChainSounds = window.SisyphusChainSounds;
   const SharedViewport = window.SisyphusViewport;
   const listenerDisposers = [];
   let disposed = false;
@@ -417,9 +428,11 @@ export function createSisyphusRuntime(elements = {}) {
     elements: [],
     lastPlayedIndex: -1,
   };
-  const slaveClickAudio = {
-    filename: null,
-    element: null,
+  const sessionRoleAudio = {
+    elements: new Map(),
+    latest: null,
+    seenEventIds: new Set(),
+    timerIds: new Set(),
   };
   const roleAudioFade = {
     entries: new Map(),
@@ -438,6 +451,30 @@ export function createSisyphusRuntime(elements = {}) {
 
   function clamp(value, min, max) {
     return Math.min(Math.max(value, min), max);
+  }
+
+  function fitTopInscription() {
+    if (!topInscription) {
+      return;
+    }
+    topInscription.style.fontSize = "";
+    const maximumFontSize = Number.parseFloat(
+      window.getComputedStyle(topInscription).fontSize,
+    );
+    const availableWidth = Math.max(0, topInscription.clientWidth - 2);
+    const range = document.createRange();
+    range.selectNodeContents(topInscription);
+    const textWidth = range.getBoundingClientRect().width;
+    range.detach();
+    if (
+      Number.isFinite(maximumFontSize) &&
+      availableWidth > 0 &&
+      textWidth > availableWidth
+    ) {
+      topInscription.style.fontSize = `${
+        (maximumFontSize * availableWidth) / textWidth
+      }px`;
+    }
   }
 
   function cancelRoleAudioFade(audio) {
@@ -545,46 +582,121 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function setSlaveClickSound(filename) {
-    const nextFilename = SharedGachiSounds.isGachiSoundFilename(filename)
+    collab.gachiSoundFilename = SharedGachiSounds.isGachiSoundFilename(filename)
       ? filename
       : null;
-    collab.gachiSoundFilename = nextFilename;
-    if (slaveClickAudio.filename === nextFilename) {
-      return;
-    }
-    if (slaveClickAudio.element) {
-      cancelRoleAudioFade(slaveClickAudio.element);
-    }
-    slaveClickAudio.element?.pause();
-    slaveClickAudio.filename = nextFilename;
-    slaveClickAudio.element = null;
   }
 
-  function playSlaveClickSound() {
-    if (
-      typeof Audio !== "function" ||
-      motion.phase !== PHASES.PLAY ||
-      !slaveClickAudio.filename
-    ) {
+  function sessionRoleAudioUrl(role, filename) {
+    if (role === "master" && SharedChainSounds.isChainSoundFilename(filename)) {
+      return CHAIN_AUDIO_URLS_BY_FILENAME.get(filename) || null;
+    }
+    if (role === "slave" && SharedGachiSounds.isGachiSoundFilename(filename)) {
+      return GACHI_AUDIO_URLS_BY_FILENAME.get(filename) || null;
+    }
+    return null;
+  }
+
+  function playSessionRoleAudio(payload) {
+    if (typeof Audio !== "function") {
       return;
     }
-    const url = GACHI_AUDIO_URLS_BY_FILENAME.get(slaveClickAudio.filename);
+    const url = sessionRoleAudioUrl(payload.role, payload.filename);
     if (!url) {
       return;
     }
-    if (!slaveClickAudio.element) {
-      slaveClickAudio.element = new Audio(url);
-      slaveClickAudio.element.preload = "auto";
+    const key = `${payload.role}:${payload.filename}`;
+    let audio = sessionRoleAudio.elements.get(key);
+    if (!audio) {
+      audio = new Audio(url);
+      audio.preload = "auto";
+      sessionRoleAudio.elements.set(key, audio);
     }
-    playRoleAudio(slaveClickAudio.element, "slave");
+    sessionRoleAudio.latest = {
+      ...payload,
+      playedAt: Date.now(),
+      scheduled: false,
+    };
+    playRoleAudio(audio, payload.role);
+  }
+
+  function receiveSessionRoleAudio(payload) {
+    const eventId =
+      typeof payload.eventId === "string" ? payload.eventId : "";
+    const role =
+      payload.role === "master" || payload.role === "slave"
+        ? payload.role
+        : null;
+    const filename =
+      typeof payload.filename === "string" ? payload.filename : "";
+    const playAt = Number(payload.playAt);
+    if (
+      !/^[A-Za-z0-9_-]{16,64}$/.test(eventId) ||
+      !sessionRoleAudioUrl(role, filename) ||
+      !Number.isFinite(playAt) ||
+      sessionRoleAudio.seenEventIds.has(eventId)
+    ) {
+      return false;
+    }
+
+    sessionRoleAudio.seenEventIds.add(eventId);
+    if (sessionRoleAudio.seenEventIds.size > 256) {
+      sessionRoleAudio.seenEventIds.delete(
+        sessionRoleAudio.seenEventIds.values().next().value,
+      );
+    }
+    const normalized = {
+      eventId,
+      actorId: typeof payload.actorId === "string" ? payload.actorId : null,
+      role,
+      filename,
+      playAt,
+    };
+    const localPlayAt =
+      playAt + (collab.clockOffsetReady ? collab.clockOffset : 0);
+    const delayMs = Math.max(0, localPlayAt - Date.now());
+    sessionRoleAudio.latest = {
+      ...normalized,
+      delayMs,
+      playedAt: null,
+      scheduled: true,
+    };
+    const play = () => {
+      playSessionRoleAudio(normalized);
+    };
+    if (delayMs <= 0) {
+      play();
+      return true;
+    }
+    const timerId = window.setTimeout(() => {
+      sessionRoleAudio.timerIds.delete(timerId);
+      play();
+    }, delayMs);
+    sessionRoleAudio.timerIds.add(timerId);
+    return true;
   }
 
   function playRockPointerDownSound() {
-    if (pointerRole(collab.clientRole) === "slave") {
-      playSlaveClickSound();
+    if (collab.enabled && collab.connected) {
+      sendShared("audio.play");
       return;
     }
-    playChainHoverSound();
+    const role = pointerRole(collab.clientRole);
+    const filename =
+      role === "master"
+        ? SharedChainSounds.CHAIN_SOUND_FILENAMES[
+            Math.floor(
+              Math.random() * SharedChainSounds.CHAIN_SOUND_FILENAMES.length,
+            )
+          ]
+        : collab.gachiSoundFilename;
+    playSessionRoleAudio({
+      eventId: `local-${Date.now()}`,
+      actorId: collab.clientId,
+      role,
+      filename,
+      playAt: Date.now(),
+    });
   }
 
   function createRainLoopAudio() {
@@ -3364,6 +3476,8 @@ export function createSisyphusRuntime(elements = {}) {
       updateSessionStatus();
     } else if (message.type === "pointer.update") {
       receiveRemotePointer(payload);
+    } else if (message.type === "audio.play") {
+      receiveSessionRoleAudio(payload);
     } else if (message.type === "pong") {
       const sample = Date.now() - Number(payload.serverTime || Date.now());
       collab.clockOffset = collab.clockOffsetReady
@@ -4643,6 +4757,7 @@ export function createSisyphusRuntime(elements = {}) {
     { passive: true }
   );
   listen(window, "resize", () => {
+    fitTopInscription();
     updateBounds();
     applyViewportScaledVisuals();
     sendMasterViewport();
@@ -4658,6 +4773,7 @@ export function createSisyphusRuntime(elements = {}) {
   });
 
   function initScene() {
+    fitTopInscription();
     centerIntroRock();
     collab.imprint = createSummitSharedImprint();
     renderImprint();
@@ -4715,6 +4831,9 @@ export function createSisyphusRuntime(elements = {}) {
         volume: state?.audio?.volume ?? 0,
       };
     },
+    getSessionAudioState: () =>
+      sessionRoleAudio.latest ? { ...sessionRoleAudio.latest } : null,
+    fitTopInscription,
     getRoomSettings: sharedRoomSettingsPayload,
     getRainAudioState: () => ({
       fadeDurationMs: rainLoopAudio.fadeDurationMs,
@@ -4745,6 +4864,11 @@ export function createSisyphusRuntime(elements = {}) {
   loadSettings();
   loadSettingsVersions();
   readControls();
+  document.fonts?.ready.then(() => {
+    if (!disposed) {
+      fitTopInscription();
+    }
+  });
 
   if (rock.complete) {
     initScene();
@@ -4772,7 +4896,11 @@ export function createSisyphusRuntime(elements = {}) {
       stopRainLoopSound({ immediate: true });
       cancelAllRoleAudioFades();
       chainHoverAudio.elements.forEach((audio) => audio?.pause());
-      slaveClickAudio.element?.pause();
+      sessionRoleAudio.timerIds.forEach((timerId) => {
+        window.clearTimeout(timerId);
+      });
+      sessionRoleAudio.timerIds.clear();
+      sessionRoleAudio.elements.forEach((audio) => audio.pause());
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {
