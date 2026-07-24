@@ -1897,6 +1897,11 @@ test("два браузера видят один камень и поднима
   await grabVisibleRock(second);
   await expect.poll(() => second.evaluate(() => collab.hasControl)).toBe(true);
   await moveSharedDragToBottom(first, second);
+  const secondVisiblePointAfterMove = await visibleRockPoint(second);
+  await second.mouse.move(
+    secondVisiblePointAfterMove.x,
+    secondVisiblePointAfterMove.y
+  );
   await expect(first.getByTestId("session-status")).toContainText("силы хватает");
   await expect(second.getByTestId("session-status")).toContainText("силы хватает");
   const localGrabbingCursor = second.locator(

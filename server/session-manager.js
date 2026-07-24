@@ -30,6 +30,10 @@ function finite(value, fallback = 0) {
   return Number.isFinite(number) ? number : fallback;
 }
 
+function roundNetworkNumber(value, fallback = 0) {
+  return Math.round(finite(value, fallback) * 100) / 100;
+}
+
 function socketIsOpen(socket) {
   return socket && socket.readyState === 1;
 }
@@ -892,7 +896,7 @@ class SessionManager {
     session.lastPointerAt = this.now();
     Physics.beginFirstFall(state, session.physics, sceneMotionOptions(session));
     this.markChanged(session);
-    this.broadcastSnapshot(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
     return true;
   }
 
@@ -1014,7 +1018,7 @@ class SessionManager {
     );
     this.syncCooperativeDrag(session);
     this.markChanged(session);
-    this.broadcastSnapshot(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
   }
 
   updateRoomSettings(session, clientOrPayload, maybePayload) {
@@ -1033,7 +1037,7 @@ class SessionManager {
     rescaleSceneVerticalMotion(session, previousRoomSettings, nextRoomSettings);
     session.roomSettings = nextRoomSettings;
     this.markChanged(session);
-    this.broadcastSnapshot(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
   }
 
   updateMasterViewport(session, client, payload = {}) {
@@ -1053,7 +1057,7 @@ class SessionManager {
     }
     session.masterViewport = viewport;
     this.markChanged(session);
-    this.broadcastSnapshot(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
     return true;
   }
 
@@ -1288,34 +1292,58 @@ class SessionManager {
     }
   }
 
-  snapshot(session, includeTrail = false) {
+  snapshot(session, options = {}) {
+    const normalized =
+      typeof options === "boolean"
+        ? { includeTrail: options, includeConfig: true }
+        : {
+            includeTrail: Boolean(options.includeTrail),
+            includeConfig: options.includeConfig !== false,
+          };
     const serverTime = this.now();
     const payload = {
-      ...session.state,
-      physics: { ...session.physics },
-      roomSettings: { ...session.roomSettings },
-      masterViewport: session.masterViewport
-        ? { ...session.masterViewport }
-        : null,
-      imprint: session.imprint ? { ...session.imprint } : null,
+      phase: session.state.phase,
+      x: roundNetworkNumber(session.state.x),
+      y: roundNetworkNumber(session.state.y),
+      vx: roundNetworkNumber(session.state.vx),
+      vy: roundNetworkNumber(session.state.vy),
+      dragging: Boolean(session.state.dragging),
+      controllerId: session.state.controllerId,
+      suspended: Boolean(session.state.suspended),
+      turbTime: roundNetworkNumber(session.state.turbTime),
       holderIds: this.holderIds(session),
       requiredHolders: REQUIRED_HOLDERS,
-      masterClientId: session.masterClientId,
       groundTouchSeq: session.groundTouchSeq,
       summitElapsedMs: this.summitElapsedAt(session, serverTime),
       summitTimerRunning: session.summitRunningSince !== null,
       revision: session.revision,
       serverTime,
-      expiresAt: session.expiresAt,
     };
-    if (includeTrail) {
+    if (normalized.includeConfig) {
+      payload.physics = { ...session.physics };
+      payload.roomSettings = { ...session.roomSettings };
+      payload.masterViewport = session.masterViewport
+        ? { ...session.masterViewport }
+        : null;
+      payload.imprint = session.imprint ? { ...session.imprint } : null;
+      payload.masterClientId = session.masterClientId;
+      payload.expiresAt = session.expiresAt;
+    }
+    if (normalized.includeTrail) {
       payload.trail = session.trail.map((point) => [...point]);
     }
     return payload;
   }
 
-  broadcastSnapshot(session, includeTrail = false) {
-    const payload = this.snapshot(session, includeTrail);
+  broadcastSnapshot(session, options = {}) {
+    const normalized =
+      typeof options === "boolean"
+        ? { includeTrail: options, includeConfig: true }
+        : {
+            includeTrail: Boolean(options.includeTrail),
+            includeConfig: Boolean(options.includeConfig),
+          };
+    const payload = this.snapshot(session, normalized);
     session.clients.forEach((client) => {
       this.sendTo(client, "session.snapshot", payload);
     });
@@ -1343,12 +1371,12 @@ class SessionManager {
       Number.isFinite(client.pointer.rockOffsetY);
     return {
       clientId: client.id,
-      x: client.pointer.x,
-      y: client.pointer.y,
+      x: roundNetworkNumber(client.pointer.x),
+      y: roundNetworkNumber(client.pointer.y),
       ...(hasRockOffset
         ? {
-            rockOffsetX: client.pointer.rockOffsetX,
-            rockOffsetY: client.pointer.rockOffsetY,
+            rockOffsetX: roundNetworkNumber(client.pointer.rockOffsetX),
+            rockOffsetY: roundNetworkNumber(client.pointer.rockOffsetY),
           }
         : {}),
       mode: client.pointer.mode,
@@ -1361,6 +1389,9 @@ class SessionManager {
   broadcastPointer(session, client) {
     const payload = this.pointerPayload(client);
     session.clients.forEach((participant) => {
+      if (participant.id === client.id) {
+        return;
+      }
       this.sendTo(participant, "pointer.update", payload);
     });
   }

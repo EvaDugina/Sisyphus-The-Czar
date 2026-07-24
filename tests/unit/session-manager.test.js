@@ -907,6 +907,10 @@ test("указатель участника синхронизируется и 
   const pointerMessage = second.socket.messages.findLast(
     (message) => message.type === "pointer.update"
   );
+  assert.equal(
+    first.socket.messages.some((message) => message.type === "pointer.update"),
+    false,
+  );
   assert.deepEqual(pointerMessage.payload, {
     clientId: first.client.id,
     x: 420,
@@ -1106,13 +1110,16 @@ test("касание земли увеличивает счётчик для к�
   clock.value = 1000;
   manager.tick();
 
+  const snapshot = socket.messages.findLast(
+    (message) => message.type === "session.snapshot",
+  );
   assert.equal(session.state.y, Physics.WORLD_HEIGHT);
   assert.equal(session.groundTouchSeq, 1);
-  assert.equal(
-    socket.messages.findLast((message) => message.type === "session.snapshot")
-      .payload.groundTouchSeq,
-    1
-  );
+  assert.equal(snapshot.payload.groundTouchSeq, 1);
+  assert.equal(Object.hasOwn(snapshot.payload, "physics"), false);
+  assert.equal(Object.hasOwn(snapshot.payload, "roomSettings"), false);
+  assert.equal(Object.hasOwn(snapshot.payload, "masterViewport"), false);
+  assert.equal(Object.hasOwn(snapshot.payload, "imprint"), false);
 });
 
 test("неактивная сессия удаляется по TTL", () => {

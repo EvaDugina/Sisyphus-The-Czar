@@ -23,10 +23,18 @@ import {
   formatSettingsVersionSavedAt,
 } from "../../src/lib/settingsVersions.mjs";
 import {
+  selectLatestSettingsVersionEntry,
+  settingsFromLatestVersionEntry,
+} from "../../src/lib/settingsVersionSelection.mjs";
+import {
   normalizeRainSettings,
   normalizeRockScaleSettings,
   normalizeThemeMode,
 } from "../../src/lib/settingsModel.mjs";
+import {
+  settings as productionSettings,
+  settingsSchemaVersion as productionSettingsSchemaVersion,
+} from "../../src/config/production-preset.mjs";
 import {
   SETTINGS_GROUPS,
   SETTINGS_STORAGE_KEY,
@@ -342,6 +350,46 @@ test("сохраненная версия настроек показывает 
   assert.equal(
     formatSettingsVersionOptionLabel({ name: "Черновик" }),
     "Черновик",
+  );
+});
+
+test("production preset совместим с актуальной схемой и shared payload", () => {
+  assert.equal(productionSettingsSchemaVersion, 18);
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings(productionSettings),
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+  );
+  assert.equal(productionSettings.mass, 1);
+  assert.equal(productionSettings.gravity, 9.8);
+  assert.equal(productionSettings.requiredHolders, undefined);
+});
+
+test("production preset source выбирает последнюю версию по updatedAt", () => {
+  const older = {
+    id: "older",
+    createdAt: "2026-07-20T10:00:00.000Z",
+    updatedAt: "2026-07-22T10:00:00.000Z",
+    settings: { gravity: 7 },
+  };
+  const fallbackByCreatedAt = {
+    id: "fallback",
+    createdAt: "2026-07-23T10:00:00.000Z",
+    settings: { gravity: 8 },
+  };
+  const latest = {
+    id: "latest",
+    createdAt: "2026-07-21T10:00:00.000Z",
+    updatedAt: "2026-07-24T10:00:00.000Z",
+    settings: { gravity: 9 },
+  };
+
+  assert.equal(
+    selectLatestSettingsVersionEntry([older, latest, fallbackByCreatedAt]),
+    latest,
+  );
+  assert.deepEqual(
+    settingsFromLatestVersionEntry([older, fallbackByCreatedAt]),
+    { gravity: 8 },
   );
 });
 

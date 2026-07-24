@@ -29,7 +29,7 @@ export function deriveSessionStatus(session) {
     return { text: "Переподключение…", state: "connecting" };
   }
   const holderIds = Array.isArray(session.holderIds) ? session.holderIds : [];
-  const requiredHolders = Math.max(1, Number(session.requiredHolders) || 2);
+  const requiredHolders = Math.max(1, Number(session.requiredHolders) || 1);
   const holderCount = holderIds.length;
   const liftReady =
     typeof session.liftReady === "boolean"

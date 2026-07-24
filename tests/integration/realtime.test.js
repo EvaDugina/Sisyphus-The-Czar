@@ -404,7 +404,11 @@ test("два WebSocket-клиента делят состояние и пере�
       payload.revision > roomSettingsSynced.payload.revision &&
       payload.phase === Physics.PHASES.PLAY &&
       payload.x === 321 &&
-      payload.y === 654
+      payload.y === 654 &&
+      payload.physics &&
+      payload.roomSettings &&
+      payload.imprint &&
+      Array.isArray(payload.trail)
   );
   assert.equal(restarted.payload.x, 321);
   assert.equal(restarted.payload.y, 654);
@@ -446,10 +450,7 @@ test("два WebSocket-клиента делят состояние и пере�
       payload.holderIds?.includes("integration-client-b")
   );
   assert.equal(acquiredAfterRestart.payload.controllerId, "integration-client-b");
-  assert.deepEqual(
-    acquiredAfterRestart.payload.imprint,
-    Physics.createSummitImprint()
-  );
+  assert.equal(Object.hasOwn(acquiredAfterRestart.payload, "imprint"), false);
 
   const invalidLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
     method: "POST",
