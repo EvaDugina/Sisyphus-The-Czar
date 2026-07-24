@@ -1282,8 +1282,6 @@ test("два браузера видят один камень и поднима
   const secondContext = await browser.newContext();
   const first = await firstContext.newPage();
   const second = await secondContext.newPage();
-  await watchAudioPlayCalls(first, "Дождь");
-  await watchAudioPlayCalls(second, "Дождь");
 
   await first.goto("/");
   await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
@@ -1527,17 +1525,23 @@ test("два браузера видят один камень и поднима
   await expect(firstRain).toHaveClass(/is-rain-visible/);
   const rainAudioFadeIn = await first.evaluate(() => getRainAudioState());
   expect(rainAudioFadeIn.amplificationAvailable).toBe(true);
-  expect(rainAudioFadeIn.elementVolume).toBe(1);
+  expect(rainAudioFadeIn.backend).toBe("buffer");
+  expect(rainAudioFadeIn.crossfadeRatio).toBe(0.2);
   expect(rainAudioFadeIn.fadeDurationMs).toBe(650);
   expect(rainAudioFadeIn.fadeActive).toBe(true);
   expect(rainAudioFadeIn.fadeTargetVolume).toBe(2.5);
   expect(rainAudioFadeIn.playing).toBe(true);
   expect(rainAudioFadeIn.volume).toBeLessThan(2.5);
   await expect
-    .poll(() =>
-      first.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
-    )
-    .toBe(1);
+    .poll(() => first.evaluate(() => getRainAudioState()))
+    .toMatchObject({
+      activeSourceCount: 1,
+      bufferReady: true,
+      decodeCount: 1,
+      running: true,
+      schedulerActive: true,
+      startCount: 1,
+    });
   await setRange(first, "rainMaxVolume", 3);
   await expect(first.locator('[data-output="rainMaxVolume"]')).toHaveText("300%");
   const amplifiedRain = await first.evaluate(() => getRainAudioState());
@@ -1546,11 +1550,9 @@ test("два браузера видят один камень и поднима
   expect(amplifiedRain.fadeMode).toBe("volume");
   expect(amplifiedRain.fadeTargetVolume).toBe(3);
   expect(amplifiedRain.playing).toBe(true);
-  await expect
-    .poll(() =>
-      first.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
-    )
-    .toBe(1);
+  expect(amplifiedRain.decodeCount).toBe(1);
+  expect(amplifiedRain.startCount).toBe(1);
+  expect(amplifiedRain.schedulerActive).toBe(true);
   await expect(firstRain.locator(".weather-rain__blur")).toHaveCount(1);
   await expect
     .poll(() => first.evaluate(() => getLastRainRendererProfile()))
@@ -1641,7 +1643,38 @@ test("два браузера видят один камень и поднима
     .toEqual([0, 0]);
   await expect
     .poll(() => first.evaluate(() => getRainAudioState()))
-    .toMatchObject({ fadeActive: false, playing: false, volume: 0 });
+    .toMatchObject({
+      activeSourceCount: 0,
+      bufferReady: true,
+      fadeActive: false,
+      playing: false,
+      running: false,
+      schedulerActive: false,
+      volume: 0,
+    });
+  await setCheckbox(first, "rainEnabled", true);
+  await expect
+    .poll(() => first.evaluate(() => getRainAudioState()))
+    .toMatchObject({
+      activeSourceCount: 1,
+      bufferReady: true,
+      decodeCount: 1,
+      playing: true,
+      running: true,
+      schedulerActive: true,
+      startCount: 2,
+    });
+  await setCheckbox(first, "rainEnabled", false);
+  await expect
+    .poll(() => first.evaluate(() => getRainAudioState()))
+    .toMatchObject({
+      activeSourceCount: 0,
+      decodeCount: 1,
+      playing: false,
+      running: false,
+      schedulerActive: false,
+      startCount: 2,
+    });
   await openControlGroup(first, "Физика");
   await setRange(first, "gravity", 10);
   await setRange(first, "turbulence", 0.3);
@@ -1955,10 +1988,12 @@ test("два браузера видят один камень и поднима
   await expect(first.locator("body")).toHaveClass(/theme-dark/);
   await expect(second.locator("body")).toHaveClass(/theme-dark/);
   await expect
-    .poll(() =>
-      second.evaluate(() => window.__watchedAudioPlayCounts["Дождь"] || 0)
-    )
-    .toBe(0);
+    .poll(() => second.evaluate(() => getRainAudioState()))
+    .toMatchObject({
+      playing: false,
+      schedulerActive: false,
+      startCount: 0,
+    });
   await expect(firstRain).not.toHaveClass(/is-rain-visible/);
   await expect(secondRain).not.toHaveClass(/is-rain-visible/);
   await expect

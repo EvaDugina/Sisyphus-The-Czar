@@ -7,6 +7,7 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
+import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
@@ -486,17 +487,16 @@ export function createSisyphusRuntime(elements = {}) {
     entries: new Map(),
     latest: null,
   };
+  const rainLoopController = createCrossfadedAudioLoop({
+    src: rainAudioUrl,
+  });
   const rainLoopAudio = {
-    context: null,
-    element: null,
     fadeDurationMs: 0,
     fadeFrameId: null,
     fadeMode: null,
     fadeTargetVolume: 0,
     fadeToken: 0,
-    gainNode: null,
     playing: false,
-    sourceNode: null,
     volume: 0,
   };
 
@@ -752,80 +752,17 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
-  function createRainLoopAudio() {
-    const audio = new Audio(rainAudioUrl);
-    audio.loop = true;
-    audio.preload = "auto";
-    audio.volume = 0;
-    return audio;
-  }
-
   function setRainLoopVolume(value) {
     const nextVolume = clamp(Number(value) || 0, 0, 3);
     rainLoopAudio.volume = nextVolume;
-    if (rainLoopAudio.gainNode) {
-      rainLoopAudio.gainNode.gain.value = nextVolume;
-      if (rainLoopAudio.element) {
-        rainLoopAudio.element.volume = 1;
-      }
-      return;
-    }
-    if (rainLoopAudio.element) {
-      rainLoopAudio.element.volume = clamp(nextVolume, 0, 1);
-    }
-  }
-
-  function ensureRainLoopAudioGraph() {
-    if (rainLoopAudio.gainNode) {
-      return true;
-    }
-    const audio = rainLoopAudio.element;
-    const AudioContextConstructor =
-      window.AudioContext || window.webkitAudioContext;
-    if (!audio || typeof AudioContextConstructor !== "function") {
-      setRainLoopVolume(rainLoopAudio.volume);
-      return false;
-    }
-
-    try {
-      const context = new AudioContextConstructor();
-      const sourceNode = context.createMediaElementSource(audio);
-      const gainNode = context.createGain();
-      gainNode.gain.value = rainLoopAudio.volume;
-      sourceNode.connect(gainNode);
-      gainNode.connect(context.destination);
-      rainLoopAudio.context = context;
-      rainLoopAudio.sourceNode = sourceNode;
-      rainLoopAudio.gainNode = gainNode;
-      audio.volume = 1;
-      return true;
-    } catch {
-      setRainLoopVolume(rainLoopAudio.volume);
-      return false;
-    }
-  }
-
-  function resumeRainLoopAudioContext() {
-    const context = rainLoopAudio.context;
-    if (!context || context.state !== "suspended") {
-      return;
-    }
-    const promise = context.resume();
-    if (promise && typeof promise.catch === "function") {
-      promise.catch(() => {});
-    }
+    rainLoopController.setVolume(nextVolume);
   }
 
   function prepareRainLoopAudio() {
-    if (typeof Audio !== "function") {
-      return false;
+    const promise = rainLoopController.prepare();
+    if (promise && typeof promise.catch === "function") {
+      promise.catch(() => {});
     }
-    if (!rainLoopAudio.element) {
-      rainLoopAudio.element = createRainLoopAudio();
-    }
-    ensureRainLoopAudioGraph();
-    resumeRainLoopAudioContext();
-    return true;
   }
 
   function cancelRainLoopFade() {
@@ -839,11 +776,6 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function fadeRainLoopVolume(targetVolume, durationMs, options = {}) {
-    const audio = rainLoopAudio.element;
-    if (!audio) {
-      return;
-    }
-
     const onDone =
       typeof options.onDone === "function" ? options.onDone : () => {};
     cancelRainLoopFade();
@@ -886,17 +818,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function finishRainLoopSound() {
-    const audio = rainLoopAudio.element;
-    if (!audio) {
-      rainLoopAudio.playing = false;
-      return;
-    }
-    audio.pause();
-    try {
-      audio.currentTime = 0;
-    } catch {
-      /* currentTime может быть недоступен до загрузки audio metadata. */
-    }
+    rainLoopController.stop();
     setRainLoopVolume(0);
     rainLoopAudio.fadeMode = null;
     rainLoopAudio.fadeTargetVolume = 0;
@@ -904,27 +826,21 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function playRainLoopSound() {
-    if (!prepareRainLoopAudio()) {
-      return;
-    }
-
-    const audio = rainLoopAudio.element;
     const wasStopped = !rainLoopAudio.playing;
-
-    try {
-      if (wasStopped) {
-        audio.currentTime = 0;
-      }
-    } catch {
-      /* currentTime может быть недоступен до загрузки audio metadata. */
-    }
     if (wasStopped) {
       setRainLoopVolume(0);
     }
     rainLoopAudio.playing = true;
-    const promise = audio.play();
+    const promise = rainLoopController.start();
     if (promise && typeof promise.catch === "function") {
-      promise.catch(() => {
+      promise.then((started) => {
+        if (started || !rainLoopAudio.playing) {
+          return;
+        }
+        cancelRainLoopFade();
+        setRainLoopVolume(0);
+        rainLoopAudio.playing = false;
+      }).catch(() => {
         cancelRainLoopFade();
         setRainLoopVolume(0);
         rainLoopAudio.playing = false;
@@ -936,8 +852,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function stopRainLoopSound({ immediate = false } = {}) {
-    const audio = rainLoopAudio.element;
-    if (!audio) {
+    if (!rainLoopAudio.playing) {
       rainLoopAudio.playing = false;
       return;
     }
@@ -955,10 +870,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function syncRainLoopFadeTiming(changedKeys) {
-    if (
-      !rainLoopAudio.element ||
-      !rainLoopAudio.playing
-    ) {
+    if (!rainLoopAudio.playing) {
       return;
     }
     if (
@@ -5063,22 +4975,21 @@ export function createSisyphusRuntime(elements = {}) {
     fitTopInscription,
     drawTrail,
     getRoomSettings: sharedRoomSettingsPayload,
-    getRainAudioState: () => ({
-      amplificationAvailable: rainLoopAudio.gainNode !== null,
-      elementVolume: rainLoopAudio.element
-        ? rainLoopAudio.element.volume
-        : 0,
-      fadeDurationMs: rainLoopAudio.fadeDurationMs,
-      fadeActive: rainLoopAudio.fadeFrameId !== null,
-      fadeMode: rainLoopAudio.fadeMode,
-      fadeTargetVolume: rainLoopAudio.fadeTargetVolume,
-      gain: rainLoopAudio.gainNode
-        ? rainLoopAudio.gainNode.gain.value
-        : rainLoopAudio.volume,
-      paused: rainLoopAudio.element ? rainLoopAudio.element.paused : true,
-      playing: rainLoopAudio.playing,
-      volume: rainLoopAudio.volume,
-    }),
+    getRainAudioState: () => {
+      const loopState = rainLoopController.getState();
+      return {
+        ...loopState,
+        elementVolume: loopState.fallbackElementVolume,
+        fadeDurationMs: rainLoopAudio.fadeDurationMs,
+        fadeActive: rainLoopAudio.fadeFrameId !== null,
+        fadeMode: rainLoopAudio.fadeMode,
+        fadeTargetVolume: rainLoopAudio.fadeTargetVolume,
+        gain: loopState.volume,
+        paused: !loopState.running,
+        playing: rainLoopAudio.playing,
+        volume: rainLoopAudio.volume,
+      };
+    },
     getRainRenderToken: () => rain.renderToken,
     getSettingsVersions: () =>
       settingsVersions.entries.map((entry) => ({
@@ -5130,6 +5041,7 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(collab.physicsTimerId);
       window.clearTimeout(collab.roomSettingsTimerId);
       stopRainLoopSound({ immediate: true });
+      rainLoopController.dispose();
       cancelAllRoleAudioFades();
       chainHoverAudio.elements.forEach((audio) => audio?.pause());
       sessionRoleAudio.timerIds.forEach((timerId) => {
