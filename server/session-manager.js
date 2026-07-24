@@ -11,6 +11,7 @@ const DISCONNECTED_CLIENT_TTL_MS = 60_000;
 const DEFAULT_EMPTY_SESSION_GRACE_MS = 10_000;
 const POINTER_VELOCITY_MAX_AGE_MS = 150;
 const MAX_TRAIL_POINTS = 1000;
+const MAX_ROCK_POINTER_OFFSET = 4;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
 const CLIENT_ROLES = new Set(["master", "slave"]);
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
@@ -886,6 +887,11 @@ class SessionManager {
   updatePointer(session, client, payload = {}) {
     const x = Number(payload.x);
     const y = Number(payload.y);
+    const hasRockOffsetX = Object.hasOwn(payload, "rockOffsetX");
+    const hasRockOffsetY = Object.hasOwn(payload, "rockOffsetY");
+    const hasRockOffset = hasRockOffsetX || hasRockOffsetY;
+    const rockOffsetX = Number(payload.rockOffsetX);
+    const rockOffsetY = Number(payload.rockOffsetY);
     const visible = payload.visible;
     const mode = payload.mode;
     if (
@@ -895,6 +901,13 @@ class SessionManager {
       x > Physics.WORLD_WIDTH ||
       y < 0 ||
       y > Physics.WORLD_HEIGHT ||
+      (hasRockOffset &&
+        (!hasRockOffsetX ||
+          !hasRockOffsetY ||
+          !Number.isFinite(rockOffsetX) ||
+          !Number.isFinite(rockOffsetY) ||
+          Math.abs(rockOffsetX) > MAX_ROCK_POINTER_OFFSET ||
+          Math.abs(rockOffsetY) > MAX_ROCK_POINTER_OFFSET)) ||
       typeof visible !== "boolean" ||
       !POINTER_MODES.has(mode)
     ) {
@@ -911,6 +924,7 @@ class SessionManager {
       y,
       mode,
       visible,
+      ...(hasRockOffset ? { rockOffsetX, rockOffsetY } : {}),
       updatedAt: this.now(),
     };
     this.broadcastPointer(session, client);
@@ -1089,10 +1103,19 @@ class SessionManager {
   }
 
   pointerPayload(client) {
+    const hasRockOffset =
+      Number.isFinite(client.pointer.rockOffsetX) &&
+      Number.isFinite(client.pointer.rockOffsetY);
     return {
       clientId: client.id,
       x: client.pointer.x,
       y: client.pointer.y,
+      ...(hasRockOffset
+        ? {
+            rockOffsetX: client.pointer.rockOffsetX,
+            rockOffsetY: client.pointer.rockOffsetY,
+          }
+        : {}),
       mode: client.pointer.mode,
       visible: client.pointer.visible,
       role: clientRole(client.role),

@@ -8,6 +8,8 @@ import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
+  rockRelativeToViewportPosition,
+  viewportToRockRelativePosition,
 } from "../lib/coordinates.mjs";
 import {
   getRainVisualProfile,
@@ -22,9 +24,6 @@ import {
   normalizeThemeMode,
 } from "../lib/settingsModel.mjs";
 import {
-  DEFAULT_ROCK_MAX_WIDTH_VW,
-  DEFAULT_ROCK_MIN_WIDTH_VW,
-  DEFAULT_ROCK_SCALE_EASING,
   rockScaleForY,
 } from "../lib/rockScale.mjs";
 import {
@@ -145,7 +144,7 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_BLUR_SATURATION = 1.1;
   const DEFAULT_RAIN_BLEND_MODE = "multiply";
   const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
-  const DEFAULT_THEME_MODE = "auto";
+  const DEFAULT_THEME_MODE = SharedRoomSettings.DEFAULT_ROOM_SETTINGS.themeMode;
   const SUMMIT_IMPRINT_TOP_VIEWPORT_FRACTION = 0.5;
 
   const params = {
@@ -160,9 +159,9 @@ export function createSisyphusRuntime(elements = {}) {
     horizontalInertia: SharedPhysics.DEFAULT_PHYSICS.horizontalInertia,
     groundFriction: 0.35,
     turbulence: 0.4,
-    rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
-    rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
-    rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
+    rockScaleEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockScaleEasing,
+    rockMinWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
+    rockMaxWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMaxWidthVw,
     sceneHeightScreens:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
     handWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
@@ -170,47 +169,49 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
 
     // Дождь
-    rainEnabled: false,
-    rainStrength: 1,
+    rainEnabled: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnabled,
+    rainStrength: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainStrength,
     rainDropColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor,
     rainHighlightColor:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainHighlightColor,
-    rainBlendMode: DEFAULT_RAIN_BLEND_MODE,
-    rainBlurBlendMode: DEFAULT_RAIN_BLUR_BLEND_MODE,
-    rainBackgroundBlurSteps: DEFAULT_RAIN_BACKGROUND_BLUR_STEPS,
-    rainBlurPx: DEFAULT_RAIN_BLUR_PX,
-    rainBlurOpacity: DEFAULT_RAIN_BLUR_OPACITY,
-    rainBlurSaturation: DEFAULT_RAIN_BLUR_SATURATION,
-    rainZIndex: DEFAULT_RAIN_Z_INDEX,
-    rainEnterEasing: DEFAULT_RAIN_ENTER_EASING,
-    rainExitEasing: DEFAULT_RAIN_EXIT_EASING,
-    rainEnterMs: DEFAULT_RAIN_ENTER_MS,
-    rainExitMs: DEFAULT_RAIN_EXIT_MS,
-    rainAudioEnterMs: DEFAULT_RAIN_AUDIO_ENTER_MS,
-    rainAudioExitMs: DEFAULT_RAIN_AUDIO_EXIT_MS,
+    rainBlendMode: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlendMode,
+    rainBlurBlendMode: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlurBlendMode,
+    rainBackgroundBlurSteps:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBackgroundBlurSteps,
+    rainBlurPx: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlurPx,
+    rainBlurOpacity: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlurOpacity,
+    rainBlurSaturation:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainBlurSaturation,
+    rainZIndex: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainZIndex,
+    rainEnterEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnterEasing,
+    rainExitEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainExitEasing,
+    rainEnterMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnterMs,
+    rainExitMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainExitMs,
+    rainAudioEnterMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainAudioEnterMs,
+    rainAudioExitMs: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainAudioExitMs,
 
     // След
-    trailEnabled: true,
-    trailReset: false,
-    lineDelay: 0.5,
-    trailMaxPoints: 1000,
-    trailUnlimited: false,
-    trailSampleDist: 6,
+    trailEnabled: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailEnabled,
+    trailReset: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailReset,
+    lineDelay: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineDelay,
+    trailMaxPoints: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailMaxPoints,
+    trailUnlimited: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailUnlimited,
+    trailSampleDist: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailSampleDist,
 
     // След — стиль
-    blendMode: "difference",
-    lineColor: "#ffffff",
-    lineColorTail: "#ffffff",
-    useGradient: false,
-    lineWidth: 6,
-    lineOpacity: 0.9,
-    dashStyle: "solid",
-    dashLength: 12,
-    dashGap: 8,
-    lineCap: "round",
-    lineJoin: "round",
-    glow: 0,
-    glowColor: "#ffffff",
+    blendMode: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.blendMode,
+    lineColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineColor,
+    lineColorTail: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineColorTail,
+    useGradient: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.useGradient,
+    lineWidth: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineWidth,
+    lineOpacity: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineOpacity,
+    dashStyle: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashStyle,
+    dashLength: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashLength,
+    dashGap: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.dashGap,
+    lineCap: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineCap,
+    lineJoin: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineJoin,
+    glow: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.glow,
+    glowColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.glowColor,
   };
 
   const settingsVersions = {
@@ -272,6 +273,16 @@ export function createSisyphusRuntime(elements = {}) {
     "turbulence",
   ];
   const SHARED_ROOM_SETTING_KEYS = SharedRoomSettings.ROOM_SETTINGS_KEYS;
+  const NUMERIC_ROOM_SETTING_KEYS = new Set(
+    SHARED_ROOM_SETTING_KEYS.filter(
+      (key) => typeof SharedRoomSettings.DEFAULT_ROOM_SETTINGS[key] === "number",
+    ),
+  );
+  const BOOLEAN_ROOM_SETTING_KEYS = new Set(
+    SHARED_ROOM_SETTING_KEYS.filter(
+      (key) => typeof SharedRoomSettings.DEFAULT_ROOM_SETTINGS[key] === "boolean",
+    ),
+  );
   const RECONNECT_DELAYS = [500, 1000, 2000, 5000];
   const SNAPSHOT_DELAY_MS = 90;
   const POINTER_SEND_INTERVAL_MS = 1000 / 30;
@@ -347,6 +358,8 @@ export function createSisyphusRuntime(elements = {}) {
     localPointer: {
       x: SharedPhysics.WORLD_WIDTH / 2,
       y: 0,
+      rockOffsetX: 0,
+      rockOffsetY: 0,
       mode: "grab",
       visible: false,
     },
@@ -1456,6 +1469,39 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function roomSettingControlElement(key) {
+    return settingsPanel.querySelector(`[name="${key}"]`);
+  }
+
+  function readRoomSettingsControls() {
+    return Object.fromEntries(
+      SHARED_ROOM_SETTING_KEYS.map((key) => {
+        const input = roomSettingControlElement(key);
+        if (!input) {
+          return [key, params[key]];
+        }
+        return [
+          key,
+          input.type === "checkbox" ? Boolean(input.checked) : input.value,
+        ];
+      }),
+    );
+  }
+
+  function syncRoomSettingControls() {
+    SHARED_ROOM_SETTING_KEYS.forEach((key) => {
+      const input = roomSettingControlElement(key);
+      if (!input || !Object.hasOwn(params, key)) {
+        return;
+      }
+      if (input.type === "checkbox") {
+        input.checked = Boolean(params[key]);
+      } else {
+        input.value = String(params[key]);
+      }
+    });
+  }
+
   function setSettingsVersionMenuOpen(open) {
     if (!settingsVersionMenu || !settingsVersionToggle) {
       return;
@@ -1705,9 +1751,6 @@ export function createSisyphusRuntime(elements = {}) {
   function readControls(options = {}) {
     const num = (name) =>
       Number(settingsPanel.querySelector(`[name="${name}"]`).value);
-    const str = (name) => settingsPanel.querySelector(`[name="${name}"]`).value;
-    const bool = (name) =>
-      settingsPanel.querySelector(`[name="${name}"]`).checked;
     const changedKey = options.changedKey || "";
     const hasExplicitChangedKeys = Array.isArray(options.changedKeys);
     const changedKeys = new Set(
@@ -1736,7 +1779,6 @@ export function createSisyphusRuntime(elements = {}) {
       ) <= 4;
 
     params.mass = num("mass");
-    params.themeMode = normalizeThemeMode(str("themeMode"), DEFAULT_THEME_MODE);
     params.gravity = num("gravity");
     params.handForce = num("handForce");
     params.pointerInfluence = num("pointerInfluence");
@@ -1747,33 +1789,21 @@ export function createSisyphusRuntime(elements = {}) {
     params.turbulence = num("turbulence");
     Object.assign(
       params,
-      normalizeRockScaleSettings(
-        {
-          rockMinWidthVw: num("rockMinWidthVw"),
-          rockMaxWidthVw: num("rockMaxWidthVw"),
-          rockScaleEasing: str("rockScaleEasing"),
-        },
-        {
-          defaults: {
-            rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
-            rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
-            rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
-          },
-        },
-      ),
+      SharedRoomSettings.sanitizeRoomSettings(readRoomSettingsControls(), params),
     );
+    params.themeMode = normalizeThemeMode(params.themeMode, DEFAULT_THEME_MODE);
     Object.assign(
       params,
-      SharedRoomSettings.sanitizeRoomSettings(
-        {
-          sceneHeightScreens: num("sceneHeightScreens"),
-          handWidthVw: num("handWidthVw"),
-          slaveHandWidthPx: num("slaveHandWidthPx"),
-          rainDropColor: str("rainDropColor"),
-          rainHighlightColor: str("rainHighlightColor"),
+      normalizeRockScaleSettings(params, {
+        defaults: {
+          rockMinWidthVw:
+            SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
+          rockMaxWidthVw:
+            SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMaxWidthVw,
+          rockScaleEasing:
+            SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockScaleEasing,
         },
-        params,
-      ),
+      }),
     );
     if (preservedState && previousRoomSettings) {
       const previousScale =
@@ -1781,27 +1811,10 @@ export function createSisyphusRuntime(elements = {}) {
       const nextScale = SharedRoomSettings.sceneMotionMultiplier(params);
       preservedState.vy *= previousScale > 0 ? nextScale / previousScale : 1;
     }
-    params.rainEnabled = bool("rainEnabled");
-
     Object.assign(
       params,
       normalizeRainSettings(
-        {
-          rainStrength: num("rainStrength"),
-          rainBlendMode: str("rainBlendMode"),
-          rainBlurBlendMode: str("rainBlurBlendMode"),
-          rainBackgroundBlurSteps: num("rainBackgroundBlurSteps"),
-          rainBlurPx: num("rainBlurPx"),
-          rainBlurOpacity: num("rainBlurOpacity"),
-          rainBlurSaturation: num("rainBlurSaturation"),
-          rainZIndex: num("rainZIndex"),
-          rainEnterEasing: str("rainEnterEasing"),
-          rainExitEasing: str("rainExitEasing"),
-          rainEnterMs: num("rainEnterMs"),
-          rainExitMs: num("rainExitMs"),
-          rainAudioEnterMs: num("rainAudioEnterMs"),
-          rainAudioExitMs: num("rainAudioExitMs"),
-        },
+        params,
         {
           defaults: {
             rainBlendMode: DEFAULT_RAIN_BLEND_MODE,
@@ -1828,65 +1841,7 @@ export function createSisyphusRuntime(elements = {}) {
       ),
     );
 
-    params.trailEnabled = bool("trailEnabled");
-    params.trailReset = bool("trailReset");
-    params.lineDelay = num("lineDelay");
-    params.trailMaxPoints = num("trailMaxPoints");
-    params.trailUnlimited = bool("trailUnlimited");
-    params.trailSampleDist = num("trailSampleDist");
-
-    params.blendMode = str("blendMode");
-    params.lineColor = str("lineColor");
-    params.lineColorTail = str("lineColorTail");
-    params.useGradient = bool("useGradient");
-    params.lineWidth = num("lineWidth");
-    params.lineOpacity = num("lineOpacity");
-    params.dashStyle = str("dashStyle");
-    params.dashLength = num("dashLength");
-    params.dashGap = num("dashGap");
-    params.lineCap = str("lineCap");
-    params.lineJoin = str("lineJoin");
-    params.glow = num("glow");
-    params.glowColor = str("glowColor");
-
-    settingsPanel.querySelector('[name="rainStrength"]').value = params.rainStrength;
-    settingsPanel.querySelector('[name="rainDropColor"]').value =
-      params.rainDropColor;
-    settingsPanel.querySelector('[name="rainHighlightColor"]').value =
-      params.rainHighlightColor;
-    settingsPanel.querySelector('[name="rainBlendMode"]').value =
-      params.rainBlendMode;
-    settingsPanel.querySelector('[name="rainBlurBlendMode"]').value =
-      params.rainBlurBlendMode;
-    settingsPanel.querySelector('[name="rainBackgroundBlurSteps"]').value =
-      params.rainBackgroundBlurSteps;
-    settingsPanel.querySelector('[name="rainBlurPx"]').value = params.rainBlurPx;
-    settingsPanel.querySelector('[name="rainBlurOpacity"]').value =
-      params.rainBlurOpacity;
-    settingsPanel.querySelector('[name="rainBlurSaturation"]').value =
-      params.rainBlurSaturation;
-    settingsPanel.querySelector('[name="rainZIndex"]').value = params.rainZIndex;
-    settingsPanel.querySelector('[name="rainEnterEasing"]').value = params.rainEnterEasing;
-    settingsPanel.querySelector('[name="rainExitEasing"]').value = params.rainExitEasing;
-    settingsPanel.querySelector('[name="rainEnterMs"]').value = params.rainEnterMs;
-    settingsPanel.querySelector('[name="rainExitMs"]').value = params.rainExitMs;
-    settingsPanel.querySelector('[name="rainAudioEnterMs"]').value =
-      params.rainAudioEnterMs;
-    settingsPanel.querySelector('[name="rainAudioExitMs"]').value =
-      params.rainAudioExitMs;
-    settingsPanel.querySelector('[name="themeMode"]').value = params.themeMode;
-    settingsPanel.querySelector('[name="rockScaleEasing"]').value =
-      params.rockScaleEasing;
-    settingsPanel.querySelector('[name="rockMinWidthVw"]').value =
-      params.rockMinWidthVw;
-    settingsPanel.querySelector('[name="rockMaxWidthVw"]').value =
-      params.rockMaxWidthVw;
-    settingsPanel.querySelector('[name="sceneHeightScreens"]').value =
-      params.sceneHeightScreens;
-    settingsPanel.querySelector('[name="handWidthVw"]').value =
-      params.handWidthVw;
-    settingsPanel.querySelector('[name="slaveHandWidthPx"]').value =
-      params.slaveHandWidthPx;
+    syncRoomSettingControls();
     applyRainSettings({
       restartIfActive:
         hasTargetedChanges &&
@@ -1985,13 +1940,20 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function setHandCursorViewportPosition(position) {
+    handCursor.style.setProperty("--cursor-x", `${position.x}px`);
+    handCursor.style.setProperty("--cursor-y", `${position.y}px`);
+  }
+
   function moveHandCursor(event) {
     if (!canShowPhotoCursor(event)) {
       return;
     }
 
-    handCursor.style.setProperty("--cursor-x", `${event.clientX}px`);
-    handCursor.style.setProperty("--cursor-y", `${event.clientY}px`);
+    setHandCursorViewportPosition({
+      x: event.clientX,
+      y: event.clientY,
+    });
   }
 
   function showHandCursor(event) {
@@ -2303,15 +2265,15 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
-  function pointerEventToCanonical(event) {
+  function viewportPointToCanonical(clientX, clientY) {
     const rect = world.getBoundingClientRect();
     updateBounds();
-    const localY = event.clientY - rect.top;
+    const localY = clientY - rect.top;
     return {
       x:
         rect.width > 0
           ? clamp(
-              ((event.clientX - rect.left) / rect.width) * SharedPhysics.WORLD_WIDTH,
+              ((clientX - rect.left) / rect.width) * SharedPhysics.WORLD_WIDTH,
               0,
               SharedPhysics.WORLD_WIDTH
             )
@@ -2377,9 +2339,18 @@ export function createSisyphusRuntime(elements = {}) {
 
   function updateLocalSharedPointer(event, mode, visible) {
     if (event) {
-      const position = pointerEventToCanonical(event);
+      const position = viewportPointToCanonical(event.clientX, event.clientY);
+      const worldRect = world.getBoundingClientRect();
+      const rockOffset = viewportToRockRelativePosition(
+        event.clientX,
+        event.clientY,
+        rock.getBoundingClientRect(),
+        worldRect.width || window.innerWidth,
+      );
       collab.localPointer.x = position.x;
       collab.localPointer.y = position.y;
+      collab.localPointer.rockOffsetX = rockOffset.x;
+      collab.localPointer.rockOffsetY = rockOffset.y;
     }
     collab.localPointer.mode = mode === "grabbing" ? "grabbing" : "grab";
     collab.localPointer.visible = Boolean(visible);
@@ -2421,6 +2392,10 @@ export function createSisyphusRuntime(elements = {}) {
     const clientId = String(payload.clientId || "");
     const x = Number(payload.x);
     const y = Number(payload.y);
+    const rockOffsetX = Number(payload.rockOffsetX);
+    const rockOffsetY = Number(payload.rockOffsetY);
+    const hasRockOffset =
+      Number.isFinite(rockOffsetX) && Number.isFinite(rockOffsetY);
     const mode = payload.mode;
     const role = pointerRole(payload.role || payload.skin);
     if (
@@ -2447,12 +2422,32 @@ export function createSisyphusRuntime(elements = {}) {
       element.dataset.remoteCursor = clientId;
       element.dataset.testid = "remote-cursor";
       remoteCursorLayer.appendChild(element);
-      pointer = { element, x, y, targetX: x, targetY: y };
+      pointer = {
+        element,
+        x,
+        y,
+        targetX: x,
+        targetY: y,
+        rockOffsetX: hasRockOffset ? rockOffsetX : null,
+        rockOffsetY: hasRockOffset ? rockOffsetY : null,
+        targetRockOffsetX: hasRockOffset ? rockOffsetX : null,
+        targetRockOffsetY: hasRockOffset ? rockOffsetY : null,
+      };
       collab.remotePointers.set(clientId, pointer);
     }
     applyCursorRole(pointer.element, role);
     pointer.targetX = x;
     pointer.targetY = y;
+    pointer.targetRockOffsetX = hasRockOffset ? rockOffsetX : null;
+    pointer.targetRockOffsetY = hasRockOffset ? rockOffsetY : null;
+    if (
+      hasRockOffset &&
+      (!Number.isFinite(pointer.rockOffsetX) ||
+        !Number.isFinite(pointer.rockOffsetY))
+    ) {
+      pointer.rockOffsetX = rockOffsetX;
+      pointer.rockOffsetY = rockOffsetY;
+    }
     pointer.element.classList.toggle("is-grabbing", mode === "grabbing");
   }
 
@@ -2482,11 +2477,36 @@ export function createSisyphusRuntime(elements = {}) {
     collab.remotePointers.forEach((pointer) => {
       pointer.x += (pointer.targetX - pointer.x) * 0.42;
       pointer.y += (pointer.targetY - pointer.y) * 0.42;
-      const local = canonicalToLocal(pointer.x, pointer.y);
-      const viewportX = rect.left + local.x;
-      const viewportY = rect.top + local.y;
-      pointer.element.style.setProperty("--cursor-x", `${viewportX}px`);
-      pointer.element.style.setProperty("--cursor-y", `${viewportY}px`);
+      let viewportPosition;
+      if (
+        Number.isFinite(pointer.targetRockOffsetX) &&
+        Number.isFinite(pointer.targetRockOffsetY)
+      ) {
+        pointer.rockOffsetX +=
+          (pointer.targetRockOffsetX - pointer.rockOffsetX) * 0.42;
+        pointer.rockOffsetY +=
+          (pointer.targetRockOffsetY - pointer.rockOffsetY) * 0.42;
+        viewportPosition = rockRelativeToViewportPosition(
+          pointer.rockOffsetX,
+          pointer.rockOffsetY,
+          rock.getBoundingClientRect(),
+          rect.width || window.innerWidth,
+        );
+      } else {
+        const local = canonicalToLocal(pointer.x, pointer.y);
+        viewportPosition = {
+          x: rect.left + local.x,
+          y: rect.top + local.y,
+        };
+      }
+      pointer.element.style.setProperty(
+        "--cursor-x",
+        `${viewportPosition.x}px`,
+      );
+      pointer.element.style.setProperty(
+        "--cursor-y",
+        `${viewportPosition.y}px`,
+      );
     });
   }
 
@@ -2673,11 +2693,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function roomSettingValueEqual(key, left, right) {
-    if (
-      key === "sceneHeightScreens" ||
-      key === "handWidthVw" ||
-      key === "slaveHandWidthPx"
-    ) {
+    if (BOOLEAN_ROOM_SETTING_KEYS.has(key)) {
+      const leftBool = left === true || left === "true";
+      const rightBool = right === true || right === "true";
+      return leftBool === rightBool;
+    }
+    if (NUMERIC_ROOM_SETTING_KEYS.has(key)) {
       return Math.abs(Number(left) - Number(right)) < 1e-9;
     }
     return String(left || "").toLowerCase() === String(right || "").toLowerCase();
@@ -2712,8 +2733,14 @@ export function createSisyphusRuntime(elements = {}) {
         }
       }
       const input = settingsPanel.querySelector(`[name="${key}"]`);
-      if (input && !roomSettingValueEqual(key, input.value, remoteValue)) {
-        input.value = String(remoteValue);
+      const currentValue =
+        input?.type === "checkbox" ? Boolean(input.checked) : input?.value;
+      if (input && !roomSettingValueEqual(key, currentValue, remoteValue)) {
+        if (input.type === "checkbox") {
+          input.checked = Boolean(remoteValue);
+        } else {
+          input.value = String(remoteValue);
+        }
         controlsChanged = true;
         if (key === "sceneHeightScreens") {
           sceneHeightChanged = true;

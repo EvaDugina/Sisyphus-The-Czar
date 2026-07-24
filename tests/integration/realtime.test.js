@@ -129,6 +129,8 @@ test("два WebSocket-клиента делят состояние и пере�
       payload: {
         x: 480,
         y: Physics.WORLD_HEIGHT - 100,
+        rockOffsetX: -0.12,
+        rockOffsetY: -0.08,
         mode: "grab",
         visible: true,
       },
@@ -139,6 +141,8 @@ test("два WebSocket-клиента делят состояние и пере�
     (payload) => payload.clientId === "integration-client-a" && payload.mode === "grab"
   );
   assert.equal(sharedPointer.payload.x, 480);
+  assert.equal(sharedPointer.payload.rockOffsetX, -0.12);
+  assert.equal(sharedPointer.payload.rockOffsetY, -0.08);
   assert.equal(sharedPointer.payload.role, "master");
 
   first.socket.send(
@@ -272,6 +276,8 @@ test("два WebSocket-клиента делят состояние и пере�
         slaveHandWidthPx: 48,
         rainDropColor: "#123456",
         rainHighlightColor: "#fedcba",
+        trailUnlimited: true,
+        lineWidth: 3,
       },
     })
   );
@@ -283,7 +289,9 @@ test("два WebSocket-клиента делят состояние и пере�
       payload.roomSettings.handWidthVw === 42.5 &&
       payload.roomSettings.slaveHandWidthPx === 48 &&
       payload.roomSettings.rainDropColor === "#123456" &&
-      payload.roomSettings.rainHighlightColor === "#fedcba"
+      payload.roomSettings.rainHighlightColor === "#fedcba" &&
+      payload.roomSettings.trailUnlimited === true &&
+      payload.roomSettings.lineWidth === 3
   );
 
   first.socket.send(
@@ -307,11 +315,14 @@ test("два WebSocket-клиента делят состояние и пере�
   assert.deepEqual(restarted.payload.holderIds, []);
   assert.equal(restarted.payload.physics.gravity, 10);
   assert.deepEqual(restarted.payload.roomSettings, {
+    ...RoomSettings.DEFAULT_ROOM_SETTINGS,
     sceneHeightScreens: 50,
     handWidthVw: 42.5,
     slaveHandWidthPx: 48,
     rainDropColor: "#123456",
     rainHighlightColor: "#fedcba",
+    trailUnlimited: true,
+    lineWidth: 3,
   });
   assert.deepEqual(restarted.payload.trail, []);
   assert.deepEqual(
@@ -460,6 +471,7 @@ test("сессия переживает restart сервиса с тем же х
   assert.equal(snapshot.payload.physics.mass, 10);
   assert.equal(snapshot.payload.physics.gravity, 8);
   assert.deepEqual(snapshot.payload.roomSettings, {
+    ...RoomSettings.DEFAULT_ROOM_SETTINGS,
     sceneHeightScreens: 60,
     handWidthVw: 38,
     slaveHandWidthPx: 44,

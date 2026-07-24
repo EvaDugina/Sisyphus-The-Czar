@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
+  rockRelativeToViewportPosition,
+  viewportToRockRelativePosition,
 } from "../../src/lib/coordinates.mjs";
 import { getRainVisualProfile } from "../../src/lib/rainProfile.mjs";
 import {
@@ -53,6 +55,35 @@ test("координаты сохраняют каноническое поло�
 
   assert.deepEqual(canonical, { x: 500, y: 1000 });
   assert.deepEqual(local, { x: 450, y: 1200 });
+});
+
+test("курсор сохраняет положение относительно камня между viewport", () => {
+  const sourceRock = { left: 1075, top: 450, width: 100, height: 100 };
+  const sourceCursor = { x: 930, y: 340 };
+  const relative = viewportToRockRelativePosition(
+    sourceCursor.x,
+    sourceCursor.y,
+    sourceRock,
+    1905,
+  );
+  const targetRock = { left: 890, top: 636, width: 100, height: 100 };
+  const targetCursor = rockRelativeToViewportPosition(
+    relative.x,
+    relative.y,
+    targetRock,
+    1580,
+  );
+  const targetRelative = viewportToRockRelativePosition(
+    targetCursor.x,
+    targetCursor.y,
+    targetRock,
+    1580,
+  );
+
+  assert.ok(Math.abs(relative.x - -195 / 1905) < 1e-12);
+  assert.ok(Math.abs(relative.y - -160 / 1905) < 1e-12);
+  assert.ok(Math.abs(targetRelative.x - relative.x) < 1e-12);
+  assert.ok(Math.abs(targetRelative.y - relative.y) < 1e-12);
 });
 
 test("настройка темы содержит автоматический и ручные режимы", () => {
@@ -554,7 +585,7 @@ test("настройка трения земли заменяет скольже
   );
 });
 
-test("группа дождя содержит локальный toggle и blur тёмной темы", () => {
+test("группа дождя содержит общий toggle и blur тёмной темы", () => {
   const rainGroup = SETTINGS_GROUPS.find((group) => group.title === "Дождь");
   const rainEnabled = rainGroup.controls.find(
     (control) => control.name === "rainEnabled"
@@ -589,7 +620,10 @@ test("группа дождя содержит локальный toggle и blur
 
   assert.equal(rainEnabled.type, "checkbox");
   assert.equal(rainEnabled.label, "Включить дождь");
-  assert.equal(rainEnabled.defaultChecked, undefined);
+  assert.equal(
+    rainEnabled.defaultChecked,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnabled
+  );
   assert.equal(rainBlendMode.label, "Mix blend дождя");
   assert.equal(rainBlendMode.type, "select");
   assert.equal(rainBlendMode.defaultValue, "multiply");

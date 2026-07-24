@@ -217,6 +217,8 @@ test("общие визуальные настройки комнаты норм
       sceneHeightScreens: 200,
       handWidthVw: 120,
       slaveHandWidthPx: 200,
+      trailUnlimited: true,
+      lineWidth: 99,
       rainDropColor: "bad",
       rainHighlightColor: "#ABCDEF",
     },
@@ -226,6 +228,8 @@ test("общие визуальные настройки комнаты норм
   assert.equal(session.roomSettings.sceneHeightScreens, 100);
   assert.equal(session.roomSettings.handWidthVw, 90);
   assert.equal(session.roomSettings.slaveHandWidthPx, 96);
+  assert.equal(session.roomSettings.trailUnlimited, true);
+  assert.equal(session.roomSettings.lineWidth, 60);
   assert.equal(
     session.roomSettings.rainDropColor,
     RoomSettings.DEFAULT_ROOM_SETTINGS.rainDropColor
@@ -252,6 +256,18 @@ test("roomSettings.update синхронизирует размер руки и 
   const first = connect(manager, session, "client-room-settings-b1");
   const second = connect(manager, session, "client-room-settings-b2");
   session.state.vy = 20;
+  const expectedRoomSettings = {
+    ...RoomSettings.DEFAULT_ROOM_SETTINGS,
+    sceneHeightScreens: 50,
+    handWidthVw: 42.5,
+    slaveHandWidthPx: 40,
+    rainDropColor: "#123456",
+    rainHighlightColor: "#fedcba",
+    trailReset: true,
+    trailUnlimited: true,
+    trailMaxPoints: 1500,
+    lineWidth: 3,
+  };
 
   manager.handleMessage(session, first.client, {
     v: 1,
@@ -263,17 +279,15 @@ test("roomSettings.update синхронизирует размер руки и 
       slaveHandWidthPx: 40,
       rainDropColor: "#123456",
       rainHighlightColor: "#fedcba",
+      trailReset: true,
+      trailUnlimited: true,
+      trailMaxPoints: 1500,
+      lineWidth: 3,
     },
   });
 
   assert.equal(session.state.vy, 4);
-  assert.deepEqual(session.roomSettings, {
-    sceneHeightScreens: 50,
-    handWidthVw: 42.5,
-    slaveHandWidthPx: 40,
-    rainDropColor: "#123456",
-    rainHighlightColor: "#fedcba",
-  });
+  assert.deepEqual(session.roomSettings, expectedRoomSettings);
   assert.deepEqual(
     second.socket.messages.findLast((message) => message.type === "session.snapshot")
       .payload.roomSettings,
@@ -580,7 +594,14 @@ test("указатель участника синхронизируется и 
     v: 1,
     type: "pointer.update",
     seq: 1,
-    payload: { x: 420, y: 1750, mode: "grab", visible: true },
+    payload: {
+      x: 420,
+      y: 1750,
+      rockOffsetX: -0.12,
+      rockOffsetY: -0.08,
+      mode: "grab",
+      visible: true,
+    },
   });
 
   const pointerMessage = second.socket.messages.findLast(
@@ -590,6 +611,8 @@ test("указатель участника синхронизируется и 
     clientId: first.client.id,
     x: 420,
     y: 1750,
+    rockOffsetX: -0.12,
+    rockOffsetY: -0.08,
     mode: "grab",
     visible: true,
     role: "master",
@@ -601,6 +624,24 @@ test("указатель участника синхронизируется и 
     type: "pointer.update",
     seq: 2,
     payload: { x: -1, y: 1750, mode: "grab", visible: true },
+  });
+  assert.equal(
+    first.socket.messages.findLast((message) => message.type === "error").payload.code,
+    "invalid_pointer"
+  );
+
+  manager.handleMessage(session, first.client, {
+    v: 1,
+    type: "pointer.update",
+    seq: 3,
+    payload: {
+      x: 420,
+      y: 1750,
+      rockOffsetX: 5,
+      rockOffsetY: 0,
+      mode: "grab",
+      visible: true,
+    },
   });
   assert.equal(
     first.socket.messages.findLast((message) => message.type === "error").payload.code,
