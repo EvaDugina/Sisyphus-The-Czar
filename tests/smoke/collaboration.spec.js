@@ -461,6 +461,57 @@ async function trailHasVisiblePixels(page) {
   });
 }
 
+test("dev при запуске применяет последний сохранённый шаблон", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "sisyphus-czar-settings-v18",
+      JSON.stringify({ gravity: 3 }),
+    );
+    localStorage.setItem(
+      "sisyphus-czar-settings-versions-v1",
+      JSON.stringify({
+        selectedId: "older",
+        entries: [
+          {
+            id: "older",
+            name: "Старый",
+            settingsSchemaVersion: 18,
+            createdAt: "2026-07-24T10:00:00.000Z",
+            updatedAt: "2026-07-24T10:00:00.000Z",
+            settings: { gravity: 5 },
+          },
+          {
+            id: "latest",
+            name: "Последний",
+            settingsSchemaVersion: 18,
+            createdAt: "2026-07-25T10:00:00.000Z",
+            updatedAt: "2026-07-25T12:00:00.000Z",
+            settings: { gravity: 9.8 },
+          },
+        ],
+      }),
+    );
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await openSettingsPanel(page);
+  await expect(page.locator("#settings-version-current")).toContainText(
+    "Последний",
+  );
+  await expect(page.locator('[name="gravity"]')).toHaveValue("9.8");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v18") || "{}",
+        );
+        return stored.gravity;
+      }),
+    )
+    .toBe(9.8);
+});
+
 test("старая session-ссылка очищается и root-ссылка копируется", async ({ browser }) => {
   test.setTimeout(70_000);
   const context = await browser.newContext({

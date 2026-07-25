@@ -2,7 +2,10 @@ import katex from "katex";
 import "katex/dist/katex.min.css";
 
 import { formatSettingsVersionOptionLabel } from "../lib/settingsVersions.mjs";
-import { settingsFromLatestVersionEntry } from "../lib/settingsVersionSelection.mjs";
+import {
+  selectLatestSettingsVersionEntry,
+  settingsFromLatestVersionEntry,
+} from "../lib/settingsVersionSelection.mjs";
 import {
   LEGACY_SETTINGS_STORAGE_KEYS,
   SETTINGS_GROUPS,
@@ -471,9 +474,9 @@ export function createSettingsController(options) {
     saveSettingsVersions();
   }
 
-  function applySettingsVersion(entry) {
+  function writeSettingsVersionToControls(entry) {
     if (!entry) {
-      return;
+      return [];
     }
     const changedKeys = [];
     settingsControlElements().forEach((element) => {
@@ -504,6 +507,14 @@ export function createSettingsController(options) {
     if (settingsVersionName) {
       settingsVersionName.value = entry.name;
     }
+    return changedKeys;
+  }
+
+  function applySettingsVersion(entry) {
+    if (!entry) {
+      return;
+    }
+    const changedKeys = writeSettingsVersionToControls(entry);
     renderSettingsVersions();
     saveSettingsVersions();
     readControls({
@@ -781,6 +792,11 @@ export function createSettingsController(options) {
     load() {
       loadSettings();
       loadSettingsVersions();
+      const latest = selectLatestSettingsVersionEntry(settingsVersions.entries);
+      if (latest) {
+        writeSettingsVersionToControls(latest);
+        renderSettingsVersions();
+      }
     },
     markSettingsVersionDraft,
     readPhysicsControls,

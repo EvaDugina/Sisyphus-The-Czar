@@ -6,6 +6,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const Physics = require("../../shared/physics");
 const RoomSettings = require("../../shared/room-settings");
+const ProductionPreset = require("../../shared/production-preset");
 const GachiSounds = require("../../shared/gachi-sounds");
 const ChainSounds = require("../../shared/chain-sounds");
 const {
@@ -1177,6 +1178,42 @@ test("пустой ensureDefaultSession не прерывает восстано
   const session = manager.ensureDefaultSession();
   assert.equal(manager.snapshot(session).summitElapsedMs, 3000);
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
+});
+
+test("production preset обновляет root-настройки без сброса состояния и времени", () => {
+  const { clock, manager } = setup();
+  clock.value = 4000;
+  const session = manager.ensureDefaultSession({
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: 375,
+      y: Physics.WORLD_HEIGHT,
+    },
+    physics: { gravity: 7 },
+    roomSettings: { sceneHeightScreens: 10 },
+  });
+  session.summitElapsedMs = 1200;
+  session.summitRunningSince = 1000;
+  const revisionBefore = session.revision;
+
+  assert.equal(
+    manager.applySettingsPreset(session, ProductionPreset.settings),
+    true,
+  );
+  assert.equal(session.physics.gravity, 9.8);
+  assert.equal(session.roomSettings.sceneHeightScreens, 1);
+  assert.equal(session.state.phase, Physics.PHASES.PLAY);
+  assert.equal(session.state.x, 375);
+  assert.equal(session.state.y, Physics.WORLD_HEIGHT);
+  assert.equal(session.summitElapsedMs, 1200);
+  assert.equal(session.summitRunningSince, 1000);
+  assert.equal(session.revision, revisionBefore + 1);
+
+  assert.equal(
+    manager.applySettingsPreset(session, ProductionPreset.settings),
+    false,
+  );
+  assert.equal(session.revision, revisionBefore + 1);
 });
 
 test("активная сессия продлевается при достижении TTL", () => {

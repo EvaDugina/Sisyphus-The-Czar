@@ -73,6 +73,15 @@ test("production build keeps slim UI and multiplayer behavior", async ({
 
   await page.goto("/");
   await waitForProductionRuntime(page, "master");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--scene-height-vh")
+          .trim(),
+      ),
+    )
+    .toBe("100vh");
   await expect(page.locator(".settings-panel")).toHaveCount(0);
   await expect(page.locator(".settings-toggle")).toHaveCount(0);
   await expect(page.locator(".hint")).toHaveCount(0);

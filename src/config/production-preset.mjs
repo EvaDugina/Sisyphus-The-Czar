@@ -1,12 +1,10 @@
 import "../../shared/physics.js";
 import "../../shared/room-settings.js";
+import "../../shared/production-preset.js";
 
-const SharedPhysics = globalThis.SisyphusPhysics;
-const SharedRoomSettings = globalThis.SisyphusRoomSettings;
+const SharedProductionPreset = globalThis.SisyphusProductionPreset;
 
-export const settingsSchemaVersion = 18;
-
-export const settings = Object.freeze({
-  ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
-  ...SharedPhysics.DEFAULT_PHYSICS,
-});
+export const presetName = SharedProductionPreset.PRESET_NAME;
+export const settingsSchemaVersion =
+  SharedProductionPreset.SETTINGS_SCHEMA_VERSION;
+export const settings = SharedProductionPreset.settings;

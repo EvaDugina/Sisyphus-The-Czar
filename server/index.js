@@ -13,6 +13,7 @@ const {
   STATIONARY_HOLD_RELEASE_MS,
 } = require("./session-manager");
 const { SessionStore } = require("./session-store");
+const ProductionPreset = require("../shared/production-preset");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
 const DIST_DIR = path.join(ROOT_DIR, "dist");
@@ -209,7 +210,10 @@ function createService(options = {}) {
   manager.restoreSessions(sessionStore.load());
   const persistSessions = (force = false) =>
     sessionStore.save(manager.serializeSessions(), { force });
-  manager.ensureDefaultSession();
+  const defaultSession = manager.ensureDefaultSession();
+  if (!config.debug) {
+    manager.applySettingsPreset(defaultSession, ProductionPreset.settings);
+  }
   persistSessions(true);
   const createLimiter = new WindowRateLimiter(
     config.sessionCreateRateLimit,
@@ -330,6 +334,15 @@ function createService(options = {}) {
       config.debug ? "no-store" : "public, max-age=3600"
     );
     response.sendFile(path.join(ROOT_DIR, "shared", "room-settings.js"));
+  });
+
+  app.get("/shared/production-preset.js", (_request, response) => {
+    response.type("application/javascript");
+    response.setHeader(
+      "Cache-Control",
+      config.debug ? "no-store" : "public, max-age=3600"
+    );
+    response.sendFile(path.join(ROOT_DIR, "shared", "production-preset.js"));
   });
 
   app.get("/shared/gachi-sounds.js", (_request, response) => {

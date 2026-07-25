@@ -140,6 +140,10 @@ function hasSessionBootstrapPayload(payload) {
   ].some((key) => Object.hasOwn(payload, key));
 }
 
+function settingsEqual(left, right, keys) {
+  return keys.every((key) => Object.is(left[key], right[key]));
+}
+
 class SessionManager {
   constructor(options = {}) {
     this.ttlMs = options.ttlMs || 24 * 60 * 60 * 1000;
@@ -305,6 +309,46 @@ class SessionManager {
       session.summitRunningSince = summitInside ? now : null;
       session.summitWasInside = summitInside;
     }
+    return true;
+  }
+
+  applySettingsPreset(session, preset = {}) {
+    if (!session || !preset || typeof preset !== "object") {
+      return false;
+    }
+
+    const physicsKeys = Object.keys(Physics.DEFAULT_PHYSICS);
+    const nextPhysics = Physics.sanitizePhysics(preset);
+    const nextRoomSettings = RoomSettings.sanitizeRoomSettings(preset);
+    const physicsChanged = !settingsEqual(
+      session.physics,
+      nextPhysics,
+      physicsKeys
+    );
+    const roomSettingsChanged = !settingsEqual(
+      session.roomSettings,
+      nextRoomSettings,
+      RoomSettings.ROOM_SETTINGS_KEYS
+    );
+
+    if (!physicsChanged && !roomSettingsChanged) {
+      return false;
+    }
+
+    if (roomSettingsChanged) {
+      rescaleSceneVerticalMotion(
+        session,
+        session.roomSettings,
+        nextRoomSettings
+      );
+      session.roomSettings = nextRoomSettings;
+    }
+    if (physicsChanged) {
+      session.physics = nextPhysics;
+    }
+    this.syncCooperativeDrag(session);
+    this.markChanged(session);
+    this.broadcastSnapshot(session, { includeConfig: true });
     return true;
   }
 

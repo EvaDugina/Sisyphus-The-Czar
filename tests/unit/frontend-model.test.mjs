@@ -33,6 +33,7 @@ import {
   normalizeThemeMode,
 } from "../../src/lib/settingsModel.mjs";
 import {
+  presetName as productionPresetName,
   settings as productionSettings,
   settingsSchemaVersion as productionSettingsSchemaVersion,
 } from "../../src/config/production-preset.mjs";
@@ -384,14 +385,24 @@ test("сохраненная версия настроек показывает 
 });
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
+  assert.equal(productionPresetName, "prod");
   assert.equal(productionSettingsSchemaVersion, 18);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
-    SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+    {
+      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+      sceneHeightScreens: 1,
+    },
   );
   assert.equal(productionSettings.mass, 1);
   assert.equal(productionSettings.gravity, 9.8);
   assert.equal(productionSettings.requiredHolders, undefined);
+  assert.deepEqual(
+    SETTINGS_GROUPS.flatMap(settingsGroupControls)
+      .map((control) => control.name)
+      .filter((name) => !Object.hasOwn(productionSettings, name)),
+    [],
+  );
 });
 
 test("production preset source выбирает последнюю версию по updatedAt", () => {
