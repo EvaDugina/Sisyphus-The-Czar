@@ -7,6 +7,7 @@ import {
   rockRelativeToViewportPosition,
   viewportToRockRelativePosition,
 } from "../../src/lib/coordinates.mjs";
+import { createClientId } from "../../src/lib/clientId.mjs";
 import { getRainVisualProfile } from "../../src/lib/rainProfile.mjs";
 import {
   DEFAULT_ROCK_MAX_WIDTH_VW,
@@ -44,6 +45,35 @@ import {
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const SharedViewport = globalThis.SisyphusViewport;
+
+test("client ID использует randomUUID в secure context", () => {
+  const expected = "12345678-1234-4234-8234-123456789abc";
+  let getRandomValuesCalled = false;
+  const clientId = createClientId({
+    randomUUID: () => expected,
+    getRandomValues: () => {
+      getRandomValuesCalled = true;
+    },
+  });
+
+  assert.equal(clientId, expected);
+  assert.equal(getRandomValuesCalled, false);
+});
+
+test("client ID работает без randomUUID на HTTP", () => {
+  const clientId = createClientId({
+    getRandomValues: (bytes) => {
+      bytes.set(Array.from({ length: 16 }, (_, index) => index));
+      return bytes;
+    },
+  });
+
+  assert.equal(clientId, "00010203-0405-4607-8809-0a0b0c0d0e0f");
+});
+
+test("client ID имеет допустимый fallback без Web Crypto", () => {
+  assert.match(createClientId(null), /^[A-Za-z0-9_-]{16,64}$/);
+});
 
 test("координаты сохраняют каноническое положение между viewport", () => {
   const world = { width: 1000, height: 2000 };
