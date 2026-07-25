@@ -5,6 +5,7 @@ import "../../shared/chain-sounds.js";
 import "../../shared/viewport.js";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
+import { createClientId } from "../lib/clientId.mjs";
 import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
 import {
   canonicalToLocalPosition,
@@ -329,11 +330,11 @@ export function createSisyphusRuntime(elements = {}) {
       if (stored) {
         return stored;
       }
-      const created = crypto.randomUUID();
+      const created = createClientId();
       sessionStorage.setItem("sisyphus-client-id", created);
       return created;
     } catch {
-      return crypto.randomUUID();
+      return createClientId();
     }
   }
 
