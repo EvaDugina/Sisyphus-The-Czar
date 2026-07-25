@@ -10,6 +10,7 @@ const GachiSounds = require("../../shared/gachi-sounds");
 const ChainSounds = require("../../shared/chain-sounds");
 const {
   SessionManager,
+  DEFAULT_SESSION_ID,
   DISCONNECTED_CLIENT_TTL_MS,
   DEFAULT_EMPTY_SESSION_GRACE_MS,
   DEFAULT_AUDIO_LEAD_MS,
@@ -269,7 +270,7 @@ test("подвешенный play-старт не двигается до пер
   assert.equal(session.state.dragging, true);
 });
 
-test("секундомер вершины синхронно накапливается, ставится на паузу и переживает restart", () => {
+test("секундомер вершины синхронно накапливается без паузы и переживает restart", () => {
   const { clock, manager } = setup();
   clock.value = 1000;
   const session = manager.createSession({
@@ -301,18 +302,18 @@ test("секундомер вершины синхронно накаплива�
   clock.value = 3000;
   session.state.y = session.imprint.y + session.imprint.toleranceY + 1;
   manager.tick();
-  assert.equal(session.summitElapsedMs, 2000);
-  assert.equal(manager.snapshot(session).summitTimerRunning, false);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 2000);
+  assert.equal(manager.snapshot(session).summitTimerRunning, true);
 
   clock.value = 5000;
   manager.tick();
-  assert.equal(manager.snapshot(session).summitElapsedMs, 2000);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 4000);
 
   clock.value = 6000;
   session.state.y = session.imprint.y;
   manager.tick();
   clock.value = 7500;
-  assert.equal(manager.snapshot(session).summitElapsedMs, 3500);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 6500);
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 
   clock.value = 8000;
@@ -322,8 +323,8 @@ test("секундомер вершины синхронно накаплива�
     suspended: true,
   });
   const restarted = manager.snapshot(session);
-  assert.equal(restarted.summitElapsedMs, 4000);
-  assert.equal(restarted.summitTimerRunning, false);
+  assert.equal(restarted.summitElapsedMs, 7000);
+  assert.equal(restarted.summitTimerRunning, true);
 });
 
 test("активный секундомер вершины сохраняется и продолжается после restore", () => {
@@ -356,8 +357,8 @@ test("активный секундомер вершины сохраняетс�
   restoredSetup.clock.value = 4500;
   restored.state.y = restored.imprint.y + restored.imprint.toleranceY + 1;
   restoredSetup.manager.tick();
-  assert.equal(restored.summitElapsedMs, 3500);
-  assert.equal(restoredSetup.manager.snapshot(restored).summitTimerRunning, false);
+  assert.equal(restoredSetup.manager.snapshot(restored).summitElapsedMs, 3500);
+  assert.equal(restoredSetup.manager.snapshot(restored).summitTimerRunning, true);
 });
 
 test("старая сессия внутри вершины получает нулевой таймер на паузе", () => {
@@ -1130,6 +1131,54 @@ test("неактивная сессия удаляется по TTL", () => {
   assert.equal(manager.sessions.has(session.id), false);
 });
 
+test("общая root-сессия не удаляется после ухода последнего клиента", () => {
+  const { clock, manager } = setup({ emptyGraceMs: 50, ttlMs: 100 });
+  const session = manager.ensureDefaultSession({
+    creatorClientId: "client-root-master1",
+  });
+  const connected = connect(manager, session, "client-root-master1");
+
+  assert.equal(session.id, DEFAULT_SESSION_ID);
+  assert.equal(manager.leaveClient(
+    session,
+    connected.client.id,
+    connected.client.leaveToken
+  ), true);
+  assert.equal(session.emptyDeleteAt, null);
+
+  clock.value = 1000;
+  manager.tick();
+  assert.equal(manager.sessions.has(DEFAULT_SESSION_ID), true);
+  assert.equal(manager.getSession(DEFAULT_SESSION_ID), session);
+});
+
+test("пустой ensureDefaultSession не прерывает восстановленный root-секундомер", () => {
+  const { clock, manager } = setup();
+  clock.value = 4000;
+  assert.equal(
+    manager.restoreSessions([
+      {
+        id: DEFAULT_SESSION_ID,
+        persistent: true,
+        state: {
+          phase: Physics.PHASES.PLAY,
+          x: Physics.WORLD_WIDTH / 2,
+          y: Physics.WORLD_HEIGHT,
+        },
+        expiresAt: 2000,
+        emptyDeleteAt: null,
+        summitElapsedMs: 0,
+        summitRunningSince: 1000,
+      },
+    ]),
+    1
+  );
+
+  const session = manager.ensureDefaultSession();
+  assert.equal(manager.snapshot(session).summitElapsedMs, 3000);
+  assert.equal(manager.snapshot(session).summitTimerRunning, true);
+});
+
 test("активная сессия продлевается при достижении TTL", () => {
   const { clock, manager } = setup({ ttlMs: 1000 });
   const session = manager.createSession();
@@ -1360,6 +1409,48 @@ test("победный отпечаток блокирует stationary и сл�
 
   assert.equal(session.holders.size, 1);
   assert.equal(session.stationaryHoldSince, null);
+});
+
+test("отпускание последней руки в отпечатке запускает финальное падение", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
+    physics: { bounce: 0, gravity: 20, turbulence: 0 },
+    imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
+  });
+  const holder = connect(manager, session, "client-final-fall1");
+
+  assert.equal(
+    manager.acquireControl(session, holder.client, { x: 500, y: 100 }),
+    true
+  );
+  assert.equal(
+    manager.releaseControl(session, holder.client, {
+      x: 500,
+      y: 100,
+      vx: 0,
+      vy: -4000,
+    }),
+    true
+  );
+
+  assert.equal(session.state.phase, Physics.PHASES.FALLING);
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.controllerId, null);
+  assert.equal(session.state.vx, 0);
+  assert.equal(session.state.vy, 0);
+
+  clock.value = 250;
+  manager.tick();
+  assert.equal(session.state.phase, Physics.PHASES.FALLING);
+  assert.ok(session.state.y > 100);
+  assert.equal(
+    manager.acquireControl(session, holder.client, {
+      x: session.state.x,
+      y: session.state.y,
+    }),
+    false
+  );
 });
 
 test("движущийся камень сохраняет независимое случайное соскальзывание", () => {

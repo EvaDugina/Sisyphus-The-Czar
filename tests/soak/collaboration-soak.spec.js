@@ -64,7 +64,7 @@ test("два браузера работают 10 минут без зависш
 
   const healthBefore = await (await request.get("/healthz")).json();
   await first.goto("/");
-  await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(first).toHaveURL(/\/$/);
   await first.locator(".settings-toggle").click();
   await setRange(first, "gravity", 10);
   await setRange(first, "bounce", 0);

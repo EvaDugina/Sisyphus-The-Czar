@@ -461,7 +461,7 @@ async function trailHasVisiblePixels(page) {
   });
 }
 
-test("потерянная сессия заменяется рабочей и ссылка копируется", async ({ browser }) => {
+test("старая session-ссылка очищается и root-ссылка копируется", async ({ browser }) => {
   test.setTimeout(70_000);
   const context = await browser.newContext({
     permissions: ["clipboard-read", "clipboard-write"],
@@ -471,7 +471,7 @@ test("потерянная сессия заменяется рабочей и �
 
   await page.goto(`/?session=${missingSessionId}`);
   await expect.poll(() => page.url()).not.toContain(missingSessionId);
-  await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   const currentUrl = page.url();
   await page.reload();
@@ -502,7 +502,7 @@ test(
     const page = await context.newPage();
 
     await page.goto("/");
-    await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+    await expect(page).toHaveURL(/\/$/);
     await expect(page.getByTestId("session-status")).toContainText("В сессии");
     await expectReadyAtBottom(page);
     await expectImprintCenteredInTopViewport(page);
@@ -523,7 +523,7 @@ test("траектория сбрасывается при касании зем
   const page = await context.newPage();
 
   await page.goto("/");
-  await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expectReadyAtBottom(page);
   await openSettingsPanel(page);
@@ -574,7 +574,7 @@ test("общая и проходная прозрачность траектор
   const page = await context.newPage();
 
   await page.goto("/");
-  await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expectReadyAtBottom(page);
   await openSettingsPanel(page);
@@ -684,7 +684,7 @@ test("кривая нехватки силы замедляет фактичес
   await context.close();
 });
 
-test("вход на корень перенаправляет в рабочую сессию", async ({ browser }) => {
+test("вход на корень открывает рабочую общую сессию", async ({ browser }) => {
   test.setTimeout(90_000);
   const context = await browser.newContext();
   const page = await context.newPage();
@@ -698,7 +698,7 @@ test("вход на корень перенаправляет в рабочую 
   });
 
   await page.goto("/");
-  await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(page).toHaveTitle("ПУТЬ ЦАРЕЙ");
   await expect(page.locator("h1")).toHaveText("СМЕРТИЮ СМЕРТЬ ПОПРАВ");
@@ -754,9 +754,9 @@ test("вход на корень перенаправляет в рабочую 
     summitTimerLayout.titleFontSize
   );
   expect(summitTimerLayout.zIndex).toBeLessThan(summitTimerLayout.titleZIndex);
-  await expect.poll(() => documentRequests.length).toBeGreaterThanOrEqual(2);
+  await expect.poll(() => documentRequests.length).toBeGreaterThanOrEqual(1);
   expect(documentRequests[0]).toBe("/");
-  expect(documentRequests.at(-1)).toMatch(/^\/\?session=[A-Za-z0-9_-]{22}$/);
+  expect(documentRequests.at(-1)).toBe("/");
 
   await openSettingsPanel(page);
   await expect(page.getByTestId("share-session")).toHaveCount(0);
@@ -1025,7 +1025,7 @@ test("звуки pointerdown master и slave общие для всей сесс
   await watchAudioPlayCalls(second, audioTargets);
 
   await first.goto("/");
-  await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(first).toHaveURL(/\/$/);
   await expect(first.getByTestId("session-status")).toContainText("В сессии");
   await second.goto(first.url());
   await expect(first.getByTestId("session-status")).toContainText("В сессии: 2");
@@ -1140,7 +1140,7 @@ test("падение компенсируется при изменении вы
     });
     const page = await context.newPage();
     await page.goto("/");
-    await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+    await expect(page).toHaveURL(/\/$/);
     await expect(page.getByTestId("session-status")).toContainText("В сессии");
     const profile = await page.evaluate(() => {
       const stepCount = 90;
@@ -1204,7 +1204,7 @@ test("падение компенсируется при изменении вы
     });
     const page = await context.newPage();
     await page.goto("/");
-    await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+    await expect(page).toHaveURL(/\/$/);
     await setRange(page, "sceneHeightScreens", sceneHeightScreens);
     await expect(page.locator('[data-output="sceneHeightScreens"]')).toHaveText(
       `${sceneHeightScreens * 100}vh`
@@ -1280,7 +1280,7 @@ test("два браузера видят один камень и поднима
   const second = await secondContext.newPage();
 
   await first.goto("/");
-  await expect(first).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
+  await expect(first).toHaveURL(/\/$/);
   await expect(first.getByTestId("session-status")).toContainText("В сессии");
   await expectReadyAtBottom(first);
   const sceneProjection = await first.evaluate(() => {
@@ -1699,8 +1699,8 @@ test("два браузера видят один камень и поднима
     .toBe(0);
 
   await second.goto("/");
-  await expect(second).toHaveURL(/\?session=[A-Za-z0-9_-]{22}/);
-  expect(second.url()).not.toBe(sharedUrl);
+  await expect(second).toHaveURL(/\/$/);
+  expect(second.url()).toBe(sharedUrl);
   await second.goto(sharedUrl);
   await expect(second.getByTestId("session-status")).toContainText("В сессии");
   await expectReadyAtBottom(second);

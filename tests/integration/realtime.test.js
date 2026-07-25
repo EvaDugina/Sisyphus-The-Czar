@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const WebSocket = require("ws");
 const { createService } = require("../../server");
+const { DEFAULT_SESSION_ID } = require("../../server/session-manager");
 const Physics = require("../../shared/physics");
 const RoomSettings = require("../../shared/room-settings");
 const GachiSounds = require("../../shared/gachi-sounds");
@@ -82,9 +83,10 @@ test("клик роли запускает один общий звук у вс�
   });
   assert.equal(created.status, 201);
   const { sessionId } = await created.json();
-  const wsBase = `ws://127.0.0.1:${address.port}/realtime?session=${sessionId}`;
-  const master = connect(`${wsBase}&client=integration-audio-master`);
-  const slave = connect(`${wsBase}&client=integration-audio-slave`);
+  assert.equal(sessionId, DEFAULT_SESSION_ID);
+  const wsBase = `ws://127.0.0.1:${address.port}/realtime`;
+  const master = connect(`${wsBase}?client=integration-audio-master`);
+  const slave = connect(`${wsBase}?client=integration-audio-slave`);
   await Promise.all([master.opened, slave.opened]);
   const [, slaveSnapshot] = await Promise.all([
     master.waitFor("session.snapshot"),
@@ -175,14 +177,15 @@ test("два WebSocket-клиента делят состояние и пере�
   });
   assert.equal(created.status, 201);
   const { sessionId } = await created.json();
+  assert.equal(sessionId, DEFAULT_SESSION_ID);
   assert.equal(
     service.manager.getSession(sessionId).masterClientId,
     "integration-client-a"
   );
 
-  const wsBase = `ws://127.0.0.1:${address.port}/realtime?session=${sessionId}`;
-  const first = connect(`${wsBase}&client=integration-client-a`);
-  const second = connect(`${wsBase}&client=integration-client-b`);
+  const wsBase = `ws://127.0.0.1:${address.port}/realtime`;
+  const first = connect(`${wsBase}?client=integration-client-a`);
+  const second = connect(`${wsBase}?client=integration-client-b`);
   await Promise.all([first.opened, second.opened]);
   const [firstSnapshot, secondSnapshot] = await Promise.all([
     first.waitFor("session.snapshot"),
@@ -452,7 +455,7 @@ test("два WebSocket-клиента делят состояние и пере�
   assert.equal(acquiredAfterRestart.payload.controllerId, "integration-client-b");
   assert.equal(Object.hasOwn(acquiredAfterRestart.payload, "imprint"), false);
 
-  const invalidLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
+  const invalidLeave = await fetch(`${base}/api/sessions/leave`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -463,7 +466,7 @@ test("два WebSocket-клиента делят состояние и пере�
   assert.equal(invalidLeave.status, 403);
   assert.equal(service.manager.sessions.has(sessionId), true);
 
-  const firstLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
+  const firstLeave = await fetch(`${base}/api/sessions/leave`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -478,7 +481,7 @@ test("два WebSocket-клиента делят состояние и пере�
     (payload) => payload.participants === 1
   );
 
-  const secondLeave = await fetch(`${base}/api/sessions/${sessionId}/leave`, {
+  const secondLeave = await fetch(`${base}/api/sessions/leave`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
@@ -491,7 +494,7 @@ test("два WebSocket-клиента делят состояние и пере�
 
   await new Promise((resolve) => setTimeout(resolve, 60));
   service.manager.tick();
-  assert.equal(service.manager.sessions.has(sessionId), false);
+  assert.equal(service.manager.sessions.has(sessionId), true);
 });
 
 test("сессия переживает restart сервиса с тем же хранилищем", async (context) => {
@@ -543,6 +546,7 @@ test("сессия переживает restart сервиса с тем же х
   );
   const { sessionId } = await created.json();
   assert.equal(created.status, 201);
+  assert.equal(sessionId, DEFAULT_SESSION_ID);
 
   await firstService.close();
   activeServices.delete(firstService);
@@ -559,7 +563,7 @@ test("сессия переживает restart сервиса с тем же х
   assert.equal(secondService.manager.sessions.has(sessionId), true);
 
   const restored = connect(
-    `ws://127.0.0.1:${secondAddress.port}/realtime?session=${sessionId}&client=restart-client-001`
+    `ws://127.0.0.1:${secondAddress.port}/realtime?client=restart-client-001`
   );
   await restored.opened;
   const snapshot = await restored.waitFor("session.snapshot");

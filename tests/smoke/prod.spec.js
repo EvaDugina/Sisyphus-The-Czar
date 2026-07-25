@@ -10,7 +10,7 @@ function trackAudioRequests(page, bucket) {
 }
 
 async function waitForProductionRuntime(page, role) {
-  await expect(page).toHaveURL(/\?session=[A-Za-z0-9_-]{22}$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.locator("body")).toHaveAttribute("data-client-role", role);
   await expect(page.locator("body")).toHaveClass(/state-play/);
   await expect(page.locator(".rock")).toBeVisible();

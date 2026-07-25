@@ -18,6 +18,7 @@ const POINTER_MODES = new Set(["grab", "grabbing"]);
 const CLIENT_ROLES = new Set(["master", "slave"]);
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
+const DEFAULT_SESSION_ID = "SisyphusGlobalRoom0000";
 const REQUIRED_HOLDERS = 1;
 const SLIP_DELAY_MIN_MS = 500;
 const SLIP_DELAY_MAX_MS = 2000;
@@ -123,6 +124,22 @@ function sanitizeTrail(input) {
   });
 }
 
+function hasSessionBootstrapPayload(payload) {
+  if (!payload || typeof payload !== "object") {
+    return false;
+  }
+  return [
+    "state",
+    "physics",
+    "roomSettings",
+    "masterViewport",
+    "imprint",
+    "trail",
+    "creatorClientId",
+    "masterClientId",
+  ].some((key) => Object.hasOwn(payload, key));
+}
+
 class SessionManager {
   constructor(options = {}) {
     this.ttlMs = options.ttlMs || 24 * 60 * 60 * 1000;
@@ -152,9 +169,10 @@ class SessionManager {
     this.slaveSoundAssignments = new Map();
   }
 
-  createSession(payload = {}) {
+  createSession(payload = {}, options = {}) {
     const now = this.now();
-    const id = crypto.randomBytes(16).toString("base64url");
+    const id = options.id || crypto.randomBytes(16).toString("base64url");
+    const persistent = Boolean(options.persistent || id === DEFAULT_SESSION_ID);
     const state = Physics.sanitizeState(
       payload.state ?? {
         phase: Physics.PHASES.PLAY,
@@ -184,6 +202,7 @@ class SessionManager {
       masterClientId: normalizeClientId(
         payload.creatorClientId || payload.masterClientId
       ),
+      persistent,
       clients: new Map(),
       holders: new Map(),
       revision: 1,
@@ -213,6 +232,82 @@ class SessionManager {
     return session;
   }
 
+  ensureDefaultSession(payload = {}) {
+    const existing = this.sessions.get(DEFAULT_SESSION_ID);
+    if (existing) {
+      if (
+        hasSessionBootstrapPayload(payload) &&
+        existing.revision === 1 &&
+        this.connectedCount(existing) === 0 &&
+        existing.clients.size === 0
+      ) {
+        this.applySessionBootstrap(existing, payload);
+      }
+      return existing;
+    }
+    return this.createSession(payload, {
+      id: DEFAULT_SESSION_ID,
+      persistent: true,
+    });
+  }
+
+  applySessionBootstrap(session, payload = {}) {
+    if (!payload || typeof payload !== "object") {
+      return false;
+    }
+
+    const state = Object.hasOwn(payload, "state")
+      ? Physics.sanitizeState(payload.state)
+      : null;
+    const physics = Object.hasOwn(payload, "physics")
+      ? Physics.sanitizePhysics(payload.physics)
+      : null;
+    const roomSettings = Object.hasOwn(payload, "roomSettings")
+      ? RoomSettings.sanitizeRoomSettings(payload.roomSettings)
+      : null;
+    const masterViewport = Object.hasOwn(payload, "masterViewport")
+      ? Viewport.sanitizeViewport(payload.masterViewport)
+      : undefined;
+    const imprint = Object.hasOwn(payload, "imprint")
+      ? Physics.createSummitImprint(payload.imprint)
+      : null;
+    const masterClientId = normalizeClientId(
+      payload.creatorClientId || payload.masterClientId
+    );
+
+    if (state) {
+      session.state = state;
+    }
+    if (physics) {
+      session.physics = physics;
+    }
+    if (roomSettings) {
+      session.roomSettings = roomSettings;
+    }
+    if (masterViewport !== undefined) {
+      session.masterViewport = masterViewport;
+    }
+    if (imprint) {
+      session.imprint = imprint;
+    }
+    if (Object.hasOwn(payload, "trail")) {
+      session.trail = sanitizeTrail(payload.trail);
+    }
+    if (masterClientId && !session.masterClientId) {
+      session.masterClientId = masterClientId;
+    }
+    if (state || imprint) {
+      const now = this.now();
+      const summitInside = Physics.stateInsideImprint(
+        session.state,
+        session.imprint
+      );
+      session.summitRunningSince = summitInside ? now : null;
+      session.summitWasInside = summitInside;
+    }
+    return true;
+  }
+
   serializeSessions() {
     return [...this.sessions.values()].map((session) => ({
       id: session.id,
@@ -227,6 +322,7 @@ class SessionManager {
       trail: session.trail.map((point) => [...point]),
       imprint: session.imprint ? { ...session.imprint } : null,
       masterClientId: session.masterClientId,
+      persistent: Boolean(session.persistent),
       revision: session.revision,
       createdAt: session.createdAt,
       lastActivityAt: session.lastActivityAt,
@@ -257,13 +353,17 @@ class SessionManager {
         return;
       }
 
-      const expiresAt = finite(record.expiresAt, now + this.ttlMs);
+      const persistent =
+        record.persistent === true || record.id === DEFAULT_SESSION_ID;
+      const expiresAt = persistent
+        ? Math.max(finite(record.expiresAt, now + this.ttlMs), now + this.ttlMs)
+        : finite(record.expiresAt, now + this.ttlMs);
       const emptyDeleteAt = record.emptyDeleteAt === null
         ? null
         : finite(record.emptyDeleteAt, null);
       if (
-        expiresAt <= now ||
-        (emptyDeleteAt !== null && emptyDeleteAt <= now)
+        !persistent &&
+        (expiresAt <= now || (emptyDeleteAt !== null && emptyDeleteAt <= now))
       ) {
         return;
       }
@@ -290,7 +390,8 @@ class SessionManager {
       );
       const restoredRunningSince = finite(record.summitRunningSince, null);
       const summitRunningSince =
-        hasSummitTimer && summitInside
+        hasSummitTimer &&
+        (restoredRunningSince !== null || summitElapsedMs > 0 || summitInside)
           ? Math.min(
               restoredRunningSince === null ? now : restoredRunningSince,
               now
@@ -331,6 +432,7 @@ class SessionManager {
         trail: sanitizeTrail(record.trail),
         imprint,
         masterClientId: normalizeClientId(record.masterClientId),
+        persistent,
         clients: new Map(),
         holders: new Map(),
         revision: Number.isSafeInteger(record.revision)
@@ -339,7 +441,7 @@ class SessionManager {
         createdAt: Math.min(finite(record.createdAt, now), now),
         lastActivityAt: Math.min(finite(record.lastActivityAt, now), now),
         expiresAt,
-        emptyDeleteAt,
+        emptyDeleteAt: persistent ? null : emptyDeleteAt,
         lastTickAt: now,
         accumulator: 0,
         nextSnapshotAt: now,
@@ -367,10 +469,24 @@ class SessionManager {
     return restored;
   }
 
+  isPersistentSession(session) {
+    return Boolean(session?.persistent || session?.id === DEFAULT_SESSION_ID);
+  }
+
   getSession(id) {
     const session = this.sessions.get(id);
     if (!session) {
       return null;
+    }
+
+    if (this.isPersistentSession(session)) {
+      if (session.emptyDeleteAt !== null) {
+        this.cancelEmptyCleanup(session);
+      }
+      if (this.now() >= session.expiresAt) {
+        this.touch(session);
+      }
+      return session;
     }
 
     if (
@@ -408,6 +524,10 @@ class SessionManager {
   }
 
   scheduleEmptyCleanup(session) {
+    if (this.isPersistentSession(session)) {
+      this.cancelEmptyCleanup(session);
+      return;
+    }
     if (this.connectedCount(session) > 0) {
       this.cancelEmptyCleanup(session);
       return;
@@ -492,18 +612,17 @@ class SessionManager {
 
   syncSummitTimer(session, now = this.now()) {
     const inside = Physics.stateInsideImprint(session.state, session.imprint);
-    if (inside === session.summitWasInside) {
-      return false;
-    }
-
+    const changedInsideState = inside !== session.summitWasInside;
     session.summitWasInside = inside;
+
+    if (session.summitRunningSince !== null) {
+      return changedInsideState;
+    }
     if (inside) {
       session.summitRunningSince = now;
-    } else {
-      session.summitElapsedMs = this.summitElapsedAt(session, now);
-      session.summitRunningSince = null;
+      return true;
     }
-    return true;
+    return false;
   }
 
   clearStationaryHold(session) {
@@ -608,6 +727,9 @@ class SessionManager {
 
     const now = this.now();
     const wasDragging = session.state.dragging;
+    const releasedInsideImprint =
+      options.applyReleaseImpulse &&
+      Physics.stateInsideImprint(session.state, session.imprint);
     const releaseVelocity = options.applyReleaseImpulse
       ? this.holderVelocity(session, holder, now)
       : { vx: 0, vy: 0 };
@@ -627,12 +749,16 @@ class SessionManager {
       !session.state.dragging &&
       session.state.phase === Physics.PHASES.PLAY
     ) {
-      Physics.applyReleaseImpulse(
-        session.state,
-        session.physics,
-        releaseVelocity.vx,
-        releaseVelocity.vy
-      );
+      if (releasedInsideImprint) {
+        Physics.beginFinalFall(session.state);
+      } else {
+        Physics.applyReleaseImpulse(
+          session.state,
+          session.physics,
+          releaseVelocity.vx,
+          releaseVelocity.vy
+        );
+      }
     }
     this.markChanged(session);
     this.broadcastSnapshot(session);
@@ -1175,8 +1301,9 @@ class SessionManager {
 
   tick(now = this.now()) {
     for (const session of [...this.sessions.values()]) {
+      const persistent = this.isPersistentSession(session);
       if (now >= session.expiresAt) {
-        if (this.connectedCount(session) > 0) {
+        if (persistent || this.connectedCount(session) > 0) {
           this.touch(session);
         } else {
           this.destroySession(session, 4004, "session_expired");
@@ -1185,6 +1312,7 @@ class SessionManager {
       }
 
       if (
+        !persistent &&
         session.emptyDeleteAt !== null &&
         now >= session.emptyDeleteAt &&
         this.connectedCount(session) === 0
@@ -1430,6 +1558,7 @@ class SessionManager {
 
 module.exports = {
   SessionManager,
+  DEFAULT_SESSION_ID,
   DISCONNECT_GRACE_MS,
   SNAPSHOT_INTERVAL_MS,
   MAX_TRAIL_POINTS,

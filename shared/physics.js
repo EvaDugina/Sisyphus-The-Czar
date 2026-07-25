@@ -411,6 +411,20 @@
     return true;
   }
 
+  function beginFinalFall(state) {
+    if (state.phase !== PHASES.PLAY) {
+      return false;
+    }
+
+    state.phase = PHASES.FALLING;
+    state.vx = 0;
+    state.vy = Math.max(0, finiteNumber(state.vy, 0));
+    state.dragging = false;
+    state.controllerId = null;
+    state.suspended = false;
+    return true;
+  }
+
   function applyReleaseImpulse(state, physics, pointerVx, pointerVy) {
     const safeVx = clamp(finiteNumber(pointerVx, 0), -4000, 4000);
     const safeVy = clamp(finiteNumber(pointerVy, 0), -9000, 9000);
@@ -586,6 +600,7 @@
     createSummitImprint,
     stateInsideImprint,
     beginFirstFall,
+    beginFinalFall,
     applyReleaseImpulse,
     stepState,
     isMoving,

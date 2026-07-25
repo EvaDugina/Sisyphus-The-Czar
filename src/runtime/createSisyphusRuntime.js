@@ -338,9 +338,28 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function removeLegacySessionParam() {
+    try {
+      const url = new URL(window.location.href);
+      if (!url.searchParams.has("session")) {
+        return;
+      }
+      url.searchParams.delete("session");
+      window.history.replaceState(
+        null,
+        "",
+        `${url.pathname}${url.search}${url.hash}`,
+      );
+    } catch {
+      // Старые shared-ссылки не должны ломать запуск, даже если History API недоступен.
+    }
+  }
+
+  removeLegacySessionParam();
+
   const collab = {
     enabled: false,
-    sessionId: new URLSearchParams(window.location.search).get("session") || "",
+    sessionId: "",
     clientId: getClientId(),
     leaveToken: null,
     leaving: false,
@@ -401,7 +420,7 @@ export function createSisyphusRuntime(elements = {}) {
     },
     remotePointers: new Map(),
   };
-  collab.enabled = Boolean(collab.sessionId);
+  collab.enabled = window.location.protocol !== "file:";
 
   function currentSummitElapsedMs() {
     if (!summitTimer.running) {
@@ -1953,25 +1972,6 @@ export function createSisyphusRuntime(elements = {}) {
     applyRockScale();
   }
 
-  function localImprintToCanonical(imprint) {
-    if (!imprint) {
-      return null;
-    }
-    updateBounds();
-    const position = localToCanonical(imprint.x, imprint.y);
-    return SharedPhysics.sanitizeImprint({
-      ...position,
-      toleranceX:
-        bounds.maxX > 0
-          ? (imprint.toleranceX / bounds.maxX) * SharedPhysics.WORLD_WIDTH
-          : SharedPhysics.WORLD_WIDTH,
-      toleranceY:
-        bounds.maxY > 0
-          ? (imprint.toleranceY / bounds.maxY) * SharedPhysics.WORLD_HEIGHT
-          : 1,
-    });
-  }
-
   function createSummitSharedImprint(input = {}) {
     updateBounds();
     const targetVisualCenterY =
@@ -2209,6 +2209,12 @@ export function createSisyphusRuntime(elements = {}) {
       base.pathname = base.pathname.replace(/[^/]+$/, "");
     }
     return new URL(relativePath, base);
+  }
+
+  function rootSessionHref() {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("session");
+    return url.toString();
   }
 
   function localToCanonical(x, y) {
@@ -2545,12 +2551,6 @@ export function createSisyphusRuntime(elements = {}) {
     };
   }
 
-  function sharedPhysicsPayload() {
-    return Object.fromEntries(
-      SHARED_PHYSICS_KEYS.map((key) => [key, params[key]])
-    );
-  }
-
   function sharedRoomSettingsPayload() {
     return SharedRoomSettings.sanitizeRoomSettings(
       Object.fromEntries(
@@ -2598,40 +2598,6 @@ export function createSisyphusRuntime(elements = {}) {
       suspended: true,
       turbTime: 0,
     };
-  }
-
-  function currentSharedTrail() {
-    updateBounds();
-    const xScale =
-      bounds.maxX > 0 ? SharedPhysics.WORLD_WIDTH / bounds.maxX : 0;
-    const yScale =
-      bounds.maxY > 0 ? SharedPhysics.WORLD_HEIGHT / bounds.maxY : 0;
-    return trail.points.slice(-1000).map((point) => {
-      const x =
-        xScale > 0
-          ? clamp(
-              (point.x - bounds.rockWidth / 2) * xScale,
-              0,
-              SharedPhysics.WORLD_WIDTH
-            )
-          : SharedPhysics.WORLD_WIDTH / 2;
-      const y =
-        yScale > 0
-          ? clamp(
-              (point.y - bounds.rockHeight / 2) * yScale,
-              0,
-              SharedPhysics.WORLD_HEIGHT
-            )
-          : 0;
-      return [Math.round(x), Math.round(y)];
-    });
-  }
-
-  function currentSharedImprint() {
-    if (collab.imprint) {
-      return { ...collab.imprint };
-    }
-    return localImprintToCanonical(motion.imprint);
   }
 
   function loadSharedTrail(points) {
@@ -2870,7 +2836,7 @@ export function createSisyphusRuntime(elements = {}) {
   async function copySessionLink(options = {}) {
     const showToggleFeedback = Boolean(options.showToggleFeedback);
     const announce = options.announce !== false;
-    const link = options.link || window.location.href;
+    const link = options.link || rootSessionHref();
     try {
       await navigator.clipboard.writeText(link);
     } catch {
@@ -2906,7 +2872,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (disposed || collab.sessionCreateInFlight) {
       return;
     }
-    if (collab.enabled && collab.sessionId && !collab.expired) {
+    if (collab.enabled && collab.connected && !collab.expired) {
       return;
     }
     if (window.location.protocol === "file:") {
@@ -2914,50 +2880,10 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    collab.sessionCreateInFlight = true;
-    const abortController = new AbortController();
-    collab.sessionCreateAbortController = abortController;
-    setSessionStatus("Создаём общую сессию…", "connecting");
-    try {
-      const response = await fetch(appUrl("api/sessions"), {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        signal: abortController.signal,
-        body: JSON.stringify({
-          creatorClientId: collab.clientId,
-          state: currentSharedState(),
-          physics: sharedPhysicsPayload(),
-          roomSettings: sharedRoomSettingsPayload(),
-          masterViewport: currentViewport(),
-          trail: currentSharedTrail(),
-          imprint: currentSharedImprint(),
-        }),
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
-      }
-      const result = await response.json();
-      if (disposed) {
-        return;
-      }
-      const url = new URL(window.location.href);
-      url.searchParams.set("session", result.sessionId);
-      window.location.replace(url);
-    } catch {
-      if (disposed) {
-        return;
-      }
-      collab.enabled = false;
-      setSessionStatus("Не удалось создать сессию", "error");
-    } finally {
-      collab.sessionCreateInFlight = false;
-      if (collab.sessionCreateAbortController === abortController) {
-        collab.sessionCreateAbortController = null;
-      }
-      if (!disposed) {
-        updateSessionStatus();
-      }
-    }
+    collab.enabled = true;
+    collab.expired = false;
+    setSessionStatus("Подключаем общую сессию…", "connecting");
+    connectSharedSession();
   }
 
   async function copyCurrentSessionLink() {
@@ -3141,7 +3067,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (
       disposed ||
       !collab.enabled ||
-      !collab.sessionId ||
       collab.expired ||
       collab.leaving
     ) {
@@ -3154,7 +3079,6 @@ export function createSisyphusRuntime(elements = {}) {
 
     const endpoint = appUrl("realtime");
     endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
-    endpoint.searchParams.set("session", collab.sessionId);
     endpoint.searchParams.set("client", collab.clientId);
     const socket = new WebSocket(endpoint);
     collab.socket = socket;
@@ -3405,7 +3329,10 @@ export function createSisyphusRuntime(elements = {}) {
       hideReturnRain({ immediate: true });
     } else {
       collab.firstFallRequestSent = false;
-      syncReturnRain(snapshotAtReturnPlace);
+      syncReturnRain(
+        snapshotAtReturnPlace ||
+          (rain.returnRequested && snapshot.phase === PHASES.FALLING),
+      );
     }
 
     if (snapshot.phase === PHASES.WON) {
@@ -3427,7 +3354,6 @@ export function createSisyphusRuntime(elements = {}) {
       event?.persisted ||
       collab.leaving ||
       !collab.enabled ||
-      !collab.sessionId ||
       !collab.leaveToken ||
       window.location.protocol === "file:"
     ) {
@@ -3436,9 +3362,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     collab.leaving = true;
     clearSharedConnectionTimers();
-    const endpoint = appUrl(
-      `api/sessions/${encodeURIComponent(collab.sessionId)}/leave`
-    );
+    const endpoint = appUrl("api/sessions/leave");
     const body = JSON.stringify({
       clientId: collab.clientId,
       leaveToken: collab.leaveToken,
@@ -3802,7 +3726,11 @@ export function createSisyphusRuntime(elements = {}) {
     }
     const previous = collab.groundTouchSeq;
     collab.groundTouchSeq = next;
-    return resetTrailOnGroundTouch(previous !== null && next > previous);
+    const touchedGround = previous !== null && next > previous;
+    if (touchedGround) {
+      hideReturnRain();
+    }
+    return resetTrailOnGroundTouch(touchedGround);
   }
 
   function trimTrailToLimit() {
@@ -4086,6 +4014,17 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function beginFinalReturnFall() {
+    const state = SharedPhysics.sanitizeState(currentSharedState());
+    if (!SharedPhysics.beginFinalFall(state)) {
+      return false;
+    }
+    setPhase(state.phase);
+    applyCanonicalMotion(state);
+    showReturnRain();
+    return true;
+  }
+
   function syncReturnTheme() {
     if (motion.phase === PHASES.INTRO) {
       motion.wasAtReturnPlace = false;
@@ -4098,11 +4037,13 @@ export function createSisyphusRuntime(elements = {}) {
       rockInsideImprint();
     const nextTheme = resolveTheme(atReturnPlace ? "light" : "dark");
     const enteredReturnPlace = atReturnPlace && !motion.wasAtReturnPlace;
+    const keepRainUntilGround =
+      rain.returnRequested && motion.phase === PHASES.FALLING;
     motion.wasAtReturnPlace = atReturnPlace;
     setTheme(nextTheme, {
       durationMs: returnThemeTransitionDuration(atReturnPlace),
     });
-    syncReturnRain(atReturnPlace);
+    syncReturnRain(atReturnPlace || keepRainUntilGround);
     if (enteredReturnPlace && nextTheme === "light") {
       scrollToSceneTopOnReturn();
     }
@@ -4144,6 +4085,9 @@ export function createSisyphusRuntime(elements = {}) {
     const touchedGround =
       touchedGroundCanonical ||
       (previousY < bounds.maxY - 0.75 && motion.y >= bounds.maxY - 0.75);
+    if (touchedGround) {
+      hideReturnRain();
+    }
     resetTrailOnGroundTouch(touchedGround);
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
       enterPlayPhase();
@@ -4273,8 +4217,7 @@ export function createSisyphusRuntime(elements = {}) {
     releasePointerCapture(pointerId);
 
     if (releasedInImprint) {
-      motion.vx = 0;
-      motion.vy = 0;
+      beginFinalReturnFall();
     } else {
       applyReleaseImpulse();
     }
@@ -4362,8 +4305,7 @@ export function createSisyphusRuntime(elements = {}) {
     const pointerVelocity = currentPointerVelocity();
 
     if (releasedInImprint) {
-      motion.vx = 0;
-      motion.vy = 0;
+      beginFinalReturnFall();
     } else {
       applyReleaseImpulse(pointerVelocity);
     }
@@ -4476,8 +4418,6 @@ export function createSisyphusRuntime(elements = {}) {
     updateSessionStatus();
     if (collab.enabled) {
       connectSharedSession();
-    } else {
-      createSharedSession();
     }
   }
 

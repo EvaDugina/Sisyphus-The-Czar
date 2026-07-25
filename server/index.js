@@ -7,6 +7,7 @@ const express = require("express");
 const { WebSocketServer } = require("ws");
 const {
   SessionManager,
+  DEFAULT_SESSION_ID,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
   STATIONARY_HOLD_RELEASE_MS,
@@ -208,6 +209,8 @@ function createService(options = {}) {
   manager.restoreSessions(sessionStore.load());
   const persistSessions = (force = false) =>
     sessionStore.save(manager.serializeSessions(), { force });
+  manager.ensureDefaultSession();
+  persistSessions(true);
   const createLimiter = new WindowRateLimiter(
     config.sessionCreateRateLimit,
     60_000
@@ -238,12 +241,37 @@ function createService(options = {}) {
       return;
     }
 
-    const session = manager.createSession(request.body || {});
+    const session = manager.ensureDefaultSession(request.body || {});
     persistSessions();
     response.status(201).json({
       sessionId: session.id,
       expiresAt: session.expiresAt,
     });
+  });
+
+  app.post("/api/sessions/leave", (request, response) => {
+    if (!originAllowed(request, config.allowedOrigins, config.debug)) {
+      response.status(403).json({ error: "origin_not_allowed" });
+      return;
+    }
+
+    const clientId = String(request.body?.clientId || "");
+    const leaveToken = String(request.body?.leaveToken || "");
+    if (
+      !CLIENT_ID_PATTERN.test(clientId) ||
+      !LEAVE_TOKEN_PATTERN.test(leaveToken)
+    ) {
+      response.status(400).json({ error: "invalid_leave" });
+      return;
+    }
+
+    const session = manager.ensureDefaultSession();
+    if (!manager.leaveClient(session, clientId, leaveToken)) {
+      response.status(403).json({ error: "invalid_leave_token" });
+      return;
+    }
+    persistSessions();
+    response.status(204).end();
   });
 
   app.post("/api/sessions/:sessionId/leave", (request, response) => {
@@ -385,9 +413,12 @@ function createService(options = {}) {
       return;
     }
 
-    const sessionId = url.searchParams.get("session") || "";
+    const requestedSessionId = url.searchParams.get("session") || "";
     const clientId = url.searchParams.get("client") || "";
-    if (!SESSION_ID_PATTERN.test(sessionId) || !CLIENT_ID_PATTERN.test(clientId)) {
+    if (
+      (requestedSessionId && !SESSION_ID_PATTERN.test(requestedSessionId)) ||
+      !CLIENT_ID_PATTERN.test(clientId)
+    ) {
       socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
@@ -395,14 +426,17 @@ function createService(options = {}) {
 
     websocketServer.handleUpgrade(request, socket, head, (websocket) => {
       websocketServer.emit("connection", websocket, request, {
-        sessionId,
+        sessionId: DEFAULT_SESSION_ID,
         clientId,
       });
     });
   });
 
   websocketServer.on("connection", (websocket, _request, context) => {
-    const session = manager.getSession(context.sessionId);
+    const session =
+      context.sessionId === DEFAULT_SESSION_ID
+        ? manager.ensureDefaultSession()
+        : manager.getSession(context.sessionId);
     if (!session) {
       websocket.send(
         JSON.stringify({
