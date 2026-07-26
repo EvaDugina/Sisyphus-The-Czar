@@ -52,6 +52,13 @@ function setup(options = {}) {
       options.productionPresetSelectionEnabled,
     getProductionPresetSelection: options.getProductionPresetSelection,
     saveProductionPresetSelection: options.saveProductionPresetSelection,
+    settingsTemplatesEnabled: options.settingsTemplatesEnabled,
+    getSettingsTemplatesPage: options.getSettingsTemplatesPage,
+    getLatestSettingsTemplate: options.getLatestSettingsTemplate,
+    importSettingsTemplates: options.importSettingsTemplates,
+    saveSettingsTemplate: options.saveSettingsTemplate,
+    deleteSettingsTemplate: options.deleteSettingsTemplate,
+    createSettingsConflict: options.createSettingsConflict,
   });
   return { clock, manager };
 }
@@ -1221,7 +1228,7 @@ test("production preset обновляет root-настройки без сбр
   assert.equal(session.revision, revisionBefore + 1);
 });
 
-test("debug master выбирает production preset и получает подтверждение", () => {
+test("любой debug root-клиент выбирает production preset с broadcast", () => {
   const saved = [];
   const current = {
     selectedAt: "2026-07-26T10:00:00.000Z",
@@ -1234,6 +1241,7 @@ test("debug master выбирает production preset и получает под
   };
   const { manager } = setup({
     productionPresetSelectionEnabled: true,
+    settingsTemplatesEnabled: true,
     getProductionPresetSelection: () => current,
     saveProductionPresetSelection: (payload) => {
       saved.push(payload);
@@ -1253,6 +1261,7 @@ test("debug master выбирает production preset и получает под
     creatorClientId: "client-master-preset",
   });
   const master = connect(manager, session, "client-master-preset");
+  const slave = connect(manager, session, "client-slave-preset");
   const payload = {
     id: "version-next",
     name: "Для production",
@@ -1267,7 +1276,7 @@ test("debug master выбирает production preset и получает под
     ).payload,
     { canSelect: true, selection: current },
   );
-  manager.handleMessage(session, master.client, {
+  manager.handleMessage(session, slave.client, {
     v: 1,
     seq: 1,
     type: "productionPreset.select",
@@ -1275,8 +1284,14 @@ test("debug master выбирает production preset и получает под
   });
 
   assert.deepEqual(saved, [payload]);
-  assert.deepEqual(
+  assert.equal(
     master.socket.messages.findLast(
+      (message) => message.type === "productionPreset.selected",
+    ).payload.canSelect,
+    true,
+  );
+  assert.deepEqual(
+    slave.socket.messages.findLast(
       (message) => message.type === "productionPreset.selected",
     ).payload.selection.source,
     {
@@ -1288,31 +1303,15 @@ test("debug master выбирает production preset и получает под
   );
 });
 
-test("production preset нельзя выбрать slave или при DEBUG=false", () => {
+test("production preset нельзя выбрать вне root или при DEBUG=false", () => {
   const saveProductionPresetSelection = () => {
     throw new Error("callback must not be called");
   };
   const debug = setup({
     productionPresetSelectionEnabled: true,
+    settingsTemplatesEnabled: true,
     saveProductionPresetSelection,
   }).manager;
-  const debugSession = debug.ensureDefaultSession({
-    creatorClientId: "client-master-debug",
-  });
-  connect(debug, debugSession, "client-master-debug");
-  const slave = connect(debug, debugSession, "client-slave-debug");
-
-  debug.handleMessage(debugSession, slave.client, {
-    v: 1,
-    seq: 1,
-    type: "productionPreset.select",
-    payload: {},
-  });
-  assert.equal(
-    slave.socket.messages.findLast((message) => message.type === "error")
-      .payload.code,
-    "master_only",
-  );
 
   const legacySession = debug.createSession({
     creatorClientId: "client-master-legacy",
@@ -1332,7 +1331,7 @@ test("production preset нельзя выбрать slave или при DEBUG=fa
     legacyMaster.socket.messages.findLast(
       (message) => message.type === "error",
     ).payload.code,
-    "master_only",
+    "debug_only",
   );
 
   const production = setup({
@@ -1359,6 +1358,91 @@ test("production preset нельзя выбрать slave или при DEBUG=fa
     ).payload.code,
     "debug_only",
   );
+});
+
+test("debug settings.update принимает slave и сохраняет stale snapshot конфликтом", () => {
+  const conflicts = [];
+  const conflictEntry = {
+    id: "settings-conflict-1",
+    name: "Конфликт",
+    settingsSchemaVersion: 18,
+    createdAt: "2026-07-26T12:00:00.000Z",
+    updatedAt: "2026-07-26T12:00:00.000Z",
+    settings: {
+      ...RoomSettings.DEFAULT_ROOM_SETTINGS,
+      ...Physics.DEFAULT_PHYSICS,
+      gravity: 6,
+    },
+  };
+  const { manager } = setup({
+    settingsTemplatesEnabled: true,
+    createSettingsConflict: (settings, options) => {
+      conflicts.push({ settings, options });
+      return { revision: 3, entry: conflictEntry };
+    },
+  });
+  const session = manager.ensureDefaultSession({
+    creatorClientId: "client-settings-master",
+  });
+  const master = connect(manager, session, "client-settings-master");
+  const slave = connect(manager, session, "client-settings-slave");
+
+  manager.handleMessage(session, slave.client, {
+    v: 1,
+    seq: 1,
+    type: "settings.update",
+    payload: {
+      requestId: "request-slave",
+      baseRevision: 1,
+      settingsSchemaVersion: 18,
+      settings: {
+        ...RoomSettings.DEFAULT_ROOM_SETTINGS,
+        ...Physics.DEFAULT_PHYSICS,
+        gravity: 8,
+      },
+    },
+  });
+
+  assert.equal(session.physics.gravity, 8);
+  assert.equal(session.settingsRevision, 2);
+  assert.equal(
+    slave.socket.messages.findLast(
+      (message) => message.type === "settings.applied",
+    ).payload.settingsRevision,
+    2,
+  );
+
+  manager.handleMessage(session, master.client, {
+    v: 1,
+    seq: 1,
+    type: "settings.update",
+    payload: {
+      requestId: "request-master-stale",
+      baseRevision: 1,
+      settingsSchemaVersion: 18,
+      settings: {
+        ...RoomSettings.DEFAULT_ROOM_SETTINGS,
+        ...Physics.DEFAULT_PHYSICS,
+        gravity: 6,
+      },
+    },
+  });
+
+  assert.equal(session.physics.gravity, 8);
+  assert.equal(session.settingsRevision, 2);
+  assert.equal(conflicts.length, 1);
+  const conflict = master.socket.messages.findLast(
+    (message) => message.type === "settings.conflict",
+  );
+  assert.equal(conflict.payload.entry.id, "settings-conflict-1");
+  assert.equal(conflict.payload.settings.gravity, 8);
+  assert.equal(
+    slave.socket.messages.findLast(
+      (message) => message.type === "settingsTemplates.changed",
+    ).payload.entries[0].id,
+    "settings-conflict-1",
+  );
+  assert.equal(manager.serializeSessions()[0].settingsRevision, 2);
 });
 
 test("активная сессия продлевается при достижении TTL", () => {

@@ -1106,7 +1106,6 @@ test("вход на корень открывает рабочую общую с
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(page.locator("body")).not.toHaveClass(/state-intro/);
   await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
-  await expect(page.locator('[name="gravity"]')).toHaveValue("10");
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
 
   await context.close();
@@ -1819,9 +1818,10 @@ test("два браузера видят один камень и поднима
     "data-running",
     "false"
   );
-  await expect(second.locator(".settings-toggle")).toBeHidden();
-  await expect(second.locator(".settings-toggle")).toBeDisabled();
-  await expect(second.locator("#settings-panel")).toBeHidden();
+  await expect(second.locator(".settings-toggle")).toBeVisible();
+  await expect(second.locator(".settings-toggle")).toBeEnabled();
+  await second.locator(".settings-toggle").click();
+  await expect(second.locator("#settings-panel")).toHaveClass(/is-open/);
   await expect(second.locator('[name="rainBlendMode"]')).toHaveValue(
     await first.locator('[name="rainBlendMode"]').inputValue()
   );
@@ -1835,8 +1835,8 @@ test("два браузера видят один камень и поднима
     "cubic-bezier(0, 0, 1, 1)",
   );
   await setRange(second, "rainExitMs", 0.3);
-  await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("0.7 s");
-  await expect(first.locator('[name="rainExitMs"]')).toHaveValue("0.7");
+  await expect(second.locator('[data-output="rainExitMs"]')).toHaveText("0.3 s");
+  await expect(first.locator('[name="rainExitMs"]')).toHaveValue("0.3");
   await expect(first.getByTestId("session-status")).toContainText("2");
   const expectedPhysics = {
     mass: "10",

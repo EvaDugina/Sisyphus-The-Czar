@@ -20,6 +20,7 @@ const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).ma
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
 const SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
+const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
 
 export function createSettingsController(options) {
   const {
@@ -31,6 +32,10 @@ export function createSettingsController(options) {
     hintEl,
     listen,
     localCanEditSettings,
+    onDeleteSettingsTemplate,
+    onImportSettingsTemplates,
+    onListSettingsTemplates,
+    onSaveSettingsTemplate,
     onSelectProductionPreset,
     params,
     readControls,
@@ -72,6 +77,10 @@ export function createSettingsController(options) {
     dirtyKeys: new Set(),
     productionSelection: null,
     canSelectProductionPreset: false,
+    sharedCatalogReady: false,
+    catalogRevision: 0,
+    catalogPages: [],
+    pendingImportBatches: 0,
   };
 
   function copySettingsVersionEntry(entry) {
@@ -152,7 +161,7 @@ export function createSettingsController(options) {
       typeof onSelectProductionPreset !== "function"
     ) {
       setProductionPresetStatus(
-        "Production preset доступен только master при DEBUG=true",
+        "Production preset доступен участникам root-комнаты при DEBUG=true",
         "error",
       );
       return false;
@@ -443,6 +452,229 @@ export function createSettingsController(options) {
     }
   }
 
+  function settingsTemplatesImportMarker() {
+    return `${SETTINGS_TEMPLATES_IMPORT_KEY}:${window.location.origin}`;
+  }
+
+  function settingsTemplatesImported() {
+    try {
+      return localStorage.getItem(settingsTemplatesImportMarker()) === "true";
+    } catch {
+      return false;
+    }
+  }
+
+  function markSettingsTemplatesImported() {
+    try {
+      localStorage.setItem(settingsTemplatesImportMarker(), "true");
+    } catch {
+      /* localStorage недоступен — повторный импорт дедуплицируется сервером */
+    }
+  }
+
+  function mergeCatalogEntries(entries) {
+    if (!Array.isArray(entries)) {
+      return [];
+    }
+    const merged = new Map(
+      settingsVersions.entries.map((entry) => [entry.id, entry]),
+    );
+    const changed = [];
+    entries.forEach((rawEntry) => {
+      const entry = normalizeSettingsVersionEntry(rawEntry);
+      if (!entry) {
+        return;
+      }
+      merged.set(entry.id, entry);
+      changed.push(entry);
+    });
+    settingsVersions.entries = [...merged.values()]
+      .sort((left, right) => {
+        const updated =
+          Date.parse(right.updatedAt || "") - Date.parse(left.updatedAt || "");
+        return updated || String(right.id).localeCompare(String(left.id));
+      })
+      .slice(0, SETTINGS_VERSION_LIMIT);
+    renderSettingsVersions();
+    saveSettingsVersions();
+    return changed;
+  }
+
+  function applyLatestCatalogEntry() {
+    const latest = selectLatestSettingsVersionEntry(settingsVersions.entries);
+    if (!latest) {
+      return;
+    }
+    settingsVersions.baselineId = latest.id;
+    settingsVersions.baselineName = latest.name;
+    settingsVersions.baselineSettings = { ...latest.settings };
+    settingsVersions.draftDetached = false;
+    if (settingsVersionName) {
+      settingsVersionName.value = latest.name;
+    }
+    refreshDraftState();
+  }
+
+  function importLegacySettingsVersions(entries) {
+    if (
+      settingsTemplatesImported() ||
+      !Array.isArray(entries) ||
+      entries.length === 0 ||
+      typeof onImportSettingsTemplates !== "function"
+    ) {
+      markSettingsTemplatesImported();
+      return;
+    }
+    const batches = [];
+    for (let index = 0; index < entries.length; index += 10) {
+      batches.push(entries.slice(index, index + 10).map(copySettingsVersionEntry));
+    }
+    settingsVersions.pendingImportBatches = batches.length;
+    let sentBatches = 0;
+    batches.forEach((batch) => {
+      if (onImportSettingsTemplates(batch) !== false) {
+        sentBatches += 1;
+      }
+    });
+    settingsVersions.pendingImportBatches = sentBatches;
+    if (sentBatches === 0) {
+      setProductionPresetStatus("Нет соединения для импорта шаблонов", "error");
+    } else {
+      setProductionPresetStatus("Импортируем локальные шаблоны…", "pending");
+    }
+  }
+
+  function setSettingsTemplatesPage(payload = {}) {
+    const offset = Math.max(0, Number(payload.offset) || 0);
+    if (offset === 0) {
+      settingsVersions.catalogPages = [];
+    }
+    const entries = Array.isArray(payload.entries)
+      ? payload.entries.map(normalizeSettingsVersionEntry).filter(Boolean)
+      : [];
+    settingsVersions.catalogPages.push(...entries);
+    settingsVersions.catalogRevision = Math.max(
+      settingsVersions.catalogRevision,
+      Number(payload.revision) || 0,
+    );
+    if (
+      payload.nextOffset !== null &&
+      payload.nextOffset !== undefined &&
+      typeof onListSettingsTemplates === "function"
+    ) {
+      onListSettingsTemplates({ offset: payload.nextOffset, limit: 10 });
+      return;
+    }
+
+    const legacyEntries = settingsVersions.sharedCatalogReady
+      ? []
+      : settingsVersions.entries.map(copySettingsVersionEntry);
+    settingsVersions.entries = [];
+    settingsVersions.sharedCatalogReady = true;
+    mergeCatalogEntries(settingsVersions.catalogPages);
+    applyLatestCatalogEntry();
+    importLegacySettingsVersions(legacyEntries);
+  }
+
+  function setSettingsTemplatesImported(payload = {}) {
+    mergeCatalogEntries(payload.entries);
+    settingsVersions.catalogRevision = Math.max(
+      settingsVersions.catalogRevision,
+      Number(payload.revision) || 0,
+    );
+    settingsVersions.pendingImportBatches = Math.max(
+      0,
+      settingsVersions.pendingImportBatches - 1,
+    );
+    if (settingsVersions.pendingImportBatches === 0) {
+      markSettingsTemplatesImported();
+      setProductionPresetStatus("Локальные шаблоны импортированы", "success");
+      applyLatestCatalogEntry();
+    }
+  }
+
+  function setSettingsTemplateSaved(payload = {}) {
+    const [entry] = mergeCatalogEntries(payload.entry ? [payload.entry] : []);
+    if (!entry) {
+      return;
+    }
+    settingsVersions.selectedId = entry.id;
+    settingsVersions.baselineId = entry.id;
+    settingsVersions.baselineName = entry.name;
+    settingsVersions.baselineSettings = { ...entry.settings };
+    settingsVersions.draftDetached = false;
+    settingsVersions.dirtyKeys.clear();
+    if (settingsVersionName) {
+      settingsVersionName.value = entry.name;
+    }
+    renderSettingsVersions();
+    renderDraftState();
+    saveSettingsVersions();
+    setProductionPresetStatus(
+      payload.branched
+        ? "Конфликт сохранён новой версией"
+        : "Общий шаблон сохранён",
+      "success",
+    );
+    if (
+      !payload.branched &&
+      settingsVersions.productionSelection?.source?.id === entry.id
+    ) {
+      requestProductionPresetSelection(entry);
+    }
+  }
+
+  function setSettingsTemplateDeleted(payload = {}) {
+    const id = String(payload.deletedId || "");
+    if (!id) {
+      return;
+    }
+    settingsVersions.entries = settingsVersions.entries.filter(
+      (entry) => entry.id !== id,
+    );
+    if (settingsVersions.selectedId === id) {
+      settingsVersions.selectedId = "";
+    }
+    if (settingsVersions.baselineId === id) {
+      settingsVersions.baselineId = "";
+      settingsVersions.baselineName = "";
+      settingsVersions.baselineSettings = currentSettingsSnapshot();
+      settingsVersions.draftDetached = true;
+    }
+    renderSettingsVersions();
+    renderDraftState();
+    saveSettingsVersions();
+  }
+
+  function applySettingsTemplateChange(payload = {}) {
+    settingsVersions.catalogRevision = Math.max(
+      settingsVersions.catalogRevision,
+      Number(payload.revision) || 0,
+    );
+    if (payload.action === "delete") {
+      setSettingsTemplateDeleted({ deletedId: payload.id });
+      return;
+    }
+    mergeCatalogEntries(payload.entries);
+  }
+
+  function setSettingsConflict(payload = {}) {
+    mergeCatalogEntries(payload.entry ? [payload.entry] : []);
+    setProductionPresetStatus(
+      payload.entry
+        ? `Конфликт сохранён как «${payload.entry.name}»`
+        : "Настройки изменены другим пользователем",
+      payload.entry ? "success" : "error",
+    );
+  }
+
+  function setSettingsTemplateError(message) {
+    setProductionPresetStatus(
+      String(message || "Не удалось обработать общий шаблон"),
+      "error",
+    );
+  }
+
   function defaultSettingsVersionName(date = new Date()) {
     const pad = (value) => String(value).padStart(2, "0");
     return [
@@ -673,6 +905,26 @@ export function createSettingsController(options) {
       String(settingsVersionName?.value || "").trim() ||
       selected?.name ||
       defaultSettingsVersionName(now);
+    if (
+      settingsVersions.sharedCatalogReady &&
+      typeof onSaveSettingsTemplate === "function"
+    ) {
+      const timestamp = now.toISOString();
+      const candidate = {
+        id: selected?.id || createSettingsVersionId(),
+        name,
+        settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
+        createdAt: selected?.createdAt || timestamp,
+        updatedAt: selected?.updatedAt || timestamp,
+        settings: currentSettingsSnapshot(),
+      };
+      if (
+        onSaveSettingsTemplate(candidate, selected?.updatedAt || "") !== false
+      ) {
+        setProductionPresetStatus("Сохраняем общий шаблон…", "pending");
+        return;
+      }
+    }
     let savedEntry = selected;
     if (selected) {
       selected.name = name;
@@ -791,6 +1043,14 @@ export function createSettingsController(options) {
         "Сначала выберите другой production preset",
         "error",
       );
+      return;
+    }
+    if (
+      settingsVersions.sharedCatalogReady &&
+      typeof onDeleteSettingsTemplate === "function" &&
+      onDeleteSettingsTemplate(id) !== false
+    ) {
+      setProductionPresetStatus("Удаляем общий шаблон…", "pending");
       return;
     }
     const beforeCount = settingsVersions.entries.length;
@@ -1079,6 +1339,13 @@ export function createSettingsController(options) {
     saveSettings,
     setProductionPresetError,
     setProductionPresetState,
+    setSettingsConflict,
+    setSettingsTemplateDeleted,
+    setSettingsTemplateError,
+    setSettingsTemplateSaved,
+    setSettingsTemplatesImported,
+    setSettingsTemplatesPage,
+    applySettingsTemplateChange,
     syncRoomSettingControls,
     syncSettingControl,
     updateControlOutputs,

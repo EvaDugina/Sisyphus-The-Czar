@@ -14,6 +14,7 @@ const {
 } = require("./session-manager");
 const { SessionStore } = require("./session-store");
 const { ProductionPresetStore } = require("./production-preset-store");
+const { SettingsTemplateStore } = require("./settings-template-store");
 const ProductionPreset = require("../shared/production-preset");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -181,6 +182,11 @@ function createService(options = {}) {
         process.env.PRODUCTION_PRESET_PATH ??
         ""
     ).trim(),
+    settingsTemplateStorePath: String(
+      options.settingsTemplateStorePath ??
+        process.env.SETTINGS_TEMPLATE_STORE_PATH ??
+        ""
+    ).trim(),
     persistIntervalMs: Math.max(
       100,
       Number(
@@ -202,6 +208,10 @@ function createService(options = {}) {
     options.productionPresetStore ||
     new ProductionPresetStore(config.productionPresetPath, { logger: log });
   const storedProductionPreset = productionPresetStore.load();
+  const settingsTemplateStore =
+    options.settingsTemplateStore ||
+    new SettingsTemplateStore(config.settingsTemplateStorePath, { logger: log });
+  settingsTemplateStore.load();
   const manager =
     options.manager ||
     new SessionManager({
@@ -216,6 +226,18 @@ function createService(options = {}) {
       getProductionPresetSelection: () => productionPresetStore.metadata(),
       saveProductionPresetSelection: (selection) =>
         productionPresetStore.save(selection),
+      settingsTemplatesEnabled: config.debug,
+      getSettingsTemplatesPage: (payload = {}) =>
+        settingsTemplateStore.page(payload.offset, payload.limit),
+      getLatestSettingsTemplate: () => settingsTemplateStore.latest(),
+      importSettingsTemplates: (entries, storeOptions) =>
+        settingsTemplateStore.importEntries(entries, storeOptions),
+      saveSettingsTemplate: (entry, storeOptions) =>
+        settingsTemplateStore.saveEntry(entry, storeOptions),
+      deleteSettingsTemplate: (id, storeOptions) =>
+        settingsTemplateStore.deleteEntry(id, storeOptions),
+      createSettingsConflict: (settings, storeOptions) =>
+        settingsTemplateStore.createConflict(settings, storeOptions),
       logger: log,
     });
   const sessionStore =
@@ -225,7 +247,12 @@ function createService(options = {}) {
   const persistSessions = (force = false) =>
     sessionStore.save(manager.serializeSessions(), { force });
   const defaultSession = manager.ensureDefaultSession();
-  if (!config.debug) {
+  if (config.debug) {
+    const latestSettingsTemplate = settingsTemplateStore.latest();
+    if (latestSettingsTemplate) {
+      manager.applySettingsPreset(defaultSession, latestSettingsTemplate.settings);
+    }
+  } else {
     manager.applySettingsPreset(
       defaultSession,
       storedProductionPreset?.settings || ProductionPreset.settings,
@@ -571,6 +598,7 @@ function createService(options = {}) {
     manager,
     sessionStore,
     productionPresetStore,
+    settingsTemplateStore,
     config,
     start,
     close,

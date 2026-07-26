@@ -18,6 +18,7 @@ async function setRangeValue(page, name, value) {
 }
 
 test("production DEBUG включает UI, draft и выбор следующего preset", async ({
+  browser,
   page,
 }) => {
   await page.addInitScript(
@@ -134,4 +135,32 @@ test("production DEBUG включает UI, draft и выбор следующе
   expect(Date.parse(stored.updatedAt)).toBeGreaterThan(
     Date.parse("2026-07-25T12:00:00.000Z"),
   );
+
+  const slaveContext = await browser.newContext();
+  const slave = await slaveContext.newPage();
+  try {
+    await slave.goto("/");
+    await expect(slave.locator("body")).toHaveAttribute(
+      "data-client-role",
+      "slave",
+    );
+    await openSettingsPanel(slave);
+    await expect(slave.locator("#settings-version-current")).toContainText(
+      "Последний",
+    );
+    await setRangeValue(slave, "gravity", 8.25);
+    await expect(page.locator('[name="gravity"]')).toHaveValue("8.25");
+
+    await slave.locator(".settings-version-toggle").click();
+    const slaveProductionButton = slave.locator(
+      '[data-production-preset-select="latest"]',
+    );
+    await expect(slaveProductionButton).toBeEnabled();
+    await slaveProductionButton.click();
+    await expect(page.locator(".settings-production-status")).toContainText(
+      "Production: Последний",
+    );
+  } finally {
+    await slaveContext.close();
+  }
 });

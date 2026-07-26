@@ -389,13 +389,15 @@ export function createSisyphusRuntime(elements = {}) {
     remoteControllerId: null,
     participants: 1,
     applyingRemotePhysics: false,
-    physicsTimerId: null,
     physicsSignature: "",
     pendingPhysicsChanges: Object.create(null),
     applyingRemoteRoomSettings: false,
-    roomSettingsTimerId: null,
     roomSettingsSignature: "",
     pendingRoomSettingsChanges: Object.create(null),
+    settingsRevision: 0,
+    settingsUpdateTimerId: null,
+    settingsUpdateInFlight: null,
+    settingsUpdateQueued: false,
     sessionCreateInFlight: false,
     sessionCreateAbortController: null,
     firstFallRequestSent: false,
@@ -419,9 +421,6 @@ export function createSisyphusRuntime(elements = {}) {
       visible: false,
     },
     remotePointers: new Map(),
-    initialSettingsVersion: null,
-    initialSettingsSyncComplete: false,
-    initialSettingsSyncSent: false,
   };
   collab.enabled = window.location.protocol !== "file:";
 
@@ -469,7 +468,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function localCanEditSettings() {
-    return collab.clientRole === "master";
+    return collab.clientRole === "master" || collab.clientRole === "slave";
   }
 
   function slaveViewportScale() {
@@ -571,6 +570,10 @@ export function createSisyphusRuntime(elements = {}) {
     hintEl: elements.hint,
     listen,
     localCanEditSettings,
+    onDeleteSettingsTemplate: deleteSettingsTemplate,
+    onImportSettingsTemplates: importSettingsTemplates,
+    onListSettingsTemplates: listSettingsTemplates,
+    onSaveSettingsTemplate: saveSettingsTemplate,
     onSelectProductionPreset: selectProductionPreset,
     params,
     readControls,
@@ -2316,14 +2319,6 @@ export function createSisyphusRuntime(elements = {}) {
     applyCursorRole(handCursor, collab.clientRole);
     body.dataset.clientRole = nextRole;
     onClientRoleChange(nextRole);
-    if (nextRole === "slave") {
-      window.clearTimeout(collab.physicsTimerId);
-      window.clearTimeout(collab.roomSettingsTimerId);
-      collab.physicsTimerId = null;
-      collab.roomSettingsTimerId = null;
-      collab.pendingPhysicsChanges = Object.create(null);
-      collab.pendingRoomSettingsChanges = Object.create(null);
-    }
     applyViewportScaledVisuals();
     sendMasterViewport(true);
   }
@@ -2785,112 +2780,93 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function scheduleSharedPhysicsUpdate() {
-    if (
-      !collab.enabled ||
-      !localCanEditSettings() ||
-      collab.applyingRemotePhysics
-    ) {
-      return;
-    }
-    if (!collab.connected) {
-      return;
-    }
-    window.clearTimeout(collab.physicsTimerId);
-    collab.physicsTimerId = window.setTimeout(() => {
-      collab.physicsTimerId = null;
-      const payload = { ...collab.pendingPhysicsChanges };
-      if (Object.keys(payload).length > 0) {
-        sendShared("physics.update", payload);
-      }
-    }, 100);
+    scheduleSharedSettingsUpdate();
   }
 
   function scheduleSharedRoomSettingsUpdate() {
+    scheduleSharedSettingsUpdate();
+  }
+
+  function sharedSettingsPayload() {
+    return {
+      ...SharedRoomSettings.sanitizeRoomSettings(params),
+      ...SharedPhysics.sanitizePhysics(params),
+    };
+  }
+
+  function settingsUpdateRequestId() {
+    const random =
+      typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+        ? crypto.randomUUID()
+        : Math.random().toString(36).slice(2);
+    return `settings-${Date.now().toString(36)}-${random}`;
+  }
+
+  function scheduleSharedSettingsUpdate() {
     if (
       !collab.enabled ||
       !localCanEditSettings() ||
+      collab.applyingRemotePhysics ||
       collab.applyingRemoteRoomSettings
     ) {
       return;
     }
+    collab.settingsUpdateQueued = true;
     if (!collab.connected) {
       return;
     }
-    window.clearTimeout(collab.roomSettingsTimerId);
-    collab.roomSettingsTimerId = window.setTimeout(() => {
-      collab.roomSettingsTimerId = null;
-      const payload = { ...collab.pendingRoomSettingsChanges };
-      if (Object.keys(payload).length > 0) {
-        sendShared("roomSettings.update", payload);
-      }
+    window.clearTimeout(collab.settingsUpdateTimerId);
+    collab.settingsUpdateTimerId = window.setTimeout(() => {
+      collab.settingsUpdateTimerId = null;
+      flushSharedSettingsUpdate();
     }, 100);
   }
 
-  function initialSettingsPayloads() {
-    const settings = collab.initialSettingsVersion?.settings;
-    if (!settings || typeof settings !== "object") {
-      return null;
+  function flushSharedSettingsUpdate() {
+    if (
+      !collab.connected ||
+      collab.settingsUpdateInFlight ||
+      !collab.settingsUpdateQueued ||
+      !Number.isSafeInteger(collab.settingsRevision) ||
+      collab.settingsRevision < 1
+    ) {
+      return false;
     }
-    return {
-      physics: SharedPhysics.sanitizePhysics(settings),
-      roomSettings: SharedRoomSettings.sanitizeRoomSettings(settings),
+    const requestId = settingsUpdateRequestId();
+    const payload = {
+      requestId,
+      baseRevision: collab.settingsRevision,
+      settingsSchemaVersion: 18,
+      settings: sharedSettingsPayload(),
     };
-  }
-
-  function initialSettingsMatchSnapshot(payload, desired) {
-    if (
-      !desired ||
-      !payload.physics ||
-      typeof payload.physics !== "object" ||
-      !payload.roomSettings ||
-      typeof payload.roomSettings !== "object"
-    ) {
+    collab.settingsUpdateQueued = false;
+    collab.settingsUpdateInFlight = { requestId, settings: payload.settings };
+    if (!sendShared("settings.update", payload)) {
+      collab.settingsUpdateInFlight = null;
+      collab.settingsUpdateQueued = true;
       return false;
     }
-    return (
-      SHARED_PHYSICS_KEYS.every(
-        (key) =>
-          Math.abs(
-            Number(payload.physics[key]) - Number(desired.physics[key]),
-          ) < 1e-9,
-      ) &&
-      SHARED_ROOM_SETTING_KEYS.every((key) =>
-        roomSettingValueEqual(
-          key,
-          payload.roomSettings[key],
-          desired.roomSettings[key],
-        ),
-      )
+    return true;
+  }
+
+  function settleSharedSettingsUpdate(payload = {}, conflict = false) {
+    const requestId = String(payload.requestId || "");
+    if (collab.settingsUpdateInFlight?.requestId !== requestId) {
+      return false;
+    }
+    collab.settingsUpdateInFlight = null;
+    collab.settingsRevision = Math.max(
+      1,
+      Number(payload.settingsRevision) || collab.settingsRevision,
     );
-  }
-
-  function syncInitialSettingsVersion(payload) {
-    if (
-      !settingsUiEnabled ||
-      !collab.initialSettingsVersion ||
-      collab.initialSettingsSyncComplete ||
-      collab.clientRole !== "master"
-    ) {
-      return false;
+    collab.pendingPhysicsChanges = Object.create(null);
+    collab.pendingRoomSettingsChanges = Object.create(null);
+    if (conflict && payload.settings) {
+      applySharedPhysics(payload.settings);
+      applySharedRoomSettings(payload.settings);
     }
-    const desired = initialSettingsPayloads();
-    if (initialSettingsMatchSnapshot(payload, desired)) {
-      collab.initialSettingsSyncComplete = true;
-      collab.initialSettingsSyncSent = false;
-      return false;
-    }
-    if (!collab.initialSettingsSyncSent && collab.connected) {
-      Object.assign(collab.pendingPhysicsChanges, desired.physics);
-      Object.assign(
-        collab.pendingRoomSettingsChanges,
-        desired.roomSettings,
-      );
-      const physicsSent = sendShared("physics.update", desired.physics);
-      const roomSettingsSent = sendShared(
-        "roomSettings.update",
-        desired.roomSettings,
-      );
-      collab.initialSettingsSyncSent = physicsSent && roomSettingsSent;
+    if (collab.settingsUpdateQueued) {
+      scheduleSharedSettingsUpdate();
     }
     return true;
   }
@@ -2976,6 +2952,22 @@ export function createSisyphusRuntime(elements = {}) {
 
   function selectProductionPreset(selection) {
     return sendShared("productionPreset.select", selection);
+  }
+
+  function listSettingsTemplates(payload = {}) {
+    return sendShared("settingsTemplates.list", payload);
+  }
+
+  function importSettingsTemplates(entries) {
+    return sendShared("settingsTemplates.import", { entries });
+  }
+
+  function saveSettingsTemplate(entry, baseUpdatedAt = "") {
+    return sendShared("settingsTemplates.save", { entry, baseUpdatedAt });
+  }
+
+  function deleteSettingsTemplate(id) {
+    return sendShared("settingsTemplates.delete", { id });
   }
 
   function startSharedReleaseHandoff() {
@@ -3113,10 +3105,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function clearSharedConnectionTimers() {
     window.clearTimeout(collab.reconnectTimerId);
-    window.clearTimeout(collab.roomSettingsTimerId);
+    window.clearTimeout(collab.settingsUpdateTimerId);
     window.clearInterval(collab.pingTimerId);
     collab.reconnectTimerId = null;
-    collab.roomSettingsTimerId = null;
+    collab.settingsUpdateTimerId = null;
     collab.pingTimerId = null;
   }
 
@@ -3202,8 +3194,9 @@ export function createSisyphusRuntime(elements = {}) {
       collab.hasControl = false;
       collab.pendingControl = false;
       collab.releasePending = false;
-      if (!collab.initialSettingsSyncComplete) {
-        collab.initialSettingsSyncSent = false;
+      if (collab.settingsUpdateInFlight) {
+        collab.settingsUpdateInFlight = null;
+        collab.settingsUpdateQueued = true;
       }
       collab.holderIds.clear();
       cancelSharedLocalDrag();
@@ -3260,9 +3253,24 @@ export function createSisyphusRuntime(elements = {}) {
       settingsController.setProductionPresetState(payload);
     } else if (message.type === "productionPreset.selected") {
       settingsController.setProductionPresetState({
-        canSelect: localCanEditSettings(),
+        canSelect: payload.canSelect ?? localCanEditSettings(),
         selection: payload.selection,
       });
+    } else if (message.type === "settings.applied") {
+      settleSharedSettingsUpdate(payload);
+    } else if (message.type === "settings.conflict") {
+      settleSharedSettingsUpdate(payload, true);
+      settingsController.setSettingsConflict(payload);
+    } else if (message.type === "settingsTemplates.page") {
+      settingsController.setSettingsTemplatesPage(payload);
+    } else if (message.type === "settingsTemplates.imported") {
+      settingsController.setSettingsTemplatesImported(payload);
+    } else if (message.type === "settingsTemplates.saved") {
+      settingsController.setSettingsTemplateSaved(payload);
+    } else if (message.type === "settingsTemplates.deleted") {
+      settingsController.setSettingsTemplateDeleted(payload);
+    } else if (message.type === "settingsTemplates.changed") {
+      settingsController.applySettingsTemplateChange(payload);
     } else if (message.type === "pong") {
       const sample = Date.now() - Number(payload.serverTime || Date.now());
       collab.clockOffset = collab.clockOffsetReady
@@ -3272,10 +3280,17 @@ export function createSisyphusRuntime(elements = {}) {
     } else if (message.type === "error") {
       if (
         payload.code === "invalid_production_preset" ||
-        payload.code === "production_preset_store_unavailable" ||
-        payload.code === "debug_only"
+        payload.code === "production_preset_store_unavailable"
       ) {
         settingsController.setProductionPresetError(payload.message);
+      } else if (
+        payload.code === "invalid_settings_template" ||
+        payload.code === "settings_template_store_unavailable" ||
+        payload.code === "production_template_protected" ||
+        payload.code === "invalid_settings_update" ||
+        payload.code === "debug_only"
+      ) {
+        settingsController.setSettingsTemplateError(payload.message);
       } else if (payload.code === "session_not_found") {
         collab.expired = true;
         collab.connected = false;
@@ -3299,6 +3314,13 @@ export function createSisyphusRuntime(elements = {}) {
     if (Object.hasOwn(payload, "gachiSoundFilename")) {
       setSlaveClickSound(payload.gachiSoundFilename);
     }
+    const settingsRevision = Number(payload.settingsRevision);
+    if (Number.isSafeInteger(settingsRevision) && settingsRevision > 0) {
+      collab.settingsRevision = Math.max(
+        collab.settingsRevision,
+        settingsRevision,
+      );
+    }
 
     const revision = Number(payload.revision);
     if (!Number.isSafeInteger(revision) || revision <= collab.lastRevision) {
@@ -3319,12 +3341,14 @@ export function createSisyphusRuntime(elements = {}) {
     if (Object.hasOwn(payload, "masterViewport")) {
       applyMasterViewport(payload.masterViewport);
     }
-    const deferRemoteSettings = syncInitialSettingsVersion(payload);
-    if (Object.hasOwn(payload, "physics") && !deferRemoteSettings) {
+    if (Object.hasOwn(payload, "physics")) {
       applySharedPhysics(payload.physics);
     }
-    if (Object.hasOwn(payload, "roomSettings") && !deferRemoteSettings) {
+    if (Object.hasOwn(payload, "roomSettings")) {
       applySharedRoomSettings(payload.roomSettings);
+    }
+    if (collab.settingsUpdateQueued) {
+      scheduleSharedSettingsUpdate();
     }
     const holderIds = normalizeHolderIds(payload.holderIds);
     updateSharedHolders(holderIds, payload.requiredHolders);
@@ -4600,8 +4624,6 @@ export function createSisyphusRuntime(elements = {}) {
   settingsController.load();
   readControls();
   settingsController.captureCurrentAsBaseline();
-  collab.initialSettingsVersion =
-    settingsController.getLoadedSettingsVersionEntry();
   document.fonts?.ready.then(() => {
     if (!disposed) {
       fitTopInscription();
@@ -4630,8 +4652,7 @@ export function createSisyphusRuntime(elements = {}) {
       clearSharedReleaseHandoff();
       window.clearTimeout(collab.copyFeedbackTimerId);
       window.clearTimeout(collab.statusResetTimerId);
-      window.clearTimeout(collab.physicsTimerId);
-      window.clearTimeout(collab.roomSettingsTimerId);
+      window.clearTimeout(collab.settingsUpdateTimerId);
       stopRainLoopSound({ immediate: true });
       rainLoopController.dispose();
       cancelAllRoleAudioFades();

@@ -28,6 +28,8 @@ module.exports = defineConfig({
       STATIONARY_HOLD_RELEASE_MS: "10000",
       SESSION_STORE_PATH: "/tmp/sisyphus-smoke-sessions.json",
       PRODUCTION_PRESET_PATH: "tests/fixtures/production-preset.json",
+      SETTINGS_TEMPLATE_STORE_PATH:
+        "/tmp/sisyphus-prod-settings-templates.json",
       SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },

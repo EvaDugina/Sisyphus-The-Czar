@@ -30,6 +30,8 @@ module.exports = defineConfig({
       STATIONARY_HOLD_RELEASE_MS: "10000",
       SESSION_STORE_PATH: "/tmp/sisyphus-prod-debug-sessions.json",
       PRODUCTION_PRESET_PATH: "/tmp/sisyphus-prod-debug-preset.json",
+      SETTINGS_TEMPLATE_STORE_PATH:
+        "/tmp/sisyphus-prod-debug-settings-templates.json",
       SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },

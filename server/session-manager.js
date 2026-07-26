@@ -174,6 +174,23 @@ class SessionManager {
       options.getProductionPresetSelection || (() => null);
     this.saveProductionPresetSelection =
       options.saveProductionPresetSelection || (() => null);
+    this.settingsTemplatesEnabled = options.settingsTemplatesEnabled === true;
+    this.getSettingsTemplatesPage =
+      options.getSettingsTemplatesPage ||
+      (() => ({ revision: 0, offset: 0, nextOffset: null, entries: [] }));
+    this.getLatestSettingsTemplate =
+      options.getLatestSettingsTemplate || (() => null);
+    this.importSettingsTemplates =
+      options.importSettingsTemplates || (() => ({ revision: 0, entries: [] }));
+    this.saveSettingsTemplate =
+      options.saveSettingsTemplate ||
+      (() => ({ revision: 0, entry: null, branched: false }));
+    this.deleteSettingsTemplate =
+      options.deleteSettingsTemplate ||
+      (() => ({ revision: 0, deletedId: null }));
+    this.createSettingsConflict =
+      options.createSettingsConflict ||
+      (() => ({ revision: 0, entry: null }));
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
     this.slaveSoundAssignments = new Map();
@@ -217,6 +234,7 @@ class SessionManager {
       clients: new Map(),
       holders: new Map(),
       revision: 1,
+      settingsRevision: 1,
       createdAt: now,
       lastActivityAt: now,
       expiresAt: now + this.ttlMs,
@@ -353,6 +371,7 @@ class SessionManager {
     if (physicsChanged) {
       session.physics = nextPhysics;
     }
+    session.settingsRevision += 1;
     this.syncCooperativeDrag(session);
     this.markChanged(session);
     this.broadcastSnapshot(session, { includeConfig: true });
@@ -367,6 +386,7 @@ class SessionManager {
       physicsVersion: Physics.PHYSICS_VERSION,
       roomSettings: { ...session.roomSettings },
       roomSettingsVersion: RoomSettings.ROOM_SETTINGS_VERSION,
+      settingsRevision: session.settingsRevision,
       masterViewport: session.masterViewport
         ? { ...session.masterViewport }
         : null,
@@ -488,6 +508,9 @@ class SessionManager {
         holders: new Map(),
         revision: Number.isSafeInteger(record.revision)
           ? Math.max(1, record.revision)
+          : 1,
+        settingsRevision: Number.isSafeInteger(record.settingsRevision)
+          ? Math.max(1, record.settingsRevision)
           : 1,
         createdAt: Math.min(finite(record.createdAt, now), now),
         lastActivityAt: Math.min(finite(record.lastActivityAt, now), now),
@@ -868,9 +891,12 @@ class SessionManager {
     this.sendTo(client, "productionPreset.current", {
       canSelect:
         this.productionPresetSelectionEnabled &&
-        this.clientCanEditSettings(session, client),
+        this.clientCanUseDebugSettings(session, client),
       selection: this.getProductionPresetSelection(),
     });
+    if (this.clientCanUseDebugSettings(session, client)) {
+      this.sendSettingsTemplatesPage(session, client, {});
+    }
     this.broadcastPresence(session);
     this.logger("client_connected", {
       session: session.id.slice(0, 8),
@@ -984,6 +1010,21 @@ class SessionManager {
         break;
       case "roomSettings.update":
         this.updateRoomSettings(session, client, payload);
+        break;
+      case "settings.update":
+        this.updateSettings(session, client, payload);
+        break;
+      case "settingsTemplates.list":
+        this.sendSettingsTemplatesPage(session, client, payload);
+        break;
+      case "settingsTemplates.import":
+        this.importSettingsTemplateEntries(session, client, payload);
+        break;
+      case "settingsTemplates.save":
+        this.saveSettingsTemplateEntry(session, client, payload);
+        break;
+      case "settingsTemplates.delete":
+        this.deleteSettingsTemplateEntry(session, client, payload);
         break;
       case "productionPreset.select":
         this.selectProductionPreset(session, client, payload);
@@ -1176,6 +1217,15 @@ class SessionManager {
     );
   }
 
+  clientCanUseDebugSettings(session, client) {
+    return Boolean(
+      this.settingsTemplatesEnabled &&
+        session?.id === DEFAULT_SESSION_ID &&
+        client &&
+        session.clients.get(client.id) === client,
+    );
+  }
+
   rejectMasterOnly(client) {
     this.sendError(
       client,
@@ -1196,9 +1246,14 @@ class SessionManager {
     }
     if (
       session.id !== DEFAULT_SESSION_ID ||
-      !this.clientCanEditSettings(session, client)
+      !this.clientCanUseDebugSettings(session, client)
     ) {
-      return this.rejectMasterOnly(client);
+      this.sendError(
+        client,
+        "debug_only",
+        "Production preset доступен только в root-комнате при DEBUG=true",
+      );
+      return false;
     }
     try {
       const document = this.saveProductionPresetSelection(payload);
@@ -1209,7 +1264,12 @@ class SessionManager {
         selectedAt: document.selectedAt,
         source: { ...document.source },
       };
-      this.sendTo(client, "productionPreset.selected", { selection });
+      session.clients.forEach((participant) => {
+        this.sendTo(participant, "productionPreset.selected", {
+          canSelect: this.clientCanUseDebugSettings(session, participant),
+          selection,
+        });
+      });
       return true;
     } catch (error) {
       const invalid = error.code === "invalid_production_preset";
@@ -1224,6 +1284,232 @@ class SessionManager {
       );
       return false;
     }
+  }
+
+  settingsTemplateProtectedId() {
+    return this.getProductionPresetSelection()?.source?.id || "";
+  }
+
+  sendSettingsTemplatesPage(session, client, payload = {}) {
+    if (!this.clientCanUseDebugSettings(session, client)) {
+      this.sendError(
+        client,
+        "debug_only",
+        "Общие шаблоны доступны только при DEBUG=true",
+      );
+      return false;
+    }
+    try {
+      const page = this.getSettingsTemplatesPage(payload);
+      this.sendTo(client, "settingsTemplates.page", page);
+      return true;
+    } catch {
+      this.sendError(
+        client,
+        "settings_template_store_unavailable",
+        "Не удалось загрузить общие шаблоны",
+      );
+      return false;
+    }
+  }
+
+  broadcastSettingsTemplateChange(session, payload) {
+    session.clients.forEach((participant) => {
+      this.sendTo(participant, "settingsTemplates.changed", payload);
+    });
+  }
+
+  importSettingsTemplateEntries(session, client, payload = {}) {
+    if (!this.clientCanUseDebugSettings(session, client)) {
+      this.sendError(client, "debug_only", "Импорт доступен только при DEBUG=true");
+      return false;
+    }
+    try {
+      const result = this.importSettingsTemplates(payload.entries, {
+        protectedId: this.settingsTemplateProtectedId(),
+      });
+      if (result.entries.length > 0) {
+        const latest = this.getLatestSettingsTemplate();
+        if (latest?.settings) {
+          this.applySettingsPreset(session, latest.settings);
+        }
+      }
+      this.sendTo(client, "settingsTemplates.imported", result);
+      if (result.entries.length > 0) {
+        this.broadcastSettingsTemplateChange(session, {
+          action: "upsert",
+          revision: result.revision,
+          entries: result.entries,
+        });
+      }
+      return true;
+    } catch (error) {
+      this.sendSettingsTemplateError(client, error);
+      return false;
+    }
+  }
+
+  saveSettingsTemplateEntry(session, client, payload = {}) {
+    if (!this.clientCanUseDebugSettings(session, client)) {
+      this.sendError(
+        client,
+        "debug_only",
+        "Сохранение доступно только при DEBUG=true",
+      );
+      return false;
+    }
+    try {
+      const result = this.saveSettingsTemplate(payload.entry, {
+        baseUpdatedAt: payload.baseUpdatedAt,
+        protectedId: this.settingsTemplateProtectedId(),
+      });
+      this.sendTo(client, "settingsTemplates.saved", result);
+      this.broadcastSettingsTemplateChange(session, {
+        action: "upsert",
+        revision: result.revision,
+        entries: result.entry ? [result.entry] : [],
+      });
+      return true;
+    } catch (error) {
+      this.sendSettingsTemplateError(client, error);
+      return false;
+    }
+  }
+
+  deleteSettingsTemplateEntry(session, client, payload = {}) {
+    if (!this.clientCanUseDebugSettings(session, client)) {
+      this.sendError(client, "debug_only", "Удаление доступно только при DEBUG=true");
+      return false;
+    }
+    try {
+      const result = this.deleteSettingsTemplate(payload.id, {
+        protectedId: this.settingsTemplateProtectedId(),
+      });
+      this.sendTo(client, "settingsTemplates.deleted", result);
+      if (result.deletedId) {
+        this.broadcastSettingsTemplateChange(session, {
+          action: "delete",
+          revision: result.revision,
+          id: result.deletedId,
+        });
+      }
+      return true;
+    } catch (error) {
+      this.sendSettingsTemplateError(client, error);
+      return false;
+    }
+  }
+
+  sendSettingsTemplateError(client, error) {
+    const protectedTemplate = error.code === "production_template_protected";
+    const invalid = error.code === "invalid_settings_template";
+    this.sendError(
+      client,
+      protectedTemplate
+        ? "production_template_protected"
+        : invalid
+          ? "invalid_settings_template"
+          : "settings_template_store_unavailable",
+      protectedTemplate
+        ? "Сначала выберите другой production preset"
+        : invalid
+          ? "Некорректный шаблон настроек"
+          : "Не удалось сохранить общий шаблон",
+    );
+  }
+
+  updateSettings(session, client, payload = {}) {
+    if (!this.clientCanUseDebugSettings(session, client)) {
+      this.sendError(
+        client,
+        "debug_only",
+        "Общие настройки доступны всем только при DEBUG=true",
+      );
+      return false;
+    }
+    const requestId = String(payload.requestId || "").trim().slice(0, 120);
+    const baseRevision = Number(payload.baseRevision);
+    if (
+      !requestId ||
+      !Number.isSafeInteger(baseRevision) ||
+      !payload.settings ||
+      typeof payload.settings !== "object" ||
+      Array.isArray(payload.settings)
+    ) {
+      this.sendError(
+        client,
+        "invalid_settings_update",
+        "Некорректное обновление настроек",
+      );
+      return false;
+    }
+    if (baseRevision !== session.settingsRevision) {
+      try {
+        const conflict = this.createSettingsConflict(payload.settings, {
+          name: String(payload.name || "Конфликт").slice(0, 120),
+          settingsSchemaVersion: payload.settingsSchemaVersion,
+          protectedId: this.settingsTemplateProtectedId(),
+        });
+        this.sendTo(client, "settings.conflict", {
+          requestId,
+          settingsRevision: session.settingsRevision,
+          entry: conflict.entry,
+          settings: {
+            ...session.roomSettings,
+            ...session.physics,
+          },
+        });
+        if (conflict.entry) {
+          this.broadcastSettingsTemplateChange(session, {
+            action: "upsert",
+            revision: conflict.revision,
+            entries: [conflict.entry],
+          });
+        }
+        return false;
+      } catch (error) {
+        this.sendSettingsTemplateError(client, error);
+        return false;
+      }
+    }
+
+    const nextPhysics = Physics.sanitizePhysics(payload.settings, session.physics);
+    const nextRoomSettings = RoomSettings.sanitizeRoomSettings(
+      payload.settings,
+      session.roomSettings,
+    );
+    const physicsChanged = !settingsEqual(
+      session.physics,
+      nextPhysics,
+      Object.keys(Physics.DEFAULT_PHYSICS),
+    );
+    const roomSettingsChanged = !settingsEqual(
+      session.roomSettings,
+      nextRoomSettings,
+      RoomSettings.ROOM_SETTINGS_KEYS,
+    );
+    if (roomSettingsChanged) {
+      rescaleSceneVerticalMotion(
+        session,
+        session.roomSettings,
+        nextRoomSettings,
+      );
+      session.roomSettings = nextRoomSettings;
+    }
+    if (physicsChanged) {
+      session.physics = nextPhysics;
+    }
+    if (physicsChanged || roomSettingsChanged) {
+      session.settingsRevision += 1;
+      this.syncCooperativeDrag(session);
+      this.markChanged(session);
+      this.broadcastSnapshot(session, { includeConfig: true });
+    }
+    this.sendTo(client, "settings.applied", {
+      requestId,
+      settingsRevision: session.settingsRevision,
+    });
+    return true;
   }
 
   updatePhysics(session, clientOrPayload, maybePayload) {
@@ -1243,6 +1529,7 @@ class SessionManager {
       { ...session.physics, ...nextPayload },
       session.physics
     );
+    session.settingsRevision += 1;
     this.syncCooperativeDrag(session);
     this.markChanged(session);
     this.broadcastSnapshot(session, { includeConfig: true });
@@ -1263,6 +1550,7 @@ class SessionManager {
     );
     rescaleSceneVerticalMotion(session, previousRoomSettings, nextRoomSettings);
     session.roomSettings = nextRoomSettings;
+    session.settingsRevision += 1;
     this.markChanged(session);
     this.broadcastSnapshot(session, { includeConfig: true });
   }
@@ -1545,6 +1833,7 @@ class SessionManager {
       groundTouchSeq: session.groundTouchSeq,
       summitElapsedMs: this.summitElapsedAt(session, serverTime),
       summitTimerRunning: session.summitRunningSince !== null,
+      settingsRevision: session.settingsRevision,
       revision: session.revision,
       serverTime,
     };

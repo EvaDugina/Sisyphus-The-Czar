@@ -98,3 +98,35 @@ test("production startup применяет preset из отдельного sto
   assert.equal(root.physics.gravity, 6.5);
   assert.equal(root.roomSettings.sceneHeightScreens, 14);
 });
+
+test("debug startup применяет последний общий шаблон", async (context) => {
+  const settingsTemplateStore = {
+    load: () => [],
+    latest: () => ({
+      id: "latest-debug",
+      settings: {
+        gravity: 5.5,
+        sceneHeightScreens: 17,
+      },
+    }),
+    page: () => ({ revision: 1, offset: 0, nextOffset: null, entries: [] }),
+    importEntries: () => ({ revision: 1, entries: [] }),
+    saveEntry: () => ({ revision: 1, entry: null, branched: false }),
+    deleteEntry: () => ({ revision: 1, deletedId: null }),
+    createConflict: () => ({ revision: 1, entry: null }),
+  };
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    settingsTemplateStore,
+    logger: () => {},
+  });
+  await service.start();
+  context.after(async () => service.close());
+
+  const root = service.manager.ensureDefaultSession();
+  assert.equal(root.physics.gravity, 5.5);
+  assert.equal(root.roomSettings.sceneHeightScreens, 17);
+  assert.equal(root.settingsRevision, 2);
+});

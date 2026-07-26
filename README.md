@@ -31,7 +31,7 @@ docker compose -f docker-compose.dev.yml down
 ## Три режима запуска
 
 - **Dev:** `docker compose -f docker-compose.dev.yml up -d --build`. Панель настроек, Vite HMR и test API доступны.
-- **Отладочный production:** `DEBUG=true docker compose up -d --build --force-recreate`. Это production-сборка Vite без HMR и test API, но с полной панелью настроек у root-master.
+- **Отладочный production:** `DEBUG=true docker compose up -d --build --force-recreate`. Это production-сборка Vite без HMR и test API, но с полной панелью настроек у всех пользователей root-комнаты.
 - **Настоящий production:** `DEBUG=false docker compose up -d --build --force-recreate`. Панель и controller настроек не входят в frontend bundle.
 
 Dev и production используют один локальный origin `http://127.0.0.1:18082/`, поэтому режимы запускаются последовательно. Перед переключением остановите текущий Compose-проект. `DEBUG` одновременно является build argument frontend и runtime-переменной сервера: одной перезагрузки страницы или restart контейнера недостаточно, после смены значения обязательны rebuild и recreate.
@@ -42,7 +42,7 @@ Dev и production используют один локальный origin `http:
 2. Нажмите верхнюю кнопку с иконкой ссылки.
 3. Отправьте скопированный корневой URL второму участнику.
 
-Один участник держит камень, остальные наблюдают и могут взять его после отпускания. Физика общая. В dev и отладочном production root-master автоматически загружает наиболее позднюю сохранённую версию по `updatedAt`, затем `createdAt` и `id`; полный snapshot отправляется в root-комнату и повторяется после reconnect до подтверждения сервером. Slave настройки не меняет. Reload/reconnect и пересоздание контейнера сохраняют серверное состояние общей комнаты в Docker volume. Настоящий production применяет явно выбранный флагом preset только к physics и room settings root-комнаты, не сбрасывая фазу, положение, trail, роли или общий таймер. После выхода последнего участника root-комната остаётся жить, поэтому общее время и состояние не начинаются заново при следующем открытии `/`.
+Один участник держит камень, остальные наблюдают и могут взять его после отпускания. Физика общая. В dev и отладочном production сервер детерминированно выбирает наиболее поздний общий шаблон по `updatedAt`, затем `createdAt` и `id`, применяет его shared-часть к восстановленной root-комнате и отдаёт всем пользователям как UI baseline. Любой root-клиент может менять настройки: клиент отправляет один полный snapshot с базовой `settingsRevision`, сервер применяет только свежую ревизию и рассылает результат всем. Stale-правка не меняет комнату, а сохраняется отдельным общим конфликтным шаблоном. Reload/reconnect и пересоздание контейнера сохраняют серверное состояние общей комнаты в Docker volume. Настоящий production применяет явно выбранный флагом preset только к physics и room settings root-комнаты, не сбрасывая фазу, положение, trail, роли или общий таймер. После выхода последнего участника root-комната остаётся жить, поэтому общее время и состояние не начинаются заново при следующем открытии `/`.
 
 Production frontend использует существующий `rock.webp`, уже сжатые PNG-курсоры и lazy-загрузку MP3. Регулярные multiplayer snapshots отправляются lean без неизменных `physics`, `roomSettings`, `masterViewport`, `imprint` и `expiresAt`; `pointer.update` не эхо-рассылается отправителю. Частоты остаются прежними: до 30 Hz input и до 20 Hz snapshots.
 
@@ -50,9 +50,9 @@ Production frontend использует существующий `rock.webp`, �
 
 ## Версии настроек и production preset
 
-Локальные изменения выбранной версии или её имени создают черновик: изменённые контролы и общий индикатор подсвечиваются синим, а при закрытии или reload вкладки браузер показывает стандартный confirm. Точный возврат к исходным значениям или сохранение очищает dirty-состояние. Сохранение черновика, основанного на версии, обновляет эту версию; явный выбор «Черновик» создаёт новую.
+В `DEBUG=true` каталог до 50 полноценных шаблонов хранится на сервере и одинаков для всех пользователей. Старые версии из `localStorage` импортируются один раз пакетами с дедупликацией по `id + updatedAt`; расхождение одного id сохраняется отдельной веткой. Локальные изменения выбранной версии или её имени создают черновик: изменённые контролы и общий индикатор подсвечиваются синим, а при закрытии или reload вкладки браузер показывает стандартный confirm. Точный возврат к исходным значениям или сохранение очищает dirty-состояние. Сохранение черновика, основанного на версии, обновляет эту версию; concurrent mismatch по `updatedAt` создаёт новую ветку вместо перезаписи, а явный выбор «Черновик» создаёт новую.
 
-Флаг в строке сохранённой версии назначает её preset’ом следующего настоящего production и не применяет её к текущей комнате. Новый флаг атомарно заменяет прежний. Помеченную версию нельзя удалить до выбора другой; её последующее сохранение автоматически публикует обновлённый snapshot. Назначение хранится в `/app/config/production-preset.json` в named volume `sisyphus-the-czar-production-preset`.
+Любой пользователь root-комнаты в `DEBUG=true` может поставить флаг в строке сохранённой версии: это назначает её preset’ом следующего настоящего production и не применяет её к текущей комнате. Новый флаг атомарно заменяет прежний. Помеченную версию нельзя удалить до выбора другой; её последующее сохранение автоматически публикует обновлённый snapshot. Каталог `/app/config/settings-templates.json` и назначение `/app/config/production-preset.json` хранятся в named volume `sisyphus-the-czar-production-preset`.
 
 ## Настройки
 
@@ -66,6 +66,7 @@ Production frontend использует существующий `rock.webp`, �
 | `EMPTY_SESSION_GRACE_SECONDS` | задержка удаления пустой legacy-комнаты; root-комната по `/` не удаляется, по умолчанию `10` |
 | `SESSION_STORE_PATH` | файл состояния в Docker volume, по умолчанию `/app/data/sessions.json` |
 | `PRODUCTION_PRESET_PATH` | canonical production preset, по умолчанию `/app/config/production-preset.json` |
+| `SETTINGS_TEMPLATE_STORE_PATH` | общий каталог debug-шаблонов, по умолчанию `/app/config/settings-templates.json` |
 | `SESSION_PERSIST_INTERVAL_MS` | интервал фонового сохранения, по умолчанию `250` мс |
 
 Секретов приложение не использует. Файл `.env` не коммитится.
@@ -93,6 +94,6 @@ bash deploy.sh
 
 Multi-stage Docker build собирает React-клиент в `dist`, а production-образ запускает только Express/WebSocket и раздаёт hashed assets. Контейнер слушает `127.0.0.1:18082`; внешний nginx хоста публикует HTTPS, поддерживает WebSocket Upgrade и использует `proxy_read_timeout` не менее 75 секунд.
 
-Named volumes с комнатами и production preset сохраняются при `deploy.sh`, `docker compose restart`, rebuild/recreate и обычном `docker compose down`. Preset теряется только при повреждении volume или его явном удалении, например `docker compose down -v` либо `docker volume rm sisyphus-the-czar-production-preset`.
+Named volumes с комнатами, общим каталогом и production preset сохраняются при `deploy.sh`, `docker compose restart`, rebuild/recreate и обычном `docker compose down`. Каталог и preset теряются только при повреждении volume или его явном удалении, например `docker compose down -v` либо `docker volume rm sisyphus-the-czar-production-preset`.
 
 Минимум для комнаты на двух участников: Ubuntu Server 24.04 LTS, 1 vCPU, 512 МБ RAM, 2 ГБ диска и канал от 1 Мбит/с. Рекомендуется 1 ГБ RAM, 10 Мбит/с, RTT до 100 мс и jitter до 30 мс.

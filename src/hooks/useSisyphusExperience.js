@@ -4,7 +4,9 @@ import { useSettings } from "./useSettings";
 
 export function useSisyphusExperience() {
   const [clientRole, setClientRole] = useState("pending");
-  const settings = useSettings(clientRole === "master");
+  const settings = useSettings(
+    clientRole === "master" || clientRole === "slave",
+  );
   const realtime = {
     sessionStatusRef: useRef(null),
     sessionShareToggleRef: useRef(null),

@@ -8,7 +8,8 @@ export function App() {
   const { clientRole, settings, realtime, scene, trail, rain } = experience;
   const settingsUiEnabled =
     import.meta.env.DEV || import.meta.env.VITE_DEBUG_UI === "true";
-  const settingsAvailable = settingsUiEnabled && clientRole === "master";
+  const settingsAvailable =
+    settingsUiEnabled && (clientRole === "master" || clientRole === "slave");
 
   return (
     <>
