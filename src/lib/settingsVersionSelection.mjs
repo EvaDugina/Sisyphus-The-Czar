@@ -3,6 +3,14 @@ function versionTimestamp(entry) {
   return Number.isFinite(value) ? value : 0;
 }
 
+function compareSettingsVersionEntries(left, right) {
+  const timestampDelta = versionTimestamp(left) - versionTimestamp(right);
+  if (timestampDelta !== 0) {
+    return timestampDelta;
+  }
+  return String(left?.id || "").localeCompare(String(right?.id || ""));
+}
+
 export function selectLatestSettingsVersionEntry(entries) {
   if (!Array.isArray(entries)) {
     return null;
@@ -14,7 +22,7 @@ export function selectLatestSettingsVersionEntry(entries) {
     if (!latest) {
       return entry;
     }
-    return versionTimestamp(entry) >= versionTimestamp(latest) ? entry : latest;
+    return compareSettingsVersionEntries(entry, latest) > 0 ? entry : latest;
   }, null);
 }
 

@@ -1,9 +1,31 @@
 const { test, expect } = require("@playwright/test");
 const GachiSounds = require("../../shared/gachi-sounds");
 
+const MASTER_CLIENT_ID = "00000000-0000-4000-8000-000000000001";
+let slaveClientSequence = 1;
+
 const GACHI_AUDIO_TARGETS = GachiSounds.GACHI_SOUND_FILENAMES.map((filename) =>
   filename.replace(/\.mp3$/i, "")
 );
+
+async function pinClientId(context, clientId = MASTER_CLIENT_ID) {
+  await context.addInitScript((value) => {
+    sessionStorage.setItem("sisyphus-client-id", value);
+  }, clientId);
+}
+
+async function createBrowserContext(browser, options = {}, clientId) {
+  const context = await browser.newContext(options);
+  const resolvedClientId =
+    clientId ||
+    `00000000-0000-4000-8000-${String(++slaveClientSequence).padStart(12, "0")}`;
+  await pinClientId(context, resolvedClientId);
+  return context;
+}
+
+test.beforeEach(async ({ context }) => {
+  await pinClientId(context);
+});
 
 async function setRange(page, name, value) {
   await page.locator(`[name="${name}"]`).evaluate((input, next) => {
@@ -94,6 +116,25 @@ async function closeSettingsPanel(page) {
     "aria-hidden",
     "true"
   );
+}
+
+async function resetRootExperience(page) {
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await page.evaluate(() => window.__sisyphusTestApi.restartExperience());
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const { motion } = window.__sisyphusTestApi;
+        return {
+          phase: motion.phase,
+          suspended: motion.suspended,
+        };
+      }),
+    )
+    .toEqual({
+      phase: "play",
+      suspended: true,
+    });
 }
 
 async function visibleRockPoint(page) {
@@ -514,9 +555,9 @@ test("dev при запуске применяет последний сохра
 
 test("старая session-ссылка очищается и root-ссылка копируется", async ({ browser }) => {
   test.setTimeout(70_000);
-  const context = await browser.newContext({
+  const context = await createBrowserContext(browser, {
     permissions: ["clipboard-read", "clipboard-write"],
-  });
+  }, MASTER_CLIENT_ID);
   const page = await context.newPage();
   const missingSessionId = "AAAAAAAAAAAAAAAAAAAAAA";
 
@@ -547,14 +588,15 @@ test("старая session-ссылка очищается и root-ссылка 
 test(
   "верхний отпечаток центрируется в середине первого экрана",
   async ({ browser }) => {
-    const context = await browser.newContext({
+    const context = await createBrowserContext(browser, {
       viewport: { width: 1905, height: 899 },
-    });
+    }, MASTER_CLIENT_ID);
     const page = await context.newPage();
 
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
     await expect(page.getByTestId("session-status")).toContainText("В сессии");
+    await resetRootExperience(page);
     await expectReadyAtBottom(page);
     await expectImprintCenteredInTopViewport(page);
     await expectReturnImprintScrollsToTop(page);
@@ -568,14 +610,15 @@ test(
 );
 
 test("траектория сбрасывается при касании земли", async ({ browser }) => {
-  const context = await browser.newContext({
+  const context = await createBrowserContext(browser, {
     viewport: { width: 1280, height: 900 },
-  });
+  }, MASTER_CLIENT_ID);
   const page = await context.newPage();
 
   await page.goto("/");
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
   await expectReadyAtBottom(page);
   await openSettingsPanel(page);
   await openControlGroup(page, "Траектория");
@@ -619,14 +662,15 @@ test("траектория сбрасывается при касании зем
 test("общая и проходная прозрачность траектории применяются раздельно", async ({
   browser,
 }) => {
-  const context = await browser.newContext({
+  const context = await createBrowserContext(browser, {
     viewport: { width: 1280, height: 900 },
-  });
+  }, MASTER_CLIENT_ID);
   const page = await context.newPage();
 
   await page.goto("/");
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
   await expectReadyAtBottom(page);
   await openSettingsPanel(page);
   await openControlGroup(page, "Траектория");
@@ -692,12 +736,13 @@ test("общая и проходная прозрачность траектор
 test("кривая нехватки силы замедляет фактический подъём камня", async ({
   browser,
 }) => {
-  const context = await browser.newContext({
+  const context = await createBrowserContext(browser, {
     viewport: { width: 1280, height: 900 },
-  });
+  }, MASTER_CLIENT_ID);
   const page = await context.newPage();
 
   await page.goto("/");
+  await resetRootExperience(page);
   await expectReadyAtBottom(page);
   await openSettingsPanel(page);
   await openControlGroup(page, "Руки");
@@ -737,7 +782,7 @@ test("кривая нехватки силы замедляет фактичес
 
 test("вход на корень открывает рабочую общую сессию", async ({ browser }) => {
   test.setTimeout(90_000);
-  const context = await browser.newContext();
+  const context = await createBrowserContext(browser, {}, MASTER_CLIENT_ID);
   const page = await context.newPage();
   const documentRequests = [];
   await watchAudioPlayCalls(page, ["Камень", "Кандалы"]);
@@ -758,6 +803,7 @@ test("вход на корень открывает рабочую общую с
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
+  await resetRootExperience(page);
   await expectReadyAtBottom(page);
   const startState = await page.locator(".rock").evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
@@ -1067,8 +1113,12 @@ test("вход на корень открывает рабочую общую с
 });
 
 test("звуки pointerdown master и slave общие для всей сессии", async ({ browser }) => {
-  const firstContext = await browser.newContext();
-  const secondContext = await browser.newContext();
+  const firstContext = await createBrowserContext(
+    browser,
+    {},
+    MASTER_CLIENT_ID,
+  );
+  const secondContext = await createBrowserContext(browser);
   const first = await firstContext.newPage();
   const second = await secondContext.newPage();
   const audioTargets = ["Кандалы", ...GACHI_AUDIO_TARGETS];
@@ -1186,9 +1236,9 @@ test("звуки pointerdown master и slave общие для всей сесс
 
 test("падение компенсируется при изменении высоты сцены", async ({ browser }) => {
   async function profileForHeight(height) {
-    const context = await browser.newContext({
+    const context = await createBrowserContext(browser, {
       viewport: { width: 1280, height },
-    });
+    }, MASTER_CLIENT_ID);
     const page = await context.newPage();
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
@@ -1250,9 +1300,9 @@ test("падение компенсируется при изменении вы
   expect(low.after.phase).toBe(high.after.phase);
 
   async function profileForSceneHeight(sceneHeightScreens) {
-    const context = await browser.newContext({
+    const context = await createBrowserContext(browser, {
       viewport: { width: 1280, height: 900 },
-    });
+    }, MASTER_CLIENT_ID);
     const page = await context.newPage();
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
@@ -1323,16 +1373,18 @@ test("падение компенсируется при изменении вы
 
 test("два браузера видят один камень и поднимают его вместе", async ({ browser }) => {
   test.setTimeout(120_000);
-  const firstContext = await browser.newContext({
+  const firstContext = await createBrowserContext(browser, {
     permissions: ["clipboard-read", "clipboard-write"],
-  });
-  const secondContext = await browser.newContext();
+  }, MASTER_CLIENT_ID);
+  const secondContext = await createBrowserContext(browser);
   const first = await firstContext.newPage();
   const second = await secondContext.newPage();
 
   await first.goto("/");
   await expect(first).toHaveURL(/\/$/);
   await expect(first.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(first);
+  await setRange(first, "sceneHeightScreens", 10);
   await expectReadyAtBottom(first);
   const sceneProjection = await first.evaluate(() => {
     updateBounds();
@@ -2236,8 +2288,21 @@ test("два браузера видят один камень и поднима
   const verification = await secondContext.newPage();
   await verification.waitForTimeout(3200);
   await verification.goto(sharedUrl);
-  await expect.poll(() => verification.url()).not.toBe(sharedUrl);
+  await expect(verification).toHaveURL(sharedUrl);
   await expect(verification.getByTestId("session-status")).toContainText("В сессии");
+  await expect
+    .poll(() =>
+      verification.evaluate(() => ({
+        gravity: params.gravity,
+        role: collab.clientRole,
+        suspended: motion.suspended,
+      })),
+    )
+    .toEqual({
+      gravity: 8,
+      role: "slave",
+      suspended: true,
+    });
 
   await firstContext.close();
   await secondContext.close();

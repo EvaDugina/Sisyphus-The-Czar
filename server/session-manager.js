@@ -168,6 +168,12 @@ class SessionManager {
       0,
       finite(options.audioLeadMs, DEFAULT_AUDIO_LEAD_MS)
     );
+    this.productionPresetSelectionEnabled =
+      options.productionPresetSelectionEnabled === true;
+    this.getProductionPresetSelection =
+      options.getProductionPresetSelection || (() => null);
+    this.saveProductionPresetSelection =
+      options.saveProductionPresetSelection || (() => null);
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
     this.slaveSoundAssignments = new Map();
@@ -182,6 +188,7 @@ class SessionManager {
         phase: Physics.PHASES.PLAY,
         x: Physics.WORLD_WIDTH / 2,
         y: Physics.WORLD_HEIGHT,
+        suspended: true,
       }
     );
     const physics = Physics.sanitizePhysics(payload.physics);
@@ -858,6 +865,12 @@ class SessionManager {
       clientRole: client.role,
       gachiSoundFilename: client.gachiSoundFilename,
     });
+    this.sendTo(client, "productionPreset.current", {
+      canSelect:
+        this.productionPresetSelectionEnabled &&
+        this.clientCanEditSettings(session, client),
+      selection: this.getProductionPresetSelection(),
+    });
     this.broadcastPresence(session);
     this.logger("client_connected", {
       session: session.id.slice(0, 8),
@@ -971,6 +984,9 @@ class SessionManager {
         break;
       case "roomSettings.update":
         this.updateRoomSettings(session, client, payload);
+        break;
+      case "productionPreset.select":
+        this.selectProductionPreset(session, client, payload);
         break;
       case "viewport.update":
         this.updateMasterViewport(session, client, payload);
@@ -1167,6 +1183,47 @@ class SessionManager {
       "Параметры комнаты может изменять только царь",
     );
     return false;
+  }
+
+  selectProductionPreset(session, client, payload = {}) {
+    if (!this.productionPresetSelectionEnabled) {
+      this.sendError(
+        client,
+        "debug_only",
+        "Production preset можно выбрать только при DEBUG=true",
+      );
+      return false;
+    }
+    if (
+      session.id !== DEFAULT_SESSION_ID ||
+      !this.clientCanEditSettings(session, client)
+    ) {
+      return this.rejectMasterOnly(client);
+    }
+    try {
+      const document = this.saveProductionPresetSelection(payload);
+      if (!document || !document.source) {
+        throw new Error("production_preset_store_unavailable");
+      }
+      const selection = {
+        selectedAt: document.selectedAt,
+        source: { ...document.source },
+      };
+      this.sendTo(client, "productionPreset.selected", { selection });
+      return true;
+    } catch (error) {
+      const invalid = error.code === "invalid_production_preset";
+      this.sendError(
+        client,
+        invalid
+          ? "invalid_production_preset"
+          : "production_preset_store_unavailable",
+        invalid
+          ? "Некорректный production preset"
+          : "Не удалось сохранить production preset",
+      );
+      return false;
+    }
   }
 
   updatePhysics(session, clientOrPayload, maybePayload) {

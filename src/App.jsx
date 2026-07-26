@@ -6,7 +6,8 @@ import { useSisyphusExperience } from "./hooks/useSisyphusExperience";
 export function App() {
   const experience = useSisyphusExperience();
   const { clientRole, settings, realtime, scene, trail, rain } = experience;
-  const settingsUiEnabled = import.meta.env.DEV;
+  const settingsUiEnabled =
+    import.meta.env.DEV || import.meta.env.VITE_DEBUG_UI === "true";
   const settingsAvailable = settingsUiEnabled && clientRole === "master";
 
   return (

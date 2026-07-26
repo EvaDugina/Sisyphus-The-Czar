@@ -5,13 +5,13 @@
 - **Проект:** Sisyphus The Czar
 - **Публичное название:** ЦАРИ ДОЖДЯ
 - **Стадия:** POC B
-- **Последнее обновление:** 2026-07-25
+- **Последнее обновление:** 2026-07-26
 
 ---
 
 ## Архитектура
 
-- **Компоненты:** React-клиент, Vite build/dev proxy, HTTP/WebSocket-сервер, менеджер сессий, файловый session store и общее ядро физики.
+- **Компоненты:** React-клиент, Vite build/dev proxy, HTTP/WebSocket-сервер, менеджер сессий, файловые `SessionStore` и `ProductionPresetStore`, общее ядро физики.
 - **Потоки данных:** при загрузке `/` клиент сразу стартует в shared-режиме и подключается по WebSocket к единой root-комнате без публичного `session` query. Сервер держит постоянную root-комнату, закрепляет `masterClientId` за первым подключившимся клиентом, а остальные клиенты той же корневой ссылки получают роль `slave`. Старые ссылки с `session` клиент очищает из адресной строки и подключает к root-комнате. Клиент больше не отправляет `session.start` по scroll: прокрутка только смещает viewport и dirty-флаг trail-canvas. Управление и каноническое положение указателя отправляются не чаще 30 раз в секунду; сервер рассчитывает физику, рассылает снимки 20 раз в секунду, синхронизирует `physics.update`/`roomSettings.update` и ретранслирует курсоры.
 - **Внешние зависимости:** nginx хоста завершает TLS и проксирует HTTP/WebSocket. БД, очередь и внешние API не используются; постоянное состояние хранится в локальном Docker volume.
 
@@ -26,10 +26,11 @@
 - `server` — HTTP, WebSocket Upgrade, Origin/rate-limit, heartbeat и жизненный цикл процесса.
 - `SessionManager` — комнаты, участники, блокировка управления, таймеры, TTL и рассылка снимков.
 - `SessionStore` — versioned JSON, атомарная запись через временный файл и восстановление комнат при старте.
+- `ProductionPresetStore` — отдельный versioned JSON `/app/config/production-preset.json`, whitelist/нормализация полного settings snapshot и атомарная замена через временный файл.
 - `shared/physics` — чистые расчёты падения, броска, скорости подъёма, отскока, именованные коэффициенты движения и нормализация параметров.
 - `src/components` — React-разметка toolbar, панели параметров, сцены, камня, Canvas и ливня.
 - `src/hooks` — состояние панели и единый lifecycle experience controller; одноразовые ref-обёртки объединены в `useSisyphusExperience`.
-- `src/lib` и `src/runtime` — чистые модели координат/status/settings/rain и 60-fps runtime на refs без React-render каждого кадра. LocalStorage, версии настроек, KaTeX-подсказки и listeners панели изолированы в `createSettingsController.js`; после чтения версий dev-controller применяет наиболее позднюю по `updatedAt`. Production build подменяет его no-op controller и не включает dev-модуль в граф.
+- `src/lib` и `src/runtime` — чистые модели координат/status/settings/rain и 60-fps runtime на refs без React-render каждого кадра. LocalStorage, версии настроек, baseline/dirty diff, KaTeX-подсказки и listeners панели изолированы в `createSettingsController.js`; dev и debug-production применяют наиболее позднюю версию по `updatedAt`, `createdAt`, `id`. Только slim production build подменяет controller no-op модулем.
 
 ---
 
@@ -37,7 +38,8 @@
 
 ### Сущности
 
-- **Сессия:** постоянная root-комната с фиксированным внутренним `id`, `masterClientId`, состоянием камня, общей физикой с `physicsVersion`, общими визуальными `roomSettings` с `roomSettingsVersion`, клиентами, `revision`, скользящим TTL для совместимости, флагом `persistent` и до 1000 точек траектории. Серверное состояние без WebSocket-клиентов сохраняется в volume; root-комната не удаляется через `emptyDeleteAt` и продолжает общий секундомер после ухода последнего клиента. Для legacy/не-root комнат остаются TTL и настраиваемый grace. При production-старте `shared/production-preset.js` идемпотентно обновляет physics и room settings восстановленной root-комнаты, не меняя фазу, позицию, trail или summit timer. При восстановлении записи первой версии инерция `0–1` переводится в `0–10`, а записи до седьмой версии со шкалой `0–100` делятся на 10; старый ключ `sliding` переносится в `groundFriction`, отсутствующие `roomSettings` получают дефолты. У старых записей без `masterClientId` первый подключившийся клиент становится `master`.
+- **Сессия:** постоянная root-комната с фиксированным внутренним `id`, `masterClientId`, состоянием камня, общей физикой с `physicsVersion`, общими визуальными `roomSettings` с `roomSettingsVersion`, клиентами, `revision`, скользящим TTL для совместимости, флагом `persistent` и до 1000 точек траектории. Серверное состояние без WebSocket-клиентов сохраняется в volume; root-комната не удаляется через `emptyDeleteAt` и продолжает общий секундомер после ухода последнего клиента. Для legacy/не-root комнат остаются TTL и настраиваемый grace. При `DEBUG=false` startup читает canonical snapshot из `ProductionPresetStore` и идемпотентно обновляет только physics и room settings восстановленной root-комнаты, не меняя фазу, позицию, trail, роли или summit timer; missing/corrupt store даёт логируемый fallback на `shared/production-preset.js`. При восстановлении записи первой версии инерция `0–1` переводится в `0–10`, а записи до седьмой версии со шкалой `0–100` делятся на 10; старый ключ `sliding` переносится в `groundFriction`, отсутствующие `roomSettings` получают дефолты. У старых записей без `masterClientId` первый подключившийся клиент становится `master`.
+- **Production preset:** store version, серверное `selectedAt`, source `{id,name,settingsSchemaVersion,updatedAt}` и полный нормализованный settings snapshot. `productionPreset.select` принимает только root-master при `DEBUG=true`, ограниченный payload очищается от неизвестных полей и атомарно заменяет предыдущий файл. `productionPreset.current` сообщает canonical metadata при подключении, `productionPreset.selected` подтверждает запись; UI считает версию выбранной по `id + updatedAt`.
 - **Общие визуальные настройки комнаты:** `sceneHeightScreens` в диапазоне `1–100` задаёт высоту страницы в экранах и усиленный внутренний коэффициент вертикального движения `(100 / sceneHeightScreens) * 10`, `handWidthVw` в диапазоне `10–90` задаёт ширину большой `master`-руки относительно ширины viewport, `slaveHandWidthPx` в диапазоне `8–96` задаёт ширину маленькой `slave`-руки в пикселях, `rainDropColor` и `rainHighlightColor` задают HEX-цвета тела капель и блика. Эти поля приходят в первом полном `session.snapshot`, сохраняются в session store и меняются через `roomSettings.update`; регулярные realtime snapshots опускают неизменный конфиг.
 - **Отпечаток:** в новом старте не создаётся и не показывается; поле остаётся опциональным для старых сохранённых комнат и старых `session.start` сообщений, но `.rock-imprint` всегда остаётся визуально скрытым.
 - **Локальный след:** браузер по умолчанию показывает canvas следа, но начинает добавлять точки только при реальном движении или удержании камня. Личная настройка «Без ограничения длины» отключает локальную обрезку. Серверный буфер остаётся ограничен 1000 точками. Canvas имеет размер только текущего viewport × DPR, лежит на `z-index: 0`, а мировые точки смещаются на текущий scroll, поэтому backing buffer не растёт вместе с длинной настраиваемой сценой. Dirty-флаг пропускает очистку и полную перерисовку до 1000 точек на кадрах, где след скрыт или где точки, стиль, viewport и scroll не изменились.
@@ -50,6 +52,7 @@
 - `POST /api/sessions` → принимает `creatorClientId`, нормализованные `state`, `physics`, `roomSettings`, `trail`, опциональный `imprint`; возвращает `sessionId`, `expiresAt`.
 - `POST /api/sessions/leave` → принимает `clientId` и персональный `leaveToken`; удаляет клиента из root-комнаты, но не удаляет саму root-комнату. `POST /api/sessions/:id/leave` сохранён для legacy/не-root комнат и запускает grace пустой комнаты. Повторный запрос к уже удалённой legacy-комнате идемпотентен.
 - `GET /healthz` → возвращает статус процесса и число комнат.
+- `productionPreset.select` → WebSocket-запрос `{id,name,settingsSchemaVersion,updatedAt,settings}` только от root-master при `DEBUG=true`; `productionPreset.current` сообщает текущую metadata при подключении, `productionPreset.selected` подтверждает canonical запись.
 - `WS /realtime?client=<id>` → оболочка `{v,type,seq,payload}`; подключает клиента к единой root-комнате. Сервер для совместимости принимает старый `session` query, но не создаёт по нему отдельную публичную комнату. Поддерживаются legacy `session.start`, `control.acquire/move/release`, `control.slipped`, `pointer.update`, `physics.update`, `roomSettings.update`, `session.restart`, `ping`. Первый `session.snapshot` возвращает `clientRole`, `roomSettings`, `physics`, `masterViewport` и состояние `suspended`, если стартовый камень ждёт первого grab; регулярные snapshots оставляют эти config-поля optional и не повторяют их без изменений. `pointer.update` и `presence.update.pointers[]` возвращают `role` для выбора руки; прямой `pointer.update` не отправляется обратно клиенту-источнику. `session.start` сохранён для совместимости старых клиентов и запускает первое падение только из `INTRO`, но новый frontend его не отправляет. `control.acquire` добавляет участника в `holderIds`, снимает `suspended`, реальное `dragging` включается при выполнении текущего `requiredHolders=1`, а `control.slipped` срабатывает для конкретной руки после случайного окна `0.5–2` секунды вне legacy-отпечатка. При отпускании последней руки внутри отпечатка сервер переводит камень в финальную фазу `FALLING`, а дождь у клиентов отключается по следующему `groundTouchSeq` при касании земли. `session.restart` очищает отпечаток, след, курсоры и держателей в текущей комнате, возвращает фазу в `PLAY`, но не меняет `masterClientId`, `roomSettings` или общий секундомер.
 
 HTTP-тело ограничено 16 КиБ, WebSocket-сообщение — 64 КиБ. Сервер проверяет диапазоны, версию протокола, тип и монотонный `seq`.
@@ -71,16 +74,19 @@ HTTP-тело ограничено 16 КиБ, WebSocket-сообщение — 6
 
 | Переменная | Назначение | Пример |
 |---|---|---|
-| `DEBUG` | dev-режим и послабление same-origin для локальной разработки | `false` |
+| `DEBUG` | slim/debug production mode и серверные debug-послабления | `false` |
 | `ALLOWED_ORIGIN` | разрешённые публичные origin через запятую | `https://example.com` |
 | `SESSION_TTL_SECONDS` | TTL после последней активности | `86400` |
 | `EMPTY_SESSION_GRACE_SECONDS` | задержка очистки пустой legacy-комнаты для reload/reconnect; root-комната не удаляется | `10` |
 | `SESSION_STORE_PATH` | путь к versioned JSON-store | `/app/data/sessions.json` |
+| `PRODUCTION_PRESET_PATH` | путь к canonical production preset | `/app/config/production-preset.json` |
 | `SESSION_PERSIST_INTERVAL_MS` | период фоновой записи движущихся комнат, мс | `250` |
 | `PORT` | внутренний порт контейнера | `8080` |
 
-- `DEBUG=true` — Vite на `8080` через 50-миллисекундный polling видит изменения bind mounts Docker Desktop, обновляет React/CSS/assets через Fast Refresh/HMR и проксирует API/WebSocket во внутренний Express на `8081`. `shared/physics.js` вызывает полный reload браузера с 250-миллисекундной задержкой на restart backend, а Nodemon в legacy-watch режиме с debounce 100 мс автоматически перезапускает Express при изменениях `server/` и `shared/`; внешний HMR WebSocket использует порт `18082`. Dispose React runtime снимает listeners, отменяет timers/fetch и закрывает старый realtime socket без повторного reconnect.
-- `DEBUG=false` — same-origin/allowlist, CSP, CORP, production-кэш ассетов и без автообновления.
+- Dev Compose — Vite на `8080` через 50-миллисекундный polling видит изменения bind mounts Docker Desktop, обновляет React/CSS/assets через Fast Refresh/HMR и проксирует API/WebSocket во внутренний Express на `8081`. `shared/physics.js` вызывает полный reload браузера с 250-миллисекундной задержкой на restart backend, а Nodemon в legacy-watch режиме с debounce 100 мс автоматически перезапускает Express при изменениях `server/` и `shared/`; внешний HMR WebSocket использует порт `18082`. Dispose React runtime снимает listeners, отменяет timers/fetch и закрывает старый realtime socket без повторного reconnect.
+- Production Compose с `DEBUG=true` — обычный Vite production build с полной панелью/controller/CSS и серверным правом root-master выбирать preset; HMR и test API отсутствуют.
+- Production Compose с `DEBUG=false` — slim bundle с no-op controller, same-origin/allowlist, CSP, CORP, production-кэш ассетов и без автообновления.
+- `DEBUG` передаётся одновременно как Docker build argument `VITE_DEBUG_UI` и runtime-переменная сервера; смена требует rebuild и recreate контейнера.
 
 ---
 
@@ -88,7 +94,7 @@ HTTP-тело ограничено 16 КиБ, WebSocket-сообщение — 6
 
 - **Локальный запуск:** первый bootstrap — `docker compose -f docker-compose.dev.yml up -d --build`, последующие запуски — `docker compose -f docker-compose.dev.yml up -d`. Frontend/backend/shared исходники, `index.html`, Vite/ESLint-конфиги и package manifests подключены bind mounts; изменения кода подхватываются без restart/recreate/rebuild, а lint можно запускать внутри работающего контейнера. Пересборка нужна только после изменения зависимостей или development-stage Dockerfile; изменение Compose-конфигурации требует recreate через обычный `up -d`.
 - **Деплой:** `bash deploy.sh` идемпотентно собирает production-образ, обновляет один контейнер и показывает его статус.
-- Приложение публикуется только на `127.0.0.1:18082`; HTTPS/WSS и WebSocket Upgrade настраиваются в nginx хоста. Named volume `/app/data` переживает обычный restart/recreate/deploy контейнера.
+- Приложение публикуется только на `127.0.0.1:18082`; HTTPS/WSS и WebSocket Upgrade настраиваются в nginx хоста. Named volumes `/app/data` и `/app/config` (`sisyphus-the-czar-production-preset`) переживают обычный restart/recreate/rebuild/deploy/down; потеря preset происходит только при явном удалении volume или повреждении.
 
 Требования для двух пользователей: Ubuntu Server 24.04 LTS, 1 vCPU, минимум 512 МБ RAM, 2 ГБ диска, канал от 1 Мбит/с. Рекомендуются 1 ГБ RAM, 10 Мбит/с, RTT до 100 мс, jitter до 30 мс. При 30 Hz input и 20 Hz lean snapshots ориентир сетевой нагрузки для двух участников — десятки КБ/с на комнату без учёта первичной загрузки assets и MP3. Запускается один экземпляр: горизонтальное масштабирование без общего хранилища запрещено.
 
@@ -96,15 +102,15 @@ HTTP-тело ограничено 16 КиБ, WebSocket-сообщение — 6
 
 ## Тестирование
 
-- **Сценарии:** старт в нижнем `PLAY` с подвешенным камнем по центру нижнего viewport, отсутствие физического эффекта от scroll, скрытый отпечаток и выключенный звук удара; физика и таймеры; кооперативный захват, per-holder slip `0.5–2` секунды и повторный подхват падающего камня; направление/масштаб инерции при ручном отпускании; трение земли как торможение на нижней земле; миграция старой шкалы и старого ключа `sliding`; TTL/reconnect; HTTP+WebSocket двух клиентов; реальный путь двух браузеров; локальное сохранение blur/mix-blend настроек, независимые computed modes дождя и blur, restart renderer’а по «Blur FX», смена темы без нового render token, звук `Дождь.mp3` при включении слоя, CSS blur только в тёмной теме и ручное переопределение FX blend более поздним правилом класса; 10-минутная передача управления с контролем RSS.
+- **Сценарии:** старт в нижнем `PLAY` с подвешенным камнем по центру нижнего viewport, отсутствие физического эффекта от scroll, скрытый отпечаток и выключенный звук удара; физика и таймеры; кооперативный захват, per-holder slip `0.5–2` секунды и повторный подхват падающего камня; направление/масштаб инерции при ручном отпускании; трение земли; миграции; TTL/reconnect; HTTP+WebSocket двух клиентов; latest-version sync; baseline/dirty/revert/save/beforeunload; master/debug preset authorization; атомарный store и fallback; dev/debug-production/slim-production browser smoke; локальные rain/trail настройки; 10-минутная передача управления с контролем RSS.
 - **Команды:** `npm run lint`, `npm run build`, `npm test`, `npm run test:smoke` и перед крупным релизом `npm run test:soak`, только внутри Docker-образов из README.
 - **Целевое покрытие:** процент не отслеживается; критический совместный путь обязателен.
-- **Frontend budget:** production build не содержит UI параметров, KaTeX, test API и dev-controller, использует существующий `rock.webp` и сжатые PNG-курсоры, а MP3 дождя/ролей подгружает по событиям. Текущий initial JS/CSS занимает около `296,6` КБ raw и `92,3` КБ gzip (`286,16` КБ JS + `10,43` КБ CSS); полный `dist` всё ещё содержит все deployable lazy assets.
+- **Frontend budget:** slim production build с `DEBUG=false` не содержит UI параметров, KaTeX, test API и dev-controller; debug-production намеренно включает UI, но не test API. Клиент использует существующий `rock.webp` и сжатые PNG-курсоры, а MP3 дождя/ролей подгружает по событиям.
 - **Production smoke:** проверяет только публичный контракт: отсутствие dev UI/API, создание ссылки, роли `master/slave`, реальный захват slave-мышью и движение камня на master одной рукой, а также отсутствие eager rain/audio-загрузок.
 
 При dropped frames клиент ограничивает один визуальный шаг передачи от локальной руки к серверному состоянию, поэтому handoff остаётся плавным даже под нагрузкой.
 
-Финальный прогон 2026-07-21: lint прошёл, unit/integration `80/80`, browser smoke `4/4` с production build внутри Playwright webServer. Последний двухбраузерный soak от 2026-07-15: `1/1` за 10,8 минуты; обновлённый soak-файл синтаксически проверен, полный повтор после смены стартового сценария не запускался.
+Финальный прогон 2026-07-26: lint и обе production-сборки прошли, unit/integration `130/130`, dev browser smoke `10/10`, debug-production `1/1`, slim-production `1/1`. Compose lifecycle на одном `127.0.0.1:18082` последовательно подтвердил dev → `DEBUG=true` → `DEBUG=false` и повторный `DEBUG=false` после rebuild с тем же preset volume. Последний двухбраузерный soak от 2026-07-15: `1/1` за 10,8 минуты; полный повтор soak после этой функции не запускался.
 
 ---
 
@@ -165,6 +171,7 @@ HTTP-тело ограничено 16 КиБ, WebSocket-сообщение — 6
 - **2026-07-15:** отдельная CSS blur-подложка, blur UI-параметры и 2D fallback-капли давали чужой эффект дождя → DOM-слой blur и параметры `rainBackgroundBlurSteps`/`rainBlur*` удалены, `backgroundBlurSteps` снова фиксирован как `3`; дождь снова рисует `raindrop-fx`, fallback-canvas скрывается после WebGL-старта, а тёмная тема получает тёмный background-pass без `multiply` на WebGL-canvas; canvas следа перенесён на `z-index: 0`.
 - **2026-07-17:** основной blur тёмной темы должен идти через background-canvas библиотеки → возвращены локальные `rainBackgroundBlurSteps`/`rainBlur*`; первый управляет `raindrop-fx` и требует restart renderer’а, остальные настраивают слабую CSS-подложку только в dark theme. Radial flare не используется, фон подложки — один нейтральный светлый linear-gradient.
 - **2026-07-17:** frontend тратил основную часть transfer size на три PNG и выполнял скрытые Canvas-циклы → изображения переведены в WebP q90 с сохранением alpha, общий `shared/physics.js` включён в Vite graph вместо отдельного блокирующего script, 2D rain fallback стал аварийно-ленивым, trail-canvas получил dirty-render, а четыре одноразовых ref-hook удалены → `dist` уменьшился примерно на 81%, production build больше не предупреждает о несобираемом script.
+- **2026-07-26:** production preset больше не определяется именем версии → добавлены WebSocket selection contract, атомарный `ProductionPresetStore`, общий named volume и build/runtime `DEBUG`; slim production применяет canonical snapshot без сброса игрового состояния.
 - **2026-07-17:** цвет и композицию дождя нужно настраивать раздельно → dark shader profile сохраняет diffuse `[0.55,0.55,0.55]`, а specular поднят до белого `[1,1,1]`; light profile остаётся `[0.42,0.42,0.44]`/`[0.78,0.78,0.8]`. В UI добавлены независимые whitelist-параметры `rainBlendMode` и `rainBlurBlendMode`; первый маршрутизируется на layer в light и canvas в dark, второй управляет только CSS blur. Fallback-цвет и аварийно-ленивый lifecycle не менялись.
 - **2026-07-21:** смена светлой темы на тёмную сбрасывала активный дождь → `setTheme()` теперь обновляет профиль, uniforms и background-canvas без `stop/start`, сохраняя текущие капли; показ слоя запускает loop-звук `Дождь.mp3`, hide останавливает его после fade.
 - **2026-07-17:** intro-захват с 400-мс таймером противоречил новому сценарию → добавлен идемпотентный WebSocket `session.start`, `control.acquire` разрешён только в `PLAY`, а client runtime хранит одноразовый `firstScrollHandled` и повторяет незавершённый старт только после reconnect. Программный возврат к `scrollY=0` при restart не считается пользовательским scroll.

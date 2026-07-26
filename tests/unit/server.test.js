@@ -72,3 +72,29 @@ test("backend публикует shared-модули клиента", async (con
     assert.match(body, exportName);
   }
 });
+
+test("production startup применяет preset из отдельного store", async (context) => {
+  const productionPresetStore = {
+    load: () => ({
+      settings: {
+        gravity: 6.5,
+        sceneHeightScreens: 14,
+      },
+    }),
+    metadata: () => null,
+    save: () => null,
+  };
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: false,
+    productionPresetStore,
+    logger: () => {},
+  });
+  await service.start();
+  context.after(async () => service.close());
+
+  const root = service.manager.ensureDefaultSession();
+  assert.equal(root.physics.gravity, 6.5);
+  assert.equal(root.roomSettings.sceneHeightScreens, 14);
+});

@@ -432,6 +432,20 @@ test("production preset source выбирает последнюю версию 
     settingsFromLatestVersionEntry([older, fallbackByCreatedAt]),
     { gravity: 8 },
   );
+  assert.equal(
+    selectLatestSettingsVersionEntry([
+      { ...latest, id: "version-a" },
+      { ...latest, id: "version-b" },
+    ]).id,
+    "version-b",
+  );
+  assert.equal(
+    selectLatestSettingsVersionEntry([
+      { ...latest, id: "version-b" },
+      { ...latest, id: "version-a" },
+    ]).id,
+    "version-b",
+  );
 });
 
 test("параметры формул подъёма и падения имеют ожидаемые диапазоны в UI", () => {

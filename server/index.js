@@ -13,6 +13,7 @@ const {
   STATIONARY_HOLD_RELEASE_MS,
 } = require("./session-manager");
 const { SessionStore } = require("./session-store");
+const { ProductionPresetStore } = require("./production-preset-store");
 const ProductionPreset = require("../shared/production-preset");
 
 const ROOT_DIR = path.resolve(__dirname, "..");
@@ -175,6 +176,11 @@ function createService(options = {}) {
     sessionStorePath: String(
       options.sessionStorePath ?? process.env.SESSION_STORE_PATH ?? ""
     ).trim(),
+    productionPresetPath: String(
+      options.productionPresetPath ??
+        process.env.PRODUCTION_PRESET_PATH ??
+        ""
+    ).trim(),
     persistIntervalMs: Math.max(
       100,
       Number(
@@ -192,6 +198,10 @@ function createService(options = {}) {
   };
 
   const log = options.logger || createLogger();
+  const productionPresetStore =
+    options.productionPresetStore ||
+    new ProductionPresetStore(config.productionPresetPath, { logger: log });
+  const storedProductionPreset = productionPresetStore.load();
   const manager =
     options.manager ||
     new SessionManager({
@@ -202,6 +212,10 @@ function createService(options = {}) {
       stationaryHoldReleaseMs: config.stationaryHoldReleaseMs,
       audioLeadMs: options.audioLeadMs,
       soundRandom: options.soundRandom,
+      productionPresetSelectionEnabled: config.debug,
+      getProductionPresetSelection: () => productionPresetStore.metadata(),
+      saveProductionPresetSelection: (selection) =>
+        productionPresetStore.save(selection),
       logger: log,
     });
   const sessionStore =
@@ -212,7 +226,10 @@ function createService(options = {}) {
     sessionStore.save(manager.serializeSessions(), { force });
   const defaultSession = manager.ensureDefaultSession();
   if (!config.debug) {
-    manager.applySettingsPreset(defaultSession, ProductionPreset.settings);
+    manager.applySettingsPreset(
+      defaultSession,
+      storedProductionPreset?.settings || ProductionPreset.settings,
+    );
   }
   persistSessions(true);
   const createLimiter = new WindowRateLimiter(
@@ -553,6 +570,7 @@ function createService(options = {}) {
     websocketServer,
     manager,
     sessionStore,
+    productionPresetStore,
     config,
     start,
     close,

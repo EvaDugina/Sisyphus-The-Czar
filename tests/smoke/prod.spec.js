@@ -81,7 +81,7 @@ test("production build keeps slim UI and multiplayer behavior", async ({
           .trim(),
       ),
     )
-    .toBe("100vh");
+    .toBe("1400vh");
   await expect(page.locator(".settings-panel")).toHaveCount(0);
   await expect(page.locator(".settings-toggle")).toHaveCount(0);
   await expect(page.locator(".hint")).toHaveCount(0);

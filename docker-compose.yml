@@ -3,6 +3,8 @@ services:
     build:
       context: .
       target: production
+      args:
+        DEBUG: "${DEBUG:-false}"
     container_name: sisyphus-the-czar
     restart: unless-stopped
     environment:
@@ -12,6 +14,7 @@ services:
       SESSION_TTL_SECONDS: "${SESSION_TTL_SECONDS:-86400}"
       EMPTY_SESSION_GRACE_SECONDS: "${EMPTY_SESSION_GRACE_SECONDS:-10}"
       SESSION_STORE_PATH: "${SESSION_STORE_PATH:-/app/data/sessions.json}"
+      PRODUCTION_PRESET_PATH: "${PRODUCTION_PRESET_PATH:-/app/config/production-preset.json}"
       SESSION_PERSIST_INTERVAL_MS: "${SESSION_PERSIST_INTERVAL_MS:-250}"
     ports:
       - "127.0.0.1:18082:8080"
@@ -23,6 +26,7 @@ services:
       - /tmp:size=16m,noexec,nosuid
     volumes:
       - sisyphus-session-data:/app/data
+      - sisyphus-production-preset-data:/app/config
     security_opt:
       - no-new-privileges:true
     logging:
@@ -33,3 +37,5 @@ services:
 
 volumes:
   sisyphus-session-data:
+  sisyphus-production-preset-data:
+    name: sisyphus-the-czar-production-preset

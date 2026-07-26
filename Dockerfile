@@ -11,7 +11,9 @@ COPY src/ ./src/
 COPY assets/ ./assets/
 COPY server/ ./server/
 COPY shared/ ./shared/
+RUN mkdir -p /app/data /app/config && chown -R node:node /app
 
+USER node
 EXPOSE 8080 8081
 CMD ["npm", "run", "dev:container"]
 
@@ -19,6 +21,8 @@ FROM node:24.18.0-alpine3.23 AS frontend-build
 
 WORKDIR /app
 ENV NODE_ENV=production
+ARG DEBUG=false
+ENV VITE_DEBUG_UI=${DEBUG}
 
 COPY package.json package-lock.json ./
 RUN npm ci --include=dev
@@ -40,7 +44,7 @@ RUN npm ci --omit=dev && npm cache clean --force
 COPY --chown=node:node server/ ./server/
 COPY --chown=node:node shared/ ./shared/
 COPY --chown=node:node --from=frontend-build /app/dist/ ./dist/
-RUN mkdir -p /app/data && chown node:node /app/data
+RUN mkdir -p /app/data /app/config && chown node:node /app/data /app/config
 
 USER node
 EXPOSE 8080

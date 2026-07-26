@@ -48,6 +48,10 @@ function setup(options = {}) {
     slipDelayMaxMs: options.slipDelayMaxMs,
     stationaryHoldReleaseMs: options.stationaryHoldReleaseMs ?? 10_000,
     audioLeadMs: options.audioLeadMs,
+    productionPresetSelectionEnabled:
+      options.productionPresetSelectionEnabled,
+    getProductionPresetSelection: options.getProductionPresetSelection,
+    saveProductionPresetSelection: options.saveProductionPresetSelection,
   });
   return { clock, manager };
 }
@@ -233,6 +237,7 @@ test("сессия без явного state стартует в нижнем pl
   assert.equal(session.state.y, Physics.WORLD_HEIGHT);
   assert.equal(session.state.vx, 0);
   assert.equal(session.state.vy, 0);
+  assert.equal(session.state.suspended, true);
 });
 
 test("подвешенный play-старт не двигается до первого захвата", () => {
@@ -1214,6 +1219,146 @@ test("production preset обновляет root-настройки без сбр
     false,
   );
   assert.equal(session.revision, revisionBefore + 1);
+});
+
+test("debug master выбирает production preset и получает подтверждение", () => {
+  const saved = [];
+  const current = {
+    selectedAt: "2026-07-26T10:00:00.000Z",
+    source: {
+      id: "version-old",
+      name: "Старый",
+      settingsSchemaVersion: 18,
+      updatedAt: "2026-07-26T09:00:00.000Z",
+    },
+  };
+  const { manager } = setup({
+    productionPresetSelectionEnabled: true,
+    getProductionPresetSelection: () => current,
+    saveProductionPresetSelection: (payload) => {
+      saved.push(payload);
+      return {
+        selectedAt: "2026-07-26T11:00:00.000Z",
+        source: {
+          id: payload.id,
+          name: payload.name,
+          settingsSchemaVersion: payload.settingsSchemaVersion,
+          updatedAt: payload.updatedAt,
+        },
+        settings: payload.settings,
+      };
+    },
+  });
+  const session = manager.ensureDefaultSession({
+    creatorClientId: "client-master-preset",
+  });
+  const master = connect(manager, session, "client-master-preset");
+  const payload = {
+    id: "version-next",
+    name: "Для production",
+    settingsSchemaVersion: 18,
+    updatedAt: "2026-07-26T10:30:00.000Z",
+    settings: { gravity: 7 },
+  };
+
+  assert.deepEqual(
+    master.socket.messages.find(
+      (message) => message.type === "productionPreset.current",
+    ).payload,
+    { canSelect: true, selection: current },
+  );
+  manager.handleMessage(session, master.client, {
+    v: 1,
+    seq: 1,
+    type: "productionPreset.select",
+    payload,
+  });
+
+  assert.deepEqual(saved, [payload]);
+  assert.deepEqual(
+    master.socket.messages.findLast(
+      (message) => message.type === "productionPreset.selected",
+    ).payload.selection.source,
+    {
+      id: "version-next",
+      name: "Для production",
+      settingsSchemaVersion: 18,
+      updatedAt: "2026-07-26T10:30:00.000Z",
+    },
+  );
+});
+
+test("production preset нельзя выбрать slave или при DEBUG=false", () => {
+  const saveProductionPresetSelection = () => {
+    throw new Error("callback must not be called");
+  };
+  const debug = setup({
+    productionPresetSelectionEnabled: true,
+    saveProductionPresetSelection,
+  }).manager;
+  const debugSession = debug.ensureDefaultSession({
+    creatorClientId: "client-master-debug",
+  });
+  connect(debug, debugSession, "client-master-debug");
+  const slave = connect(debug, debugSession, "client-slave-debug");
+
+  debug.handleMessage(debugSession, slave.client, {
+    v: 1,
+    seq: 1,
+    type: "productionPreset.select",
+    payload: {},
+  });
+  assert.equal(
+    slave.socket.messages.findLast((message) => message.type === "error")
+      .payload.code,
+    "master_only",
+  );
+
+  const legacySession = debug.createSession({
+    creatorClientId: "client-master-legacy",
+  });
+  const legacyMaster = connect(
+    debug,
+    legacySession,
+    "client-master-legacy",
+  );
+  debug.handleMessage(legacySession, legacyMaster.client, {
+    v: 1,
+    seq: 1,
+    type: "productionPreset.select",
+    payload: {},
+  });
+  assert.equal(
+    legacyMaster.socket.messages.findLast(
+      (message) => message.type === "error",
+    ).payload.code,
+    "master_only",
+  );
+
+  const production = setup({
+    productionPresetSelectionEnabled: false,
+    saveProductionPresetSelection,
+  }).manager;
+  const productionSession = production.createSession({
+    creatorClientId: "client-master-prod",
+  });
+  const productionMaster = connect(
+    production,
+    productionSession,
+    "client-master-prod",
+  );
+  production.handleMessage(productionSession, productionMaster.client, {
+    v: 1,
+    seq: 1,
+    type: "productionPreset.select",
+    payload: {},
+  });
+  assert.equal(
+    productionMaster.socket.messages.findLast(
+      (message) => message.type === "error",
+    ).payload.code,
+    "debug_only",
+  );
 });
 
 test("активная сессия продлевается при достижении TTL", () => {

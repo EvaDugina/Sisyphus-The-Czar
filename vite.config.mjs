@@ -63,12 +63,14 @@ function reloadSharedPhysics() {
 
 export default defineConfig(({ command }) => {
   const isProductionBuild = command === "build";
+  const debugUiEnabled =
+    !isProductionBuild || process.env.VITE_DEBUG_UI === "true";
 
   return {
     base: "./",
     plugins: [react(), reloadSharedPhysics()],
     resolve: {
-      alias: isProductionBuild
+      alias: isProductionBuild && !debugUiEnabled
         ? [
             {
               find: "./styles/controls.css",

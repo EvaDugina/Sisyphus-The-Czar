@@ -4,7 +4,9 @@ export function createSettingsController() {
   return {
     enabled: false,
     bind() {},
+    captureCurrentAsBaseline() {},
     getLatestSettingsVersionPreset: () => null,
+    getLoadedSettingsVersionEntry: () => null,
     getSettingsVersions: () => [],
     load() {},
     markSettingsVersionDraft() {},
@@ -12,6 +14,8 @@ export function createSettingsController() {
     readRoomSettingsControls: () => EMPTY_SETTINGS,
     roomSettingControlElement: () => null,
     saveSettings() {},
+    setProductionPresetError() {},
+    setProductionPresetState() {},
     syncRoomSettingControls() {},
     syncSettingControl() {},
     updateControlOutputs() {},

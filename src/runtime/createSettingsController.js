@@ -31,6 +31,7 @@ export function createSettingsController(options) {
     hintEl,
     listen,
     localCanEditSettings,
+    onSelectProductionPreset,
     params,
     readControls,
     resetTrail,
@@ -55,13 +56,145 @@ export function createSettingsController(options) {
   const settingsVersionSave =
     options.settingsVersionSave ||
     document.querySelector(".settings-version-save");
+  const productionPresetStatus =
+    options.productionPresetStatus ||
+    document.querySelector(".settings-production-status");
   const sessionRestartButton =
     options.sessionRestartButton || document.querySelector(".session-restart");
   const sharedRoomSettingKeys = SharedRoomSettings.ROOM_SETTINGS_KEYS;
   const settingsVersions = {
     entries: [],
     selectedId: "",
+    baselineId: "",
+    baselineName: "",
+    baselineSettings: null,
+    draftDetached: false,
+    dirtyKeys: new Set(),
+    productionSelection: null,
+    canSelectProductionPreset: false,
   };
+
+  function copySettingsVersionEntry(entry) {
+    if (!entry) {
+      return null;
+    }
+    return {
+      id: entry.id,
+      name: entry.name,
+      settingsSchemaVersion: entry.settingsSchemaVersion,
+      createdAt: entry.createdAt,
+      updatedAt: entry.updatedAt,
+      settings: { ...entry.settings },
+    };
+  }
+
+  function settingValuesEqual(left, right) {
+    if (typeof left === "number" || typeof right === "number") {
+      const leftNumber = Number(left);
+      const rightNumber = Number(right);
+      return (
+        Number.isFinite(leftNumber) &&
+        Number.isFinite(rightNumber) &&
+        Math.abs(leftNumber - rightNumber) < 1e-9
+      );
+    }
+    return Object.is(left, right);
+  }
+
+  function baselineSettingsVersion() {
+    return settingsVersions.entries.find(
+      (entry) => entry.id === settingsVersions.baselineId,
+    );
+  }
+
+  function productionSelectionMatches(entry) {
+    const source = settingsVersions.productionSelection?.source;
+    return Boolean(
+      entry &&
+        source &&
+        source.id === entry.id &&
+        source.updatedAt === entry.updatedAt,
+    );
+  }
+
+  function hasUnsavedDraft() {
+    const name = String(settingsVersionName?.value || "").trim();
+    return Boolean(
+      settingsVersions.draftDetached ||
+        settingsVersions.dirtyKeys.size > 0 ||
+        (settingsVersions.baselineId &&
+          name !== settingsVersions.baselineName),
+    );
+  }
+
+  function setProductionPresetStatus(message, state = "") {
+    if (!productionPresetStatus) {
+      return;
+    }
+    productionPresetStatus.textContent = message;
+    productionPresetStatus.dataset.state = state;
+  }
+
+  function productionPresetPayload(entry) {
+    return {
+      id: entry.id,
+      name: entry.name,
+      settingsSchemaVersion: entry.settingsSchemaVersion,
+      updatedAt: entry.updatedAt,
+      settings: { ...entry.settings },
+    };
+  }
+
+  function requestProductionPresetSelection(entry) {
+    if (
+      !entry ||
+      !settingsVersions.canSelectProductionPreset ||
+      typeof onSelectProductionPreset !== "function"
+    ) {
+      setProductionPresetStatus(
+        "Production preset доступен только master при DEBUG=true",
+        "error",
+      );
+      return false;
+    }
+    const sent = onSelectProductionPreset(productionPresetPayload(entry));
+    if (sent === false) {
+      setProductionPresetStatus(
+        "Нет соединения для сохранения production preset",
+        "error",
+      );
+      return false;
+    }
+    setProductionPresetStatus("Сохраняем production preset…", "pending");
+    return true;
+  }
+
+  function setProductionPresetState(payload = {}) {
+    settingsVersions.canSelectProductionPreset = Boolean(payload.canSelect);
+    settingsVersions.productionSelection =
+      payload.selection && typeof payload.selection === "object"
+        ? payload.selection
+        : null;
+    const source = settingsVersions.productionSelection?.source;
+    if (source) {
+      setProductionPresetStatus(
+        `Production: ${source.name}`,
+        "success",
+      );
+    } else if (settingsVersions.canSelectProductionPreset) {
+      setProductionPresetStatus("Production preset ещё не выбран");
+    } else {
+      setProductionPresetStatus("");
+    }
+    renderSettingsVersions();
+  }
+
+  function setProductionPresetError(message) {
+    setProductionPresetStatus(
+      String(message || "Не удалось сохранить production preset"),
+      "error",
+    );
+  }
 
   function settingsControlElements() {
     if (!settingsPanel) {
@@ -327,6 +460,67 @@ export function createSettingsController(options) {
     );
   }
 
+  function renderDraftState() {
+    const dirty = hasUnsavedDraft();
+    settingsPanel?.classList.toggle("has-draft", dirty);
+    settingsVersionToggle?.classList.toggle("is-dirty", dirty);
+    settingsVersionSave?.classList.toggle("is-dirty", dirty);
+    settingsVersionName?.classList.toggle(
+      "is-dirty",
+      Boolean(
+        settingsVersions.baselineId &&
+          String(settingsVersionName.value || "").trim() !==
+            settingsVersions.baselineName,
+      ),
+    );
+    settingsControlElements().forEach((element) => {
+      element
+        .closest("[data-setting-control]")
+        ?.classList.toggle(
+          "is-dirty",
+          settingsVersions.dirtyKeys.has(element.name),
+        );
+    });
+  }
+
+  function refreshDraftState() {
+    const baseline = settingsVersions.baselineSettings;
+    const snapshot = currentSettingsSnapshot();
+    settingsVersions.dirtyKeys.clear();
+    if (baseline) {
+      SETTINGS_CONTROL_NAMES.forEach((key) => {
+        if (
+          !Object.hasOwn(snapshot, key) ||
+          !Object.hasOwn(baseline, key) ||
+          !settingValuesEqual(snapshot[key], baseline[key])
+        ) {
+          settingsVersions.dirtyKeys.add(key);
+        }
+      });
+    }
+    const dirty = hasUnsavedDraft();
+    settingsVersions.selectedId = dirty
+      ? ""
+      : settingsVersions.baselineId;
+    renderSettingsVersions();
+    renderDraftState();
+  }
+
+  function captureCurrentAsBaseline(entry = baselineSettingsVersion()) {
+    if (!entry) {
+      return;
+    }
+    settingsVersions.baselineId = entry.id;
+    settingsVersions.baselineName = entry.name;
+    settingsVersions.baselineSettings = currentSettingsSnapshot();
+    settingsVersions.draftDetached = false;
+    settingsVersions.selectedId = entry.id;
+    settingsVersions.dirtyKeys.clear();
+    renderSettingsVersions();
+    renderDraftState();
+    saveSettingsVersions();
+  }
+
   function roomSettingControlElement(key) {
     return settingsPanel?.querySelector(`[name="${key}"]`) || null;
   }
@@ -368,11 +562,17 @@ export function createSettingsController(options) {
     settingsVersionToggle.setAttribute("aria-expanded", String(open));
   }
 
-  function createSettingsVersionMenuItem({ id, label, selected, draft = false }) {
+  function createSettingsVersionMenuItem({
+    id,
+    label,
+    selected,
+    draft = false,
+    production = false,
+  }) {
     const item = document.createElement("div");
     item.className = `settings-version-option${selected ? " is-selected" : ""}${
       draft ? " is-draft" : ""
-    }`;
+    }${production ? " is-production" : ""}`;
 
     const choice = document.createElement("button");
     choice.className = "settings-version-choice";
@@ -384,12 +584,35 @@ export function createSettingsController(options) {
     item.append(choice);
 
     if (!draft) {
+      const productionButton = document.createElement("button");
+      productionButton.className = "settings-version-production";
+      productionButton.type = "button";
+      productionButton.dataset.productionPresetSelect = id;
+      productionButton.disabled =
+        !settingsVersions.canSelectProductionPreset;
+      productionButton.setAttribute(
+        "aria-label",
+        production
+          ? `Шаблон ${label} выбран для production`
+          : `Выбрать шаблон ${label} для production`,
+      );
+      productionButton.title = production
+        ? "Выбран для следующего production запуска"
+        : "Выбрать для следующего production запуска";
+      productionButton.innerHTML =
+        '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M5 21V4" /><path d="M5 5h11l-2 4 2 4H5" /></svg>';
+      item.append(productionButton);
+
       const deleteButton = document.createElement("button");
       deleteButton.className = "settings-version-delete";
       deleteButton.type = "button";
       deleteButton.dataset.settingsVersionDelete = id;
+      deleteButton.disabled =
+        settingsVersions.productionSelection?.source?.id === id;
       deleteButton.setAttribute("aria-label", `Удалить версию ${label}`);
-      deleteButton.title = "Удалить версию";
+      deleteButton.title = deleteButton.disabled
+        ? "Сначала выберите другой production preset"
+        : "Удалить версию";
       deleteButton.innerHTML =
         '<svg aria-hidden="true" viewBox="0 0 24 24"><path d="M3 6h18" /><path d="M8 6V4h8v2" /><path d="M6 6l1 14h10l1-14" /><path d="M10 11v5" /><path d="M14 11v5" /></svg>';
       item.append(deleteButton);
@@ -424,6 +647,7 @@ export function createSettingsController(options) {
           id: entry.id,
           label: formatSettingsVersionOptionLabel(entry),
           selected: entry.id === selectedEntry?.id,
+          production: productionSelectionMatches(entry),
         }),
       ),
     );
@@ -442,11 +666,14 @@ export function createSettingsController(options) {
 
   function saveCurrentSettingsVersion() {
     const now = new Date();
-    const selected = selectedSettingsVersion();
+    const selected = settingsVersions.draftDetached
+      ? null
+      : baselineSettingsVersion() || selectedSettingsVersion();
     const name =
       String(settingsVersionName?.value || "").trim() ||
       selected?.name ||
       defaultSettingsVersionName(now);
+    let savedEntry = selected;
     if (selected) {
       selected.name = name;
       selected.updatedAt = now.toISOString();
@@ -466,12 +693,18 @@ export function createSettingsController(options) {
         entry,
       ].slice(-SETTINGS_VERSION_LIMIT);
       settingsVersions.selectedId = entry.id;
+      savedEntry = entry;
     }
     if (settingsVersionName) {
       settingsVersionName.value = name;
     }
-    renderSettingsVersions();
+    captureCurrentAsBaseline(savedEntry);
     saveSettingsVersions();
+    if (
+      settingsVersions.productionSelection?.source?.id === savedEntry.id
+    ) {
+      requestProductionPresetSelection(savedEntry);
+    }
   }
 
   function writeSettingsVersionToControls(entry) {
@@ -504,6 +737,11 @@ export function createSettingsController(options) {
       }
     });
     settingsVersions.selectedId = entry.id;
+    settingsVersions.baselineId = entry.id;
+    settingsVersions.baselineName = entry.name;
+    settingsVersions.baselineSettings = { ...entry.settings };
+    settingsVersions.draftDetached = false;
+    settingsVersions.dirtyKeys.clear();
     if (settingsVersionName) {
       settingsVersionName.value = entry.name;
     }
@@ -521,6 +759,7 @@ export function createSettingsController(options) {
       changedKeys,
       preserveSettingsVersionSelection: true,
     });
+    captureCurrentAsBaseline(entry);
   }
 
   function selectSettingsVersion(id) {
@@ -528,10 +767,16 @@ export function createSettingsController(options) {
     const entry = selectedSettingsVersion();
     if (!entry) {
       settingsVersions.selectedId = "";
+      settingsVersions.baselineId = "";
+      settingsVersions.baselineName = "";
+      settingsVersions.baselineSettings = currentSettingsSnapshot();
+      settingsVersions.draftDetached = true;
+      settingsVersions.dirtyKeys.clear();
       if (settingsVersionName) {
         settingsVersionName.value = "";
       }
       renderSettingsVersions();
+      renderDraftState();
       saveSettingsVersions();
       setSettingsVersionMenuOpen(false);
       return;
@@ -541,6 +786,13 @@ export function createSettingsController(options) {
   }
 
   function deleteSettingsVersion(id) {
+    if (settingsVersions.productionSelection?.source?.id === id) {
+      setProductionPresetStatus(
+        "Сначала выберите другой production preset",
+        "error",
+      );
+      return;
+    }
     const beforeCount = settingsVersions.entries.length;
     settingsVersions.entries = settingsVersions.entries.filter(
       (entry) => entry.id !== id,
@@ -554,16 +806,19 @@ export function createSettingsController(options) {
         settingsVersionName.value = "";
       }
     }
+    if (settingsVersions.baselineId === id) {
+      settingsVersions.baselineId = "";
+      settingsVersions.baselineName = "";
+      settingsVersions.baselineSettings = null;
+      settingsVersions.draftDetached = true;
+    }
     renderSettingsVersions();
+    renderDraftState();
     saveSettingsVersions();
   }
 
   function markSettingsVersionDraft() {
-    if (!settingsVersions.selectedId) {
-      return;
-    }
-    settingsVersions.selectedId = "";
-    renderSettingsVersions();
+    refreshDraftState();
     saveSettingsVersions();
   }
 
@@ -716,6 +971,7 @@ export function createSettingsController(options) {
       readControls({ changedKeys: [] });
       saveCurrentSettingsVersion();
     });
+    listen(settingsVersionName, "input", refreshDraftState);
     listen(settingsVersionToggle, "click", () => {
       if (collab.enabled && !localCanEditSettings()) {
         return;
@@ -724,6 +980,17 @@ export function createSettingsController(options) {
     });
     listen(settingsVersionMenu, "click", (event) => {
       if (collab.enabled && !localCanEditSettings()) {
+        return;
+      }
+      const productionButton = event.target.closest(
+        "[data-production-preset-select]",
+      );
+      if (productionButton) {
+        const entry = settingsVersions.entries.find(
+          (candidate) =>
+            candidate.id === productionButton.dataset.productionPresetSelect,
+        );
+        requestProductionPresetSelection(entry);
         return;
       }
       const deleteButton = event.target.closest("[data-settings-version-delete]");
@@ -750,6 +1017,13 @@ export function createSettingsController(options) {
       if (event.key === "Escape") {
         setSettingsVersionMenuOpen(false);
       }
+    });
+    listen(window, "beforeunload", (event) => {
+      if (!hasUnsavedDraft()) {
+        return;
+      }
+      event.preventDefault();
+      event.returnValue = "";
     });
     listen(settingsPanel?.querySelector(".trail-clear"), "click", resetTrail);
     listen(sessionRestartButton, "click", restartExperience);
@@ -783,12 +1057,10 @@ export function createSettingsController(options) {
     bind,
     getLatestSettingsVersionPreset: () =>
       settingsFromLatestVersionEntry(settingsVersions.entries),
+    getLoadedSettingsVersionEntry: () =>
+      copySettingsVersionEntry(baselineSettingsVersion()),
     getSettingsVersions: () =>
-      settingsVersions.entries.map((entry) => ({
-        id: entry.id,
-        name: entry.name,
-        settings: { ...entry.settings },
-      })),
+      settingsVersions.entries.map(copySettingsVersionEntry),
     load() {
       loadSettings();
       loadSettingsVersions();
@@ -797,12 +1069,16 @@ export function createSettingsController(options) {
         writeSettingsVersionToControls(latest);
         renderSettingsVersions();
       }
+      renderDraftState();
     },
+    captureCurrentAsBaseline,
     markSettingsVersionDraft,
     readPhysicsControls,
     readRoomSettingsControls,
     roomSettingControlElement,
     saveSettings,
+    setProductionPresetError,
+    setProductionPresetState,
     syncRoomSettingControls,
     syncSettingControl,
     updateControlOutputs,

@@ -27,6 +27,7 @@ module.exports = defineConfig({
       SLIP_DELAY_MAX_MS: "10000",
       STATIONARY_HOLD_RELEASE_MS: "10000",
       SESSION_STORE_PATH: "/tmp/sisyphus-smoke-sessions.json",
+      PRODUCTION_PRESET_PATH: "tests/fixtures/production-preset.json",
       SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },

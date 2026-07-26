@@ -72,6 +72,11 @@ export function SettingsPanel({
             </svg>
           </button>
         </div>
+        <p
+          className="settings-production-status"
+          role="status"
+          aria-live="polite"
+        />
       </section>
 
       <section className="session-panel" aria-label="Совместная сессия">

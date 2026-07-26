@@ -419,6 +419,9 @@ export function createSisyphusRuntime(elements = {}) {
       visible: false,
     },
     remotePointers: new Map(),
+    initialSettingsVersion: null,
+    initialSettingsSyncComplete: false,
+    initialSettingsSyncSent: false,
   };
   collab.enabled = window.location.protocol !== "file:";
 
@@ -568,6 +571,7 @@ export function createSisyphusRuntime(elements = {}) {
     hintEl: elements.hint,
     listen,
     localCanEditSettings,
+    onSelectProductionPreset: selectProductionPreset,
     params,
     readControls,
     resetTrail,
@@ -2822,6 +2826,75 @@ export function createSisyphusRuntime(elements = {}) {
     }, 100);
   }
 
+  function initialSettingsPayloads() {
+    const settings = collab.initialSettingsVersion?.settings;
+    if (!settings || typeof settings !== "object") {
+      return null;
+    }
+    return {
+      physics: SharedPhysics.sanitizePhysics(settings),
+      roomSettings: SharedRoomSettings.sanitizeRoomSettings(settings),
+    };
+  }
+
+  function initialSettingsMatchSnapshot(payload, desired) {
+    if (
+      !desired ||
+      !payload.physics ||
+      typeof payload.physics !== "object" ||
+      !payload.roomSettings ||
+      typeof payload.roomSettings !== "object"
+    ) {
+      return false;
+    }
+    return (
+      SHARED_PHYSICS_KEYS.every(
+        (key) =>
+          Math.abs(
+            Number(payload.physics[key]) - Number(desired.physics[key]),
+          ) < 1e-9,
+      ) &&
+      SHARED_ROOM_SETTING_KEYS.every((key) =>
+        roomSettingValueEqual(
+          key,
+          payload.roomSettings[key],
+          desired.roomSettings[key],
+        ),
+      )
+    );
+  }
+
+  function syncInitialSettingsVersion(payload) {
+    if (
+      !settingsUiEnabled ||
+      !collab.initialSettingsVersion ||
+      collab.initialSettingsSyncComplete ||
+      collab.clientRole !== "master"
+    ) {
+      return false;
+    }
+    const desired = initialSettingsPayloads();
+    if (initialSettingsMatchSnapshot(payload, desired)) {
+      collab.initialSettingsSyncComplete = true;
+      collab.initialSettingsSyncSent = false;
+      return false;
+    }
+    if (!collab.initialSettingsSyncSent && collab.connected) {
+      Object.assign(collab.pendingPhysicsChanges, desired.physics);
+      Object.assign(
+        collab.pendingRoomSettingsChanges,
+        desired.roomSettings,
+      );
+      const physicsSent = sendShared("physics.update", desired.physics);
+      const roomSettingsSent = sendShared(
+        "roomSettings.update",
+        desired.roomSettings,
+      );
+      collab.initialSettingsSyncSent = physicsSent && roomSettingsSent;
+    }
+    return true;
+  }
+
   function showCopiedLinkFeedback() {
     window.clearTimeout(collab.copyFeedbackTimerId);
     sessionShareToggle.classList.add("is-copied");
@@ -2899,6 +2972,10 @@ export function createSisyphusRuntime(elements = {}) {
       JSON.stringify({ v: 1, type, seq: collab.sequence, payload })
     );
     return true;
+  }
+
+  function selectProductionPreset(selection) {
+    return sendShared("productionPreset.select", selection);
   }
 
   function startSharedReleaseHandoff() {
@@ -3125,6 +3202,9 @@ export function createSisyphusRuntime(elements = {}) {
       collab.hasControl = false;
       collab.pendingControl = false;
       collab.releasePending = false;
+      if (!collab.initialSettingsSyncComplete) {
+        collab.initialSettingsSyncSent = false;
+      }
       collab.holderIds.clear();
       cancelSharedLocalDrag();
       updateLocalSharedPointer(null, "grab", false);
@@ -3176,6 +3256,13 @@ export function createSisyphusRuntime(elements = {}) {
       receiveRemotePointer(payload);
     } else if (message.type === "audio.play") {
       receiveSessionRoleAudio(payload);
+    } else if (message.type === "productionPreset.current") {
+      settingsController.setProductionPresetState(payload);
+    } else if (message.type === "productionPreset.selected") {
+      settingsController.setProductionPresetState({
+        canSelect: localCanEditSettings(),
+        selection: payload.selection,
+      });
     } else if (message.type === "pong") {
       const sample = Date.now() - Number(payload.serverTime || Date.now());
       collab.clockOffset = collab.clockOffsetReady
@@ -3183,7 +3270,13 @@ export function createSisyphusRuntime(elements = {}) {
         : sample;
       collab.clockOffsetReady = true;
     } else if (message.type === "error") {
-      if (payload.code === "session_not_found") {
+      if (
+        payload.code === "invalid_production_preset" ||
+        payload.code === "production_preset_store_unavailable" ||
+        payload.code === "debug_only"
+      ) {
+        settingsController.setProductionPresetError(payload.message);
+      } else if (payload.code === "session_not_found") {
         collab.expired = true;
         collab.connected = false;
         updateSessionStatus();
@@ -3226,10 +3319,11 @@ export function createSisyphusRuntime(elements = {}) {
     if (Object.hasOwn(payload, "masterViewport")) {
       applyMasterViewport(payload.masterViewport);
     }
-    if (Object.hasOwn(payload, "physics")) {
+    const deferRemoteSettings = syncInitialSettingsVersion(payload);
+    if (Object.hasOwn(payload, "physics") && !deferRemoteSettings) {
       applySharedPhysics(payload.physics);
     }
-    if (Object.hasOwn(payload, "roomSettings")) {
+    if (Object.hasOwn(payload, "roomSettings") && !deferRemoteSettings) {
       applySharedRoomSettings(payload.roomSettings);
     }
     const holderIds = normalizeHolderIds(payload.holderIds);
@@ -4491,6 +4585,7 @@ export function createSisyphusRuntime(elements = {}) {
       getSettingsVersions: settingsController.getSettingsVersions,
       getLatestSettingsVersionPreset:
         settingsController.getLatestSettingsVersionPreset,
+      restartExperience,
       resetTrail,
       sendShared,
       setPosition,
@@ -4504,6 +4599,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
   settingsController.load();
   readControls();
+  settingsController.captureCurrentAsBaseline();
+  collab.initialSettingsVersion =
+    settingsController.getLoadedSettingsVersionEntry();
   document.fonts?.ready.then(() => {
     if (!disposed) {
       fitTopInscription();
