@@ -452,21 +452,30 @@ class SessionManager {
       const masterViewport = Viewport.sanitizeViewport(record.masterViewport);
       const imprint = Physics.createSummitImprint(record.imprint);
       const summitInside = Physics.stateInsideImprint(state, imprint);
-      const hasSummitTimer =
-        Object.hasOwn(record, "summitElapsedMs") ||
-        Object.hasOwn(record, "summitRunningSince");
+      const hasSummitRunningSince = Object.hasOwn(
+        record,
+        "summitRunningSince"
+      );
       const summitElapsedMs = Math.min(
         Number.MAX_SAFE_INTEGER,
         Math.max(0, finite(record.summitElapsedMs, 0))
       );
-      const restoredRunningSince = finite(record.summitRunningSince, null);
+      const restoredRunningSince =
+        record.summitRunningSince === null
+          ? null
+          : finite(record.summitRunningSince, null);
       const summitRunningSince =
-        hasSummitTimer &&
-        (restoredRunningSince !== null || summitElapsedMs > 0 || summitInside)
-          ? Math.min(
-              restoredRunningSince === null ? now : restoredRunningSince,
-              now
-            )
+        restoredRunningSince !== null
+          ? Math.min(restoredRunningSince, now)
+          : hasSummitRunningSince &&
+              summitElapsedMs === 0 &&
+              summitInside
+            ? now
+          : !hasSummitRunningSince &&
+              Object.hasOwn(record, "summitElapsedMs") &&
+              summitElapsedMs > 0 &&
+              summitInside
+            ? now
           : null;
       const lastPointer = {
         vx: finite(record.lastPointer?.vx, 0),
@@ -475,9 +484,10 @@ class SessionManager {
       const lastPointerAt = finite(record.lastPointerAt, 0);
       const releasePointer = pointerVelocityAt(lastPointer, lastPointerAt, now);
 
+      let releasedStoredDrag = false;
       if (record.state?.dragging) {
         if (state.phase === Physics.PHASES.INTRO) {
-          Physics.beginFirstFall(state, physics, {
+          releasedStoredDrag = Physics.beginFirstFall(state, physics, {
             motionScale: RoomSettings.sceneMotionMultiplier(roomSettings),
           });
         } else if (state.phase === Physics.PHASES.PLAY) {
@@ -487,6 +497,7 @@ class SessionManager {
             releasePointer.vx,
             releasePointer.vy
           );
+          releasedStoredDrag = true;
         }
       }
       if (state.phase === Physics.PHASES.WON) {
@@ -533,6 +544,10 @@ class SessionManager {
         dirty: true,
       };
 
+      if (releasedStoredDrag) {
+        this.stopSummitTimer(session, now);
+      }
+      this.syncSummitTimer(session, now);
       this.sessions.set(session.id, session);
       restored += 1;
     });
@@ -684,19 +699,52 @@ class SessionManager {
     );
   }
 
-  syncSummitTimer(session, now = this.now()) {
-    const inside = Physics.stateInsideImprint(session.state, session.imprint);
-    const changedInsideState = inside !== session.summitWasInside;
-    session.summitWasInside = inside;
-
-    if (session.summitRunningSince !== null) {
-      return changedInsideState;
+  stopSummitTimer(session, now = this.now()) {
+    if (session.summitRunningSince === null) {
+      return false;
     }
-    if (inside) {
-      session.summitRunningSince = now;
+    session.summitElapsedMs = this.summitElapsedAt(session, now);
+    session.summitRunningSince = null;
+    return true;
+  }
+
+  summitTimerShouldStopForFall(session) {
+    const state = session.state;
+    if (
+      session.summitRunningSince === null ||
+      state.dragging ||
+      state.suspended
+    ) {
+      return false;
+    }
+    if (state.phase === Physics.PHASES.FALLING) {
       return true;
     }
-    return false;
+    if (state.phase !== Physics.PHASES.PLAY) {
+      return false;
+    }
+    return state.vy >= 0 || state.y >= Physics.WORLD_HEIGHT - 0.01;
+  }
+
+  syncSummitTimer(session, now = this.now()) {
+    const wasInside = session.summitWasInside;
+    const inside = Physics.stateInsideImprint(session.state, session.imprint);
+    const changedInsideState = inside !== wasInside;
+    session.summitWasInside = inside;
+
+    let changed = changedInsideState;
+    if (
+      session.summitRunningSince === null &&
+      inside &&
+      !wasInside
+    ) {
+      session.summitRunningSince = now;
+      changed = true;
+    }
+    if (this.summitTimerShouldStopForFall(session)) {
+      changed = this.stopSummitTimer(session, now) || changed;
+    }
+    return changed;
   }
 
   clearStationaryHold(session) {
@@ -759,6 +807,12 @@ class SessionManager {
           );
       } else if (wasDragging && state.phase === Physics.PHASES.PLAY) {
         state.vy = Math.max(0, state.vy);
+      }
+      if (
+        state.phase === Physics.PHASES.PLAY &&
+        (wasDragging || holderIds.length > 0)
+      ) {
+        this.stopSummitTimer(session, now);
       }
       this.updateStationaryHold(session, now);
       return;

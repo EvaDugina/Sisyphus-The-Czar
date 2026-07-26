@@ -144,6 +144,106 @@ test("клик роли запускает один общий звук у вс�
   slave.socket.close();
 });
 
+test("последняя отпущенная рука останавливает общий секундомер у всех клиентов", async (context) => {
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+  const base = `http://127.0.0.1:${address.port}`;
+  const summitImprint = Physics.createSummitImprint();
+  const created = await fetch(`${base}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      creatorClientId: "integration-timer-master",
+      state: {
+        phase: Physics.PHASES.PLAY,
+        x: Physics.WORLD_WIDTH / 2,
+        y: summitImprint.y,
+        suspended: true,
+      },
+      imprint: summitImprint,
+      physics: {
+        mass: 1,
+        gravity: 1,
+        handForce: 100,
+        turbulence: 0,
+      },
+    }),
+  });
+  assert.equal(created.status, 201);
+
+  const wsBase = `ws://127.0.0.1:${address.port}/realtime`;
+  const master = connect(`${wsBase}?client=integration-timer-master`);
+  const slave = connect(`${wsBase}?client=integration-timer-slave`);
+  await Promise.all([master.opened, slave.opened]);
+  const [masterStart, slaveStart] = await Promise.all([
+    master.waitFor(
+      "session.snapshot",
+      (payload) => payload.summitTimerRunning === true
+    ),
+    slave.waitFor(
+      "session.snapshot",
+      (payload) => payload.summitTimerRunning === true
+    ),
+  ]);
+  assert.equal(masterStart.payload.summitTimerRunning, true);
+  assert.equal(slaveStart.payload.summitTimerRunning, true);
+
+  master.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "control.acquire",
+      seq: 1,
+      payload: {
+        x: Physics.WORLD_WIDTH / 2,
+        y: summitImprint.y,
+      },
+    })
+  );
+  await master.waitFor("control.granted");
+
+  master.socket.send(
+    JSON.stringify({
+      v: 1,
+      type: "control.release",
+      seq: 2,
+      payload: {
+        x: Physics.WORLD_WIDTH / 2,
+        y: summitImprint.y,
+        vx: 0,
+        vy: 0,
+      },
+    })
+  );
+  const [masterStop, slaveStop] = await Promise.all([
+    master.waitFor(
+      "session.snapshot",
+      (payload) =>
+        payload.phase === Physics.PHASES.FALLING &&
+        payload.summitTimerRunning === false
+    ),
+    slave.waitFor(
+      "session.snapshot",
+      (payload) =>
+        payload.phase === Physics.PHASES.FALLING &&
+        payload.summitTimerRunning === false
+    ),
+  ]);
+  assert.equal(
+    masterStop.payload.summitElapsedMs,
+    slaveStop.payload.summitElapsedMs
+  );
+  assert.equal(masterStop.payload.serverTime, slaveStop.payload.serverTime);
+
+  master.socket.close();
+  slave.socket.close();
+});
+
 test("два WebSocket-клиента делят состояние и передают управление", async (context) => {
   const service = createService({
     port: 0,

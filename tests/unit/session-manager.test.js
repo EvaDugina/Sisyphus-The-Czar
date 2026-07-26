@@ -69,6 +69,12 @@ function connect(manager, session, id) {
   return { socket, client };
 }
 
+function setRunningSummitTimer(session, runningSince = 0) {
+  session.summitElapsedMs = 0;
+  session.summitRunningSince = runningSince;
+  session.summitWasInside = false;
+}
+
 test("реестр gachi-звуков совпадает с файлами ассетов", () => {
   const directory = path.resolve(__dirname, "../../assets/audio/gachi");
   const filenames = fs
@@ -283,8 +289,11 @@ test("подвешенный play-старт не двигается до пер
   assert.equal(session.state.dragging, true);
 });
 
-test("секундомер вершины синхронно накапливается без паузы и переживает restart", () => {
-  const { clock, manager } = setup();
+test("секундомер вершины останавливается с последней рукой и продолжается при новом входе", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 10_000,
+    slipDelayMaxMs: 10_000,
+  });
   clock.value = 1000;
   const session = manager.createSession({
     state: {
@@ -313,20 +322,70 @@ test("секундомер вершины синхронно накаплива�
   assert.deepEqual(slaveStart.payload, masterStart.payload);
 
   clock.value = 3000;
-  session.state.y = session.imprint.y + session.imprint.toleranceY + 1;
-  manager.tick();
+  manager.acquireControl(session, master.client, {
+    x: session.imprint.x,
+    y: session.imprint.y,
+  });
+  manager.acquireControl(session, slave.client, {
+    x: session.imprint.x,
+    y: session.imprint.y,
+  });
+  const outsideY = session.imprint.y + session.imprint.toleranceY + 100;
+  manager.moveControl(session, master.client, {
+    x: session.imprint.x,
+    y: outsideY,
+  });
+  manager.moveControl(session, slave.client, {
+    x: session.imprint.x,
+    y: outsideY,
+  });
   assert.equal(manager.snapshot(session).summitElapsedMs, 2000);
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 
+  manager.releaseControl(session, master.client, {
+    x: session.imprint.x,
+    y: outsideY,
+    vx: 0,
+    vy: 0,
+  });
+  assert.equal(session.state.dragging, true);
+  assert.equal(manager.snapshot(session).summitTimerRunning, true);
+
+  clock.value = 3500;
+  manager.releaseControl(session, slave.client, {
+    x: session.imprint.x,
+    y: outsideY,
+    vx: 0,
+    vy: -2000,
+  });
+  const masterStop = master.socket.messages.findLast(
+    (message) =>
+      message.type === "session.snapshot" &&
+      message.payload.summitTimerRunning === false
+  );
+  const slaveStop = slave.socket.messages.findLast(
+    (message) =>
+      message.type === "session.snapshot" &&
+      message.payload.summitTimerRunning === false
+  );
+  assert.equal(masterStop.payload.summitElapsedMs, 2500);
+  assert.equal(slaveStop.payload.summitElapsedMs, 2500);
+  assert.equal(session.state.dragging, false);
+
   clock.value = 5000;
   manager.tick();
-  assert.equal(manager.snapshot(session).summitElapsedMs, 4000);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 2500);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
 
   clock.value = 6000;
+  session.state.suspended = true;
+  session.state.vx = 0;
+  session.state.vy = 0;
+  session.state.x = session.imprint.x;
   session.state.y = session.imprint.y;
   manager.tick();
   clock.value = 7500;
-  assert.equal(manager.snapshot(session).summitElapsedMs, 6500);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 4000);
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 
   clock.value = 8000;
@@ -336,7 +395,7 @@ test("секундомер вершины синхронно накаплива�
     suspended: true,
   });
   const restarted = manager.snapshot(session);
-  assert.equal(restarted.summitElapsedMs, 7000);
+  assert.equal(restarted.summitElapsedMs, 4500);
   assert.equal(restarted.summitTimerRunning, true);
 });
 
@@ -372,6 +431,148 @@ test("активный секундомер вершины сохраняетс�
   restoredSetup.manager.tick();
   assert.equal(restoredSetup.manager.snapshot(restored).summitElapsedMs, 3500);
   assert.equal(restoredSetup.manager.snapshot(restored).summitTimerRunning, true);
+});
+
+test("явный нулевой reset таймера на вершине начинает отсчёт от restore, а не от epoch", () => {
+  const restoredSetup = setup();
+  const imprint = Physics.createSummitImprint();
+  restoredSetup.clock.value = 1_800_000_000_000;
+  assert.equal(
+    restoredSetup.manager.restoreSessions([
+      {
+        id: "SisyphusGlobalRoom0000",
+        state: {
+          phase: Physics.PHASES.PLAY,
+          x: Physics.WORLD_WIDTH / 2,
+          y: imprint.y,
+          suspended: true,
+        },
+        imprint,
+        expiresAt: restoredSetup.clock.value + 10_000,
+        emptyDeleteAt: null,
+        summitElapsedMs: 0,
+        summitRunningSince: null,
+      },
+    ]),
+    1
+  );
+
+  const restored = restoredSetup.manager.getSession("SisyphusGlobalRoom0000");
+  assert.equal(restored.summitRunningSince, restoredSetup.clock.value);
+  assert.equal(restoredSetup.manager.snapshot(restored).summitElapsedMs, 0);
+  assert.equal(restoredSetup.manager.snapshot(restored).summitTimerRunning, true);
+
+  restoredSetup.clock.value += 1000;
+  assert.equal(restoredSetup.manager.snapshot(restored).summitElapsedMs, 1000);
+});
+
+test("остановленный секундомер сохраняется и старая упавшая сессия замораживается при restore", () => {
+  const firstSetup = setup();
+  const summitY = Physics.createSummitImprint().y;
+  firstSetup.clock.value = 1000;
+  const stopped = firstSetup.manager.createSession({
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: Physics.WORLD_WIDTH / 2,
+      y: summitY,
+      suspended: true,
+    },
+  });
+
+  firstSetup.clock.value = 3000;
+  assert.equal(firstSetup.manager.stopSummitTimer(stopped), true);
+  const stoppedRecord = firstSetup.manager.serializeSessions()[0];
+  assert.equal(stoppedRecord.summitElapsedMs, 2000);
+  assert.equal(stoppedRecord.summitRunningSince, null);
+
+  const restoredSetup = setup();
+  restoredSetup.clock.value = 4000;
+  assert.equal(
+    restoredSetup.manager.restoreSessions([
+      stoppedRecord,
+      {
+        id: "timerfallen00000000000",
+        state: {
+          phase: Physics.PHASES.PLAY,
+          x: Physics.WORLD_WIDTH / 2,
+          y: Physics.WORLD_HEIGHT,
+          suspended: false,
+        },
+        imprint: Physics.createSummitImprint(),
+        expiresAt: 10_000,
+        emptyDeleteAt: null,
+        summitElapsedMs: 500,
+        summitRunningSince: 1000,
+      },
+      {
+        id: "timerdragged0000000000",
+        state: {
+          phase: Physics.PHASES.PLAY,
+          x: Physics.WORLD_WIDTH / 2,
+          y: summitY,
+          vy: -500,
+          dragging: true,
+          suspended: false,
+        },
+        imprint: Physics.createSummitImprint(),
+        expiresAt: 10_000,
+        emptyDeleteAt: null,
+        lastPointer: { vx: 0, vy: -1000 },
+        lastPointerAt: 4000,
+        summitElapsedMs: 250,
+        summitRunningSince: 1000,
+      },
+    ]),
+    3
+  );
+
+  const restoredStopped = restoredSetup.manager.getSession(stoppedRecord.id);
+  const restoredFallen = restoredSetup.manager.getSession(
+    "timerfallen00000000000"
+  );
+  const restoredDragged = restoredSetup.manager.getSession(
+    "timerdragged0000000000"
+  );
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredStopped).summitElapsedMs,
+    2000
+  );
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredStopped).summitTimerRunning,
+    false
+  );
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredFallen).summitElapsedMs,
+    3500
+  );
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredFallen).summitTimerRunning,
+    false
+  );
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredDragged).summitElapsedMs,
+    3250
+  );
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredDragged).summitTimerRunning,
+    false
+  );
+  assert.ok(restoredDragged.state.vy < 0);
+
+  restoredSetup.clock.value = 6000;
+  restoredSetup.manager.tick();
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredStopped).summitElapsedMs,
+    2000
+  );
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredFallen).summitElapsedMs,
+    3500
+  );
+  assert.equal(
+    restoredSetup.manager.snapshot(restoredDragged).summitElapsedMs,
+    3250
+  );
 });
 
 test("старая сессия внутри вершины получает нулевой таймер на паузе", () => {
@@ -803,12 +1004,14 @@ test("камень движется когда суммарная сила ру�
   });
   const first = connect(manager, session, "client-lock-a-001");
   const second = connect(manager, session, "client-lock-b-001");
+  setRunningSummitTimer(session);
 
   assert.equal(manager.acquireControl(session, first.client, {}), true);
   assert.equal(session.state.dragging, false);
   assert.deepEqual([...session.holders.keys()], [first.client.id]);
   assert.equal(session.state.controllerId, null);
   assert.ok(session.state.vy > 0);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
 
   assert.equal(manager.acquireControl(session, second.client, {}), true);
   assert.equal(session.state.dragging, true);
@@ -1090,22 +1293,32 @@ test("подключение после grace не воскрешает удал
   assert.equal(manager.sessions.has(session.id), false);
 });
 
-test("разрыв соединения сразу убирает участника из держателей камня", () => {
-  const { manager } = setup();
+test("разрыв соединения убирает держателя и останавливает таймер с последней рукой", () => {
+  const { clock, manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, y: Physics.WORLD_HEIGHT },
   });
   const first = connect(manager, session, "client-drop-00001");
   const second = connect(manager, session, "client-drop-00002");
+  setRunningSummitTimer(session);
   manager.acquireControl(session, first.client, {});
   manager.acquireControl(session, second.client, {});
   assert.equal(session.state.dragging, true);
 
+  clock.value = 100;
   manager.disconnectClient(session, first.client.id, first.socket);
 
   assert.equal(session.state.dragging, true);
   assert.equal(session.state.controllerId, second.client.id);
   assert.deepEqual([...session.holders.keys()], [second.client.id]);
+  assert.equal(manager.snapshot(session).summitTimerRunning, true);
+
+  clock.value = 250;
+  manager.disconnectClient(session, second.client.id, second.socket);
+
+  assert.equal(session.state.dragging, false);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 250);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
 });
 
 test("касание земли увеличивает счётчик для клиентского сброса траектории", () => {
@@ -1165,7 +1378,7 @@ test("общая root-сессия не удаляется после ухода
   assert.equal(manager.getSession(DEFAULT_SESSION_ID), session);
 });
 
-test("пустой ensureDefaultSession не прерывает восстановленный root-секундомер", () => {
+test("пустой ensureDefaultSession сохраняет замороженный таймер упавшей root-комнаты", () => {
   const { clock, manager } = setup();
   clock.value = 4000;
   assert.equal(
@@ -1189,7 +1402,7 @@ test("пустой ensureDefaultSession не прерывает восстано
 
   const session = manager.ensureDefaultSession();
   assert.equal(manager.snapshot(session).summitElapsedMs, 3000);
-  assert.equal(manager.snapshot(session).summitTimerRunning, true);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
 });
 
 test("production preset обновляет root-настройки без сброса состояния и времени", () => {
@@ -1575,6 +1788,7 @@ test("неподвижный камень в воздухе выпадает и�
   });
   const first = connect(manager, session, "client-still-drop-01");
   const second = connect(manager, session, "client-still-drop-02");
+  setRunningSummitTimer(session);
 
   manager.acquireControl(session, first.client, { x: 500, y: 700 });
   manager.acquireControl(session, second.client, { x: 500, y: 700 });
@@ -1589,6 +1803,8 @@ test("неподвижный камень в воздухе выпадает и�
   assert.equal(session.holders.size, 0);
   assert.equal(session.state.dragging, false);
   assert.equal(session.state.controllerId, null);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 200);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
   assert.equal(
     first.socket.messages.findLast(
       (message) => message.type === "control.slipped"
@@ -1729,6 +1945,7 @@ test("движущийся камень сохраняет независимо�
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
   });
   const holder = connect(manager, session, "client-moving-slip01");
+  setRunningSummitTimer(session);
   manager.acquireControl(session, holder.client, { x: 500, y: 700 });
 
   for (const [time, x] of [
@@ -1743,6 +1960,8 @@ test("движущийся камень сохраняет независимо�
   manager.tick();
 
   assert.equal(session.holders.size, 0);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 501);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
   assert.equal(
     holder.socket.messages.findLast(
       (message) => message.type === "control.slipped"
