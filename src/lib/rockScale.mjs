@@ -65,24 +65,24 @@ export function normalizeRockScaleEasing(
 }
 
 export function normalizeRockWidthVwRange(raw = {}, defaults = {}) {
-  const fallbackMin = normalizeWidthVw(
+  const fallbackStart = normalizeWidthVw(
     defaults.rockMinWidthVw,
     DEFAULT_ROCK_MIN_WIDTH_VW,
   );
-  const fallbackMax = normalizeWidthVw(
+  const fallbackEnd = normalizeWidthVw(
     defaults.rockMaxWidthVw,
     DEFAULT_ROCK_MAX_WIDTH_VW,
   );
-  let min = normalizeWidthVw(raw.rockMinWidthVw, fallbackMin);
-  let max = normalizeWidthVw(raw.rockMaxWidthVw, fallbackMax);
-
-  if (min > max) {
-    [min, max] = [max, min];
-  }
 
   return {
-    rockMinWidthVw: min,
-    rockMaxWidthVw: max,
+    rockMinWidthVw: normalizeWidthVw(
+      raw.rockMinWidthVw,
+      fallbackStart,
+    ),
+    rockMaxWidthVw: normalizeWidthVw(
+      raw.rockMaxWidthVw,
+      fallbackEnd,
+    ),
   };
 }
 

@@ -210,8 +210,14 @@ export function createSettingsController(options) {
       return [];
     }
     return settingsPanel.querySelectorAll(
-      "[data-setting-control] input, [data-setting-control] select",
+      "[data-setting-control] input[name], [data-setting-control] select[name]",
     );
+  }
+
+  function notifySettingControlSync(input) {
+    if (input?.matches("[data-cubic-bezier-control] input[name]")) {
+      input.dispatchEvent(new Event("settings-control-sync"));
+    }
   }
 
   function saveSettings() {
@@ -777,6 +783,7 @@ export function createSettingsController(options) {
       input.checked = Boolean(params[key]);
     } else {
       input.value = settingValueToControlValue(key, params[key]);
+      notifySettingControlSync(input);
     }
   }
 
@@ -986,6 +993,7 @@ export function createSettingsController(options) {
           changedKeys.push(key);
         }
         element.value = value;
+        notifySettingControlSync(element);
       }
     });
     settingsVersions.selectedId = entry.id;
@@ -1096,9 +1104,12 @@ export function createSettingsController(options) {
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
-      returnScrollDurationSeconds: secondsOutput(
-        params.returnScrollDurationSeconds,
-      ),
+      positionScrollZonePercent:
+        `${params.positionScrollZonePercent.toFixed(1)}%`,
+      positionScrollStartSpeedVh:
+        params.positionScrollStartSpeedVh.toFixed(2),
+      positionScrollEndSpeedVh:
+        params.positionScrollEndSpeedVh.toFixed(2),
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
       slaveHandWidthPx: `${params.slaveHandWidthPx.toFixed(0)}px`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
@@ -1111,6 +1122,8 @@ export function createSettingsController(options) {
       rainEnterMs: secondsOutput(params.rainEnterMs / 1000),
       rainExitMs: secondsOutput(params.rainExitMs / 1000),
       lineDelay: params.lineDelay.toFixed(2),
+      trailAnchorHeightPercent:
+        `${params.trailAnchorHeightPercent.toFixed(0)}%`,
       trailMaxPoints: params.trailMaxPoints.toFixed(0),
       trailSampleDist: params.trailSampleDist.toFixed(0),
       lineWidth: params.lineWidth.toFixed(0),

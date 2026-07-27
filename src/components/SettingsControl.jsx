@@ -1,3 +1,5 @@
+import { CubicBezierControl } from "./CubicBezierControl";
+
 export function SettingsControl({ control }) {
   const {
     defaultChecked,
@@ -16,6 +18,10 @@ export function SettingsControl({ control }) {
       ? JSON.stringify(formulas)
       : undefined;
 
+  if (type === "cubic-bezier") {
+    return <CubicBezierControl control={control} />;
+  }
+
   if (type === "checkbox") {
     return (
       <label
@@ -24,7 +30,12 @@ export function SettingsControl({ control }) {
         data-formulas={formulasAttr}
         data-setting-control
       >
-        <input name={name} type="checkbox" defaultChecked={defaultChecked} />
+        <input
+          data-setting-input
+          name={name}
+          type="checkbox"
+          defaultChecked={defaultChecked}
+        />
         <span>{label}</span>
       </label>
     );
@@ -32,7 +43,7 @@ export function SettingsControl({ control }) {
 
   const field =
     type === "select" ? (
-      <select name={name} defaultValue={defaultValue}>
+      <select data-setting-input name={name} defaultValue={defaultValue}>
         {options.map(([value, text]) => (
           <option key={value} value={value}>
             {text}
@@ -42,6 +53,7 @@ export function SettingsControl({ control }) {
     ) : (
       <input
         name={name}
+        data-setting-input
         type={type}
         defaultValue={defaultValue}
         {...inputProps}

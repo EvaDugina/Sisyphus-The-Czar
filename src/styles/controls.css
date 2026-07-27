@@ -387,6 +387,182 @@ input[type="range"] {
   font-size: 0.9rem;
 }
 
+.cubic-bezier-control {
+  gap: 0.65rem;
+}
+
+.bezier-editor {
+  display: grid;
+  gap: 0.6rem;
+}
+
+.bezier-graph {
+  width: 100%;
+  aspect-ratio: 1.45;
+  overflow: visible;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: repeating-linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--surface) 65%, transparent) 0,
+    color-mix(in srgb, var(--surface) 65%, transparent) 24%,
+    color-mix(in srgb, var(--line) 35%, transparent) 25%
+  );
+  touch-action: none;
+}
+
+.bezier-grid-line,
+.bezier-diagonal,
+.bezier-handle-line,
+.bezier-curve {
+  fill: none;
+}
+
+.bezier-grid-line {
+  stroke: color-mix(in srgb, var(--line) 55%, transparent);
+  stroke-width: 0.6;
+}
+
+.bezier-diagonal {
+  stroke: color-mix(in srgb, var(--muted) 30%, transparent);
+  stroke-width: 1;
+}
+
+.bezier-handle-line {
+  stroke: var(--muted);
+  stroke-width: 1.2;
+}
+
+.bezier-curve {
+  stroke: var(--ink);
+  stroke-linecap: round;
+  stroke-width: 3;
+}
+
+.bezier-handle {
+  cursor: grab;
+  stroke: var(--panel);
+  stroke-width: 2;
+}
+
+.bezier-handle:active {
+  cursor: grabbing;
+}
+
+.bezier-handle.is-1 {
+  fill: #ef168f;
+}
+
+.bezier-handle.is-2 {
+  fill: #11aabd;
+}
+
+.bezier-axis-label {
+  fill: var(--muted);
+  font-size: 6px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.bezier-coordinate-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 0.35rem;
+}
+
+.bezier-coordinate-grid label,
+.bezier-value-label {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+
+.bezier-coordinate-grid input {
+  min-width: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+.bezier-value-label input[aria-invalid="true"] {
+  border-color: #d45b69;
+}
+
+.bezier-preview-panel {
+  display: grid;
+  gap: 0.5rem;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 45%, transparent);
+}
+
+.bezier-preview-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.bezier-preview-header button {
+  padding: 0.2rem 0.4rem;
+  border: 1px solid var(--line);
+  border-radius: 5px;
+  background: var(--panel);
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.72rem;
+}
+
+.bezier-preview {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.bezier-preview-row {
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  gap: 0.45rem;
+  align-items: center;
+  color: var(--muted);
+  font-size: 0.68rem;
+}
+
+.bezier-preview-track {
+  position: relative;
+  display: block;
+  height: 0.8rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--line) 45%, transparent);
+}
+
+.bezier-preview-marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: #ef168f;
+  animation: bezier-preview-motion 1.35s
+    var(--bezier-preview-easing) both;
+}
+
+.bezier-preview-marker.is-linear {
+  background: #11aabd;
+  animation-timing-function: linear;
+}
+
+@keyframes bezier-preview-motion {
+  to {
+    left: calc(100% - 0.8rem);
+  }
+}
+
 .control select {
   cursor: pointer;
 }

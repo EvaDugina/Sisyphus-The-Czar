@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 10;
+  const ROOM_SETTINGS_VERSION = 11;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -20,6 +20,8 @@
   const DEFAULT_HAND_FORCE_DEFICIT_EASING =
     "cubic-bezier(0.42, 0, 1, 1)";
   const DEFAULT_RETURN_SCROLL_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
+  const DEFAULT_POSITION_SCROLL_EASING =
+    "cubic-bezier(0.17, 0.67, 0.83, 0.67)";
   const ROCK_WIDTH_VW_LIMITS = Object.freeze([1, 150]);
 
   const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
@@ -46,6 +48,8 @@
   const ROOM_SETTINGS_LIMITS = Object.freeze({
     sceneHeightScreens: [1, 100],
     returnScrollDurationSeconds: [0, 10],
+    positionScrollZonePercent: [0, 20],
+    positionScrollSpeedVh: [0, 2],
     handWidthVw: [10, 90],
     slaveHandWidthPx: [8, 96],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
@@ -58,6 +62,7 @@
     rainZIndex: [0, 30],
     rainTimingMs: [0, 20000],
     lineDelay: [0, 1],
+    trailAnchorHeightPercent: [0, 100],
     trailMaxPoints: [20, 2000],
     trailSampleDist: [1, 40],
     lineWidth: [1, 60],
@@ -73,6 +78,13 @@
     sceneHeightScreens: DEFAULT_SCENE_HEIGHT_SCREENS,
     returnScrollDurationSeconds: 4,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
+    stationaryAutoSlipEnabled: true,
+    positionScrollEnabled: true,
+    positionScrollZonePercent: 20,
+    positionScrollStartSpeedVh: 0.2,
+    positionScrollEndSpeedVh: 1,
+    positionScrollEasing: DEFAULT_POSITION_SCROLL_EASING,
+    manualVerticalScrollEnabled: true,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
@@ -98,6 +110,7 @@
     trailEnabled: true,
     trailReset: false,
     lineDelay: 0.5,
+    trailAnchorHeightPercent: 100,
     trailMaxPoints: 1000,
     trailUnlimited: false,
     trailSampleDist: 6,
@@ -223,26 +236,23 @@
 
   function normalizeRockWidthRange(source, fallbackSource) {
     const [minLimit, maxLimit] = ROOM_SETTINGS_LIMITS.rockWidthVw;
-    let min = finiteSetting(
+    const start = finiteSetting(
       source,
       fallbackSource,
       "rockMinWidthVw",
       minLimit,
       maxLimit
     );
-    let max = finiteSetting(
+    const end = finiteSetting(
       source,
       fallbackSource,
       "rockMaxWidthVw",
       minLimit,
       maxLimit
     );
-    if (min > max) {
-      [min, max] = [max, min];
-    }
     return {
-      rockMinWidthVw: min,
-      rockMaxWidthVw: max,
+      rockMinWidthVw: start,
+      rockMaxWidthVw: end,
     };
   }
 
@@ -253,6 +263,10 @@
     const [sceneMin, sceneMax] = ROOM_SETTINGS_LIMITS.sceneHeightScreens;
     const [returnScrollMin, returnScrollMax] =
       ROOM_SETTINGS_LIMITS.returnScrollDurationSeconds;
+    const [positionScrollZoneMin, positionScrollZoneMax] =
+      ROOM_SETTINGS_LIMITS.positionScrollZonePercent;
+    const [positionScrollSpeedMin, positionScrollSpeedMax] =
+      ROOM_SETTINGS_LIMITS.positionScrollSpeedVh;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
     const [slaveHandMin, slaveHandMax] = ROOM_SETTINGS_LIMITS.slaveHandWidthPx;
     const [rainStrengthMin, rainStrengthMax] = ROOM_SETTINGS_LIMITS.rainStrength;
@@ -267,6 +281,8 @@
     const [zIndexMin, zIndexMax] = ROOM_SETTINGS_LIMITS.rainZIndex;
     const [timingMin, timingMax] = ROOM_SETTINGS_LIMITS.rainTimingMs;
     const [lineDelayMin, lineDelayMax] = ROOM_SETTINGS_LIMITS.lineDelay;
+    const [trailAnchorMin, trailAnchorMax] =
+      ROOM_SETTINGS_LIMITS.trailAnchorHeightPercent;
     const [trailPointsMin, trailPointsMax] = ROOM_SETTINGS_LIMITS.trailMaxPoints;
     const [sampleMin, sampleMax] = ROOM_SETTINGS_LIMITS.trailSampleDist;
     const [lineWidthMin, lineWidthMax] = ROOM_SETTINGS_LIMITS.lineWidth;
@@ -298,6 +314,47 @@
         source,
         fallbackSource,
         "returnScrollEasing"
+      ),
+      stationaryAutoSlipEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "stationaryAutoSlipEnabled"
+      ),
+      positionScrollEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "positionScrollEnabled"
+      ),
+      positionScrollZonePercent: finiteSetting(
+        source,
+        fallbackSource,
+        "positionScrollZonePercent",
+        positionScrollZoneMin,
+        positionScrollZoneMax
+      ),
+      positionScrollStartSpeedVh: finiteSetting(
+        source,
+        fallbackSource,
+        "positionScrollStartSpeedVh",
+        positionScrollSpeedMin,
+        positionScrollSpeedMax
+      ),
+      positionScrollEndSpeedVh: finiteSetting(
+        source,
+        fallbackSource,
+        "positionScrollEndSpeedVh",
+        positionScrollSpeedMin,
+        positionScrollSpeedMax
+      ),
+      positionScrollEasing: cubicBezierSetting(
+        source,
+        fallbackSource,
+        "positionScrollEasing"
+      ),
+      manualVerticalScrollEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "manualVerticalScrollEnabled"
       ),
       rockScaleEasing: cubicBezierSetting(
         source,
@@ -426,6 +483,13 @@
         "lineDelay",
         lineDelayMin,
         lineDelayMax
+      ),
+      trailAnchorHeightPercent: finiteSetting(
+        source,
+        fallbackSource,
+        "trailAnchorHeightPercent",
+        trailAnchorMin,
+        trailAnchorMax
       ),
       trailMaxPoints: integerSetting(
         source,

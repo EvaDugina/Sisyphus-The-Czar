@@ -211,14 +211,20 @@ test("production DEBUG включает UI, draft и изолирует личн
     await expect(slave.locator("#settings-version-current")).toHaveText(
       "Черновик",
     );
-    await setRangeValue(slave, "gravity", 8.25);
-    await expect(page.locator('[name="gravity"]')).toHaveValue("9");
-
     await slave.locator(".settings-version-toggle").click();
     const slaveProductionButton = slave.locator(
       '[data-production-preset-select="latest"]',
     );
-    await expect(slaveProductionButton).toHaveCount(0);
+    await expect(slaveProductionButton).toBeDisabled();
+    await slave
+      .locator('[data-settings-version-choice="latest"]')
+      .click();
+    await expect(slave.locator("#settings-version-current")).toContainText(
+      "Последний",
+    );
+    await expect(slave.locator('[name="gravity"]')).toHaveValue("9");
+    await setRangeValue(slave, "gravity", 8.25);
+    await expect(page.locator('[name="gravity"]')).toHaveValue("9");
   } finally {
     await slaveContext.close();
   }

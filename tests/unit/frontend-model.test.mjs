@@ -16,6 +16,11 @@ import {
   parseCubicBezier,
   rockScaleForY,
 } from "../../src/lib/rockScale.mjs";
+import {
+  positionScrollDistancePx,
+  positionScrollState,
+} from "../../src/lib/positionScroll.mjs";
+import { trailAnchorPoint } from "../../src/lib/trailAnchor.mjs";
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
 import { formatSummitElapsedMs } from "../../src/lib/summitTimer.mjs";
@@ -151,12 +156,6 @@ test("настройка темы содержит автоматический 
   const themeMode = viewGroup.controls.find(
     (control) => control.name === "themeMode"
   );
-  const returnScrollDurationSeconds = viewGroup.controls.find(
-    (control) => control.name === "returnScrollDurationSeconds"
-  );
-  const returnScrollEasing = viewGroup.controls.find(
-    (control) => control.name === "returnScrollEasing"
-  );
 
   assert.equal(normalizeThemeMode("dark"), "dark");
   assert.equal(normalizeThemeMode("light"), "light");
@@ -169,35 +168,13 @@ test("настройка темы содержит автоматический 
     ["dark", "Тёмная"],
     ["light", "Светлая"],
   ]);
-  assert.deepEqual(
-    {
-      label: returnScrollDurationSeconds.label,
-      type: returnScrollDurationSeconds.type,
-      min: returnScrollDurationSeconds.min,
-      max: returnScrollDurationSeconds.max,
-      step: returnScrollDurationSeconds.step,
-      defaultValue: returnScrollDurationSeconds.defaultValue,
-    },
-    {
-      label: "Скролл наверх, с",
-      type: "range",
-      min: 0,
-      max: 10,
-      step: 0.1,
-      defaultValue: 4,
-    },
-  );
-  assert.deepEqual(
-    {
-      label: returnScrollEasing.label,
-      type: returnScrollEasing.type,
-      defaultValue: returnScrollEasing.defaultValue,
-    },
-    {
-      label: "Кривая скролла",
-      type: "text",
-      defaultValue: "cubic-bezier(0.4, 0, 0.2, 1)",
-    },
+  assert.equal(
+    viewGroup.controls.some(
+      (control) =>
+        control.name === "returnScrollDurationSeconds" ||
+        control.name === "returnScrollEasing",
+    ),
+    false,
   );
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings({
@@ -512,7 +489,7 @@ test("параметры формул подъёма и падения имею�
     },
     {
       label: "Кривая нехватки силы",
-      type: "text",
+      type: "cubic-bezier",
       defaultValue: "cubic-bezier(0.42, 0, 1, 1)",
       spellCheck: false,
     },
@@ -577,6 +554,75 @@ test("масштаб камня считается по высоте и разм
     1,
   ]);
   assert.equal(parseCubicBezier("linear"), null);
+
+  const shrinkingOptions = {
+    ...options,
+    minWidthVw: 40,
+    maxWidthVw: 10,
+  };
+  assert.equal(rockScaleForY(900, 900, shrinkingOptions), 2);
+  assert.equal(rockScaleForY(0, 900, shrinkingOptions), 0.5);
+});
+
+test("позиционный скролл использует viewport-зону, easing и vh", () => {
+  const settings = {
+    enabled: true,
+    zonePercent: 20,
+    startSpeedVh: 0.2,
+    endSpeedVh: 1,
+    easing: "cubic-bezier(0, 0, 1, 1)",
+  };
+
+  assert.deepEqual(positionScrollState(201, 1000, settings), {
+    active: false,
+    progress: 0,
+    speedVh: 0,
+    zoneHeight: 200,
+  });
+  assert.deepEqual(positionScrollState(200, 1000, settings), {
+    active: true,
+    progress: 0,
+    speedVh: 0.2,
+    zoneHeight: 200,
+  });
+  assert.equal(positionScrollState(0, 1000, settings).speedVh, 1);
+  assert.ok(
+    Math.abs(positionScrollState(100, 1000, settings).speedVh - 0.6) <
+      1e-9,
+  );
+  assert.equal(positionScrollState(0, 1000, {
+    ...settings,
+    enabled: false,
+  }).active, false);
+  assert.equal(positionScrollState(0, 1000, {
+    ...settings,
+    zonePercent: 0,
+  }).active, false);
+  assert.equal(positionScrollDistancePx(1, 1000, 1 / 60), 10);
+  assert.equal(positionScrollDistancePx(0.2, 500, 1 / 60), 1);
+});
+
+test("точка траектории задаётся по высоте масштабированного камня", () => {
+  const base = {
+    x: 40,
+    y: 100,
+    width: 200,
+    height: 100,
+    scale: 2,
+  };
+
+  assert.deepEqual(trailAnchorPoint({
+    ...base,
+    heightPercent: 0,
+  }), { x: 140, y: 50 });
+  assert.deepEqual(trailAnchorPoint({
+    ...base,
+    heightPercent: 50,
+  }), { x: 140, y: 150 });
+  assert.deepEqual(trailAnchorPoint({
+    ...base,
+    heightPercent: 100,
+  }), { x: 140, y: 250 });
 });
 
 test("настройки размера камня есть в UI и получают fallback", () => {
@@ -610,8 +656,8 @@ test("настройки размера камня есть в UI и получ�
       },
     ),
     {
-      rockMinWidthVw: 20,
-      rockMaxWidthVw: 80,
+      rockMinWidthVw: 80,
+      rockMaxWidthVw: 20,
       rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     },
   );
@@ -625,13 +671,85 @@ test("настройки размера камня есть в UI и получ�
       "rockMaxWidthVw",
     ],
   );
-  assert.equal(rockScaleEasing.type, "text");
+  assert.equal(rockScaleEasing.type, "cubic-bezier");
   assert.equal(rockScaleEasing.label, "Кривая размера");
   assert.equal(rockScaleEasing.defaultValue, DEFAULT_ROCK_SCALE_EASING);
   assert.equal(rockMinWidthVw.type, "number");
+  assert.equal(rockMinWidthVw.label, "Начальный размер, %");
   assert.equal(rockMinWidthVw.defaultValue, DEFAULT_ROCK_MIN_WIDTH_VW);
   assert.equal(rockMaxWidthVw.type, "number");
+  assert.equal(rockMaxWidthVw.label, "Конечный размер, %");
   assert.equal(rockMaxWidthVw.defaultValue, DEFAULT_ROCK_MAX_WIDTH_VW);
+});
+
+test("UI содержит настройки автоматики, scroll, overflow и anchor", () => {
+  const automationGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Автоматика и скролл",
+  );
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const byName = (name) =>
+    controls.find((control) => control.name === name);
+
+  assert.ok(automationGroup);
+  assert.deepEqual(
+    automationGroup.controls.map((control) => control.name),
+    [
+      "stationaryAutoSlipEnabled",
+      "positionScrollEnabled",
+      "positionScrollZonePercent",
+      "positionScrollStartSpeedVh",
+      "positionScrollEndSpeedVh",
+      "positionScrollEasing",
+      "manualVerticalScrollEnabled",
+    ],
+  );
+  assert.equal(byName("stationaryAutoSlipEnabled").defaultChecked, true);
+  assert.equal(byName("positionScrollEnabled").defaultChecked, true);
+  assert.equal(byName("manualVerticalScrollEnabled").defaultChecked, true);
+  assert.deepEqual(
+    [
+      byName("positionScrollZonePercent").min,
+      byName("positionScrollZonePercent").max,
+      byName("positionScrollZonePercent").step,
+      byName("positionScrollZonePercent").defaultValue,
+    ],
+    [0, 20, 0.1, 20],
+  );
+  assert.deepEqual(
+    [
+      byName("positionScrollStartSpeedVh").min,
+      byName("positionScrollStartSpeedVh").max,
+      byName("positionScrollStartSpeedVh").step,
+      byName("positionScrollStartSpeedVh").defaultValue,
+    ],
+    [0, 2, 0.01, 0.2],
+  );
+  assert.equal(byName("positionScrollEndSpeedVh").defaultValue, 1);
+  assert.equal(byName("positionScrollEasing").type, "cubic-bezier");
+  assert.equal(
+    byName("positionScrollEasing").defaultValue,
+    "cubic-bezier(0.17, 0.67, 0.83, 0.67)",
+  );
+  assert.deepEqual(
+    [
+      byName("trailAnchorHeightPercent").min,
+      byName("trailAnchorHeightPercent").max,
+      byName("trailAnchorHeightPercent").step,
+      byName("trailAnchorHeightPercent").defaultValue,
+    ],
+    [0, 100, 1, 100],
+  );
+  assert.equal(byName("bounce").step, 0.01);
+
+  [
+    "rockScaleEasing",
+    "handForceDeficitEasing",
+    "positionScrollEasing",
+    "rainEnterEasing",
+    "rainExitEasing",
+  ].forEach((name) => {
+    assert.equal(byName(name).type, "cubic-bezier");
+  });
 });
 
 test("общие визуальные настройки комнаты есть в UI", () => {
@@ -678,12 +796,7 @@ test("общие визуальные настройки комнаты есть
   );
   assert.deepEqual(
     viewGroup.controls.map((control) => control.name),
-    [
-      "themeMode",
-      "sceneHeightScreens",
-      "returnScrollDurationSeconds",
-      "returnScrollEasing",
-    ],
+    ["themeMode", "sceneHeightScreens"],
   );
   assert.deepEqual(
     physicsGroup.controls.map((control) => control.name),
@@ -899,7 +1012,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 10);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 11);
   assert.equal(
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
     "cubic-bezier(0.42, 0, 1, 1)",

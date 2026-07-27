@@ -25,6 +25,12 @@ body.is-scroll-locked {
   overscroll-behavior-y: none;
 }
 
+html.is-manual-scroll-disabled,
+body.is-manual-scroll-disabled {
+  overflow-y: hidden;
+  overscroll-behavior-y: none;
+}
+
 html.is-scroll-locked {
   height: 100%;
 }

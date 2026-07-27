@@ -201,6 +201,245 @@ test("dev UI мгновенно применяет последний парам
     .toBe(9.5);
 });
 
+test("scroll UI, cubic editor и новые настройки сохраняются вместе", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Вид");
+  await openControlGroup(page, "Автоматика и скролл");
+  await openControlGroup(page, "Физика");
+  await openControlGroup(page, "Камень");
+  await openControlGroup(page, "Траектория");
+
+  await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toBeChecked();
+  await expect(page.locator('[name="positionScrollEnabled"]')).toBeChecked();
+  await expect(page.locator('[name="manualVerticalScrollEnabled"]')).toBeChecked();
+  await expect(page.locator('[name="positionScrollZonePercent"]')).toHaveValue(
+    "20",
+  );
+  await expect(page.locator('[name="positionScrollStartSpeedVh"]')).toHaveValue(
+    "0.2",
+  );
+  await expect(page.locator('[name="positionScrollEndSpeedVh"]')).toHaveValue(
+    "1",
+  );
+  await expect(page.locator('[name="trailAnchorHeightPercent"]')).toHaveValue(
+    "100",
+  );
+  await expect(page.locator('[name="bounce"]')).toHaveAttribute("step", "0.01");
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
+  await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("35");
+  await expect(page.locator('[name^="returnScroll"]')).toHaveCount(0);
+  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(5);
+
+  const speedCurveControl = page
+    .locator("[data-cubic-bezier-control]")
+    .filter({ has: page.locator('[name="positionScrollEasing"]') });
+  const speedX1 = speedCurveControl.locator(
+    '[data-bezier-coordinate="x1"]',
+  );
+  await speedX1.fill("0.31");
+  await expect(page.locator('[name="positionScrollEasing"]')).toHaveValue(
+    "cubic-bezier(0.31, 0.67, 0.83, 0.67)",
+  );
+  await expect(speedCurveControl.locator(".bezier-curve")).toHaveAttribute(
+    "d",
+    /C 31 33, 83 33/,
+  );
+  await expect(speedCurveControl.locator(".bezier-preview-marker")).toHaveCount(
+    2,
+  );
+  await speedCurveControl.getByRole("button", { name: "Повторить" }).click();
+
+  await setField(page, "rockMinWidthVw", 40);
+  await setField(page, "rockMaxWidthVw", 10);
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("40");
+  await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("10");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        start: window.__sisyphusTestApi.params.rockMinWidthVw,
+        end: window.__sisyphusTestApi.params.rockMaxWidthVw,
+      })),
+    )
+    .toEqual({ start: 40, end: 10 });
+
+  await setRange(page, "sceneHeightScreens", 10);
+  await setCheckbox(page, "manualVerticalScrollEnabled", false);
+  await expect(page.locator("html")).toHaveClass(/is-manual-scroll-disabled/);
+  await expect(page.locator("body")).toHaveClass(/is-manual-scroll-disabled/);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.mouse.move(400, 400);
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(120);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
+
+  await page.evaluate(() => window.scrollTo(0, 500));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(500);
+
+  const positionScrollStart = await page.evaluate(() => {
+    collab.enabled = false;
+    collab.snapshots.length = 0;
+    params.positionScrollEnabled = true;
+    params.positionScrollZonePercent = 20;
+    params.positionScrollStartSpeedVh = 1;
+    params.positionScrollEndSpeedVh = 1;
+    motion.phase = SharedPhysics.PHASES.PLAY;
+    motion.suspended = true;
+    motion.dragging = false;
+    updateBounds();
+    setPosition(bounds.maxX * 0.25, bounds.maxY * 0.45);
+    const rect = document.querySelector(".rock").getBoundingClientRect();
+    const desiredCenterY = window.innerHeight * 0.1;
+    const targetScroll = Math.min(
+      document.documentElement.scrollHeight - window.innerHeight,
+      Math.max(
+        1,
+        window.scrollY + rect.top + rect.height / 2 - desiredCenterY,
+      ),
+    );
+    window.scrollTo(0, targetScroll);
+    const positionedRect = document
+      .querySelector(".rock")
+      .getBoundingClientRect();
+    return {
+      centerY: positionedRect.top + positionedRect.height / 2,
+      scrollY: window.scrollY,
+      zoneBottom: window.innerHeight * 0.2,
+    };
+  });
+  expect(positionScrollStart.centerY).toBeLessThanOrEqual(
+    positionScrollStart.zoneBottom,
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeLessThan(positionScrollStart.scrollY);
+  await page.evaluate(() => {
+    collab.enabled = true;
+  });
+
+  await page.locator(".settings-version-toggle").click();
+  await page.locator('[data-settings-version-choice=""]').click();
+  await page.locator(".settings-version-name").fill("scroll-ui-smoke");
+  await page.locator(".settings-version-save").click();
+  await expect(page.locator("#settings-version-current")).toContainText(
+    "scroll-ui-smoke",
+  );
+
+  await page.reload();
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Автоматика и скролл");
+  await openControlGroup(page, "Камень");
+  await expect(page.locator('[name="positionScrollEasing"]')).toHaveValue(
+    "cubic-bezier(0.31, 0.67, 0.83, 0.67)",
+  );
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("40");
+  await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("10");
+  await expect(
+    page.locator('[name="manualVerticalScrollEnabled"]'),
+  ).not.toBeChecked();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v18") || "{}",
+        );
+        return {
+          easing: stored.positionScrollEasing,
+          manualScroll: stored.manualVerticalScrollEnabled,
+          size: [stored.rockMinWidthVw, stored.rockMaxWidthVw],
+        };
+      }),
+    )
+    .toEqual({
+      easing: "cubic-bezier(0.31, 0.67, 0.83, 0.67)",
+      manualScroll: false,
+      size: [40, 10],
+    });
+});
+
+test("dev-каталог шаблонов общий для личных сессий браузеров", async ({
+  browser,
+}) => {
+  const firstContext = await createBrowserContext(
+    browser,
+    {},
+    "00000000-0000-4000-8000-000000000101",
+  );
+  const secondContext = await createBrowserContext(
+    browser,
+    {},
+    "00000000-0000-4000-8000-000000000102",
+  );
+  const first = await firstContext.newPage();
+  const second = await secondContext.newPage();
+  let freshContext = null;
+
+  try {
+    await Promise.all([first.goto("/"), second.goto("/")]);
+    await Promise.all([
+      expect(first.getByTestId("session-status")).toContainText("В сессии"),
+      expect(second.getByTestId("session-status")).toContainText("В сессии"),
+    ]);
+    await Promise.all([
+      openSettingsPanel(first),
+      openSettingsPanel(second),
+    ]);
+
+    await first.locator(".settings-version-toggle").click();
+    await first.locator('[data-settings-version-choice=""]').click();
+    await setRange(first, "gravity", 8.25);
+    await first
+      .locator(".settings-version-name")
+      .fill("Межбраузерный шаблон");
+    await first.locator(".settings-version-save").click();
+
+    const firstVersion = first.locator(".settings-version-option", {
+      hasText: "Межбраузерный шаблон",
+    });
+    await expect(firstVersion).toHaveCount(1);
+
+    await second.locator(".settings-version-toggle").click();
+    const secondVersion = second.locator(".settings-version-option", {
+      hasText: "Межбраузерный шаблон",
+    });
+    await expect(secondVersion).toHaveCount(1);
+    await secondVersion.locator(".settings-version-choice").click();
+    await expect(second.locator('[name="gravity"]')).toHaveValue("8.25");
+
+    await setRange(second, "gravity", 9.25);
+    await expect(first.locator('[name="gravity"]')).toHaveValue("8.25");
+
+    freshContext = await createBrowserContext(
+      browser,
+      {},
+      "00000000-0000-4000-8000-000000000103",
+    );
+    const fresh = await freshContext.newPage();
+    await fresh.goto("/");
+    await expect(fresh.getByTestId("session-status")).toContainText("В сессии");
+    await openSettingsPanel(fresh);
+    await fresh.locator(".settings-version-toggle").click();
+    const freshVersion = fresh.locator(".settings-version-option", {
+      hasText: "Межбраузерный шаблон",
+    });
+    await expect(freshVersion).toHaveCount(1);
+
+    await first.locator(".settings-version-toggle").click();
+    await firstVersion.locator(".settings-version-delete").click();
+    await expect(secondVersion).toHaveCount(0);
+    await expect(freshVersion).toHaveCount(0);
+  } finally {
+    await freshContext?.close();
+    await secondContext.close();
+    await firstContext.close();
+  }
+});
+
 async function resetRootExperience(page) {
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await page.evaluate(() => window.__sisyphusTestApi.restartExperience());
@@ -473,7 +712,7 @@ async function expectImprintCenteredInTopViewport(
   );
 }
 
-async function expectReturnImprintScrollsToTop(page) {
+async function expectReturnImprintDoesNotScrollToTop(page) {
   const returnState = await page.evaluate(() => {
     const originalScrollTo = window.scrollTo.bind(window);
     window.__returnScrollCalls = [];
@@ -495,8 +734,6 @@ async function expectReturnImprintScrollsToTop(page) {
     const imprint = document.querySelector(".rock-imprint");
     const x = Number.parseFloat(imprint.style.getPropertyValue("--imprint-x"));
     const y = Number.parseFloat(imprint.style.getPropertyValue("--imprint-y"));
-    params.returnScrollDurationSeconds = 0.1;
-    params.returnScrollEasing = "cubic-bezier(0, 0, 1, 1)";
     motion.suspended = false;
     setPosition(x, y);
     syncReturnTheme();
@@ -514,16 +751,20 @@ async function expectReturnImprintScrollsToTop(page) {
   expect(returnState.themeTransitionDuration).toBe("1100ms");
   expect(Number.isFinite(returnState.x)).toBe(true);
   expect(Number.isFinite(returnState.y)).toBe(true);
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__returnScrollCalls.some(
-          ([left, top]) => left === 0 && Number(top) === 0
-        )
-      )
+  await page.waitForTimeout(150);
+  const scrollState = await page.evaluate(() => ({
+    calls: window.__returnScrollCalls,
+    maxScroll: document.documentElement.scrollHeight - window.innerHeight,
+    scrollY: window.scrollY,
+  }));
+  expect(
+    scrollState.calls.some(
+      ([left, top]) => left === 0 && Number(top) === 0
     )
-    .toBe(true);
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  ).toBe(false);
+  expect(scrollState.scrollY).toBeGreaterThanOrEqual(
+    scrollState.maxScroll - 2
+  );
   const exitState = await page.evaluate(({ x, y }) => {
     setPosition(bounds.maxX / 2, bounds.maxY);
     syncReturnTheme();
@@ -682,7 +923,7 @@ test(
     await resetRootExperience(page);
     await expectReadyAtBottom(page);
     await expectImprintCenteredInTopViewport(page);
-    await expectReturnImprintScrollsToTop(page);
+    await expectReturnImprintDoesNotScrollToTop(page);
     await page.setViewportSize({ width: 390, height: 844 });
     await expectImprintCenteredInTopViewport(page, {
       checkImprintCenter: false,

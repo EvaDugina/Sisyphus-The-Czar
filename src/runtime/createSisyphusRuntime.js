@@ -29,6 +29,11 @@ import {
   rockScaleForY,
 } from "../lib/rockScale.mjs";
 import {
+  positionScrollDistancePx,
+  positionScrollState,
+} from "../lib/positionScroll.mjs";
+import { trailAnchorPoint } from "../lib/trailAnchor.mjs";
+import {
   settings as productionSettings,
 } from "../config/production-preset.mjs";
 import { createSettingsController } from "./createSettingsController.js";
@@ -140,7 +145,6 @@ export function createSisyphusRuntime(elements = {}) {
     dirty: true,
     skipNextRecord: false,
   };
-  let returnScrollAnimationId = null;
   const summitTimer = {
     elapsedMs: 0,
     running: false,
@@ -179,6 +183,20 @@ export function createSisyphusRuntime(elements = {}) {
     themeMode: DEFAULT_THEME_MODE,
     returnScrollDurationSeconds: DEFAULT_RETURN_SCROLL_DURATION_SECONDS,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
+    stationaryAutoSlipEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.stationaryAutoSlipEnabled,
+    positionScrollEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEnabled,
+    positionScrollZonePercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollZonePercent,
+    positionScrollStartSpeedVh:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollStartSpeedVh,
+    positionScrollEndSpeedVh:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEndSpeedVh,
+    positionScrollEasing:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEasing,
+    manualVerticalScrollEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.manualVerticalScrollEnabled,
     mass: SharedPhysics.DEFAULT_PHYSICS.mass,
     gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
     firstFallVelocity: SharedPhysics.DEFAULT_PHYSICS.firstFallVelocity,
@@ -225,6 +243,8 @@ export function createSisyphusRuntime(elements = {}) {
     trailEnabled: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailEnabled,
     trailReset: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailReset,
     lineDelay: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineDelay,
+    trailAnchorHeightPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailAnchorHeightPercent,
     trailMaxPoints: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailMaxPoints,
     trailUnlimited: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailUnlimited,
     trailSampleDist: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailSampleDist,
@@ -1597,6 +1617,15 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function applyManualVerticalScrollSetting() {
+    const disabled = !params.manualVerticalScrollEnabled;
+    document.documentElement.classList.toggle(
+      "is-manual-scroll-disabled",
+      disabled,
+    );
+    body.classList.toggle("is-manual-scroll-disabled", disabled);
+  }
+
   function resolveTheme(autoTheme) {
     return params.themeMode === "auto" ? autoTheme : params.themeMode;
   }
@@ -1759,6 +1788,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     applyTrailBlendMode();
+    applyManualVerticalScrollSetting();
 
     if (updateUi) {
       const trailLengthInput =
@@ -2120,14 +2150,6 @@ export function createSisyphusRuntime(elements = {}) {
     setPosition(position.x, position.y);
   }
 
-  function cancelReturnScrollAnimation() {
-    if (returnScrollAnimationId === null) {
-      return;
-    }
-    window.cancelAnimationFrame(returnScrollAnimationId);
-    returnScrollAnimationId = null;
-  }
-
   function syncAfterScroll() {
     trail.dirty = true;
     drawTrail();
@@ -2138,53 +2160,46 @@ export function createSisyphusRuntime(elements = {}) {
       if (disposed) {
         return;
       }
-      cancelReturnScrollAnimation();
       window.scrollTo(0, document.documentElement.scrollHeight);
       syncAfterScroll();
     });
   }
 
-  function scrollToSceneTopOnReturn() {
-    window.requestAnimationFrame(() => {
-      if (disposed) {
-        return;
-      }
-      cancelReturnScrollAnimation();
-      const startTop = window.scrollY || document.documentElement.scrollTop || 0;
-      const durationMs = reducedMotion.matches
-        ? 0
-        : clamp(Number(params.returnScrollDurationSeconds) * 1000, 0, 10000);
-      if (durationMs <= 0 || startTop <= 0) {
-        window.scrollTo(0, 0);
-        syncAfterScroll();
-        return;
-      }
+  function updatePositionScroll(deltaSeconds) {
+    if (
+      motion.phase !== PHASES.PLAY ||
+      rockInsideImprint() ||
+      window.scrollY <= 0
+    ) {
+      return;
+    }
 
-      const curve =
-        SharedRoomSettings.parseCubicBezier(params.returnScrollEasing) ||
-        SharedRoomSettings.parseCubicBezier(DEFAULT_RETURN_SCROLL_EASING);
-      const startedAt = performance.now();
-      const step = (now) => {
-        if (disposed) {
-          returnScrollAnimationId = null;
-          return;
-        }
-        const progress = clamp((now - startedAt) / durationMs, 0, 1);
-        const eased = curve
-          ? SharedPhysics.cubicBezierProgress(progress, curve)
-          : progress;
-        window.scrollTo(0, startTop * (1 - eased));
-        syncAfterScroll();
-        if (progress < 1) {
-          returnScrollAnimationId = window.requestAnimationFrame(step);
-          return;
-        }
-        returnScrollAnimationId = null;
-        window.scrollTo(0, 0);
-        syncAfterScroll();
-      };
-      returnScrollAnimationId = window.requestAnimationFrame(step);
-    });
+    const rect = rock.getBoundingClientRect();
+    const state = positionScrollState(
+      rect.top + rect.height / 2,
+      window.innerHeight,
+      {
+        enabled: params.positionScrollEnabled,
+        zonePercent: params.positionScrollZonePercent,
+        startSpeedVh: params.positionScrollStartSpeedVh,
+        endSpeedVh: params.positionScrollEndSpeedVh,
+        easing: params.positionScrollEasing,
+      },
+    );
+    if (!state.active || state.speedVh <= 0) {
+      return;
+    }
+
+    const distance = positionScrollDistancePx(
+      state.speedVh,
+      window.innerHeight,
+      deltaSeconds,
+    );
+    if (distance <= 0) {
+      return;
+    }
+    window.scrollTo(0, Math.max(0, window.scrollY - distance));
+    syncAfterScroll();
   }
 
   function setSessionStatus(text, state = "local") {
@@ -3658,6 +3673,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (shouldRecordTrailPoint()) {
       recordTrailPoint(deltaSeconds);
     }
+    updatePositionScroll(deltaSeconds);
     drawTrail();
     renderRemotePointers();
     renderSummitTimer();
@@ -3944,8 +3960,16 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function recordTrailPoint(deltaSeconds) {
-    const rockX = motion.x + bounds.rockWidth / 2;
-    const rockY = motion.y + bounds.rockHeight / 2;
+    const anchor = trailAnchorPoint({
+      x: motion.x,
+      y: motion.y,
+      width: bounds.rockWidth,
+      height: bounds.rockHeight,
+      scale: motion.rockScale,
+      heightPercent: params.trailAnchorHeightPercent,
+    });
+    const rockX = anchor.x;
+    const rockY = anchor.y;
 
     // Ведомая точка инерционно догоняет камень — линия параллельно следует
     // за путём камня с задержкой, плавно подтягиваясь и сглаживая траекторию.
@@ -4226,7 +4250,6 @@ export function createSisyphusRuntime(elements = {}) {
       (motion.phase === PHASES.PLAY || motion.phase === PHASES.WON) &&
       rockInsideImprint();
     const nextTheme = resolveTheme(atReturnPlace ? "light" : "dark");
-    const enteredReturnPlace = atReturnPlace && !motion.wasAtReturnPlace;
     const keepRainUntilGround =
       rain.returnRequested && motion.phase === PHASES.FALLING;
     motion.wasAtReturnPlace = atReturnPlace;
@@ -4234,9 +4257,6 @@ export function createSisyphusRuntime(elements = {}) {
       durationMs: returnThemeTransitionDuration(atReturnPlace),
     });
     syncReturnRain(atReturnPlace || keepRainUntilGround);
-    if (enteredReturnPlace && nextTheme === "light") {
-      scrollToSceneTopOnReturn();
-    }
   }
 
   function enterPlayPhase() {
@@ -4312,6 +4332,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
     }
 
+    updatePositionScroll(deltaSeconds);
     drawTrail();
 
     if (motion.phase !== PHASES.WON) {
@@ -4715,7 +4736,10 @@ export function createSisyphusRuntime(elements = {}) {
       disposed = true;
       collab.leaving = true;
       stopLoop();
-      cancelReturnScrollAnimation();
+      document.documentElement.classList.remove(
+        "is-manual-scroll-disabled",
+      );
+      body.classList.remove("is-manual-scroll-disabled");
       stopRainRenderers();
       clearHoldTimer();
       clearFirstFallTimer();

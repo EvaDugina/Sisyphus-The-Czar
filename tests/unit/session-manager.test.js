@@ -1573,6 +1573,114 @@ test("production preset нельзя выбрать вне root или при DE
   );
 });
 
+test("общий debug-каталог доступен и обновляется между личными сессиями", () => {
+  const initialEntry = {
+    id: "settings-shared-initial",
+    name: "Общий начальный",
+    settingsSchemaVersion: 18,
+    createdAt: "2026-07-27T18:00:00.000Z",
+    updatedAt: "2026-07-27T18:00:00.000Z",
+    settings: {
+      ...RoomSettings.DEFAULT_ROOM_SETTINGS,
+      ...Physics.DEFAULT_PHYSICS,
+      gravity: 7,
+    },
+  };
+  const savedEntry = {
+    ...initialEntry,
+    id: "settings-shared-saved",
+    name: "Сохранён в первом браузере",
+    createdAt: "2026-07-27T18:30:00.000Z",
+    updatedAt: "2026-07-27T18:30:00.000Z",
+    settings: {
+      ...initialEntry.settings,
+      gravity: 8,
+    },
+  };
+  const { manager } = setup({
+    productionPresetSelectionEnabled: true,
+    settingsTemplatesEnabled: true,
+    getSettingsTemplatesPage: () => ({
+      revision: 1,
+      offset: 0,
+      nextOffset: null,
+      entries: [initialEntry],
+    }),
+    saveSettingsTemplate: () => ({
+      revision: 2,
+      entry: savedEntry,
+      branched: false,
+    }),
+    deleteSettingsTemplate: (id) => ({
+      revision: 3,
+      deletedId: id,
+    }),
+  });
+  const firstSession = manager.createSession({
+    creatorClientId: "debug-catalog-first",
+  });
+  const secondSession = manager.createSession({
+    creatorClientId: "debug-catalog-second",
+  });
+  const first = connect(manager, firstSession, "debug-catalog-first");
+  const second = connect(manager, secondSession, "debug-catalog-second");
+
+  assert.equal(
+    first.socket.messages.find(
+      (message) => message.type === "productionPreset.current",
+    ).payload.canSelect,
+    false,
+  );
+  assert.equal(
+    second.socket.messages.find(
+      (message) => message.type === "settingsTemplates.page",
+    ).payload.entries[0].id,
+    initialEntry.id,
+  );
+
+  manager.handleMessage(firstSession, first.client, {
+    v: 1,
+    seq: 1,
+    type: "settingsTemplates.save",
+    payload: { entry: savedEntry },
+  });
+
+  assert.equal(
+    first.socket.messages.findLast(
+      (message) => message.type === "settingsTemplates.saved",
+    ).payload.entry.id,
+    savedEntry.id,
+  );
+  assert.equal(
+    second.socket.messages.findLast(
+      (message) => message.type === "settingsTemplates.changed",
+    ).payload.entries[0].id,
+    savedEntry.id,
+  );
+  assert.equal(
+    secondSession.physics.gravity,
+    Physics.DEFAULT_PHYSICS.gravity,
+  );
+
+  manager.handleMessage(secondSession, second.client, {
+    v: 1,
+    seq: 1,
+    type: "settingsTemplates.delete",
+    payload: { id: savedEntry.id },
+  });
+
+  assert.deepEqual(
+    first.socket.messages.findLast(
+      (message) => message.type === "settingsTemplates.changed",
+    ).payload,
+    {
+      action: "delete",
+      revision: 3,
+      id: savedEntry.id,
+    },
+  );
+});
+
 test("debug settings.update принимает slave и сохраняет stale snapshot конфликтом", () => {
   const conflicts = [];
   const conflictEntry = {
@@ -1821,6 +1929,36 @@ test("неподвижный камень в воздухе выпадает и�
   clock.value += 20;
   manager.tick();
   assert.ok(session.state.y > 700);
+});
+
+test("выключенное автовыскальзывание сохраняет неподвижное удержание", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 10_000,
+    slipDelayMaxMs: 10_000,
+    stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
+  });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
+    physics: { turbulence: 0 },
+    roomSettings: { stationaryAutoSlipEnabled: false },
+  });
+  const holder = connect(manager, session, "client-still-disabled01");
+
+  manager.acquireControl(session, holder.client, { x: 500, y: 700 });
+  clock.value = STATIONARY_HOLD_RELEASE_MS * 5;
+  manager.tick();
+
+  assert.equal(session.holders.size, 1);
+  assert.equal(session.state.dragging, true);
+  assert.equal(session.stationaryHoldSince, null);
+  assert.equal(
+    holder.socket.messages.some(
+      (message) =>
+        message.type === "control.slipped" &&
+        message.payload.reason === "stationary",
+    ),
+    false,
+  );
 });
 
 test("фактическое движение камня перезапускает таймер неподвижного удержания", () => {

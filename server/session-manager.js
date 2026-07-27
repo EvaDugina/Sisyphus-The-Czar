@@ -788,6 +788,10 @@ class SessionManager {
   }
 
   updateStationaryHold(session, now = this.now()) {
+    if (session.roomSettings?.stationaryAutoSlipEnabled === false) {
+      this.clearStationaryHold(session);
+      return false;
+    }
     const state = session.state;
     const isOnGround = state.y >= Physics.WORLD_HEIGHT - STATIONARY_POSITION_EPSILON;
     if (
@@ -996,9 +1000,7 @@ class SessionManager {
     });
     this.sendSharedTrailHistory(client);
     this.sendTo(client, "productionPreset.current", {
-      canSelect:
-        this.productionPresetSelectionEnabled &&
-        this.clientCanUseDebugSettings(session, client),
+      canSelect: this.clientCanSelectProductionPreset(session, client),
       selection: this.getProductionPresetSelection(),
     });
     if (this.clientCanUseDebugSettings(session, client)) {
@@ -1342,9 +1344,16 @@ class SessionManager {
   clientCanUseDebugSettings(session, client) {
     return Boolean(
       this.settingsTemplatesEnabled &&
-        session?.id === DEFAULT_SESSION_ID &&
         client &&
         session.clients.get(client.id) === client,
+    );
+  }
+
+  clientCanSelectProductionPreset(session, client) {
+    return Boolean(
+      this.productionPresetSelectionEnabled &&
+        session?.id === DEFAULT_SESSION_ID &&
+        this.clientCanUseDebugSettings(session, client),
     );
   }
 
@@ -1366,10 +1375,7 @@ class SessionManager {
       );
       return false;
     }
-    if (
-      session.id !== DEFAULT_SESSION_ID ||
-      !this.clientCanUseDebugSettings(session, client)
-    ) {
+    if (!this.clientCanSelectProductionPreset(session, client)) {
       this.sendError(
         client,
         "debug_only",
@@ -1388,7 +1394,10 @@ class SessionManager {
       };
       session.clients.forEach((participant) => {
         this.sendTo(participant, "productionPreset.selected", {
-          canSelect: this.clientCanUseDebugSettings(session, participant),
+          canSelect: this.clientCanSelectProductionPreset(
+            session,
+            participant,
+          ),
           selection,
         });
       });
@@ -1435,9 +1444,13 @@ class SessionManager {
     }
   }
 
-  broadcastSettingsTemplateChange(session, payload) {
-    session.clients.forEach((participant) => {
-      this.sendTo(participant, "settingsTemplates.changed", payload);
+  broadcastSettingsTemplateChange(payload) {
+    this.sessions.forEach((session) => {
+      session.clients.forEach((participant) => {
+        if (this.clientCanUseDebugSettings(session, participant)) {
+          this.sendTo(participant, "settingsTemplates.changed", payload);
+        }
+      });
     });
   }
 
@@ -1458,7 +1471,7 @@ class SessionManager {
       }
       this.sendTo(client, "settingsTemplates.imported", result);
       if (result.entries.length > 0) {
-        this.broadcastSettingsTemplateChange(session, {
+        this.broadcastSettingsTemplateChange({
           action: "upsert",
           revision: result.revision,
           entries: result.entries,
@@ -1486,7 +1499,7 @@ class SessionManager {
         protectedId: this.settingsTemplateProtectedId(),
       });
       this.sendTo(client, "settingsTemplates.saved", result);
-      this.broadcastSettingsTemplateChange(session, {
+      this.broadcastSettingsTemplateChange({
         action: "upsert",
         revision: result.revision,
         entries: result.entry ? [result.entry] : [],
@@ -1509,7 +1522,7 @@ class SessionManager {
       });
       this.sendTo(client, "settingsTemplates.deleted", result);
       if (result.deletedId) {
-        this.broadcastSettingsTemplateChange(session, {
+        this.broadcastSettingsTemplateChange({
           action: "delete",
           revision: result.revision,
           id: result.deletedId,
@@ -1582,7 +1595,7 @@ class SessionManager {
           },
         });
         if (conflict.entry) {
-          this.broadcastSettingsTemplateChange(session, {
+          this.broadcastSettingsTemplateChange({
             action: "upsert",
             revision: conflict.revision,
             entries: [conflict.entry],
