@@ -9,7 +9,6 @@ export function useSisyphusExperience() {
   );
   const realtime = {
     sessionStatusRef: useRef(null),
-    sessionShareToggleRef: useRef(null),
     sessionRestartButtonRef: useRef(null),
   };
   const scene = {
@@ -35,7 +34,6 @@ export function useSisyphusExperience() {
   } = settings;
   const {
     sessionRestartButtonRef,
-    sessionShareToggleRef,
     sessionStatusRef,
   } = realtime;
   const {
@@ -68,7 +66,6 @@ export function useSisyphusExperience() {
       rainFallbackCanvas: rainFallbackCanvasRef.current,
       hint: hintRef.current,
       sessionStatus: sessionStatusRef.current,
-      sessionShareToggle: sessionShareToggleRef.current,
       sessionRestartButton: sessionRestartButtonRef.current,
       onClientRoleChange: setClientRole,
     });
@@ -84,7 +81,6 @@ export function useSisyphusExperience() {
     rockImprintRef,
     rockRef,
     sessionRestartButtonRef,
-    sessionShareToggleRef,
     sessionStatusRef,
     settingsPanelRef,
     settingsToggleRef,

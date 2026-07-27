@@ -17,7 +17,83 @@ async function setRangeValue(page, name, value) {
   }, value);
 }
 
-test("production DEBUG включает UI, draft и выбор следующего preset", async ({
+test("production DEBUG мгновенно применяет последний параметр во время отправки", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const nativeAddEventListener = WebSocket.prototype.addEventListener;
+    WebSocket.prototype.addEventListener = function addEventListener(
+      type,
+      listener,
+      options,
+    ) {
+      if (type !== "message") {
+        return nativeAddEventListener.call(this, type, listener, options);
+      }
+      return nativeAddEventListener.call(
+        this,
+        type,
+        function delayedSettingsApplied(event) {
+          let message;
+          try {
+            message = JSON.parse(event.data);
+          } catch {
+            listener.call(this, event);
+            return;
+          }
+          if (message.type === "settings.applied") {
+            setTimeout(() => listener.call(this, event), 600);
+            return;
+          }
+          listener.call(this, event);
+        },
+        options,
+      );
+    };
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await openSettingsPanel(page);
+  await setRangeValue(page, "sceneHeightScreens", 7);
+  await setRangeValue(page, "gravity", 8.5);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--scene-height-vh")
+          .trim(),
+      ),
+    )
+    .toBe("700vh");
+
+  await page.waitForTimeout(200);
+  await setRangeValue(page, "sceneHeightScreens", 8);
+  await setRangeValue(page, "gravity", 9.5);
+  await expect(page.locator('[name="gravity"]')).toHaveValue("9.5");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--scene-height-vh")
+          .trim(),
+      ),
+    )
+    .toBe("800vh");
+
+  await page.waitForTimeout(700);
+  await expect(page.locator('[name="gravity"]')).toHaveValue("9.5");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--scene-height-vh")
+          .trim(),
+      ),
+    )
+    .toBe("800vh");
+});
+
+test("production DEBUG включает UI, draft и изолирует личные настройки", async ({
   browser,
   page,
 }) => {
@@ -109,24 +185,11 @@ test("production DEBUG включает UI, draft и выбор следующе
   const productionButton = page.locator(
     '[data-production-preset-select="latest"]',
   );
-  await expect(productionButton).toBeEnabled();
-  await productionButton.click();
-  await expect(page.locator(".settings-production-status")).toContainText(
-    "Production: Последний",
-  );
+  await expect(productionButton).toBeDisabled();
   await page.locator(".settings-version-toggle").click();
 
   await setRangeValue(page, "gravity", 9);
   await page.locator(".settings-version-save").click();
-  await expect(page.locator(".settings-production-status")).toContainText(
-    "Production: Последний",
-  );
-  await page.locator(".settings-version-toggle").click();
-  await expect(
-    page.locator(
-      '.settings-version-option.is-production [data-production-preset-select="latest"]',
-    ),
-  ).toBeVisible();
   const stored = await page.evaluate((versionsKey) => {
     const document = JSON.parse(localStorage.getItem(versionsKey) || "{}");
     return document.entries.find((entry) => entry.id === "latest");
@@ -142,24 +205,20 @@ test("production DEBUG включает UI, draft и выбор следующе
     await slave.goto("/");
     await expect(slave.locator("body")).toHaveAttribute(
       "data-client-role",
-      "slave",
+      "master",
     );
     await openSettingsPanel(slave);
-    await expect(slave.locator("#settings-version-current")).toContainText(
-      "Последний",
+    await expect(slave.locator("#settings-version-current")).toHaveText(
+      "Черновик",
     );
     await setRangeValue(slave, "gravity", 8.25);
-    await expect(page.locator('[name="gravity"]')).toHaveValue("8.25");
+    await expect(page.locator('[name="gravity"]')).toHaveValue("9");
 
     await slave.locator(".settings-version-toggle").click();
     const slaveProductionButton = slave.locator(
       '[data-production-preset-select="latest"]',
     );
-    await expect(slaveProductionButton).toBeEnabled();
-    await slaveProductionButton.click();
-    await expect(page.locator(".settings-production-status")).toContainText(
-      "Production: Последний",
-    );
+    await expect(slaveProductionButton).toHaveCount(0);
   } finally {
     await slaveContext.close();
   }

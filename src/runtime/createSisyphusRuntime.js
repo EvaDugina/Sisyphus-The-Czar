@@ -105,7 +105,6 @@ export function createSisyphusRuntime(elements = {}) {
   const rainFxCanvas = elements.rainFxCanvas || document.querySelector(".weather-rain__canvas--fx");
   const rainFallbackCanvas = elements.rainFallbackCanvas || document.querySelector(".weather-rain__canvas--fallback");
   const sessionStatus = elements.sessionStatus || document.querySelector("[data-session-status]");
-  const sessionShareToggle = elements.sessionShareToggle || document.querySelector(".session-share-toggle");
   const onClientRoleChange =
     typeof elements.onClientRoleChange === "function"
       ? elements.onClientRoleChange
@@ -370,7 +369,6 @@ export function createSisyphusRuntime(elements = {}) {
     reconnectAttempt: 0,
     reconnectTimerId: null,
     pingTimerId: null,
-    copyFeedbackTimerId: null,
     statusResetTimerId: null,
     renderId: null,
     snapshots: [],
@@ -400,6 +398,7 @@ export function createSisyphusRuntime(elements = {}) {
     settingsUpdateQueued: false,
     sessionCreateInFlight: false,
     sessionCreateAbortController: null,
+    trailCursor: 0,
     firstFallRequestSent: false,
     lastMoveSentAt: 0,
     lastPointerSentAt: 0,
@@ -468,7 +467,11 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function localCanEditSettings() {
-    return collab.clientRole === "master" || collab.clientRole === "slave";
+    return (
+      collab.clientRole === "pending" ||
+      collab.clientRole === "master" ||
+      collab.clientRole === "slave"
+    );
   }
 
   function slaveViewportScale() {
@@ -2193,11 +2196,6 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function updateSessionStatus() {
-    if (sessionShareToggle) {
-      sessionShareToggle.setAttribute("aria-label", "Скопировать ссылку");
-      sessionShareToggle.title = "Скопировать ссылку";
-      sessionShareToggle.dataset.state = collab.connected ? "online" : "local";
-    }
     const holderCount = collab.holderIds.size;
     const status = deriveSessionStatus({
       ...collab,
@@ -2216,12 +2214,6 @@ export function createSisyphusRuntime(elements = {}) {
       base.pathname = base.pathname.replace(/[^/]+$/, "");
     }
     return new URL(relativePath, base);
-  }
-
-  function rootSessionHref() {
-    const url = new URL(window.location.href);
-    url.searchParams.delete("session");
-    return url.toString();
   }
 
   function localToCanonical(x, y) {
@@ -2310,7 +2302,8 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function applyCursorRole(element, role) {
-    element.classList.toggle("is-slave", pointerRole(role) === "slave");
+    void role;
+    element.classList.remove("is-slave");
   }
 
   function setLocalCursorRole(role) {
@@ -2550,6 +2543,12 @@ export function createSisyphusRuntime(elements = {}) {
     };
   }
 
+  function sharedPhysicsPayload() {
+    return Object.fromEntries(
+      SHARED_PHYSICS_KEYS.map((key) => [key, params[key]])
+    );
+  }
+
   function sharedRoomSettingsPayload() {
     return SharedRoomSettings.sanitizeRoomSettings(
       Object.fromEntries(
@@ -2599,14 +2598,14 @@ export function createSisyphusRuntime(elements = {}) {
     };
   }
 
-  function loadSharedTrail(points) {
+  function sharedTrailPointsToLocal(points) {
     if (!Array.isArray(points)) {
-      return;
+      return [];
     }
     updateBounds();
     const xScale = bounds.maxX / SharedPhysics.WORLD_WIDTH;
     const yScale = bounds.maxY / SharedPhysics.WORLD_HEIGHT;
-    trail.points = points.slice(-1000).flatMap((point) => {
+    return points.slice(-1000).flatMap((point) => {
       if (!Array.isArray(point) || point.length < 2) {
         return [];
       }
@@ -2626,6 +2625,9 @@ export function createSisyphusRuntime(elements = {}) {
         },
       ];
     });
+  }
+
+  function syncTrailTail() {
     const last = trail.points.at(-1);
     trail.lastX = last ? last.x : null;
     trail.lastY = last ? last.y : null;
@@ -2633,6 +2635,21 @@ export function createSisyphusRuntime(elements = {}) {
     trail.followY = trail.lastY;
     trail.dirty = true;
     drawTrail();
+  }
+
+  function loadSharedTrail(points) {
+    trail.points = sharedTrailPointsToLocal(points);
+    syncTrailTail();
+  }
+
+  function appendSharedTrail(points) {
+    const appended = sharedTrailPointsToLocal(points);
+    if (appended.length === 0) {
+      return;
+    }
+    trail.points.push(...appended);
+    trimTrailToLimit();
+    syncTrailTail();
   }
 
   function applySharedPhysics(physics) {
@@ -2859,8 +2876,10 @@ export function createSisyphusRuntime(elements = {}) {
       1,
       Number(payload.settingsRevision) || collab.settingsRevision,
     );
-    collab.pendingPhysicsChanges = Object.create(null);
-    collab.pendingRoomSettingsChanges = Object.create(null);
+    if (!collab.settingsUpdateQueued) {
+      collab.pendingPhysicsChanges = Object.create(null);
+      collab.pendingRoomSettingsChanges = Object.create(null);
+    }
     if (conflict && payload.settings) {
       applySharedPhysics(payload.settings);
       applySharedRoomSettings(payload.settings);
@@ -2869,52 +2888,6 @@ export function createSisyphusRuntime(elements = {}) {
       scheduleSharedSettingsUpdate();
     }
     return true;
-  }
-
-  function showCopiedLinkFeedback() {
-    window.clearTimeout(collab.copyFeedbackTimerId);
-    sessionShareToggle.classList.add("is-copied");
-    sessionShareToggle.setAttribute("aria-label", "Ссылка скопирована");
-    collab.copyFeedbackTimerId = window.setTimeout(() => {
-      collab.copyFeedbackTimerId = null;
-      sessionShareToggle.classList.remove("is-copied");
-      updateSessionStatus();
-    }, 400);
-  }
-
-  async function copySessionLink(options = {}) {
-    const showToggleFeedback = Boolean(options.showToggleFeedback);
-    const announce = options.announce !== false;
-    const link = options.link || rootSessionHref();
-    try {
-      await navigator.clipboard.writeText(link);
-    } catch {
-      const input = document.createElement("textarea");
-      input.value = link;
-      input.setAttribute("readonly", "");
-      input.style.position = "fixed";
-      input.style.opacity = "0";
-      document.body.appendChild(input);
-      input.select();
-      const copied = document.execCommand("copy");
-      input.remove();
-      if (!copied) {
-        window.prompt("Скопируйте ссылку на сессию", link);
-      }
-    }
-    if (showToggleFeedback) {
-      showCopiedLinkFeedback();
-    }
-    if (announce) {
-      setSessionStatus("Ссылка скопирована", collab.connected ? "online" : "connecting");
-      window.clearTimeout(collab.statusResetTimerId);
-      collab.statusResetTimerId = window.setTimeout(() => {
-        collab.statusResetTimerId = null;
-        if (!disposed) {
-          updateSessionStatus();
-        }
-      }, 1600);
-    }
   }
 
   async function createSharedSession() {
@@ -2929,14 +2902,59 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    collab.enabled = true;
-    collab.expired = false;
-    setSessionStatus("Подключаем общую сессию…", "connecting");
-    connectSharedSession();
-  }
-
-  async function copyCurrentSessionLink() {
-    await copySessionLink({ showToggleFeedback: true, announce: false });
+    collab.sessionCreateInFlight = true;
+    const abortController = new AbortController();
+    collab.sessionCreateAbortController = abortController;
+    setSessionStatus("Создаём личную сессию…", "connecting");
+    try {
+      const response = await fetch(appUrl("api/sessions"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        signal: abortController.signal,
+        body: JSON.stringify({
+          creatorClientId: collab.clientId,
+          state: currentSharedState(),
+          physics: sharedPhysicsPayload(),
+          roomSettings: sharedRoomSettingsPayload(),
+          masterViewport: currentViewport(),
+          imprint: collab.imprint,
+        }),
+      });
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}`);
+      }
+      const result = await response.json();
+      if (
+        typeof result.sessionId !== "string" ||
+        !/^[A-Za-z0-9_-]{22}$/.test(result.sessionId)
+      ) {
+        throw new Error("invalid_session_response");
+      }
+      if (disposed) {
+        return;
+      }
+      collab.enabled = true;
+      collab.expired = false;
+      collab.sessionId = result.sessionId;
+      collab.leaveToken = null;
+      collab.sequence = 0;
+      collab.trailCursor = 0;
+      connectSharedSession();
+    } catch (error) {
+      if (disposed || error?.name === "AbortError") {
+        return;
+      }
+      collab.enabled = false;
+      setSessionStatus("Не удалось создать сессию", "error");
+    } finally {
+      collab.sessionCreateInFlight = false;
+      if (collab.sessionCreateAbortController === abortController) {
+        collab.sessionCreateAbortController = null;
+      }
+      if (!disposed) {
+        updateSessionStatus();
+      }
+    }
   }
 
   function sendShared(type, payload = {}) {
@@ -3136,6 +3154,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (
       disposed ||
       !collab.enabled ||
+      !collab.sessionId ||
       collab.expired ||
       collab.leaving
     ) {
@@ -3148,6 +3167,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     const endpoint = appUrl("realtime");
     endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
+    endpoint.searchParams.set("session", collab.sessionId);
     endpoint.searchParams.set("client", collab.clientId);
     const socket = new WebSocket(endpoint);
     collab.socket = socket;
@@ -3205,6 +3225,9 @@ export function createSisyphusRuntime(elements = {}) {
       clearRemotePointers();
       if (event.code === 4004) {
         collab.expired = true;
+        collab.sessionId = "";
+        collab.leaveToken = null;
+        collab.trailCursor = 0;
       }
       updateSessionStatus();
       if (collab.expired) {
@@ -3221,6 +3244,10 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = message.payload || {};
     if (message.type === "session.snapshot") {
       receiveSharedSnapshot(payload);
+    } else if (message.type === "trail.history") {
+      receiveSharedTrailHistory(payload);
+    } else if (message.type === "trail.batch") {
+      receiveSharedTrailBatch(payload);
     } else if (message.type === "control.granted") {
       collab.pendingControl = false;
       collab.hasControl = true;
@@ -3294,10 +3321,52 @@ export function createSisyphusRuntime(elements = {}) {
       } else if (payload.code === "session_not_found") {
         collab.expired = true;
         collab.connected = false;
+        collab.sessionId = "";
+        collab.leaveToken = null;
+        collab.trailCursor = 0;
         updateSessionStatus();
         void createSharedSession();
       }
     }
+  }
+
+  function acknowledgeSharedTrail(cursor) {
+    sendShared("trail.ack", { cursor });
+  }
+
+  function receiveSharedTrailHistory(payload = {}) {
+    const cursor = Number(payload.cursor);
+    if (!Number.isSafeInteger(cursor) || cursor < 0 || !Array.isArray(payload.points)) {
+      return;
+    }
+    loadSharedTrail(payload.points);
+    collab.trailCursor = cursor;
+    acknowledgeSharedTrail(cursor);
+  }
+
+  function receiveSharedTrailBatch(payload = {}) {
+    const baseCursor = Number(payload.baseCursor);
+    const cursor = Number(payload.cursor);
+    if (
+      !Number.isSafeInteger(baseCursor) ||
+      !Number.isSafeInteger(cursor) ||
+      cursor < baseCursor ||
+      !Array.isArray(payload.points)
+    ) {
+      sendShared("trail.resync");
+      return;
+    }
+    if (cursor <= collab.trailCursor) {
+      acknowledgeSharedTrail(collab.trailCursor);
+      return;
+    }
+    if (baseCursor !== collab.trailCursor) {
+      sendShared("trail.resync");
+      return;
+    }
+    appendSharedTrail(payload.points);
+    collab.trailCursor = cursor;
+    acknowledgeSharedTrail(cursor);
   }
 
   function receiveSharedSnapshot(payload) {
@@ -3472,6 +3541,7 @@ export function createSisyphusRuntime(elements = {}) {
       event?.persisted ||
       collab.leaving ||
       !collab.enabled ||
+      !collab.sessionId ||
       !collab.leaveToken ||
       window.location.protocol === "file:"
     ) {
@@ -3480,7 +3550,9 @@ export function createSisyphusRuntime(elements = {}) {
 
     collab.leaving = true;
     clearSharedConnectionTimers();
-    const endpoint = appUrl("api/sessions/leave");
+    const endpoint = appUrl(
+      `api/sessions/${encodeURIComponent(collab.sessionId)}/leave`
+    );
     const body = JSON.stringify({
       clientId: collab.clientId,
       leaveToken: collab.leaveToken,
@@ -4477,7 +4549,6 @@ export function createSisyphusRuntime(elements = {}) {
   settingsController.bind();
 
   // Открытием панели управляет React-хук useSettings.
-  listen(sessionShareToggle, "click", copyCurrentSessionLink);
   listen(rock, "pointerenter", enterRock);
   listen(rock, "pointerleave", leaveRock);
   listen(rock, "pointerdown", startDrag);
@@ -4535,7 +4606,7 @@ export function createSisyphusRuntime(elements = {}) {
     scrollToSceneBottom();
     updateSessionStatus();
     if (collab.enabled) {
-      connectSharedSession();
+      void createSharedSession();
     }
   }
 
@@ -4650,7 +4721,6 @@ export function createSisyphusRuntime(elements = {}) {
       clearFirstFallTimer();
       clearSharedConnectionTimers();
       clearSharedReleaseHandoff();
-      window.clearTimeout(collab.copyFeedbackTimerId);
       window.clearTimeout(collab.statusResetTimerId);
       window.clearTimeout(collab.settingsUpdateTimerId);
       stopRainLoopSound({ immediate: true });

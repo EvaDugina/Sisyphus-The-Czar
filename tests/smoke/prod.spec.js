@@ -1,17 +1,8 @@
 const { test, expect } = require("@playwright/test");
 
-function trackAudioRequests(page, bucket) {
-  page.on("request", (request) => {
-    const url = request.url();
-    if (/\.mp3(?:[?#]|$)/i.test(url)) {
-      bucket.push(decodeURIComponent(url));
-    }
-  });
-}
-
-async function waitForProductionRuntime(page, role) {
+async function waitForProductionRuntime(page) {
   await expect(page).toHaveURL(/\/$/);
-  await expect(page.locator("body")).toHaveAttribute("data-client-role", role);
+  await expect(page.locator("body")).toHaveAttribute("data-client-role", "master");
   await expect(page.locator("body")).toHaveClass(/state-play/);
   await expect(page.locator(".rock")).toBeVisible();
 }
@@ -29,10 +20,8 @@ async function visibleRockPoint(page) {
       throw new Error("Не найдена видимая точка камня");
     }
 
-    const xRatios = [0.5, 0.35, 0.65, 0.2, 0.8];
-    const yRatios = [0.5, 0.35, 0.65, 0.2, 0.8];
-    for (const yRatio of yRatios) {
-      for (const xRatio of xRatios) {
+    for (const yRatio of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+      for (const xRatio of [0.5, 0.35, 0.65, 0.2, 0.8]) {
         const x = left + width * xRatio;
         const y = top + height * yRatio;
         const hit = document.elementFromPoint(x, y);
@@ -64,93 +53,93 @@ async function scrollToRock(page) {
     .toBe(true);
 }
 
-test("production build keeps slim UI and multiplayer behavior", async ({
+function sessionIdFromWebSocket(url) {
+  return new URL(url).searchParams.get("session");
+}
+
+test("production build isolates tabs, keeps a clean URL and shows the hand only on the rock", async ({
   browser,
   page,
 }) => {
-  const firstAudioRequests = [];
-  trackAudioRequests(page, firstAudioRequests);
+  const firstSockets = [];
+  page.on("websocket", (socket) => firstSockets.push(socket.url()));
 
   await page.goto("/");
-  await waitForProductionRuntime(page, "master");
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--scene-height-vh")
-          .trim(),
-      ),
-    )
-    .toBe("1400vh");
+  await waitForProductionRuntime(page);
   await expect(page.locator(".settings-panel")).toHaveCount(0);
   await expect(page.locator(".settings-toggle")).toHaveCount(0);
   await expect(page.locator(".hint")).toHaveCount(0);
-  await expect(page.getByTestId("share-session-top")).toBeVisible();
+  await expect(page.getByTestId("share-session-top")).toHaveCount(0);
   expect(
-    await page.evaluate(() => Object.hasOwn(window, "__sisyphusTestApi")),
+    await page.evaluate(() => Object.hasOwn(window, "__sisyphusTestApi"))
   ).toBe(false);
-  expect(firstAudioRequests).toEqual([]);
+  expect(new URL(page.url()).search).toBe("");
+  expect(new URL(page.url()).hash).toBe("");
+  await expect.poll(() => firstSockets.length).toBeGreaterThan(0);
 
-  const masterCursorImage = await page.locator(".hand-cursor").evaluate(
-    (element) => getComputedStyle(element).backgroundImage,
-  );
-  expect(decodeURIComponent(masterCursorImage)).toContain("cursor-grab");
+  const hand = page.locator(".hand-cursor");
+  await expect(hand).not.toHaveClass(/is-visible/);
+  await expect(hand).toHaveCSS("opacity", "0");
 
-  const roomUrl = page.url();
   const secondContext = await browser.newContext();
   const second = await secondContext.newPage();
-  const secondAudioRequests = [];
-  trackAudioRequests(second, secondAudioRequests);
+  const secondSockets = [];
+  second.on("websocket", (socket) => secondSockets.push(socket.url()));
 
   try {
-    await second.goto(roomUrl);
-    await waitForProductionRuntime(second, "slave");
-    await expect(second.locator(".settings-panel")).toHaveCount(0);
-    expect(
-      await second.evaluate(() =>
-        Object.hasOwn(window, "__sisyphusTestApi"),
-      ),
-    ).toBe(false);
-
-    const slaveCursorImage = await second.locator(".hand-cursor").evaluate(
-      (element) => getComputedStyle(element).backgroundImage,
+    await second.goto("/");
+    await waitForProductionRuntime(second);
+    await expect(second.getByTestId("share-session-top")).toHaveCount(0);
+    expect(new URL(second.url()).search).toBe("");
+    await expect.poll(() => secondSockets.length).toBeGreaterThan(0);
+    expect(sessionIdFromWebSocket(firstSockets.at(-1))).not.toBe(
+      sessionIdFromWebSocket(secondSockets.at(-1))
     );
-    expect(decodeURIComponent(slaveCursorImage)).toContain("hand_open");
 
     await scrollToRock(page);
     await scrollToRock(second);
-    const masterTopBefore = await page.locator(".rock").evaluate(
-      (rock) => rock.getBoundingClientRect().top,
+    const firstTopBefore = await page.locator(".rock").evaluate(
+      (rock) => rock.getBoundingClientRect().top
     );
-    const slavePoint = await visibleRockPoint(second);
-    await second.mouse.move(slavePoint.x, slavePoint.y);
-    await second.mouse.down();
-    await expect(second.locator(".rock")).toHaveClass(/is-dragging/);
-    await expect(
-      page.locator(".hand-cursor.is-remote.is-visible"),
-    ).toHaveCount(1);
+    const secondPoint = await visibleRockPoint(second);
+    const secondHand = second.locator(".hand-cursor");
 
-    await second.mouse.move(
-      slavePoint.x,
-      Math.max(24, slavePoint.y - 140),
-      { steps: 12 },
-    );
+    await second.mouse.move(secondPoint.x, secondPoint.y);
+    await expect(secondHand).toHaveClass(/is-visible/);
+    await expect(secondHand).not.toHaveClass(/is-grabbing/);
+    expect(
+      decodeURIComponent(
+        await secondHand.evaluate(
+          (element) => getComputedStyle(element).backgroundImage
+        )
+      )
+    ).toContain("cursor-grab");
+
+    await second.mouse.down();
+    await expect(secondHand).toHaveClass(/is-grabbing/);
+    expect(
+      decodeURIComponent(
+        await secondHand.evaluate(
+          (element) => getComputedStyle(element).backgroundImage
+        )
+      )
+    ).toContain("cursor-grabbing");
+    await second.mouse.move(secondPoint.x, Math.max(24, secondPoint.y - 140), {
+      steps: 12,
+    });
+    await expect(second.locator(".rock")).toHaveClass(/is-dragging/);
+    await expect(page.locator(".hand-cursor.is-remote.is-visible")).toHaveCount(0);
     await expect
       .poll(() =>
         page.locator(".rock").evaluate(
-          (rock) => rock.getBoundingClientRect().top,
-        ),
+          (rock) => rock.getBoundingClientRect().top
+        )
       )
-      .toBeLessThan(masterTopBefore - 20);
-    await second.mouse.up();
+      .toBeCloseTo(firstTopBefore, 0);
 
-    const allAudioRequests = [...firstAudioRequests, ...secondAudioRequests];
-    expect(
-      allAudioRequests.some((url) => url.includes("Дождь")),
-    ).toBe(false);
-    expect(
-      allAudioRequests.filter((url) => url.includes("Кандалы")).length,
-    ).toBeLessThanOrEqual(1);
+    await second.mouse.up();
+    await second.mouse.move(8, 8);
+    await expect(secondHand).not.toHaveClass(/is-visible/);
   } finally {
     await second.mouse.up().catch(() => {});
     await secondContext.close();

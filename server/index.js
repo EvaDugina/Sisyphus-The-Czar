@@ -221,6 +221,7 @@ function createService(options = {}) {
       slipDelayMaxMs: config.slipDelayMaxMs,
       stationaryHoldReleaseMs: config.stationaryHoldReleaseMs,
       audioLeadMs: options.audioLeadMs,
+      trailSyncIntervalMs: options.trailSyncIntervalMs,
       soundRandom: options.soundRandom,
       productionPresetSelectionEnabled: config.debug,
       getProductionPresetSelection: () => productionPresetStore.metadata(),
@@ -247,6 +248,7 @@ function createService(options = {}) {
   const persistSessions = (force = false) =>
     sessionStore.save(manager.serializeSessions(), { force });
   const defaultSession = manager.ensureDefaultSession();
+  defaultSession.trailHubOnly = true;
   if (config.debug) {
     const latestSettingsTemplate = settingsTemplateStore.latest();
     if (latestSettingsTemplate) {
@@ -289,7 +291,9 @@ function createService(options = {}) {
       return;
     }
 
-    const session = manager.ensureDefaultSession(request.body || {});
+    const session = manager.createSession(request.body || {}, {
+      singleClient: true,
+    });
     persistSessions();
     response.status(201).json({
       sessionId: session.id,
@@ -473,7 +477,8 @@ function createService(options = {}) {
     const requestedSessionId = url.searchParams.get("session") || "";
     const clientId = url.searchParams.get("client") || "";
     if (
-      (requestedSessionId && !SESSION_ID_PATTERN.test(requestedSessionId)) ||
+      !SESSION_ID_PATTERN.test(requestedSessionId) ||
+      requestedSessionId === DEFAULT_SESSION_ID ||
       !CLIENT_ID_PATTERN.test(clientId)
     ) {
       socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");
@@ -483,17 +488,14 @@ function createService(options = {}) {
 
     websocketServer.handleUpgrade(request, socket, head, (websocket) => {
       websocketServer.emit("connection", websocket, request, {
-        sessionId: DEFAULT_SESSION_ID,
+        sessionId: requestedSessionId,
         clientId,
       });
     });
   });
 
   websocketServer.on("connection", (websocket, _request, context) => {
-    const session =
-      context.sessionId === DEFAULT_SESSION_ID
-        ? manager.ensureDefaultSession()
-        : manager.getSession(context.sessionId);
+    const session = manager.getSession(context.sessionId);
     if (!session) {
       websocket.send(
         JSON.stringify({
@@ -515,6 +517,9 @@ function createService(options = {}) {
     });
 
     const client = manager.connectClient(session, context.clientId, websocket);
+    if (!client) {
+      return;
+    }
     websocket.on("message", (data) => {
       if (data.length > MAX_WS_MESSAGE_BYTES) {
         websocket.close(1009, "message_too_large");
@@ -531,9 +536,15 @@ function createService(options = {}) {
     });
     websocket.on("close", () => {
       manager.disconnectClient(session, context.clientId, websocket);
+      if (!closingPromise) {
+        persistSessions();
+      }
     });
     websocket.on("error", () => {
       manager.disconnectClient(session, context.clientId, websocket);
+      if (!closingPromise) {
+        persistSessions();
+      }
     });
   });
 

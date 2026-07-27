@@ -1,5 +1,4 @@
-.settings-toggle,
-.session-share-toggle {
+.settings-toggle {
   position: fixed;
   top: 1rem;
   z-index: 30;
@@ -34,42 +33,11 @@
   display: none;
 }
 
-.session-share-toggle {
-  right: 4.5rem;
-}
-
-.session-share-toggle svg {
-  width: 1.1rem;
-  height: 1.1rem;
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
-}
-
-.session-share-toggle [data-share-icon="check"] {
-  display: none;
-}
-
-.session-share-toggle.is-copied [data-share-icon="link"] {
-  display: none;
-}
-
-.session-share-toggle.is-copied [data-share-icon="check"] {
-  display: block;
-}
-
-.settings-toggle:hover,
-.session-share-toggle:hover {
+.settings-toggle:hover {
   transform: translateY(-1px);
 }
 
 .settings-toggle[aria-expanded="true"] {
-  border-color: var(--target-line);
-}
-
-.session-share-toggle[data-state="online"] {
   border-color: var(--target-line);
 }
 

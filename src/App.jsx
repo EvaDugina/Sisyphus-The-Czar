@@ -14,7 +14,6 @@ export function App() {
   return (
     <>
       <Toolbar
-        sessionShareToggleRef={realtime.sessionShareToggleRef}
         settingsToggleRef={settings.settingsToggleRef}
         isSettingsOpen={settings.isOpen}
         onToggleSettings={settings.toggle}

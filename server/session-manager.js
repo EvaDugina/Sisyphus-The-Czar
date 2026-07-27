@@ -13,6 +13,7 @@ const DISCONNECTED_CLIENT_TTL_MS = 60_000;
 const DEFAULT_EMPTY_SESSION_GRACE_MS = 10_000;
 const POINTER_VELOCITY_MAX_AGE_MS = 150;
 const MAX_TRAIL_POINTS = 1000;
+const TRAIL_SYNC_INTERVAL_MS = 30_000;
 const MAX_ROCK_POINTER_OFFSET = 4;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
 const CLIENT_ROLES = new Set(["master", "slave"]);
@@ -168,6 +169,10 @@ class SessionManager {
       0,
       finite(options.audioLeadMs, DEFAULT_AUDIO_LEAD_MS)
     );
+    this.trailSyncIntervalMs = Math.max(
+      1,
+      finite(options.trailSyncIntervalMs, TRAIL_SYNC_INTERVAL_MS)
+    );
     this.productionPresetSelectionEnabled =
       options.productionPresetSelectionEnabled === true;
     this.getProductionPresetSelection =
@@ -194,12 +199,17 @@ class SessionManager {
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
     this.slaveSoundAssignments = new Map();
+    this.sharedTrailHub = null;
+    this.sharedTrailRevision = 0;
+    this.sharedTrailEvents = [];
+    this.nextTrailSyncAt = this.now() + this.trailSyncIntervalMs;
   }
 
   createSession(payload = {}, options = {}) {
     const now = this.now();
     const id = options.id || crypto.randomBytes(16).toString("base64url");
     const persistent = Boolean(options.persistent || id === DEFAULT_SESSION_ID);
+    const singleClient = options.singleClient === true;
     const state = Physics.sanitizeState(
       payload.state ?? {
         phase: Physics.PHASES.PLAY,
@@ -231,6 +241,7 @@ class SessionManager {
         payload.creatorClientId || payload.masterClientId
       ),
       persistent,
+      singleClient,
       clients: new Map(),
       holders: new Map(),
       revision: 1,
@@ -264,20 +275,42 @@ class SessionManager {
   ensureDefaultSession(payload = {}) {
     const existing = this.sessions.get(DEFAULT_SESSION_ID);
     if (existing) {
+      this.initializeSharedTrailHistory(existing);
       if (
         hasSessionBootstrapPayload(payload) &&
         existing.revision === 1 &&
         this.connectedCount(existing) === 0 &&
         existing.clients.size === 0
       ) {
-        this.applySessionBootstrap(existing, payload);
+        if (this.applySessionBootstrap(existing, payload)) {
+          this.sharedTrailHub = null;
+          this.initializeSharedTrailHistory(existing);
+        }
       }
       return existing;
     }
-    return this.createSession(payload, {
+    const created = this.createSession(payload, {
       id: DEFAULT_SESSION_ID,
       persistent: true,
     });
+    this.initializeSharedTrailHistory(created);
+    return created;
+  }
+
+  initializeSharedTrailHistory(session) {
+    if (!session || session.id !== DEFAULT_SESSION_ID) {
+      return;
+    }
+    if (this.sharedTrailHub === session) {
+      return;
+    }
+    this.sharedTrailHub = session;
+    this.sharedTrailRevision = 0;
+    this.sharedTrailEvents = session.trail.map((point) => ({
+      id: ++this.sharedTrailRevision,
+      sourceSessionId: null,
+      point: [...point],
+    }));
   }
 
   applySessionBootstrap(session, payload = {}) {
@@ -394,6 +427,7 @@ class SessionManager {
       imprint: session.imprint ? { ...session.imprint } : null,
       masterClientId: session.masterClientId,
       persistent: Boolean(session.persistent),
+      singleClient: Boolean(session.singleClient),
       revision: session.revision,
       createdAt: session.createdAt,
       lastActivityAt: session.lastActivityAt,
@@ -515,6 +549,7 @@ class SessionManager {
         imprint,
         masterClientId: normalizeClientId(record.masterClientId),
         persistent,
+        singleClient: record.singleClient === true,
         clients: new Map(),
         holders: new Map(),
         revision: Number.isSafeInteger(record.revision)
@@ -904,6 +939,21 @@ class SessionManager {
   connectClient(session, clientId, socket) {
     const now = this.now();
     const previous = session.clients.get(clientId);
+    const occupied = [...session.clients.values()].some(
+      (participant) =>
+        participant.id !== clientId && socketIsOpen(participant.socket)
+    );
+
+    if (session.singleClient && occupied) {
+      const rejected = { socket };
+      this.sendError(
+        rejected,
+        "session_occupied",
+        "В пользовательской сессии уже есть активный клиент"
+      );
+      socket.close(4009, "session_occupied");
+      return null;
+    }
 
     if (previous && socketIsOpen(previous.socket) && previous.socket !== socket) {
       previous.socket.close(4001, "connection_replaced");
@@ -915,6 +965,8 @@ class SessionManager {
       connectedAt: now,
       disconnectedAt: null,
       role: null,
+      trailCursor: 0,
+      trailHistoryCursor: 0,
     };
 
     client.role = this.assignClientRole(session, clientId);
@@ -942,6 +994,7 @@ class SessionManager {
       clientRole: client.role,
       gachiSoundFilename: client.gachiSoundFilename,
     });
+    this.sendSharedTrailHistory(client);
     this.sendTo(client, "productionPreset.current", {
       canSelect:
         this.productionPresetSelectionEnabled &&
@@ -973,7 +1026,12 @@ class SessionManager {
     this.removeHolder(session, clientId, { notify: false, reason: "disconnect" });
     this.touch(session);
     if (this.connectedCount(session) === 0) {
-      this.scheduleEmptyCleanup(session);
+      if (!session.singleClient || this.isPersistentSession(session)) {
+        this.scheduleEmptyCleanup(session);
+      } else {
+        this.destroySession(session, 1000, "session_disconnected");
+        return;
+      }
     }
     this.broadcastPresence(session);
     this.logger("client_disconnected", {
@@ -1008,8 +1066,12 @@ class SessionManager {
     });
 
     if (this.connectedCount(session) === 0) {
-      this.touch(session);
-      this.scheduleEmptyCleanup(session);
+      if (!session.singleClient || this.isPersistentSession(session)) {
+        this.touch(session);
+        this.scheduleEmptyCleanup(session);
+      } else {
+        this.destroySession(session, 1000, "session_left");
+      }
       return true;
     }
 
@@ -1094,6 +1156,12 @@ class SessionManager {
         break;
       case "audio.play":
         this.playSessionAudio(session, client);
+        break;
+      case "trail.ack":
+        this.acknowledgeSharedTrail(client, payload);
+        break;
+      case "trail.resync":
+        this.sendSharedTrailHistory(client);
         break;
       case "ping":
         this.sendTo(client, "pong", {
@@ -1733,17 +1801,117 @@ class SessionManager {
       return;
     }
     session.lastTrailAt = now;
-    session.trail.push([
+    const point = [
       Math.round(session.state.x),
       Math.round(session.state.y),
-    ]);
+    ];
+    session.trail.push(point);
     if (session.trail.length > MAX_TRAIL_POINTS) {
       session.trail.splice(0, session.trail.length - MAX_TRAIL_POINTS);
     }
+    this.publishSharedTrailPoint(session, point);
+  }
+
+  publishSharedTrailPoint(session, point) {
+    const hub = this.sharedTrailHub;
+    if (
+      !hub ||
+      session.id === DEFAULT_SESSION_ID ||
+      !this.sessions.has(hub.id)
+    ) {
+      return;
+    }
+
+    const clean = sanitizeTrail([point])[0];
+    if (!clean) {
+      return;
+    }
+    hub.trail.push(clean);
+    if (hub.trail.length > MAX_TRAIL_POINTS) {
+      hub.trail.splice(0, hub.trail.length - MAX_TRAIL_POINTS);
+    }
+    this.sharedTrailEvents.push({
+      id: ++this.sharedTrailRevision,
+      sourceSessionId: session.id,
+      point: clean,
+    });
+    if (this.sharedTrailEvents.length > MAX_TRAIL_POINTS) {
+      this.sharedTrailEvents.splice(
+        0,
+        this.sharedTrailEvents.length - MAX_TRAIL_POINTS
+      );
+    }
+    this.markChanged(hub);
+  }
+
+  sendSharedTrailHistory(client) {
+    const points = this.sharedTrailHub
+      ? this.sharedTrailHub.trail.map((point) => [...point])
+      : [];
+    const cursor = this.sharedTrailRevision;
+    client.trailHistoryCursor = cursor;
+    return this.sendTo(client, "trail.history", { cursor, points });
+  }
+
+  acknowledgeSharedTrail(client, payload = {}) {
+    const cursor = Number(payload.cursor);
+    if (
+      !Number.isSafeInteger(cursor) ||
+      cursor < 0 ||
+      cursor > this.sharedTrailRevision
+    ) {
+      this.sendError(client, "invalid_trail_cursor", "Некорректная ревизия следа");
+      return false;
+    }
+    client.trailCursor = Math.max(Number(client.trailCursor) || 0, cursor);
+    return true;
+  }
+
+  broadcastSharedTrailBatches(now = this.now()) {
+    if (now < this.nextTrailSyncAt) {
+      return false;
+    }
+    this.nextTrailSyncAt = now + this.trailSyncIntervalMs;
+
+    const oldestCursor = this.sharedTrailEvents[0]?.id || this.sharedTrailRevision;
+    this.sessions.forEach((session) => {
+      if (session.id === DEFAULT_SESSION_ID) {
+        return;
+      }
+      session.clients.forEach((client) => {
+        if (!socketIsOpen(client.socket)) {
+          return;
+        }
+        const cursor = Math.max(0, Number(client.trailCursor) || 0);
+        if (cursor < oldestCursor - 1) {
+          this.sendSharedTrailHistory(client);
+          return;
+        }
+        const pending = this.sharedTrailEvents.filter(
+          (entry) => entry.id > cursor
+        );
+        if (pending.length === 0) {
+          return;
+        }
+        this.sendTo(client, "trail.batch", {
+          baseCursor: cursor,
+          cursor: this.sharedTrailRevision,
+          points: pending
+            .filter((entry) => entry.sourceSessionId !== session.id)
+            .map((entry) => [...entry.point]),
+        });
+      });
+    });
+    return true;
   }
 
   tick(now = this.now()) {
+    this.broadcastSharedTrailBatches(now);
     for (const session of [...this.sessions.values()]) {
+      if (session.trailHubOnly) {
+        session.dirty = false;
+        continue;
+      }
       const persistent = this.isPersistentSession(session);
       if (now >= session.expiresAt) {
         if (persistent || this.connectedCount(session) > 0) {
@@ -2006,6 +2174,7 @@ module.exports = {
   DISCONNECT_GRACE_MS,
   SNAPSHOT_INTERVAL_MS,
   MAX_TRAIL_POINTS,
+  TRAIL_SYNC_INTERVAL_MS,
   DISCONNECTED_CLIENT_TTL_MS,
   DEFAULT_EMPTY_SESSION_GRACE_MS,
   REQUIRED_HOLDERS,

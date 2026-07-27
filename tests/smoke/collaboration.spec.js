@@ -118,6 +118,89 @@ async function closeSettingsPanel(page) {
   );
 }
 
+test("dev UI мгновенно применяет последний параметр во время отправки", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    const nativeAddEventListener = WebSocket.prototype.addEventListener;
+    WebSocket.prototype.addEventListener = function addEventListener(
+      type,
+      listener,
+      options,
+    ) {
+      if (type !== "message") {
+        return nativeAddEventListener.call(this, type, listener, options);
+      }
+      return nativeAddEventListener.call(
+        this,
+        type,
+        function delayedSettingsApplied(event) {
+          let message;
+          try {
+            message = JSON.parse(event.data);
+          } catch {
+            listener.call(this, event);
+            return;
+          }
+          if (message.type === "settings.applied") {
+            setTimeout(() => listener.call(this, event), 600);
+            return;
+          }
+          listener.call(this, event);
+        },
+        options,
+      );
+    };
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await openSettingsPanel(page);
+  await setRange(page, "sceneHeightScreens", 7);
+  await setRange(page, "gravity", 8.5);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--scene-height-vh")
+          .trim(),
+      ),
+    )
+    .toBe("700vh");
+  await expect
+    .poll(() => page.evaluate(() => window.__sisyphusTestApi.params.gravity))
+    .toBe(8.5);
+
+  await page.waitForTimeout(200);
+  await setRange(page, "sceneHeightScreens", 8);
+  await setRange(page, "gravity", 9.5);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--scene-height-vh")
+          .trim(),
+      ),
+    )
+    .toBe("800vh");
+  await expect
+    .poll(() => page.evaluate(() => window.__sisyphusTestApi.params.gravity))
+    .toBe(9.5);
+
+  await page.waitForTimeout(700);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.documentElement)
+          .getPropertyValue("--scene-height-vh")
+          .trim(),
+      ),
+    )
+    .toBe("800vh");
+  await expect
+    .poll(() => page.evaluate(() => window.__sisyphusTestApi.params.gravity))
+    .toBe(9.5);
+});
+
 async function resetRootExperience(page) {
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await page.evaluate(() => window.__sisyphusTestApi.restartExperience());
@@ -1776,12 +1859,12 @@ test("два браузера видят один камень и поднима
   await openControlGroup(first, "Физика");
   await setRange(first, "gravity", 10);
   await setRange(first, "turbulence", 0.3);
-  await openControlGroup(first, "Камень");
-  await setRange(first, "mass", 10);
   await setRange(first, "bounce", 0.1);
   await setRange(first, "inertia", 0.8);
   await setRange(first, "horizontalInertia", 0.3);
   await setRange(first, "groundFriction", 0.2);
+  await openControlGroup(first, "Камень");
+  await setRange(first, "mass", 10);
   await openControlGroup(first, "Руки");
   await setRange(first, "handForce", 500);
   await setField(

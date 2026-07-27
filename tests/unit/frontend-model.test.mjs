@@ -527,10 +527,17 @@ test("параметры формул подъёма и падения имею�
   );
 });
 
-test("физика содержит только параметры мира без начальной скорости", () => {
+test("физика содержит параметры мира и движения без начальной скорости", () => {
   const physicsGroup = SETTINGS_GROUPS.find((group) => group.title === "Физика");
   const controls = physicsGroup.controls.map((control) => control.name);
-  const visiblePhysicsNames = ["gravity", "turbulence"];
+  const visiblePhysicsNames = [
+    "gravity",
+    "bounce",
+    "inertia",
+    "horizontalInertia",
+    "groundFriction",
+    "turbulence",
+  ];
 
   assert.deepEqual(controls, visiblePhysicsNames);
   assert.equal(
@@ -613,10 +620,6 @@ test("настройки размера камня есть в UI и получ�
     rockSizeGroup.controls.map((control) => control.name),
     [
       "mass",
-      "bounce",
-      "inertia",
-      "horizontalInertia",
-      "groundFriction",
       "rockScaleEasing",
       "rockMinWidthVw",
       "rockMaxWidthVw",
@@ -684,7 +687,14 @@ test("общие визуальные настройки комнаты есть
   );
   assert.deepEqual(
     physicsGroup.controls.map((control) => control.name),
-    ["gravity", "turbulence"],
+    [
+      "gravity",
+      "bounce",
+      "inertia",
+      "horizontalInertia",
+      "groundFriction",
+      "turbulence",
+    ],
   );
   assert.equal(rainDropColor.type, "color");
   assert.equal(

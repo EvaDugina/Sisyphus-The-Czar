@@ -342,31 +342,6 @@ body.theme-light .weather-rain__canvas--fallback {
     scale(1.04);
 }
 
-.hand-cursor.is-slave {
-  --cursor-width: var(--slave-hand-width-px, 16px);
-  --cursor-height: var(--cursor-width);
-  --hotspot-x: calc(var(--cursor-width) * 0.5);
-  --hotspot-y: calc(var(--cursor-width) * 0.5);
-
-  background-image: url("../../assets/hand_open.png");
-  background-size: 100% 100%;
-  filter: drop-shadow(0 0.25rem 0.35rem rgba(0, 0, 0, 0.42));
-}
-
-.hand-cursor.is-slave.is-alternate,
-.hand-cursor.is-slave.is-grabbing {
-  --hotspot-y: calc(var(--cursor-width) * 0.5);
-
-  background-image: url("../../assets/hand_close.png");
-  filter: drop-shadow(0 0.3rem 0.4rem rgba(0, 0, 0, 0.52));
-  transform: translate3d(
-      calc(var(--cursor-x) - var(--hotspot-x)),
-      calc(var(--cursor-y) - var(--hotspot-y)),
-      0
-    )
-    scale(1);
-}
-
 .hand-cursor.is-remote {
   z-index: 19;
   display: block;
