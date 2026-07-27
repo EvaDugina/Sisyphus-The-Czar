@@ -3,10 +3,12 @@ import "../../shared/room-settings.js";
 import "../../shared/gachi-sounds.js";
 import "../../shared/chain-sounds.js";
 import "../../shared/viewport.js";
+import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import { createClientId } from "../lib/clientId.mjs";
 import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
+import { drizzleVolumeForY } from "../lib/drizzleVolume.mjs";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
@@ -197,6 +199,10 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEasing,
     manualVerticalScrollEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.manualVerticalScrollEnabled,
+    finalFallEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.finalFallEnabled,
+    finalFallDelaySeconds:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.finalFallDelaySeconds,
     mass: SharedPhysics.DEFAULT_PHYSICS.mass,
     gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
     firstFallVelocity: SharedPhysics.DEFAULT_PHYSICS.firstFallVelocity,
@@ -217,6 +223,14 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
     handForceDeficitEasing:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
+
+    // Капель
+    drizzleStartVolume:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.drizzleStartVolume,
+    drizzleEndVolume:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.drizzleEndVolume,
+    drizzleVolumeEasing:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.drizzleVolumeEasing,
 
     // Дождь
     rainEnabled: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rainEnabled,
@@ -311,6 +325,10 @@ export function createSisyphusRuntime(elements = {}) {
     turbTime: 0,
     imprint: null,
     wasAtReturnPlace: false,
+  };
+  const finalFallGate = {
+    enteredAt: null,
+    ready: false,
   };
 
   const SHARED_PHYSICS_KEYS = [
@@ -535,6 +553,18 @@ export function createSisyphusRuntime(elements = {}) {
   const roleAudioFade = {
     entries: new Map(),
     latest: null,
+  };
+  const groundTouchAudio = {
+    elements: new Map(),
+    lastFilename: null,
+    playCount: 0,
+  };
+  const drizzleLoopController = createCrossfadedAudioLoop({
+    src: drizzleAudioUrl,
+  });
+  const drizzleLoopAudio = {
+    playing: false,
+    volume: 0,
   };
   const rainLoopController = createCrossfadedAudioLoop({
     src: rainAudioUrl,
@@ -902,6 +932,80 @@ export function createSisyphusRuntime(elements = {}) {
       filename,
       playAt: Date.now(),
     });
+  }
+
+  function availableGroundTouchSounds() {
+    return SharedGachiSounds.GACHI_SOUND_FILENAMES.filter((filename) =>
+      GACHI_AUDIO_LOADERS_BY_FILENAME.has(filename),
+    );
+  }
+
+  function playGroundTouchSound() {
+    if (typeof Audio !== "function") {
+      return;
+    }
+    const filenames = availableGroundTouchSounds();
+    if (filenames.length === 0) {
+      return;
+    }
+    const filename =
+      filenames[Math.floor(Math.random() * filenames.length)];
+    loadAudioUrl("gachi", GACHI_AUDIO_LOADERS_BY_FILENAME, filename).then(
+      (url) => {
+        if (disposed || !url) {
+          return;
+        }
+        let audio = groundTouchAudio.elements.get(filename);
+        if (!audio) {
+          audio = new Audio(url);
+          audio.preload = "auto";
+          groundTouchAudio.elements.set(filename, audio);
+        }
+        try {
+          audio.currentTime = 0;
+          audio.volume = 1;
+          const promise = audio.play();
+          if (promise && typeof promise.catch === "function") {
+            promise.catch(() => {});
+          }
+          groundTouchAudio.lastFilename = filename;
+          groundTouchAudio.playCount += 1;
+        } catch {
+          // Ошибка отдельного звука не должна останавливать физический цикл.
+        }
+      },
+    );
+  }
+
+  function syncDrizzleLoopVolume() {
+    const volume = drizzleVolumeForY(motion.y, bounds.maxY, {
+      startVolume: params.drizzleStartVolume,
+      endVolume: params.drizzleEndVolume,
+      easing: params.drizzleVolumeEasing,
+    });
+    drizzleLoopAudio.volume = volume;
+    drizzleLoopController.setVolume(volume);
+    return volume;
+  }
+
+  function playDrizzleLoopSound() {
+    if (drizzleLoopAudio.playing) {
+      return;
+    }
+    drizzleLoopAudio.playing = true;
+    syncDrizzleLoopVolume();
+    const promise = drizzleLoopController.start();
+    if (promise && typeof promise.then === "function") {
+      promise
+        .then((started) => {
+          if (!started && !disposed) {
+            drizzleLoopAudio.playing = false;
+          }
+        })
+        .catch(() => {
+          drizzleLoopAudio.playing = false;
+        });
+    }
   }
 
   function setRainLoopVolume(value) {
@@ -1789,6 +1893,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     applyTrailBlendMode();
     applyManualVerticalScrollSetting();
+    syncDrizzleLoopVolume();
 
     if (updateUi) {
       const trailLengthInput =
@@ -2010,6 +2115,7 @@ export function createSisyphusRuntime(elements = {}) {
     rock.style.setProperty("--rock-x", `${motion.x}px`);
     rock.style.setProperty("--rock-y", `${motion.y}px`);
     applyRockScale();
+    syncDrizzleLoopVolume();
   }
 
   function createSummitSharedImprint(input = {}) {
@@ -3935,6 +4041,7 @@ export function createSisyphusRuntime(elements = {}) {
     const touchedGround = previous !== null && next > previous;
     if (touchedGround) {
       hideReturnRain();
+      playGroundTouchSound();
     }
     return resetTrailOnGroundTouch(touchedGround);
   }
@@ -4228,11 +4335,36 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function resetFinalFallGate() {
+    finalFallGate.enteredAt = null;
+    finalFallGate.ready = false;
+  }
+
+  function syncFinalFallGate(now = performance.now()) {
+    const insideWhileHeld =
+      params.finalFallEnabled &&
+      motion.dragging &&
+      motion.phase === PHASES.PLAY &&
+      rockInsideImprint();
+    if (!insideWhileHeld) {
+      resetFinalFallGate();
+      return false;
+    }
+    if (finalFallGate.enteredAt === null) {
+      finalFallGate.enteredAt = now;
+    }
+    finalFallGate.ready =
+      now - finalFallGate.enteredAt >=
+      params.finalFallDelaySeconds * 1000;
+    return finalFallGate.ready;
+  }
+
   function beginFinalReturnFall() {
     const state = SharedPhysics.sanitizeState(currentSharedState());
     if (!SharedPhysics.beginFinalFall(state)) {
       return false;
     }
+    resetFinalFallGate();
     setPhase(state.phase);
     applyCanonicalMotion(state);
     showReturnRain();
@@ -4249,6 +4381,7 @@ export function createSisyphusRuntime(elements = {}) {
     const atReturnPlace =
       (motion.phase === PHASES.PLAY || motion.phase === PHASES.WON) &&
       rockInsideImprint();
+    syncFinalFallGate();
     const nextTheme = resolveTheme(atReturnPlace ? "light" : "dark");
     const keepRainUntilGround =
       rain.returnRequested && motion.phase === PHASES.FALLING;
@@ -4297,6 +4430,7 @@ export function createSisyphusRuntime(elements = {}) {
       (previousY < bounds.maxY - 0.75 && motion.y >= bounds.maxY - 0.75);
     if (touchedGround) {
       hideReturnRain();
+      playGroundTouchSound();
     }
     resetTrailOnGroundTouch(touchedGround);
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
@@ -4420,6 +4554,8 @@ export function createSisyphusRuntime(elements = {}) {
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
+    const finalFallReady =
+      releasedInImprint && syncFinalFallGate();
     motion.dragging = false;
     motion.activePointerId = null;
     motion.holdTimerId = null;
@@ -4427,7 +4563,8 @@ export function createSisyphusRuntime(elements = {}) {
     setGrabbingCursor(false);
     releasePointerCapture(pointerId);
 
-    if (releasedInImprint) {
+    resetFinalFallGate();
+    if (finalFallReady) {
       beginFinalReturnFall();
     } else {
       applyReleaseImpulse();
@@ -4447,6 +4584,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    playDrizzleLoopSound();
     playRockPointerDownSound();
 
     if (collab.enabled) {
@@ -4507,6 +4645,8 @@ export function createSisyphusRuntime(elements = {}) {
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
+    const finalFallReady =
+      releasedInImprint && syncFinalFallGate();
     clearHoldTimer();
     motion.dragging = false;
     motion.activePointerId = null;
@@ -4515,7 +4655,8 @@ export function createSisyphusRuntime(elements = {}) {
     releasePointerCapture(event.pointerId);
     const pointerVelocity = currentPointerVelocity();
 
-    if (releasedInImprint) {
+    resetFinalFallGate();
+    if (finalFallReady) {
       beginFinalReturnFall();
     } else {
       applyReleaseImpulse(pointerVelocity);
@@ -4673,6 +4814,22 @@ export function createSisyphusRuntime(elements = {}) {
       },
       getSessionAudioState: () =>
         sessionRoleAudio.latest ? { ...sessionRoleAudio.latest } : null,
+      getGroundTouchAudioState: () => ({
+        lastFilename: groundTouchAudio.lastFilename,
+        playCount: groundTouchAudio.playCount,
+      }),
+      getDrizzleAudioState: () => {
+        const loopState = drizzleLoopController.getState();
+        return {
+          ...loopState,
+          playing: drizzleLoopAudio.playing,
+          volume: drizzleLoopAudio.volume,
+        };
+      },
+      getFinalFallGateState: () => ({
+        enteredAt: finalFallGate.enteredAt,
+        ready: finalFallGate.ready,
+      }),
       getSummitTimerState: () => ({
         elapsedMs: currentSummitElapsedMs(),
         running: summitTimer.running,
@@ -4749,8 +4906,12 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(collab.settingsUpdateTimerId);
       stopRainLoopSound({ immediate: true });
       rainLoopController.dispose();
+      drizzleLoopAudio.playing = false;
+      drizzleLoopController.dispose();
+      resetFinalFallGate();
       cancelAllRoleAudioFades();
       chainHoverAudio.elements.forEach((audio) => audio?.pause());
+      groundTouchAudio.elements.forEach((audio) => audio.pause());
       sessionRoleAudio.timerIds.forEach((timerId) => {
         window.clearTimeout(timerId);
       });

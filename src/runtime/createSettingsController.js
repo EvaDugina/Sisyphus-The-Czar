@@ -1110,8 +1110,11 @@ export function createSettingsController(options) {
         params.positionScrollStartSpeedVh.toFixed(2),
       positionScrollEndSpeedVh:
         params.positionScrollEndSpeedVh.toFixed(2),
+      finalFallDelaySeconds: secondsOutput(params.finalFallDelaySeconds),
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
       slaveHandWidthPx: `${params.slaveHandWidthPx.toFixed(0)}px`,
+      drizzleStartVolume: `${Math.round(params.drizzleStartVolume * 100)}%`,
+      drizzleEndVolume: `${Math.round(params.drizzleEndVolume * 100)}%`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
       rainMaxVolume: `${Math.round(params.rainMaxVolume * 100)}%`,
       rainBackgroundBlurSteps: params.rainBackgroundBlurSteps.toFixed(0),

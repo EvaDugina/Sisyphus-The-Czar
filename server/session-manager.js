@@ -262,6 +262,7 @@ class SessionManager {
       summitElapsedMs: 0,
       summitRunningSince: summitInside ? now : null,
       summitWasInside: summitInside,
+      finalFallEnteredAt: null,
       lastPointer: { vx: 0, vy: 0 },
       lastPointerAt: now,
       dirty: true,
@@ -574,6 +575,7 @@ class SessionManager {
         summitElapsedMs,
         summitRunningSince,
         summitWasInside: summitInside,
+        finalFallEnteredAt: null,
         lastPointer,
         lastPointerAt,
         dirty: true,
@@ -782,6 +784,24 @@ class SessionManager {
     return changed;
   }
 
+  syncFinalFallGate(session, now = this.now()) {
+    const insideWhileHeld =
+      session.roomSettings.finalFallEnabled &&
+      session.state.dragging &&
+      Physics.stateInsideImprint(session.state, session.imprint);
+    if (!insideWhileHeld) {
+      session.finalFallEnteredAt = null;
+      return false;
+    }
+    if (session.finalFallEnteredAt === null) {
+      session.finalFallEnteredAt = now;
+    }
+    return (
+      now - session.finalFallEnteredAt >=
+      session.roomSettings.finalFallDelaySeconds * 1000
+    );
+  }
+
   clearStationaryHold(session) {
     session.stationaryHoldSince = null;
     session.stationaryHoldPosition = null;
@@ -854,6 +874,7 @@ class SessionManager {
         this.stopSummitTimer(session, now);
       }
       this.updateStationaryHold(session, now);
+      this.syncFinalFallGate(session, now);
       return;
     }
 
@@ -884,6 +905,7 @@ class SessionManager {
     session.lastPointerAt = now;
     session.firstFallAt = null;
     this.updateStationaryHold(session, now);
+    this.syncFinalFallGate(session, now);
   }
 
   removeHolder(session, clientId, options = {}) {
@@ -897,6 +919,8 @@ class SessionManager {
     const releasedInsideImprint =
       options.applyReleaseImpulse &&
       Physics.stateInsideImprint(session.state, session.imprint);
+    const finalFallReady =
+      releasedInsideImprint && this.syncFinalFallGate(session, now);
     const releaseVelocity = options.applyReleaseImpulse
       ? this.holderVelocity(session, holder, now)
       : { vx: 0, vy: 0 };
@@ -916,7 +940,7 @@ class SessionManager {
       !session.state.dragging &&
       session.state.phase === Physics.PHASES.PLAY
     ) {
-      if (releasedInsideImprint) {
+      if (finalFallReady) {
         Physics.beginFinalFall(session.state);
       } else {
         Physics.applyReleaseImpulse(
@@ -927,6 +951,7 @@ class SessionManager {
         );
       }
     }
+    this.syncFinalFallGate(session, now);
     this.markChanged(session);
     this.broadcastSnapshot(session);
     this.broadcastPresence(session);
@@ -2027,6 +2052,7 @@ class SessionManager {
       }
 
       const summitTimerChanged = this.syncSummitTimer(session, now);
+      this.syncFinalFallGate(session, now);
       if (physicsChanged || summitTimerChanged) {
         this.markChanged(session);
       } else if (!Physics.isMoving(session.state)) {

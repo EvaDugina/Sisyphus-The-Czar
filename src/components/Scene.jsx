@@ -14,7 +14,6 @@ export function Scene({ scene, trail, rain }) {
       >
         00:00:00
       </div>
-      <h1 className="top-inscription">СМЕРТИЮ СМЕРТЬ ПОПРАВ</h1>
       <section className="summit">
         <div className="target-zone" aria-hidden="true" />
         <h2 className="title2">Миниатюра</h2>

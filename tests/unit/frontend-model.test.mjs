@@ -8,6 +8,10 @@ import {
   viewportToRockRelativePosition,
 } from "../../src/lib/coordinates.mjs";
 import { createClientId } from "../../src/lib/clientId.mjs";
+import {
+  drizzleVolumeForY,
+  physicalHeightProgress,
+} from "../../src/lib/drizzleVolume.mjs";
 import { getRainVisualProfile } from "../../src/lib/rainProfile.mjs";
 import {
   DEFAULT_ROCK_MAX_WIDTH_VW,
@@ -625,6 +629,29 @@ test("точка траектории задаётся по высоте мас�
   }), { x: 140, y: 250 });
 });
 
+test("громкость капели зависит от физической высоты и ограничена диапазоном", () => {
+  const settings = {
+    startVolume: 0.1,
+    endVolume: 1,
+    easing: "cubic-bezier(0, 0, 1, 1)",
+  };
+
+  assert.equal(physicalHeightProgress(1000, 1000), 0);
+  assert.equal(physicalHeightProgress(500, 1000), 0.5);
+  assert.equal(physicalHeightProgress(0, 1000), 1);
+  assert.equal(drizzleVolumeForY(1000, 1000, settings), 0.1);
+  assert.equal(drizzleVolumeForY(0, 1000, settings), 1);
+  assert.ok(Math.abs(drizzleVolumeForY(500, 1000, settings) - 0.55) < 1e-9);
+  assert.equal(
+    drizzleVolumeForY(-100, 1000, {
+      startVolume: -2,
+      endVolume: 4,
+      easing: "invalid",
+    }),
+    1,
+  );
+});
+
 test("настройки размера камня есть в UI и получают fallback", () => {
   const rockSizeGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Камень",
@@ -686,11 +713,19 @@ test("UI содержит настройки автоматики, scroll, overf
   const automationGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Автоматика и скролл",
   );
+  const finalFallGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Финальное падение",
+  );
+  const drizzleGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Капель",
+  );
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const byName = (name) =>
     controls.find((control) => control.name === name);
 
   assert.ok(automationGroup);
+  assert.ok(finalFallGroup);
+  assert.ok(drizzleGroup);
   assert.deepEqual(
     automationGroup.controls.map((control) => control.name),
     [
@@ -706,6 +741,38 @@ test("UI содержит настройки автоматики, scroll, overf
   assert.equal(byName("stationaryAutoSlipEnabled").defaultChecked, true);
   assert.equal(byName("positionScrollEnabled").defaultChecked, true);
   assert.equal(byName("manualVerticalScrollEnabled").defaultChecked, true);
+  assert.deepEqual(
+    finalFallGroup.controls.map((control) => control.name),
+    ["finalFallEnabled", "finalFallDelaySeconds"],
+  );
+  assert.equal(byName("finalFallEnabled").defaultChecked, false);
+  assert.deepEqual(
+    [
+      byName("finalFallDelaySeconds").min,
+      byName("finalFallDelaySeconds").max,
+      byName("finalFallDelaySeconds").step,
+      byName("finalFallDelaySeconds").defaultValue,
+    ],
+    [0, 10, 0.1, 2],
+  );
+  assert.deepEqual(
+    drizzleGroup.controls.map((control) => control.name),
+    [
+      "drizzleStartVolume",
+      "drizzleEndVolume",
+      "drizzleVolumeEasing",
+    ],
+  );
+  assert.deepEqual(
+    [
+      byName("drizzleStartVolume").min,
+      byName("drizzleStartVolume").max,
+      byName("drizzleStartVolume").step,
+      byName("drizzleStartVolume").defaultValue,
+    ],
+    [0, 1, 0.01, 0.1],
+  );
+  assert.equal(byName("drizzleEndVolume").defaultValue, 1);
   assert.deepEqual(
     [
       byName("positionScrollZonePercent").min,
@@ -745,6 +812,7 @@ test("UI содержит настройки автоматики, scroll, overf
     "rockScaleEasing",
     "handForceDeficitEasing",
     "positionScrollEasing",
+    "drizzleVolumeEasing",
     "rainEnterEasing",
     "rainExitEasing",
   ].forEach((name) => {
@@ -1012,7 +1080,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 11);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 12);
   assert.equal(
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
     "cubic-bezier(0.42, 0, 1, 1)",

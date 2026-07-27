@@ -374,6 +374,29 @@ export const SETTINGS_GROUPS = [
     ],
   },
   {
+    title: "Финальное падение",
+    controls: [
+      {
+        name: "finalFallEnabled",
+        label: "Непрерывное падение с вершины",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.finalFallEnabled,
+        hint: "После выдержки на вершине отпущенный камень переходит в финальное падение без повторной остановки на верхнем отпечатке.",
+      },
+      {
+        name: "finalFallDelaySeconds",
+        label: "Задержка активации",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.finalFallDelaySeconds[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.finalFallDelaySeconds[1],
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.finalFallDelaySeconds,
+        output: `${DEFAULT_ROOM_SETTINGS.finalFallDelaySeconds.toFixed(1)} s`,
+        hint: "Сколько камень должен непрерывно находиться на вершине, прежде чем правило применится при последующем отпускании.",
+      },
+    ],
+  },
+  {
     title: "Физика",
     controls: [
       {
@@ -812,6 +835,40 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROOM_SETTINGS.rainExitMs / 1000,
         output: `${(DEFAULT_ROOM_SETTINGS.rainExitMs / 1000).toFixed(1)} s`,
         hint: "Сколько секунд одновременно затухает дождь и стихает его звук.",
+      },
+    ],
+  },
+  {
+    title: "Капель",
+    controls: [
+      {
+        name: "drizzleStartVolume",
+        label: "Начальная громкость",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.drizzleVolume[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.drizzleVolume[1],
+        step: 0.01,
+        defaultValue: DEFAULT_ROOM_SETTINGS.drizzleStartVolume,
+        output: `${Math.round(DEFAULT_ROOM_SETTINGS.drizzleStartVolume * 100)}%`,
+        hint: "Громкость непрерывной капели, когда камень находится на нижней земле.",
+      },
+      {
+        name: "drizzleEndVolume",
+        label: "Конечная громкость",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.drizzleVolume[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.drizzleVolume[1],
+        step: 0.01,
+        defaultValue: DEFAULT_ROOM_SETTINGS.drizzleEndVolume,
+        output: `${Math.round(DEFAULT_ROOM_SETTINGS.drizzleEndVolume * 100)}%`,
+        hint: "Громкость непрерывной капели только в самой верхней точке пути.",
+      },
+      {
+        name: "drizzleVolumeEasing",
+        label: "Кривая громкости",
+        type: "cubic-bezier",
+        defaultValue: DEFAULT_ROOM_SETTINGS.drizzleVolumeEasing,
+        hint: "Кривая изменения громкости по физической высоте камня от нижней земли к вершине.",
       },
     ],
   },

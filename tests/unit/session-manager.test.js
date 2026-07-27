@@ -2031,7 +2031,7 @@ test("победный отпечаток блокирует stationary и сл�
   assert.equal(session.stationaryHoldSince, null);
 });
 
-test("отпускание последней руки в отпечатке запускает финальное падение", () => {
+test("финальное падение по умолчанию выключено", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
@@ -2044,6 +2044,7 @@ test("отпускание последней руки в отпечатке з�
     manager.acquireControl(session, holder.client, { x: 500, y: 100 }),
     true
   );
+  clock.value = 3000;
   assert.equal(
     manager.releaseControl(session, holder.client, {
       x: 500,
@@ -2054,13 +2055,47 @@ test("отпускание последней руки в отпечатке з�
     true
   );
 
+  assert.equal(session.state.phase, Physics.PHASES.PLAY);
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.controllerId, null);
+  assert.ok(session.state.vy < 0);
+});
+
+test("финальное падение включается только после выдержки на вершине", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
+    physics: { bounce: 0, gravity: 20, turbulence: 0 },
+    roomSettings: {
+      finalFallEnabled: true,
+      finalFallDelaySeconds: 2,
+    },
+    imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
+  });
+  const holder = connect(manager, session, "client-final-fall2");
+
+  assert.equal(
+    manager.acquireControl(session, holder.client, { x: 500, y: 100 }),
+    true,
+  );
+  clock.value = 2000;
+  assert.equal(
+    manager.releaseControl(session, holder.client, {
+      x: 500,
+      y: 100,
+      vx: 0,
+      vy: -4000,
+    }),
+    true,
+  );
+
   assert.equal(session.state.phase, Physics.PHASES.FALLING);
   assert.equal(session.state.dragging, false);
   assert.equal(session.state.controllerId, null);
   assert.equal(session.state.vx, 0);
   assert.equal(session.state.vy, 0);
 
-  clock.value = 250;
+  clock.value = 2250;
   manager.tick();
   assert.equal(session.state.phase, Physics.PHASES.FALLING);
   assert.ok(session.state.y > 100);
@@ -2071,6 +2106,38 @@ test("отпускание последней руки в отпечатке з�
     }),
     false
   );
+});
+
+test("выход с вершины сбрасывает таймер финального падения", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
+    roomSettings: {
+      finalFallEnabled: true,
+      finalFallDelaySeconds: 2,
+    },
+    imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
+  });
+  const holder = connect(manager, session, "client-final-reset01");
+
+  manager.acquireControl(session, holder.client, { x: 500, y: 100 });
+  clock.value = 1500;
+  manager.moveControl(session, holder.client, { x: 500, y: 200 });
+  assert.equal(session.finalFallEnteredAt, null);
+
+  clock.value = 2000;
+  manager.moveControl(session, holder.client, { x: 500, y: 100 });
+  assert.equal(session.finalFallEnteredAt, 2000);
+
+  clock.value = 3500;
+  manager.releaseControl(session, holder.client, {
+    x: 500,
+    y: 100,
+    vx: 0,
+    vy: -4000,
+  });
+  assert.equal(session.state.phase, Physics.PHASES.PLAY);
+  assert.ok(session.state.vy < 0);
 });
 
 test("движущийся камень сохраняет независимое случайное соскальзывание", () => {

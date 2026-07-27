@@ -42,7 +42,6 @@
   pointer-events: none;
 }
 
-.top-inscription,
 .title,
 .title2 {
   position: absolute;
@@ -66,14 +65,6 @@
 .title {
   top: 15rem;
   font-size: 8.4rem;
-}
-
-.top-inscription {
-  top: 15rem;
-  left: 50vw;
-  width: calc(100vw - 2rem);
-  font-size: 8.4rem;
-  white-space: nowrap;
 }
 
 .summit-timer {
@@ -392,17 +383,11 @@ body.state-fallingToBottom .hand-cursor {
     font-size: 1.5rem;
   }
 
-  .top-inscription,
   .title {
     top: 10.7rem;
     width: min(94vw, 28rem);
     font-size: 4.4rem;
     line-height: 0.88;
-  }
-
-  .top-inscription {
-    width: calc(100vw - 1rem);
-    font-size: 4rem;
   }
 
   .title2 {

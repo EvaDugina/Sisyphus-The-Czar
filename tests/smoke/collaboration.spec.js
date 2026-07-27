@@ -210,9 +210,11 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await openSettingsPanel(page);
   await openControlGroup(page, "Вид");
   await openControlGroup(page, "Автоматика и скролл");
+  await openControlGroup(page, "Финальное падение");
   await openControlGroup(page, "Физика");
   await openControlGroup(page, "Камень");
   await openControlGroup(page, "Траектория");
+  await openControlGroup(page, "Капель");
 
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toBeChecked();
   await expect(page.locator('[name="positionScrollEnabled"]')).toBeChecked();
@@ -233,7 +235,7 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("35");
   await expect(page.locator('[name^="returnScroll"]')).toHaveCount(0);
-  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(5);
+  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(6);
 
   const speedCurveControl = page
     .locator("[data-cubic-bezier-control]")
@@ -256,6 +258,15 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
 
   await setField(page, "rockMinWidthVw", 40);
   await setField(page, "rockMaxWidthVw", 10);
+  await setCheckbox(page, "finalFallEnabled", true);
+  await setRange(page, "finalFallDelaySeconds", 3.5);
+  await setRange(page, "drizzleStartVolume", 0.2);
+  await setRange(page, "drizzleEndVolume", 0.8);
+  await setField(
+    page,
+    "drizzleVolumeEasing",
+    "cubic-bezier(0, 0, 1, 1)",
+  );
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("40");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("10");
   await expect
@@ -333,12 +344,23 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await openSettingsPanel(page);
   await openControlGroup(page, "Автоматика и скролл");
+  await openControlGroup(page, "Финальное падение");
   await openControlGroup(page, "Камень");
+  await openControlGroup(page, "Капель");
   await expect(page.locator('[name="positionScrollEasing"]')).toHaveValue(
     "cubic-bezier(0.31, 0.67, 0.83, 0.67)",
   );
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("40");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("10");
+  await expect(page.locator('[name="finalFallEnabled"]')).toBeChecked();
+  await expect(page.locator('[name="finalFallDelaySeconds"]')).toHaveValue(
+    "3.5",
+  );
+  await expect(page.locator('[name="drizzleStartVolume"]')).toHaveValue("0.2");
+  await expect(page.locator('[name="drizzleEndVolume"]')).toHaveValue("0.8");
+  await expect(page.locator('[name="drizzleVolumeEasing"]')).toHaveValue(
+    "cubic-bezier(0, 0, 1, 1)",
+  );
   await expect(
     page.locator('[name="manualVerticalScrollEnabled"]'),
   ).not.toBeChecked();
@@ -349,17 +371,181 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
           localStorage.getItem("sisyphus-czar-settings-v18") || "{}",
         );
         return {
+          delay: stored.finalFallDelaySeconds,
+          drizzle: [
+            stored.drizzleStartVolume,
+            stored.drizzleEndVolume,
+            stored.drizzleVolumeEasing,
+          ],
           easing: stored.positionScrollEasing,
+          finalFallEnabled: stored.finalFallEnabled,
           manualScroll: stored.manualVerticalScrollEnabled,
           size: [stored.rockMinWidthVw, stored.rockMaxWidthVw],
         };
       }),
     )
     .toEqual({
+      delay: 3.5,
+      drizzle: [0.2, 0.8, "cubic-bezier(0, 0, 1, 1)"],
       easing: "cubic-bezier(0.31, 0.67, 0.83, 0.67)",
+      finalFallEnabled: true,
       manualScroll: false,
       size: [40, 10],
     });
+  await setCheckbox(page, "finalFallEnabled", false);
+  await setRange(page, "finalFallDelaySeconds", 2);
+  await setRange(page, "drizzleStartVolume", 0.1);
+  await setRange(page, "drizzleEndVolume", 1);
+  await setField(
+    page,
+    "drizzleVolumeEasing",
+    "cubic-bezier(0.4, 0, 0.2, 1)",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          !collab.settingsUpdateInFlight &&
+          !collab.settingsUpdateQueued &&
+          Object.keys(collab.pendingRoomSettingsChanges).length === 0,
+      ),
+    )
+    .toBe(true);
+});
+
+test("Капель, финальное падение и звук касания работают с новыми настройками", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Финальное падение");
+  await openControlGroup(page, "Капель");
+
+  await setCheckbox(page, "finalFallEnabled", true);
+  await setRange(page, "finalFallDelaySeconds", 3.5);
+  await setRange(page, "drizzleStartVolume", 0.2);
+  await setRange(page, "drizzleEndVolume", 0.8);
+  await setField(
+    page,
+    "drizzleVolumeEasing",
+    "cubic-bezier(0, 0, 1, 1)",
+  );
+  await closeSettingsPanel(page);
+
+  await expectReadyAtBottom(page);
+  await grabVisibleRock(page);
+  await page.mouse.up();
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => window.__sisyphusTestApi.getDrizzleAudioState().startCount,
+        ),
+      { timeout: 15_000 },
+    )
+    .toBe(1);
+
+  await grabVisibleRock(page);
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.getDrizzleAudioState().startCount,
+      ),
+    )
+    .toBe(1);
+
+  const audioState = await page.evaluate(() => {
+    collab.enabled = false;
+    collab.snapshots.length = 0;
+    motion.phase = SharedPhysics.PHASES.PLAY;
+    motion.dragging = false;
+    motion.suspended = true;
+    updateBounds();
+    setPosition(bounds.maxX / 2, bounds.maxY);
+    const bottomVolume =
+      window.__sisyphusTestApi.getDrizzleAudioState().volume;
+    setPosition(bounds.maxX / 2, 0);
+    const topVolume =
+      window.__sisyphusTestApi.getDrizzleAudioState().volume;
+
+    params.bounce = 0;
+    params.gravity = 50;
+    motion.suspended = false;
+    updateBounds();
+    setPosition(bounds.maxX / 2, bounds.maxY - 1);
+    motion.vy = 1000;
+    window.__sisyphusTestApi.applyPhysics(0.032);
+    return {
+      bottomVolume,
+      firstGroundPlayCount:
+        window.__sisyphusTestApi.getGroundTouchAudioState().playCount,
+      topVolume,
+    };
+  });
+  expect(audioState.bottomVolume).toBeCloseTo(0.2, 5);
+  expect(audioState.topVolume).toBeCloseTo(0.8, 5);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => window.__sisyphusTestApi.getGroundTouchAudioState().playCount,
+        ),
+      { timeout: 10_000 },
+    )
+    .toBe(audioState.firstGroundPlayCount + 1);
+
+  const contactCounts = await page.evaluate(() => {
+    const first =
+      window.__sisyphusTestApi.getGroundTouchAudioState().playCount;
+    window.__sisyphusTestApi.applyPhysics(0.032);
+    const continuous =
+      window.__sisyphusTestApi.getGroundTouchAudioState().playCount;
+    updateBounds();
+    setPosition(bounds.maxX / 2, bounds.maxY - 1);
+    motion.vy = 1000;
+    window.__sisyphusTestApi.applyPhysics(0.032);
+    return { continuous, first };
+  });
+  expect(contactCounts.continuous).toBe(contactCounts.first);
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () => window.__sisyphusTestApi.getGroundTouchAudioState().playCount,
+        ),
+      { timeout: 10_000 },
+    )
+    .toBe(contactCounts.first + 1);
+
+  await page.evaluate(() => {
+    collab.enabled = true;
+  });
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Финальное падение");
+  await openControlGroup(page, "Капель");
+  await setCheckbox(page, "finalFallEnabled", false);
+  await setRange(page, "finalFallDelaySeconds", 2);
+  await setRange(page, "drizzleStartVolume", 0.1);
+  await setRange(page, "drizzleEndVolume", 1);
+  await setField(
+    page,
+    "drizzleVolumeEasing",
+    "cubic-bezier(0.4, 0, 0.2, 1)",
+  );
+  await expect(page.locator('[name="finalFallEnabled"]')).not.toBeChecked();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          !collab.settingsUpdateInFlight &&
+          !collab.settingsUpdateQueued &&
+          Object.keys(collab.pendingRoomSettingsChanges).length === 0,
+      ),
+    )
+    .toBe(true);
 });
 
 test("dev-каталог шаблонов общий для личных сессий браузеров", async ({
@@ -643,17 +829,9 @@ async function expectImprintCenteredInTopViewport(
   await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
   await page.evaluate(() => window.scrollTo(0, 0));
   await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
-  await expect(page.locator("h1.top-inscription")).toBeVisible();
+  await expect(page.locator(".top-inscription")).toHaveCount(0);
   const position = await page.getByTestId("rock-imprint").evaluate((imprint) => {
     const rect = imprint.getBoundingClientRect();
-    const inscription = document.querySelector(".top-inscription");
-    const inscriptionRect = inscription.getBoundingClientRect();
-    const inscriptionRange = document.createRange();
-    inscriptionRange.selectNodeContents(inscription);
-    const inscriptionTextRect = inscriptionRange.getBoundingClientRect();
-    inscriptionRange.detach();
-    const titleStyle = getComputedStyle(document.querySelector(".title"));
-    const inscriptionStyle = getComputedStyle(inscription);
     return {
       centerX: rect.left + rect.width / 2,
       centerY: rect.top + rect.height / 2,
@@ -661,20 +839,6 @@ async function expectImprintCenteredInTopViewport(
       viewportCenterY: window.innerHeight / 2,
       viewportWidth: window.innerWidth,
       documentScrollWidth: document.documentElement.scrollWidth,
-      inscriptionTop: inscriptionRect.top,
-      inscriptionFontSize: inscriptionStyle.fontSize,
-      inscriptionLineHeight: inscriptionStyle.lineHeight,
-      inscriptionFontFamily: inscriptionStyle.fontFamily,
-      inscriptionFontWeight: inscriptionStyle.fontWeight,
-      inscriptionWhiteSpace: inscriptionStyle.whiteSpace,
-      inscriptionTextLeft: inscriptionTextRect.left,
-      inscriptionTextRight: inscriptionTextRect.right,
-      inscriptionTextCenter:
-        inscriptionTextRect.left + inscriptionTextRect.width / 2,
-      titleFontSize: titleStyle.fontSize,
-      titleLineHeight: titleStyle.lineHeight,
-      titleFontFamily: titleStyle.fontFamily,
-      titleFontWeight: titleStyle.fontWeight,
     };
   });
   if (checkImprintCenter) {
@@ -685,28 +849,6 @@ async function expectImprintCenteredInTopViewport(
       Math.abs(position.centerY - position.viewportCenterY),
     ).toBeLessThanOrEqual(3);
   }
-  expect(position.inscriptionTop).toBeGreaterThanOrEqual(0);
-  expect(Number.parseFloat(position.inscriptionFontSize)).toBeLessThanOrEqual(
-    Number.parseFloat(position.titleFontSize),
-  );
-  expect(
-    Number.parseFloat(position.inscriptionLineHeight) /
-      Number.parseFloat(position.inscriptionFontSize),
-  ).toBeCloseTo(
-    Number.parseFloat(position.titleLineHeight) /
-      Number.parseFloat(position.titleFontSize),
-    2,
-  );
-  expect(position.inscriptionFontFamily).toBe(position.titleFontFamily);
-  expect(position.inscriptionFontWeight).toBe(position.titleFontWeight);
-  expect(position.inscriptionWhiteSpace).toBe("nowrap");
-  expect(
-    Math.abs(position.inscriptionTextCenter - position.viewportCenterX),
-  ).toBeLessThanOrEqual(1);
-  expect(position.inscriptionTextLeft).toBeGreaterThanOrEqual(0);
-  expect(position.inscriptionTextRight).toBeLessThanOrEqual(
-    position.viewportWidth,
-  );
   expect(position.documentScrollWidth).toBeLessThanOrEqual(
     position.viewportWidth,
   );
@@ -1121,7 +1263,7 @@ test("вход на корень открывает рабочую общую с
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(page).toHaveTitle("ПУТЬ ЦАРЕЙ");
-  await expect(page.locator("h1")).toHaveText("СМЕРТИЮ СМЕРТЬ ПОПРАВ");
+  await expect(page.locator(".top-inscription")).toHaveCount(0);
   await expect(page.getByTestId("summit-timer")).toHaveText("00:00:00");
   await expect(page.locator(".title")).toHaveText("ПУТЬ ЦАРЕЙ");
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
@@ -1153,7 +1295,7 @@ test("вход на корень открывает рабочую общую с
   expect(startState.scrollable).toBe(true);
   const summitTimerLayout = await page.getByTestId("summit-timer").evaluate(
     (timer) => {
-      const title = document.querySelector(".top-inscription");
+      const title = document.querySelector(".title");
       const timerRect = timer.getBoundingClientRect();
       const timerStyle = getComputedStyle(timer);
       const titleStyle = getComputedStyle(title);
