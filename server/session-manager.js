@@ -817,8 +817,7 @@ class SessionManager {
     if (
       !state.dragging ||
       this.holderCount(session) === 0 ||
-      isOnGround ||
-      Physics.stateInsideImprint(state, session.imprint)
+      isOnGround
     ) {
       this.clearStationaryHold(session);
       return false;
@@ -2010,8 +2009,7 @@ class SessionManager {
         if (
           holder &&
           holder.slipAt !== null &&
-          now >= holder.slipAt &&
-          !Physics.stateInsideImprint(session.state, session.imprint)
+          now >= holder.slipAt
         ) {
           this.removeHolder(session, clientId, {
             notify: true,

@@ -2011,7 +2011,7 @@ test("неподвижное удержание на земле не запус�
   assert.equal(session.stationaryHoldSince, null);
 });
 
-test("победный отпечаток блокирует stationary и случайное выпадение", () => {
+test("победный отпечаток не блокирует stationary-выпадение", () => {
   const { clock, manager } = setup({
     slipDelayMinMs: 500,
     slipDelayMaxMs: 500,
@@ -2027,8 +2027,40 @@ test("победный отпечаток блокирует stationary и сл�
   clock.value = 1000;
   manager.tick();
 
-  assert.equal(session.holders.size, 1);
-  assert.equal(session.stationaryHoldSince, null);
+  assert.equal(session.holders.size, 0);
+  assert.equal(session.state.dragging, false);
+  assert.equal(
+    holder.socket.messages.findLast(
+      (message) => message.type === "control.slipped"
+    ).payload.reason,
+    "stationary"
+  );
+});
+
+test("победный отпечаток не блокирует случайное выпадение", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 500,
+    slipDelayMaxMs: 500,
+    stationaryHoldReleaseMs: 10_000,
+  });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
+    imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
+  });
+  const holder = connect(manager, session, "client-imprint-slip1");
+  manager.acquireControl(session, holder.client, { x: 500, y: 100 });
+
+  clock.value = 500;
+  manager.tick();
+
+  assert.equal(session.holders.size, 0);
+  assert.equal(session.state.dragging, false);
+  assert.equal(
+    holder.socket.messages.findLast(
+      (message) => message.type === "control.slipped"
+    ).payload.reason,
+    "slipped"
+  );
 });
 
 test("финальное падение по умолчанию выключено", () => {

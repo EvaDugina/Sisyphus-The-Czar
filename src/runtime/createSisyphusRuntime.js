@@ -2272,11 +2272,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function updatePositionScroll(deltaSeconds) {
-    if (
-      motion.phase !== PHASES.PLAY ||
-      rockInsideImprint() ||
-      window.scrollY <= 0
-    ) {
+    if (motion.phase === PHASES.INTRO) {
       return;
     }
 
@@ -2304,7 +2300,21 @@ export function createSisyphusRuntime(elements = {}) {
     if (distance <= 0) {
       return;
     }
-    window.scrollTo(0, Math.max(0, window.scrollY - distance));
+
+    const maxScrollY = Math.max(
+      0,
+      document.documentElement.scrollHeight - window.innerHeight,
+    );
+    const nextScrollY = clamp(
+      window.scrollY + state.direction * distance,
+      0,
+      maxScrollY,
+    );
+    if (nextScrollY === window.scrollY) {
+      return;
+    }
+
+    window.scrollTo(0, nextScrollY);
     syncAfterScroll();
   }
 
@@ -4307,17 +4317,13 @@ export function createSisyphusRuntime(elements = {}) {
   function scheduleHoldLimit() {
     clearHoldTimer();
     motion.holdTimerId = window.setTimeout(
-      () => forceReleaseRock({ pauseInsideImprint: true }),
+      () => forceReleaseRock(),
       maxHoldMs()
     );
   }
 
   function syncHoldLimit() {
     if (!motion.dragging || motion.phase !== PHASES.PLAY) {
-      clearHoldTimer();
-      return;
-    }
-    if (rockInsideImprint()) {
       clearHoldTimer();
       return;
     }
@@ -4530,23 +4536,13 @@ export function createSisyphusRuntime(elements = {}) {
     motion.suspended = false;
   }
 
-  function forceReleaseRock({ pauseInsideImprint = false } = {}) {
+  function forceReleaseRock() {
     if (collab.enabled) {
       forceReleaseSharedDrag(true);
       return;
     }
 
     if (!motion.dragging) {
-      return;
-    }
-
-    if (
-      pauseInsideImprint &&
-      motion.phase === PHASES.PLAY &&
-      rockInsideImprint()
-    ) {
-      motion.holdTimerId = null;
-      syncHoldLimit();
       return;
     }
 

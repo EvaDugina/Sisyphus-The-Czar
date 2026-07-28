@@ -282,7 +282,10 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await setCheckbox(page, "manualVerticalScrollEnabled", false);
   await expect(page.locator("html")).toHaveClass(/is-manual-scroll-disabled/);
   await expect(page.locator("body")).toHaveClass(/is-manual-scroll-disabled/);
-  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.evaluate(() => {
+    params.positionScrollEnabled = false;
+    window.scrollTo(0, 0);
+  });
   await page.mouse.move(400, 400);
   await page.mouse.wheel(0, 900);
   await page.waitForTimeout(120);
@@ -328,6 +331,39 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await expect
     .poll(() => page.evaluate(() => window.scrollY))
     .toBeLessThan(positionScrollStart.scrollY);
+
+  const fallingScrollStart = await page.evaluate(() => {
+    motion.phase = SharedPhysics.PHASES.FALLING;
+    updateBounds();
+    setPosition(bounds.maxX * 0.25, bounds.maxY * 0.55);
+    const rect = document.querySelector(".rock").getBoundingClientRect();
+    const desiredCenterY = window.innerHeight * 0.9;
+    const maxScrollY =
+      document.documentElement.scrollHeight - window.innerHeight;
+    const targetScroll = Math.min(
+      maxScrollY - 1,
+      Math.max(
+        0,
+        window.scrollY + rect.top + rect.height / 2 - desiredCenterY,
+      ),
+    );
+    window.scrollTo(0, targetScroll);
+    const positionedRect = document
+      .querySelector(".rock")
+      .getBoundingClientRect();
+    return {
+      centerY: positionedRect.top + positionedRect.height / 2,
+      scrollY: window.scrollY,
+      zoneTop: window.innerHeight * 0.8,
+    };
+  });
+  expect(fallingScrollStart.centerY).toBeGreaterThanOrEqual(
+    fallingScrollStart.zoneTop,
+  );
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeGreaterThan(fallingScrollStart.scrollY);
+
   await page.evaluate(() => {
     collab.enabled = true;
   });

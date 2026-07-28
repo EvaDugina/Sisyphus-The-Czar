@@ -568,7 +568,7 @@ test("масштаб камня считается по высоте и разм
   assert.equal(rockScaleForY(0, 900, shrinkingOptions), 0.5);
 });
 
-test("позиционный скролл использует viewport-зону, easing и vh", () => {
+test("позиционный скролл следует за камнем в верхней и нижней viewport-зонах", () => {
   const settings = {
     enabled: true,
     zonePercent: 20,
@@ -579,16 +579,27 @@ test("позиционный скролл использует viewport-зону
 
   assert.deepEqual(positionScrollState(201, 1000, settings), {
     active: false,
+    direction: 0,
     progress: 0,
     speedVh: 0,
     zoneHeight: 200,
   });
   assert.deepEqual(positionScrollState(200, 1000, settings), {
     active: true,
+    direction: -1,
     progress: 0,
     speedVh: 0.2,
     zoneHeight: 200,
   });
+  assert.deepEqual(positionScrollState(800, 1000, settings), {
+    active: true,
+    direction: 1,
+    progress: 0,
+    speedVh: 0.2,
+    zoneHeight: 200,
+  });
+  assert.equal(positionScrollState(1000, 1000, settings).direction, 1);
+  assert.equal(positionScrollState(1000, 1000, settings).speedVh, 1);
   assert.equal(positionScrollState(0, 1000, settings).speedVh, 1);
   assert.ok(
     Math.abs(positionScrollState(100, 1000, settings).speedVh - 0.6) <

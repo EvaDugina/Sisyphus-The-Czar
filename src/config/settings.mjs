@@ -318,7 +318,7 @@ export const SETTINGS_GROUPS = [
         label: "Следить скроллом за камнем",
         type: "checkbox",
         defaultChecked: DEFAULT_ROOM_SETTINGS.positionScrollEnabled,
-        hint: "Прокручивает страницу вверх, когда центр камня входит в заданную верхнюю зону viewport.",
+        hint: "Всегда сопровождает камень скроллом: прокручивает страницу вверх или вниз, когда центр камня входит в соответствующую краевую зону viewport.",
       },
       {
         name: "positionScrollZonePercent",

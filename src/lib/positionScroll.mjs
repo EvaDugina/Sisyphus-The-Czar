@@ -20,6 +20,7 @@ export function positionScrollState(
   settings = {},
 ) {
   const height = finiteNumber(viewportHeight, 0);
+  const centerY = finiteNumber(rockCenterViewportY, height / 2);
   const zonePercent = clamp(
     finiteNumber(settings.zonePercent, 20),
     0,
@@ -29,18 +30,43 @@ export function positionScrollState(
   if (
     settings.enabled === false ||
     height <= 0 ||
-    zoneHeight <= 0 ||
-    finiteNumber(rockCenterViewportY, height) > zoneHeight
+    zoneHeight <= 0
   ) {
     return {
       active: false,
+      direction: 0,
       progress: 0,
       speedVh: 0,
       zoneHeight,
     };
   }
 
-  const progress = 1 - clamp(rockCenterViewportY / zoneHeight, 0, 1);
+  let edgeState;
+  if (centerY <= zoneHeight) {
+    edgeState = {
+      direction: -1,
+      progress: 1 - clamp(centerY / zoneHeight, 0, 1),
+    };
+  } else if (centerY >= height - zoneHeight) {
+    edgeState = {
+      direction: 1,
+      progress: clamp(
+        (centerY - (height - zoneHeight)) / zoneHeight,
+        0,
+        1,
+      ),
+    };
+  } else {
+    return {
+      active: false,
+      direction: 0,
+      progress: 0,
+      speedVh: 0,
+      zoneHeight,
+    };
+  }
+  const { direction, progress } = edgeState;
+
   const curve = parseCubicBezier(settings.easing);
   const easedProgress = clamp(
     cubicBezierYForX(progress, curve || undefined),
@@ -60,6 +86,7 @@ export function positionScrollState(
 
   return {
     active: true,
+    direction,
     progress,
     speedVh: startSpeed + (endSpeed - startSpeed) * easedProgress,
     zoneHeight,
