@@ -58,7 +58,7 @@ Production frontend использует существующий `rock.webp`, P
 
 В `DEBUG=true` каталог до 50 полноценных шаблонов хранится на сервере и одинаков для всех пользователей. Старые версии из `localStorage` импортируются один раз пакетами с дедупликацией по `id + updatedAt`; расхождение одного id сохраняется отдельной веткой. Локальные изменения выбранной версии или её имени создают черновик: изменённые контролы и общий индикатор подсвечиваются синим, а при закрытии или reload вкладки браузер показывает стандартный confirm. Точный возврат к исходным значениям или сохранение очищает dirty-состояние. Сохранение черновика, основанного на версии, обновляет эту версию; concurrent mismatch по `updatedAt` создаёт новую ветку вместо перезаписи, а явный выбор «Черновик» создаёт новую.
 
-Любой пользователь в `DEBUG=true` может поставить флаг в строке сохранённой версии: это назначает её baseline’ом новых slim-production сессий и не применяет немедленно к текущей личной сессии. Новый флаг атомарно заменяет прежний. Каталог шаблонов хранится в отслеживаемом файле [`config/settings-templates.json`](config/settings-templates.json), подключённом как `/app/repository-config/settings-templates.json`; canonical production preset хранится отдельно в `/app/config/production-preset.json` внутри named volume.
+Любой пользователь в `DEBUG=true` может поставить флаг в строке сохранённой версии: это назначает её baseline’ом новых slim-production сессий и не применяет немедленно к текущей личной сессии. Новый флаг атомарно заменяет прежний. Каталог шаблонов хранится в отслеживаемом файле [`config/settings-templates.json`](config/settings-templates.json), а выбранный canonical production preset — в `config/production-preset.json`. Оба файла подключены через writable bind mount `/app/repository-config` и синхронизируются через Git после обычных `git add`, `commit`, `push` и `pull`. Несохранённый черновик и локальные параметры производительности остаются в `localStorage` текущего браузера и в Git не попадают.
 
 ## Настройки
 
@@ -71,7 +71,7 @@ Production frontend использует существующий `rock.webp`, P
 | `SESSION_TTL_SECONDS` | время жизни комнаты после последней активности, по умолчанию `86400` |
 | `EMPTY_SESSION_GRACE_SECONDS` | задержка удаления пустой совместимой комнаты; persistent trail hub не удаляется, по умолчанию `10` |
 | `SESSION_STORE_PATH` | файл состояния в Docker volume, по умолчанию `/app/data/sessions.json` |
-| `PRODUCTION_PRESET_PATH` | canonical production preset, по умолчанию `/app/config/production-preset.json` |
+| `PRODUCTION_PRESET_PATH` | отслеживаемый canonical production preset, по умолчанию `/app/repository-config/production-preset.json` |
 | `SETTINGS_TEMPLATE_STORE_PATH` | отслеживаемый каталог debug-шаблонов, по умолчанию `/app/repository-config/settings-templates.json` |
 | `SESSION_PERSIST_INTERVAL_MS` | интервал фонового сохранения, по умолчанию `250` мс |
 
@@ -100,6 +100,6 @@ bash deploy.sh
 
 Multi-stage Docker build собирает React-клиент в `dist`, а production-образ запускает только Express/WebSocket и раздаёт hashed assets. Контейнер слушает `127.0.0.1:18082`; внешний nginx хоста публикует HTTPS, поддерживает WebSocket Upgrade и использует `proxy_read_timeout` не менее 75 секунд.
 
-Named volumes с комнатами и production preset сохраняются при `deploy.sh`, `docker compose restart`, rebuild/recreate и обычном `docker compose down`. Каталог шаблонов синхронизируется вместе с репозиторием через `config/settings-templates.json`; production preset теряется только при повреждении или явном удалении volume, например `docker compose down -v` либо `docker volume rm sisyphus-the-czar-production-preset`.
+Named volume с комнатами сохраняется при `deploy.sh`, `docker compose restart`, rebuild/recreate и обычном `docker compose down`. Каталог шаблонов и production preset синхронизируются вместе с репозиторием через `config/settings-templates.json` и `config/production-preset.json`. После `git pull` перезапустите приложение через `bash deploy.sh` или `docker compose restart`, чтобы сервер перечитал выбранный preset.
 
 Минимум для двух одновременных личных сессий: Ubuntu Server 24.04 LTS, 1 vCPU, 512 МБ RAM, 2 ГБ диска и канал от 1 Мбит/с. Рекомендуется 1 ГБ RAM, 10 Мбит/с, RTT до 100 мс и jitter до 30 мс.

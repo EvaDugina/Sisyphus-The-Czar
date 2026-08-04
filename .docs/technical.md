@@ -123,7 +123,7 @@ vy = -V · cos(theta)
 
 - Session store: `/app/data/sessions.json`, atomic temporary file + rename.
 - Debug templates: `config/settings-templates.json` → `/app/repository-config/settings-templates.json`, максимум 50 записей.
-- Production preset: `/app/config/production-preset.json` в отдельном named volume.
+- Production preset: `config/production-preset.json` → `/app/repository-config/production-preset.json`; файл создаётся при явном выборе сохранённой версии и синхронизируется через Git.
 - Личная single-client-сессия удаляется при окончательном disconnect/leave; persistent root trail hub сохраняется.
 
 ## Безопасность и производительность
@@ -152,6 +152,8 @@ vy = -V · cos(theta)
 - Production smoke проверяет разные session ID двух браузеров и отсутствие взаимного управления.
 - Draft smoke проверяет идентичность основной Fold-сцены и настроек на `/` и `/drafts/`, сохранение glow-профиля, select-зависимости и безопасную структуру зеркала.
 - Dev smoke проверяет миграцию v20→v21, лимит glow-точек, отсутствие проходов при `glow=0` и копирование Fold только при новой canvas revision.
+
+Изменения `config/settings-templates.json` и `config/production-preset.json`, полученные через `git pull`, перечитываются при старте сервера; после обновления конфигурации работающий production-контейнер нужно перезапустить.
 
 ## Технический долг
 
