@@ -352,7 +352,7 @@ body.state-fallingToBottom .hand-cursor {
   display: none;
 }
 
-.trail {
+:is(.trail-glow, .trail) {
   position: fixed;
   inset: 0;
   z-index: 0;
@@ -360,6 +360,14 @@ body.state-fallingToBottom .hand-cursor {
   height: 100vh;
   pointer-events: none;
   mix-blend-mode: normal;
+}
+
+.trail-glow {
+  z-index: 0;
+}
+
+.trail {
+  z-index: 1;
 }
 
 @media (pointer: fine) {

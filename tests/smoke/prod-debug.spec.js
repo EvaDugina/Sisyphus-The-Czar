@@ -1,6 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v20";
+const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v21";
 const VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 
 async function openSettingsPanel(page) {
@@ -93,7 +93,7 @@ test("production DEBUG мгновенно применяет последний 
     .toBe("800vh");
 });
 
-test("production DEBUG включает UI, draft и равные возможности master", async ({
+test("production DEBUG включает UI, draft и изолированные возможности master", async ({
   browser,
   page,
 }) => {
@@ -224,7 +224,8 @@ test("production DEBUG включает UI, draft и равные возможн
     );
     await expect(second.locator('[name="gravity"]')).toHaveValue("9");
     await setRangeValue(second, "gravity", 8.25);
-    await expect(page.locator('[name="gravity"]')).toHaveValue("8.25");
+    await expect(second.locator('[name="gravity"]')).toHaveValue("8.25");
+    await expect(page.locator('[name="gravity"]')).toHaveValue("9");
   } finally {
     await secondContext.close();
   }

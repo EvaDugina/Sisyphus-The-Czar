@@ -18,6 +18,12 @@ import {
   normalizeFoldSettings,
 } from "../../src/lib/fold.mjs";
 import {
+  DEFAULT_GLOW_OPTIMIZATION_SETTINGS,
+  resolveGlowOptimizationProfile,
+  sampleGlowPoints,
+  sanitizeGlowOptimizationSettings,
+} from "../../src/lib/glowOptimization.mjs";
+import {
   DEFAULT_ROCK_MAX_WIDTH_VW,
   DEFAULT_ROCK_MIN_WIDTH_VW,
   DEFAULT_ROCK_SCALE_EASING,
@@ -40,6 +46,11 @@ import {
   selectLatestSettingsVersionEntry,
   settingsFromLatestVersionEntry,
 } from "../../src/lib/settingsVersionSelection.mjs";
+import {
+  parseSettingDependencyAttribute,
+  serializeSettingDependency,
+  settingDependencyMatches,
+} from "../../src/lib/settingsDependencies.mjs";
 import {
   normalizeRainSettings,
   normalizeRockScaleSettings,
@@ -307,7 +318,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v20");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v21");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -366,6 +377,7 @@ test("production preset совместим с актуальной схемой 
   assert.equal(productionSettings.gravity, 9.8);
   assert.deepEqual(
     SETTINGS_GROUPS.flatMap(settingsGroupControls)
+      .filter((control) => control.scope !== "local")
       .map((control) => control.name)
       .filter((name) => !Object.hasOwn(productionSettings, name)),
     [],
@@ -737,6 +749,96 @@ test("настройки размера камня есть в UI и получ�
     },
     { min: 0, max: 100, step: 1, defaultValue: 25 },
   );
+});
+
+test("профили свечения ограничивают стоимость glow-слоя", () => {
+  assert.deepEqual(
+    sanitizeGlowOptimizationSettings({
+      glowOptimizationMode: "manual",
+      glowBufferScalePercent: 5,
+      glowUpdateFps: 100,
+      glowMaxPoints: 9999,
+      glowDecimation: 0,
+      glowTargetFps: 44,
+    }),
+    {
+      glowOptimizationMode: "manual",
+      glowBufferScalePercent: 25,
+      glowUpdateFps: 60,
+      glowMaxPoints: 2000,
+      glowDecimation: 1,
+      glowTargetFps: 60,
+    },
+  );
+  assert.deepEqual(resolveGlowOptimizationProfile({}), {
+    mode: "balanced",
+    bufferScale: 0.5,
+    updateFps: 30,
+    maxPoints: 700,
+    decimation: 3,
+    targetFps: 60,
+  });
+  assert.equal(
+    DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowOptimizationMode,
+    "balanced",
+  );
+});
+
+test("glow sampling сохраняет концы и соблюдает бюджет", () => {
+  const points = Array.from({ length: 10_000 }, (_, index) => ({
+    x: index,
+    y: index % 17,
+  }));
+  const sampled = sampleGlowPoints(points, 350, 6);
+
+  assert.ok(sampled.length <= 350);
+  assert.equal(sampled[0], points[0]);
+  assert.equal(sampled.at(-1), points.at(-1));
+});
+
+test("зависимости настроек поддерживают checkbox и значения select", () => {
+  const serialized = serializeSettingDependency({
+    name: "dashStyle",
+    values: ["dashed", "dotted"],
+  });
+  const parsed = parseSettingDependencyAttribute(serialized);
+
+  assert.deepEqual(parsed, {
+    name: "dashStyle",
+    values: ["dashed", "dotted"],
+  });
+  assert.equal(settingDependencyMatches(parsed, { value: "solid" }), false);
+  assert.equal(settingDependencyMatches(parsed, { value: "dotted" }), true);
+  assert.equal(
+    settingDependencyMatches(
+      parseSettingDependencyAttribute("rockJumpEnabled"),
+      { type: "checkbox", checked: true },
+    ),
+    true,
+  );
+});
+
+test("UI описывает локальные glow-параметры и select-зависимости", () => {
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const byName = (name) => controls.find((control) => control.name === name);
+
+  assert.equal(byName("glowOptimizationMode").scope, "local");
+  assert.deepEqual(
+    byName("glowOptimizationMode").options.map(([value]) => value),
+    ["auto", "performance", "balanced", "quality", "manual"],
+  );
+  assert.deepEqual(byName("dashLength").enabledWhen, {
+    name: "dashStyle",
+    values: ["dashed"],
+  });
+  assert.deepEqual(byName("dashGap").enabledWhen, {
+    name: "dashStyle",
+    values: ["dashed", "dotted"],
+  });
+  assert.deepEqual(byName("glowTargetFps").enabledWhen, {
+    name: "glowOptimizationMode",
+    values: ["auto"],
+  });
 });
 
 test("3D Fold входит в общую схему настроек с утверждёнными значениями", () => {

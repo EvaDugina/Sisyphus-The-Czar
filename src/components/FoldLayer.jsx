@@ -17,6 +17,7 @@ const DYNAMIC_SELECTORS = [
 ];
 
 const CANVAS_SELECTORS = [
+  ".trail-glow",
   ".trail",
   ".weather-rain__canvas--fx",
   ".weather-rain__canvas--fallback",
@@ -99,13 +100,25 @@ function syncCanvas(sourceWorld, mirrorWorld, selector) {
     return;
   }
 
-  if (mirrorCanvas.width !== sourceCanvas.width) {
+  const widthChanged = mirrorCanvas.width !== sourceCanvas.width;
+  const heightChanged = mirrorCanvas.height !== sourceCanvas.height;
+  if (widthChanged) {
     mirrorCanvas.width = sourceCanvas.width;
   }
-  if (mirrorCanvas.height !== sourceCanvas.height) {
+  if (heightChanged) {
     mirrorCanvas.height = sourceCanvas.height;
   }
   copyPresentation(sourceCanvas, mirrorCanvas);
+
+  const sourceRevision = sourceCanvas.dataset.canvasRevision;
+  if (
+    sourceRevision !== undefined &&
+    !widthChanged &&
+    !heightChanged &&
+    mirrorCanvas.dataset.foldSourceRevision === sourceRevision
+  ) {
+    return;
+  }
 
   if (sourceCanvas.width <= 0 || sourceCanvas.height <= 0) {
     return;
@@ -117,6 +130,12 @@ function syncCanvas(sourceWorld, mirrorWorld, selector) {
   try {
     context.clearRect(0, 0, mirrorCanvas.width, mirrorCanvas.height);
     context.drawImage(sourceCanvas, 0, 0);
+    if (sourceRevision !== undefined) {
+      mirrorCanvas.dataset.foldSourceRevision = sourceRevision;
+    }
+    mirrorCanvas.dataset.foldCopyCount = String(
+      Number(mirrorCanvas.dataset.foldCopyCount || 0) + 1,
+    );
   } catch {
     // A renderer may expose its canvas shortly before the first drawable frame.
   }

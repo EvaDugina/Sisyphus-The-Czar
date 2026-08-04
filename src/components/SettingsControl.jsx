@@ -1,4 +1,5 @@
 import { CubicBezierControl } from "./CubicBezierControl";
+import { serializeSettingDependency } from "../lib/settingsDependencies.mjs";
 
 export function SettingsControl({ control }) {
   const {
@@ -11,6 +12,7 @@ export function SettingsControl({ control }) {
     name,
     options,
     output,
+    scope,
     type,
     ...inputProps
   } = control;
@@ -30,6 +32,8 @@ export function SettingsControl({ control }) {
         data-hint={hint}
         data-formulas={formulasAttr}
         data-setting-control
+        data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
+        data-setting-scope={scope}
       >
         <input
           data-setting-input
@@ -67,7 +71,8 @@ export function SettingsControl({ control }) {
       data-hint={hint}
       data-formulas={formulasAttr}
       data-setting-control
-      data-setting-enabled-when={enabledWhen}
+      data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
+      data-setting-scope={scope}
     >
       <span className="control-label">
         <span>{label}</span>

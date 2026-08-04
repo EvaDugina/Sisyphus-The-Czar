@@ -16,8 +16,12 @@ async function setSettingValue(page, name, value) {
       ).set;
       setter.call(element, Boolean(nextValue));
     } else {
+      const prototype =
+        element instanceof HTMLSelectElement
+          ? HTMLSelectElement.prototype
+          : HTMLInputElement.prototype;
       const setter = Object.getOwnPropertyDescriptor(
-        HTMLInputElement.prototype,
+        prototype,
         "value",
       ).set;
       setter.call(element, String(nextValue));
@@ -196,4 +200,88 @@ test("настройки выпадения и выпрыгивания один
     await expect(jumpInterval).toBeDisabled();
     await expect(jumpSpread).toBeDisabled();
   }
+});
+
+test("glow-профили и зависимости select одинаковы на обоих маршрутах", async ({
+  page,
+}) => {
+  for (const path of ["/", "/drafts/"]) {
+    await page.goto(path);
+    await expect(page.getByTestId("session-status")).toContainText("В сессии");
+
+    const mode = page.locator('[name="glowOptimizationMode"]');
+    const targetFps = page.locator('[name="glowTargetFps"]');
+    const manualControls = [
+      "glowBufferScalePercent",
+      "glowUpdateFps",
+      "glowMaxPoints",
+      "glowDecimation",
+    ].map((name) => page.locator(`[name="${name}"]`));
+
+    await setSettingValue(page, "glowOptimizationMode", "balanced");
+    await expect(mode).toHaveValue("balanced");
+    await expect(targetFps).toBeDisabled();
+    for (const control of manualControls) {
+      await expect(control).toBeDisabled();
+    }
+
+    await setSettingValue(page, "glowOptimizationMode", "auto");
+    await expect(targetFps).toBeEnabled();
+    for (const control of manualControls) {
+      await expect(control).toBeDisabled();
+    }
+
+    await setSettingValue(page, "glowOptimizationMode", "manual");
+    await expect(targetFps).toBeDisabled();
+    for (const control of manualControls) {
+      await expect(control).toBeEnabled();
+    }
+
+    await setSettingValue(page, "dashStyle", "solid");
+    await expect(page.locator('[name="dashLength"]')).toBeDisabled();
+    await expect(page.locator('[name="dashGap"]')).toBeDisabled();
+    await setSettingValue(page, "dashStyle", "dotted");
+    await expect(page.locator('[name="dashLength"]')).toBeDisabled();
+    await expect(page.locator('[name="dashGap"]')).toBeEnabled();
+    await setSettingValue(page, "dashStyle", "dashed");
+    await expect(page.locator('[name="dashLength"]')).toBeEnabled();
+    await expect(page.locator('[name="dashGap"]')).toBeEnabled();
+
+    await setSettingValue(page, "useGradient", false);
+    await expect(page.locator('[name="lineColorTail"]')).toBeDisabled();
+    await setSettingValue(page, "useGradient", true);
+    await expect(page.locator('[name="lineColorTail"]')).toBeEnabled();
+
+    await setSettingValue(page, "themeMode", "dark");
+    await expect(page.locator('[name="blendMode"]')).toBeDisabled();
+    await expect(page.locator('[name="rainBlurPx"]')).toBeEnabled();
+    await setSettingValue(page, "themeMode", "light");
+    await expect(page.locator('[name="blendMode"]')).toBeEnabled();
+    await expect(page.locator('[name="rainBlurPx"]')).toBeDisabled();
+    await setSettingValue(page, "themeMode", "auto");
+  }
+
+  await setSettingValue(page, "glowOptimizationMode", "manual");
+  await setSettingValue(page, "glowBufferScalePercent", 35);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}",
+        );
+        return [
+          stored.glowOptimizationMode,
+          stored.glowBufferScalePercent,
+        ];
+      }),
+    )
+    .toEqual(["manual", 35]);
+
+  await page.reload();
+  await expect(page.locator('[name="glowOptimizationMode"]')).toHaveValue(
+    "manual",
+  );
+  await expect(page.locator('[name="glowBufferScalePercent"]')).toHaveValue(
+    "35",
+  );
 });

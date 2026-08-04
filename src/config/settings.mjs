@@ -1,13 +1,19 @@
 import { ROCK_WIDTH_VW_LIMITS } from "../lib/rockScale.mjs";
+import {
+  DEFAULT_GLOW_OPTIMIZATION_SETTINGS,
+  GLOW_OPTIMIZATION_LIMITS,
+  GLOW_TARGET_FPS_VALUES,
+} from "../lib/glowOptimization.mjs";
 import { MIX_BLEND_MODES } from "../lib/settingsModel.mjs";
 import "../../shared/room-settings.js";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v20";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v21";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v20",
   "sisyphus-czar-settings-v19",
   "sisyphus-czar-settings-v18",
   "sisyphus-czar-settings-v17",
@@ -153,7 +159,8 @@ const TRAIL_STYLE_CONTROLS = [
       ["screen", "Осветление"],
       ["multiply", "Затемнение"],
     ],
-    hint: "Как траектория накладывается на фон. «Негатив» делает её белой на тёмном фоне и чёрной на светлом.",
+    enabledWhen: { name: "themeMode", values: ["auto", "light"] },
+    hint: "Как траектория накладывается на светлый фон. В фиксированной тёмной теме движок использует normal, поэтому поле отключено.",
   },
   {
     name: "lineColor",
@@ -167,7 +174,8 @@ const TRAIL_STYLE_CONTROLS = [
     label: "Цвет хвоста",
     type: "color",
     defaultValue: DEFAULT_ROOM_SETTINGS.lineColorTail,
-    hint: "Цвет дальнего конца траектории. Виден, когда включён градиент.",
+    enabledWhen: "useGradient",
+    hint: "Цвет дальнего конца траектории. Доступен, когда включён градиент.",
   },
   {
     name: "useGradient",
@@ -219,7 +227,8 @@ const TRAIL_STYLE_CONTROLS = [
     step: 1,
     defaultValue: DEFAULT_ROOM_SETTINGS.dashLength,
     output: String(DEFAULT_ROOM_SETTINGS.dashLength),
-    hint: "Длина чёрточки пунктира. Действует для пунктирного стиля.",
+    enabledWhen: { name: "dashStyle", values: ["dashed"] },
+    hint: "Длина чёрточки. Доступна только для пунктирного стиля.",
   },
   {
     name: "dashGap",
@@ -230,7 +239,8 @@ const TRAIL_STYLE_CONTROLS = [
     step: 1,
     defaultValue: DEFAULT_ROOM_SETTINGS.dashGap,
     output: String(DEFAULT_ROOM_SETTINGS.dashGap),
-    hint: "Пустое расстояние между чёрточками пунктира.",
+    enabledWhen: { name: "dashStyle", values: ["dashed", "dotted"] },
+    hint: "Пустое расстояние между штрихами. Доступно для пунктира и точечной линии.",
   },
   {
     name: "lineCap",
@@ -273,6 +283,83 @@ const TRAIL_STYLE_CONTROLS = [
     type: "color",
     defaultValue: DEFAULT_ROOM_SETTINGS.glowColor,
     hint: "Цвет мягкого сияния вокруг линии.",
+  },
+  {
+    name: "glowOptimizationMode",
+    label: "Оптимизация свечения",
+    type: "select",
+    defaultValue: DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowOptimizationMode,
+    options: [
+      ["auto", "Авто"],
+      ["performance", "Производительность"],
+      ["balanced", "Баланс"],
+      ["quality", "Качество"],
+      ["manual", "Ручной"],
+    ],
+    scope: "local",
+    hint: "Локальный профиль стоимости glow-слоя. Не синхронизируется с другими устройствами.",
+  },
+  {
+    name: "glowTargetFps",
+    label: "Целевой FPS",
+    type: "select",
+    defaultValue: DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowTargetFps,
+    options: GLOW_TARGET_FPS_VALUES.map((value) => [String(value), String(value)]),
+    enabledWhen: { name: "glowOptimizationMode", values: ["auto"] },
+    scope: "local",
+    hint: "Целевая частота всей сцены для автоматической адаптации. Доступна только в режиме «Авто».",
+  },
+  {
+    name: "glowBufferScalePercent",
+    label: "Масштаб glow-буфера",
+    type: "range",
+    min: GLOW_OPTIMIZATION_LIMITS.glowBufferScalePercent[0],
+    max: GLOW_OPTIMIZATION_LIMITS.glowBufferScalePercent[1],
+    step: 5,
+    defaultValue: DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowBufferScalePercent,
+    output: `${DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowBufferScalePercent}%`,
+    enabledWhen: { name: "glowOptimizationMode", values: ["manual"] },
+    scope: "local",
+    hint: "Разрешение отдельного glow-canvas. Доступно только в ручном режиме.",
+  },
+  {
+    name: "glowUpdateFps",
+    label: "FPS свечения",
+    type: "range",
+    min: GLOW_OPTIMIZATION_LIMITS.glowUpdateFps[0],
+    max: GLOW_OPTIMIZATION_LIMITS.glowUpdateFps[1],
+    step: 1,
+    defaultValue: DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowUpdateFps,
+    output: String(DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowUpdateFps),
+    enabledWhen: { name: "glowOptimizationMode", values: ["manual"] },
+    scope: "local",
+    hint: "Максимальная частота обновления glow-слоя. Доступна только в ручном режиме.",
+  },
+  {
+    name: "glowMaxPoints",
+    label: "Точек свечения",
+    type: "range",
+    min: GLOW_OPTIMIZATION_LIMITS.glowMaxPoints[0],
+    max: GLOW_OPTIMIZATION_LIMITS.glowMaxPoints[1],
+    step: 50,
+    defaultValue: DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowMaxPoints,
+    output: String(DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowMaxPoints),
+    enabledWhen: { name: "glowOptimizationMode", values: ["manual"] },
+    scope: "local",
+    hint: "Жёсткий лимит точек только для glow-слоя. Доступен только в ручном режиме.",
+  },
+  {
+    name: "glowDecimation",
+    label: "Прореживание свечения",
+    type: "range",
+    min: GLOW_OPTIMIZATION_LIMITS.glowDecimation[0],
+    max: GLOW_OPTIMIZATION_LIMITS.glowDecimation[1],
+    step: 1,
+    defaultValue: DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowDecimation,
+    output: String(DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowDecimation),
+    enabledWhen: { name: "glowOptimizationMode", values: ["manual"] },
+    scope: "local",
+    hint: "Минимальный шаг выборки точек glow-пути. Доступен только в ручном режиме.",
   },
 ];
 
@@ -827,7 +914,8 @@ export const SETTINGS_GROUPS = [
         type: "select",
         defaultValue: DEFAULT_ROOM_SETTINGS.rainBlurBlendMode,
         options: RAIN_MIX_BLEND_OPTIONS,
-        hint: "Отдельный режим смешивания CSS blur-подложки на тёмной теме.",
+        enabledWhen: { name: "themeMode", values: ["auto", "dark"] },
+        hint: "Отдельный режим смешивания CSS blur-подложки на тёмной теме. В фиксированной светлой теме поле отключено.",
       },
       {
         name: "rainBackgroundBlurSteps",
@@ -838,7 +926,8 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.rainBackgroundBlurSteps,
         output: String(DEFAULT_ROOM_SETTINGS.rainBackgroundBlurSteps),
-        hint: "Число шагов размытия background-canvas внутри raindrop-fx на тёмной теме. Изменение перезапускает локальный renderer дождя.",
+        enabledWhen: { name: "themeMode", values: ["auto", "dark"] },
+        hint: "Число шагов размытия background-canvas внутри raindrop-fx на тёмной теме. В фиксированной светлой теме поле отключено.",
       },
       {
         name: "rainBlurPx",
@@ -849,7 +938,8 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.rainBlurPx,
         output: `${DEFAULT_ROOM_SETTINGS.rainBlurPx} px`,
-        hint: "Радиус CSS backdrop-filter под дождём на тёмной теме. Ноль отключает дополнительное размытие фона.",
+        enabledWhen: { name: "themeMode", values: ["auto", "dark"] },
+        hint: "Радиус CSS backdrop-filter под дождём на тёмной теме. В фиксированной светлой теме поле отключено.",
       },
       {
         name: "rainBlurOpacity",
@@ -860,7 +950,8 @@ export const SETTINGS_GROUPS = [
         step: 0.05,
         defaultValue: DEFAULT_ROOM_SETTINGS.rainBlurOpacity,
         output: `${Math.round(DEFAULT_ROOM_SETTINGS.rainBlurOpacity * 100)}%`,
-        hint: "Видимость нейтральной светлой blur-подложки на тёмной теме.",
+        enabledWhen: { name: "themeMode", values: ["auto", "dark"] },
+        hint: "Видимость нейтральной светлой blur-подложки на тёмной теме. В фиксированной светлой теме поле отключено.",
       },
       {
         name: "rainBlurSaturation",
@@ -871,7 +962,8 @@ export const SETTINGS_GROUPS = [
         step: 0.05,
         defaultValue: DEFAULT_ROOM_SETTINGS.rainBlurSaturation,
         output: `${Math.round(DEFAULT_ROOM_SETTINGS.rainBlurSaturation * 100)}%`,
-        hint: "Насыщенность фона внутри CSS blur-подложки на тёмной теме.",
+        enabledWhen: { name: "themeMode", values: ["auto", "dark"] },
+        hint: "Насыщенность фона внутри CSS blur-подложки на тёмной теме. В фиксированной светлой теме поле отключено.",
       },
       {
         name: "rainZIndex",

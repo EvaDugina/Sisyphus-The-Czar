@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 
 import { parseCubicBezier } from "../lib/rockScale.mjs";
+import { serializeSettingDependency } from "../lib/settingsDependencies.mjs";
 
 const FALLBACK_POINTS = Object.freeze([0.25, 0.1, 0.25, 1]);
 const COORDINATE_LABELS = Object.freeze(["x1", "y1", "x2", "y2"]);
@@ -65,6 +66,7 @@ export function CubicBezierControl({ control }) {
     hint,
     label,
     name,
+    scope,
   } = control;
   const initialPoints =
     parseCubicBezier(defaultValue) || [...FALLBACK_POINTS];
@@ -190,7 +192,8 @@ export function CubicBezierControl({ control }) {
       data-hint={hint}
       data-formulas={formulasAttr}
       data-setting-control
-      data-setting-enabled-when={enabledWhen}
+      data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
+      data-setting-scope={scope}
     >
       <label className="control-label" htmlFor={`setting-${name}`}>
         <span>{label}</span>

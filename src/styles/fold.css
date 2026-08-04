@@ -88,6 +88,6 @@
   width: 100%;
 }
 
-.fold-track :is(.trail, .weather-rain, .hand-cursor) {
+.fold-track :is(.trail, .trail-glow, .weather-rain, .hand-cursor) {
   translate: 0 var(--fold-scroll-offset);
 }

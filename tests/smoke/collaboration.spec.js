@@ -34,7 +34,11 @@ async function setRange(page, name, value) {
 
 async function setField(page, name, value) {
   await page.locator(`[name="${name}"]`).evaluate((input, next) => {
-    input.value = String(next);
+    const setter = Object.getOwnPropertyDescriptor(
+      HTMLInputElement.prototype,
+      "value",
+    ).set;
+    setter.call(input, String(next));
     input.dispatchEvent(new Event("input", { bubbles: true }));
   }, value);
 }
@@ -405,7 +409,7 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v20") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -1029,12 +1033,56 @@ test("dev при запуске переносит последний локал
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v20") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}",
         );
         return stored.gravity;
       }),
     )
     .toBe(migratedGravity);
+});
+
+test("локальные настройки v20 мигрируют в v21 без потери trailEnabled", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem("sisyphus-czar-settings-v21");
+    localStorage.setItem(
+      "sisyphus-czar-settings-v20",
+      JSON.stringify({
+        gravity: 7.5,
+        themeMode: "light",
+        trailEnabled: false,
+      }),
+    );
+  });
+
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("7.5");
+  await expect(page.locator('[name="trailEnabled"]')).not.toBeChecked();
+  await expect(page.locator('[name="glowOptimizationMode"]')).toHaveValue(
+    "balanced",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}",
+        );
+        return {
+          gravity: stored.gravity,
+          glowOptimizationMode: stored.glowOptimizationMode,
+          themeMode: stored.themeMode,
+          trailEnabled: stored.trailEnabled,
+        };
+      }),
+    )
+    .toEqual({
+      gravity: 7.5,
+      glowOptimizationMode: "balanced",
+      themeMode: "light",
+      trailEnabled: false,
+    });
 });
 
 test("старая session-ссылка очищается до корневого URL личной сессии", async ({ browser }) => {
@@ -1145,6 +1193,14 @@ test("общая и проходная прозрачность траектор
   await openControlGroup(page, "Траектория");
   await setRange(page, "lineOpacity", 0.4);
   await setRange(page, "linePassOpacity", 0.1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        lineOpacity: params.lineOpacity,
+        linePassOpacity: params.linePassOpacity,
+      })),
+    )
+    .toEqual({ lineOpacity: 0.4, linePassOpacity: 0.1 });
 
   const result = await page.evaluate(() => {
     params.lineColor = "#ffffff";
@@ -1200,6 +1256,112 @@ test("общая и проходная прозрачность траектор
   expect(result.additiveAlpha).toBe(255);
 
   await context.close();
+});
+
+test("glow ограничивает стоимость, Fold копирует только ревизии, а glow=0 останавливает проходы", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+  await expect(
+    page.locator('[data-fold-layer][data-fold-ready="true"]'),
+  ).toHaveCount(1);
+
+  const initialPasses = await page.evaluate(
+    () => window.__sisyphusTestApi.getGlowRenderState().renderPasses,
+  );
+  await page.evaluate(() => {
+    collab.enabled = false;
+    collab.snapshots.length = 0;
+    motion.suspended = true;
+    params.trailEnabled = true;
+    params.trailUnlimited = true;
+    params.glow = 24;
+    params.glowOptimizationMode = "performance";
+    params.lineWidth = 8;
+    params.dashStyle = "solid";
+    trail.points = Array.from({ length: 5000 }, (_, index) => ({
+      x: window.scrollX + 80 + (index % 800),
+      y: window.scrollY + 100 + ((index * 7) % 500),
+    }));
+    trail.dirty = true;
+    trail.glowDirty = true;
+    window.__sisyphusTestApi.drawTrail();
+  });
+
+  await expect
+    .poll(
+      () =>
+        page.evaluate(() => window.__sisyphusTestApi.getGlowRenderState()),
+      { timeout: 10_000 },
+    )
+    .toMatchObject({
+      profile: {
+        bufferScale: 0.25,
+        maxPoints: 350,
+        updateFps: 24,
+      },
+      rendered: true,
+    });
+
+  const rendered = await page.evaluate(() => {
+    const state = window.__sisyphusTestApi.getGlowRenderState();
+    const canvas = document.querySelector("#root > .world > .trail-glow");
+    return {
+      ...state,
+      canvasHeight: canvas.height,
+      canvasWidth: canvas.width,
+      maxHeight: Math.ceil(window.innerHeight * 0.5),
+      maxWidth: Math.ceil(window.innerWidth * 0.5),
+    };
+  });
+  expect(rendered.renderPasses).toBeGreaterThan(initialPasses);
+  expect(rendered.sampledPointCount).toBeGreaterThan(1);
+  expect(rendered.sampledPointCount).toBeLessThanOrEqual(350);
+  expect(rendered.canvasWidth).toBeLessThanOrEqual(rendered.maxWidth);
+  expect(rendered.canvasHeight).toBeLessThanOrEqual(rendered.maxHeight);
+
+  const mirrorSelector = '[data-fold-zone] .trail-glow';
+  await expect
+    .poll(() =>
+      page.locator(mirrorSelector).getAttribute("data-fold-copy-count"),
+    )
+    .not.toBeNull();
+  const foldBefore = await page.locator(mirrorSelector).evaluate((canvas) => ({
+    copies: canvas.dataset.foldCopyCount,
+    revision: canvas.dataset.foldSourceRevision,
+  }));
+  await page.waitForTimeout(180);
+  const foldAfter = await page.locator(mirrorSelector).evaluate((canvas) => ({
+    copies: canvas.dataset.foldCopyCount,
+    revision: canvas.dataset.foldSourceRevision,
+  }));
+  expect(foldAfter).toEqual(foldBefore);
+
+  const disabledState = await page.evaluate(() => {
+    params.glow = 0;
+    trail.glowDirty = true;
+    window.__sisyphusTestApi.drawTrail();
+    return window.__sisyphusTestApi.getGlowRenderState();
+  });
+  expect(disabledState.rendered).toBe(false);
+  const disabledRevision = disabledState.glowRevision;
+  const disabledPasses = disabledState.renderPasses;
+
+  await page.evaluate(() => {
+    trail.points.push({ x: window.scrollX + 200, y: window.scrollY + 200 });
+    trail.dirty = true;
+    trail.glowDirty = true;
+    window.__sisyphusTestApi.drawTrail();
+  });
+  await page.waitForTimeout(180);
+  const stillDisabled = await page.evaluate(() =>
+    window.__sisyphusTestApi.getGlowRenderState(),
+  );
+  expect(stillDisabled.glowRevision).toBe(disabledRevision);
+  expect(stillDisabled.renderPasses).toBe(disabledPasses);
+  expect(stillDisabled.rendered).toBe(false);
 });
 
 test("кривая нехватки силы замедляет фактический подъём камня", async ({
@@ -1972,7 +2134,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v20") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -2011,7 +2173,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v20") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2147,7 +2309,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v20") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2182,7 +2344,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v20") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2199,7 +2361,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v20") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2375,7 +2537,7 @@ test.skip("legacy: два браузера больше не объединяю�
   }));
   expect(trailBuffer.width).toBeLessThanOrEqual(trailBuffer.maxWidth);
   expect(trailBuffer.height).toBeLessThanOrEqual(trailBuffer.maxHeight);
-  expect(trailBuffer.zIndex).toBe("0");
+  expect(trailBuffer.zIndex).toBe("1");
   await expect(first.locator(SOURCE_TRAIL)).toHaveCSS("mix-blend-mode", "normal");
 
   await expect(first.locator("body")).toHaveClass(/state-play/, { timeout: 45_000 });

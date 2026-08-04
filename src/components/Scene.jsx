@@ -6,7 +6,10 @@ import { WeatherRain } from "./WeatherRain";
 export function Scene({ scene, trail, rain }) {
   return (
     <main ref={scene.worldRef} className="world" aria-label="Сцена Пути Царей">
-      <TrailCanvas canvasRef={trail.trailCanvasRef} />
+      <TrailCanvas
+        canvasRef={trail.trailCanvasRef}
+        glowCanvasRef={trail.trailGlowCanvasRef}
+      />
       <div
         className="summit-timer"
         data-testid="summit-timer"

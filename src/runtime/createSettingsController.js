@@ -7,6 +7,10 @@ import {
   settingsFromLatestVersionEntry,
 } from "../lib/settingsVersionSelection.mjs";
 import {
+  parseSettingDependencyAttribute,
+  settingDependencyMatches,
+} from "../lib/settingsDependencies.mjs";
+import {
   LEGACY_SETTINGS_STORAGE_KEYS,
   SETTINGS_GROUPS,
   SETTINGS_STORAGE_KEY,
@@ -14,10 +18,16 @@ import {
   settingsGroupControls,
 } from "../config/settings.mjs";
 
-const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).map(
-  (control) => control.name,
+const SETTINGS_CONTROLS = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+const LOCAL_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
+  (control) => control.scope === "local",
+).map((control) => control.name);
+const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
+  (control) => control.scope !== "local",
+).map((control) => control.name);
+const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
+  VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
 const SETTINGS_SCHEMA_VERSION = 20;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -43,6 +53,7 @@ export function createSettingsController(options) {
     restartExperience,
     secondsOutput,
     settingValueToControlValue,
+    stageControlChange = () => {},
   } = options;
   const settingsPanel =
     options.settingsPanel || document.querySelector(".settings-panel");
@@ -83,6 +94,11 @@ export function createSettingsController(options) {
     pendingImportBatches: 0,
   };
   let loadedLocalSettings = false;
+  let previewAnimationFrame = null;
+  let commitTimerId = null;
+  const pendingPreviewKeys = new Set();
+  const pendingCommitKeys = new Set();
+  const CONTROL_COMMIT_DELAY_MS = 180;
 
   function copySettingsVersionEntry(entry) {
     if (!entry) {
@@ -222,16 +238,50 @@ export function createSettingsController(options) {
     settingsPanel
       .querySelectorAll("[data-setting-enabled-when]")
       .forEach((control) => {
-        const dependencyName = control.dataset.settingEnabledWhen;
-        const dependency = dependencyName
-          ? settingsPanel.querySelector(`[name="${dependencyName}"]`)
+        const condition = parseSettingDependencyAttribute(
+          control.dataset.settingEnabledWhen,
+        );
+        const dependency = condition?.name
+          ? settingsPanel.querySelector(`[name="${condition.name}"]`)
           : null;
-        const enabled = Boolean(dependency?.checked);
+        const enabled = Boolean(
+          dependency &&
+            !dependency.disabled &&
+            settingDependencyMatches(condition, {
+              checked: dependency.checked,
+              type: dependency.type,
+              value: dependency.value,
+            }),
+        );
         control.querySelectorAll("input, select, button").forEach((input) => {
           input.disabled = !enabled;
         });
         control.classList.toggle("is-disabled", !enabled);
         control.dataset.settingDisabled = String(!enabled);
+        control.setAttribute("aria-disabled", String(!enabled));
+
+        if (!Object.hasOwn(control.dataset, "settingBaseHint")) {
+          control.dataset.settingBaseHint = control.dataset.hint || "";
+        }
+        const dependencyControl = dependency?.closest("[data-setting-control]");
+        const dependencyLabel =
+          dependencyControl
+            ?.querySelector(".control-label span")
+            ?.textContent?.trim() || condition?.name || "зависимый параметр";
+        const allowedLabels = condition?.values
+          ?.map((value) => {
+            const option = [...(dependency?.options || [])].find(
+              (candidate) => String(candidate.value) === value,
+            );
+            return option?.textContent?.trim() || value;
+          })
+          .filter(Boolean);
+        const reason = allowedLabels?.length
+          ? `Доступно, когда «${dependencyLabel}»: ${allowedLabels.join(", ")}.`
+          : `Доступно, когда «${dependencyLabel}» включено.`;
+        control.dataset.hint = enabled
+          ? control.dataset.settingBaseHint
+          : [control.dataset.settingBaseHint, reason].filter(Boolean).join(" ");
       });
   }
 
@@ -380,7 +430,9 @@ export function createSettingsController(options) {
     }
     if (migratedLegacySettings) {
       stored = { ...stored };
-      delete stored.trailEnabled;
+      if (legacyKeyVersion < 20) {
+        delete stored.trailEnabled;
+      }
       if (migratedPreV10Settings && Number.isFinite(Number(stored.handWidthVw))) {
         stored.handWidthVw = Number(stored.handWidthVw) / 2;
       }
@@ -415,7 +467,7 @@ export function createSettingsController(options) {
       return null;
     }
     const cleanSettings = {};
-    SETTINGS_CONTROL_NAMES.forEach((key) => {
+    VERSIONED_SETTING_CONTROL_NAMES.forEach((key) => {
       if (Object.hasOwn(settings, key)) {
         cleanSettings[key] = settings[key];
       }
@@ -708,7 +760,9 @@ export function createSettingsController(options) {
 
   function currentSettingsSnapshot() {
     return Object.fromEntries(
-      SETTINGS_CONTROL_NAMES.filter((key) => Object.hasOwn(params, key)).map(
+      VERSIONED_SETTING_CONTROL_NAMES.filter((key) =>
+        Object.hasOwn(params, key),
+      ).map(
         (key) => [key, params[key]],
       ),
     );
@@ -742,7 +796,7 @@ export function createSettingsController(options) {
     const snapshot = currentSettingsSnapshot();
     settingsVersions.dirtyKeys.clear();
     if (baseline) {
-      SETTINGS_CONTROL_NAMES.forEach((key) => {
+      VERSIONED_SETTING_CONTROL_NAMES.forEach((key) => {
         if (
           !Object.hasOwn(snapshot, key) ||
           !Object.hasOwn(baseline, key) ||
@@ -791,6 +845,18 @@ export function createSettingsController(options) {
     );
   }
 
+  function readLocalSettingsControls() {
+    return Object.fromEntries(
+      LOCAL_SETTING_CONTROL_NAMES.map((key) => {
+        const input = roomSettingControlElement(key);
+        return [
+          key,
+          input ? controlValueToSettingValue(input, key) : params[key],
+        ];
+      }),
+    );
+  }
+
   function syncSettingControl(input, key) {
     if (!input || !Object.hasOwn(params, key)) {
       return;
@@ -805,6 +871,13 @@ export function createSettingsController(options) {
 
   function syncRoomSettingControls() {
     sharedRoomSettingKeys.forEach((key) => {
+      syncSettingControl(roomSettingControlElement(key), key);
+    });
+    syncSettingDependencies();
+  }
+
+  function syncLocalSettingControls() {
+    LOCAL_SETTING_CONTROL_NAMES.forEach((key) => {
       syncSettingControl(roomSettingControlElement(key), key);
     });
     syncSettingDependencies();
@@ -992,7 +1065,7 @@ export function createSettingsController(options) {
       const key = element.getAttribute("name");
       if (
         !key ||
-        !SETTINGS_CONTROL_NAME_SET.has(key) ||
+        !VERSIONED_SETTING_CONTROL_NAME_SET.has(key) ||
         !Object.hasOwn(entry.settings, key)
       ) {
         return;
@@ -1159,6 +1232,10 @@ export function createSettingsController(options) {
       dashLength: params.dashLength.toFixed(0),
       dashGap: params.dashGap.toFixed(0),
       glow: params.glow.toFixed(0),
+      glowBufferScalePercent: `${params.glowBufferScalePercent.toFixed(0)}%`,
+      glowUpdateFps: params.glowUpdateFps.toFixed(0),
+      glowMaxPoints: params.glowMaxPoints.toFixed(0),
+      glowDecimation: params.glowDecimation.toFixed(0),
     };
 
     Object.entries(outputs).forEach(([key, value]) => {
@@ -1250,18 +1327,130 @@ export function createSettingsController(options) {
     hintEl?.classList.remove("is-visible");
   }
 
+  function cancelScheduledControlUpdates() {
+    if (previewAnimationFrame !== null) {
+      window.cancelAnimationFrame(previewAnimationFrame);
+      previewAnimationFrame = null;
+    }
+    if (commitTimerId !== null) {
+      window.clearTimeout(commitTimerId);
+      commitTimerId = null;
+    }
+  }
+
+  function collectPendingControlKeys(extraKey = "") {
+    const keys = new Set([...pendingPreviewKeys, ...pendingCommitKeys]);
+    if (extraKey) {
+      keys.add(extraKey);
+    }
+    pendingPreviewKeys.clear();
+    pendingCommitKeys.clear();
+    return [...keys];
+  }
+
+  function commitPendingControlChanges(extraKey = "") {
+    cancelScheduledControlUpdates();
+    const changedKeys = collectPendingControlKeys(extraKey);
+    if (changedKeys.length > 0) {
+      readControls({ changedKeys, commit: true });
+    }
+  }
+
+  function scheduleControlPreview(key) {
+    pendingPreviewKeys.add(key);
+    pendingCommitKeys.add(key);
+    if (previewAnimationFrame === null) {
+      previewAnimationFrame = window.requestAnimationFrame(() => {
+        previewAnimationFrame = null;
+        const changedKeys = [...pendingPreviewKeys];
+        pendingPreviewKeys.clear();
+        if (changedKeys.length > 0) {
+          readControls({ changedKeys, commit: false });
+        }
+      });
+    }
+    if (commitTimerId !== null) {
+      window.clearTimeout(commitTimerId);
+    }
+    commitTimerId = window.setTimeout(() => {
+      commitTimerId = null;
+      commitPendingControlChanges();
+    }, CONTROL_COMMIT_DELAY_MS);
+  }
+
   function bind() {
     settingsControlElements().forEach((element) => {
-      const handleControlChange = () => {
-        syncSettingDependencies();
-        if (collab.enabled && !localCanEditSettings()) {
-          syncSettingControl(element, element.name);
-          updateControlOutputs();
+      let discreteInputHandled = false;
+      let discreteInputResetTimerId = null;
+      const restoreLockedControl = () => {
+        syncSettingControl(element, element.name);
+        updateControlOutputs();
+      };
+      const canApplyControl = () => {
+        const localOnly =
+          element.closest("[data-setting-control]")?.dataset.settingScope ===
+          "local";
+        if (collab.enabled && !localOnly && !localCanEditSettings()) {
+          restoreLockedControl();
+          return false;
+        }
+        return true;
+      };
+      const handleControlInput = () => {
+        if (!canApplyControl()) {
           return;
         }
-        readControls({ changedKey: element.name });
+        stageControlChange(
+          element.name,
+          controlValueToSettingValue(element, element.name),
+        );
+        scheduleControlPreview(element.name);
       };
-      listen(element, "input", handleControlChange);
+      const handleControlChange = () => {
+        syncSettingDependencies();
+        if (discreteInputHandled) {
+          discreteInputHandled = false;
+          if (discreteInputResetTimerId !== null) {
+            window.clearTimeout(discreteInputResetTimerId);
+            discreteInputResetTimerId = null;
+          }
+          return;
+        }
+        if (!canApplyControl()) {
+          return;
+        }
+        stageControlChange(
+          element.name,
+          controlValueToSettingValue(element, element.name),
+        );
+        commitPendingControlChanges(element.name);
+      };
+      const continuous =
+        element.matches('input[type="range"], input[type="color"]') ||
+        Boolean(element.closest("[data-cubic-bezier-control]"));
+      if (continuous) {
+        listen(element, "input", handleControlInput);
+      } else {
+        listen(element, "input", () => {
+          syncSettingDependencies();
+          if (!canApplyControl()) {
+            return;
+          }
+          stageControlChange(
+            element.name,
+            controlValueToSettingValue(element, element.name),
+          );
+          discreteInputHandled = true;
+          if (discreteInputResetTimerId !== null) {
+            window.clearTimeout(discreteInputResetTimerId);
+          }
+          discreteInputResetTimerId = window.setTimeout(() => {
+            discreteInputHandled = false;
+            discreteInputResetTimerId = null;
+          }, 0);
+          commitPendingControlChanges(element.name);
+        });
+      }
       listen(element, "change", handleControlChange);
     });
 
@@ -1376,8 +1565,10 @@ export function createSettingsController(options) {
       renderDraftState();
     },
     captureCurrentAsBaseline,
+    dispose: cancelScheduledControlUpdates,
     markSettingsVersionDraft,
     readPhysicsControls,
+    readLocalSettingsControls,
     readRoomSettingsControls,
     roomSettingControlElement,
     saveSettings,
@@ -1391,6 +1582,7 @@ export function createSettingsController(options) {
     setSettingsTemplatesPage,
     applySettingsTemplateChange,
     syncRoomSettingControls,
+    syncLocalSettingControls,
     syncSettingControl,
     updateControlOutputs,
   };

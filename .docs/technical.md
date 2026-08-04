@@ -90,10 +90,12 @@ vy = -V · cos(theta)
 
 ## UI и схемы
 
-- Settings schema: `20`; localStorage key: `sisyphus-czar-settings-v20`, `v19` и более ранние ключи мигрируются как legacy.
+- Серверная settings schema остаётся `20`; localStorage key — `sisyphus-czar-settings-v21`, `v20` и более ранние ключи мигрируются как legacy без потери `trailEnabled` из v20.
 - В группе «Камень» два checkbox и два range-контрола.
-- Range-контролы содержат `enabledWhen: "rockJumpEnabled"`; controller синхронизирует `disabled` и `.is-disabled` после input, загрузки версии и remote settings.
-- `FoldLayer` входит в основной `<App />`, читает живой `params` runtime через ref и синхронизирует неинтерактивную копию сцены, canvas-следа и дождя.
+- Контролы используют декларативный `enabledWhen`: строка означает checkbox-зависимость, объект `{name, values}` — допустимые значения select. Controller синхронизирует native `disabled`, `.is-disabled`, `aria-disabled` и пояснение после input/change, загрузки и remote settings.
+- `glowOptimizationMode`, `glowTargetFps`, `glowBufferScalePercent`, `glowUpdateFps`, `glowMaxPoints` и `glowDecimation` имеют `scope: "local"`: сохраняются в v21, но фильтруются из version snapshots, server templates и broadcast.
+- Частые range/color/cubic-bezier input объединяются через `requestAnimationFrame`; запись localStorage и сетевой update выполняются на `change` или после debounce `180 ms`.
+- `FoldLayer` входит в основной `<App />`, читает живой `params` runtime через ref и синхронизирует неинтерактивную копию сцены, canvas-следа и дождя. Для trail-canvas копирование выполняется только при изменении `data-canvas-revision`; rain-canvas сохраняют покадровую синхронизацию.
 - Группа `3D Fold` хранит `draftFoldAngle`, `draftFoldZoneSize`, `draftFoldBlendEnabled`, `draftFoldBlendCurve` в общем `roomSettings`; диапазоны санитизируются сервером и клиентом.
 - Vite переписывает `/drafts[/]` на `/index.html`; Express отдаёт тот же production index и зеркальный путь `/drafts/assets` для относительных Vite-ассетов.
 - Production без debug UI не включает settings controller; preset всё равно задаёт baseline новой сессии.
@@ -133,13 +135,23 @@ vy = -V · cos(theta)
 - Container работает от непривилегированного пользователя с read-only root filesystem.
 - Snapshots не повторяют неизменный config; MP3 загружаются лениво.
 
+### Рендер свечения
+
+- `.trail` рисует базовую линию без `shadowBlur`; `.trail-glow` содержит только свечение.
+- Glow строит один сглаженный path, применяет один `stroke`/`fill` с blur и выбирает точки через `sampleGlowPoints(maxPoints, decimation)`.
+- Профили: performance `25% / 24 FPS / 350 / 6`, balanced `50% / 30 FPS / 700 / 3`, quality `100% / 60 FPS / 2000 / 1`; manual использует UI-значения.
+- Auto начинает с геометрического бюджета balanced, обновляет glow не чаще выбранных `30/45/60 FPS` и раз в `500 ms` корректирует качество по сглаженному frame time.
+- Отдельный scheduler ограничивает частоту glow-слоя. При `glow=0`, выключенном следе или пустом пути pending timer/rAF отменяется, canvas очищается один раз и новые glow-проходы не планируются.
+- Базовый и glow canvas увеличивают независимые revision counters только после фактического изменения; Fold сравнивает revision и размеры перед `drawImage`.
+
 ## Проверки
 
 - `npm run lint` — syntax checks и ESLint.
 - `npm run build` — production Vite bundle.
 - `npm test` — unit и integration.
 - Production smoke проверяет разные session ID двух браузеров и отсутствие взаимного управления.
-- Draft smoke проверяет идентичность основной Fold-сцены и настроек на `/` и `/drafts/`, сохранение значений и безопасную структуру зеркала.
+- Draft smoke проверяет идентичность основной Fold-сцены и настроек на `/` и `/drafts/`, сохранение glow-профиля, select-зависимости и безопасную структуру зеркала.
+- Dev smoke проверяет миграцию v20→v21, лимит glow-точек, отсутствие проходов при `glow=0` и копирование Fold только при новой canvas revision.
 
 ## Технический долг
 
