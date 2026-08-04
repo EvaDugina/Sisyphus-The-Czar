@@ -61,6 +61,20 @@ function reloadSharedPhysics() {
   };
 }
 
+function serveDraftFromSource() {
+  return {
+    name: "serve-draft-from-source",
+    configureServer(server) {
+      server.middlewares.use((request, _response, next) => {
+        if (request.url === "/drafts" || request.url === "/drafts/") {
+          request.url = "/src/drafts/index.html";
+        }
+        next();
+      });
+    },
+  };
+}
+
 export default defineConfig(({ command }) => {
   const isProductionBuild = command === "build";
   const debugUiEnabled =
@@ -68,7 +82,7 @@ export default defineConfig(({ command }) => {
 
   return {
     base: "./",
-    plugins: [react(), reloadSharedPhysics()],
+    plugins: [react(), reloadSharedPhysics(), serveDraftFromSource()],
     resolve: {
       alias: isProductionBuild && !debugUiEnabled
         ? [

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
-import { App } from "../src/App";
-import { cubicBezierYForX } from "../src/lib/rockScale.mjs";
+import { App } from "../App";
+import { cubicBezierYForX } from "../lib/rockScale.mjs";
 import {
   DEFAULT_DRAFT_BLEND_POINTS,
   DraftBlendCurveEditor,

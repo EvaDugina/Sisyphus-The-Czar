@@ -10,7 +10,6 @@ export default [
   {
     files: [
       "src/**/*.{js,jsx,mjs}",
-      "drafts/**/*.{js,jsx,mjs}",
       "vite.config.mjs",
     ],
     languageOptions: {

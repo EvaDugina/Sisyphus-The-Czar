@@ -1,9 +1,9 @@
 import { createRoot } from "react-dom/client";
 
 import { FoldScrollDraft } from "./FoldScrollDraft";
-import "../src/styles/base.css";
-import "../src/styles/controls.css";
-import "../src/styles/scene.css";
+import "../styles/base.css";
+import "../styles/controls.css";
+import "../styles/scene.css";
 import "./fold-scroll.css";
 
 const root = createRoot(document.getElementById("root"));
