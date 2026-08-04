@@ -38,7 +38,7 @@
   });
   const DEFAULT_FORCE_DEFICIT_CURVE = Object.freeze([0.42, 0, 1, 1]);
   const CUBIC_BEZIER_SOLVE_ITERATIONS = 24;
-  const PHYSICS_VERSION = 10;
+  const PHYSICS_VERSION = 11;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const HORIZONTAL_INERTIA_EFFECT_SCALE = 0.001;
   const VERTICAL_INERTIA_EFFECT_SCALE = 0.1;
@@ -47,6 +47,8 @@
   const MAX_RELEASE_HORIZONTAL_SPEED = 900;
   const MAX_RELEASE_UPWARD_SPEED = 1800;
   const MAX_RELEASE_DOWNWARD_SPEED = 900;
+  const ROCK_JUMP_IMPULSE_DURATION_SECONDS = 4;
+  const ROCK_JUMP_MIN_SPEED = 120;
   const BOUNCE_MIN_VELOCITY = 120;
   const BOUNCE_IMPACT_CAP = 900;
   const TURB_ACCEL = 1600;
@@ -247,29 +249,21 @@
     return params.handForce;
   }
 
-  function normalizeHandCount(handCount) {
-    return Math.max(0, Math.floor(finiteNumber(handCount, 1)));
+  function liftForceSurplus(physics) {
+    return effectiveHandForce(physics) - gravityForce(physics);
   }
 
-  function totalHandForce(physics, handCount = 1) {
-    return effectiveHandForce(physics) * normalizeHandCount(handCount);
-  }
-
-  function liftForceSurplus(physics, handCount = 1) {
-    return totalHandForce(physics, handCount) - gravityForce(physics);
-  }
-
-  function handForceRatio(physics, handCount = 1) {
+  function handForceRatio(physics) {
     const params = sanitizePhysics(physics);
     return clamp(
-      totalHandForce(params, handCount) / gravityForce(params),
+      effectiveHandForce(params) / gravityForce(params),
       0,
       1
     );
   }
 
-  function canLift(physics, handCount = 1) {
-    return liftForceSurplus(physics, handCount) > 0;
+  function canLift(physics) {
+    return liftForceSurplus(physics) >= 0;
   }
 
   function handAcceleration(physics) {
@@ -285,20 +279,20 @@
     );
   }
 
-  function maxHoldMs(physics, handCount = 1) {
+  function maxHoldMs(physics) {
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
     return clamp(
-      (3000 * totalHandForce(params, handCount)) / (load * 5),
+      (3000 * effectiveHandForce(params)) / (load * 5),
       500,
       3000
     );
   }
 
-  function dragLiftSpeed(physics, handCount = 1, options) {
+  function dragLiftSpeed(physics, options) {
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
-    const surplus = liftForceSurplus(params, handCount);
+    const surplus = liftForceSurplus(params);
     if (surplus <= 0) {
       return 0;
     }
@@ -310,10 +304,10 @@
     return speed * motionScale(options);
   }
 
-  function dragDropSpeed(physics, handCount = 1, options) {
+  function dragDropSpeed(physics, options) {
     const params = sanitizePhysics(physics);
     const load = Math.max(gravityForce(params), DRAG_LIFT.loadFloor);
-    const deficit = Math.max(0, -liftForceSurplus(params, handCount));
+    const deficit = Math.max(0, -liftForceSurplus(params));
     const speed = clamp(
       DRAG_LIFT.minSpeed + (DRAG_LIFT.forceSpeed * deficit) / (load * 5),
       DRAG_LIFT.minSpeed,
@@ -322,22 +316,83 @@
     return speed * motionScale(options);
   }
 
-  function dragDeficitLiftSpeed(physics, handCount = 1, options) {
+  function dragDeficitLiftSpeed(physics, options) {
     const params = sanitizePhysics(physics);
-    if (liftForceSurplus(params, handCount) > 0) {
+    if (liftForceSurplus(params) >= 0) {
       return 0;
     }
     const multiplier = cubicBezierProgress(
-      handForceRatio(params, handCount),
+      handForceRatio(params),
       options?.forceDeficitCurve
     );
     return DRAG_LIFT.minSpeed * multiplier * motionScale(options);
   }
 
-  function dragVerticalSpeed(physics, handCount = 1, options) {
-    return canLift(physics, handCount)
-      ? -dragLiftSpeed(physics, handCount, options)
-      : -dragDeficitLiftSpeed(physics, handCount, options);
+  function dragVerticalSpeed(physics, options) {
+    return canLift(physics)
+      ? -dragLiftSpeed(physics, options)
+      : -dragDeficitLiftSpeed(physics, options);
+  }
+
+  function dragFollowProgress(physics, deltaSeconds, options) {
+    const params = sanitizePhysics(physics);
+    const dt = clamp(finiteNumber(deltaSeconds, 0), 0, 0.25);
+    if (dt === 0) {
+      return 0;
+    }
+    const response = cubicBezierProgress(
+      handForceRatio(params),
+      options?.forceDeficitCurve
+    );
+    if (response <= 0) {
+      return 0;
+    }
+    if (response >= 1) {
+      return 1;
+    }
+    return clamp(
+      1 - Math.pow(1 - response, dt / FIXED_STEP_SECONDS),
+      0,
+      1
+    );
+  }
+
+  function stepDragState(state, physics, targetX, targetY, deltaSeconds, options) {
+    if (!state || state.phase !== PHASES.PLAY) {
+      return false;
+    }
+    const dt = clamp(finiteNumber(deltaSeconds, 0), 0, 0.05);
+    if (dt === 0) {
+      return false;
+    }
+    const progress = dragFollowProgress(physics, dt, options);
+    const previousX = finiteNumber(state.x, WORLD_WIDTH / 2);
+    const previousY = finiteNumber(state.y, WORLD_HEIGHT);
+    const cleanTargetX = clamp(
+      finiteNumber(targetX, previousX),
+      0,
+      WORLD_WIDTH
+    );
+    const cleanTargetY = clamp(
+      finiteNumber(targetY, previousY),
+      0,
+      WORLD_HEIGHT
+    );
+    state.x = clamp(
+      previousX + (cleanTargetX - previousX) * progress,
+      0,
+      WORLD_WIDTH
+    );
+    state.y = clamp(
+      previousY + (cleanTargetY - previousY) * progress,
+      0,
+      WORLD_HEIGHT
+    );
+    state.vx = (state.x - previousX) / dt;
+    state.vy = (state.y - previousY) / dt;
+    state.dragging = true;
+    state.suspended = false;
+    return state.x !== previousX || state.y !== previousY;
   }
 
   function sanitizeImprint(input) {
@@ -462,6 +517,39 @@
     state.suspended = false;
   }
 
+  function applyRockJumpImpulse(
+    state,
+    physics,
+    angleDegrees = 0,
+    inertiaFactor = 1
+  ) {
+    const params = sanitizePhysics(physics);
+    const angle = clamp(finiteNumber(angleDegrees, 0), -45, 45);
+    const factor = clamp(finiteNumber(inertiaFactor, 1), 0, 2);
+    const baseImpulse =
+      effectiveHandForce(params) *
+      ROCK_JUMP_IMPULSE_DURATION_SECONDS *
+      params.inertia;
+    const speed = clamp(
+      (baseImpulse / params.mass) * factor,
+      ROCK_JUMP_MIN_SPEED,
+      MAX_RELEASE_UPWARD_SPEED
+    );
+    const radians = (angle * Math.PI) / 180;
+
+    state.vx = speed * Math.sin(radians);
+    state.vy = -speed * Math.cos(radians);
+    state.dragging = false;
+    state.controllerId = null;
+    state.suspended = false;
+
+    return {
+      angleDegrees: angle,
+      inertiaFactor: factor,
+      speed,
+    };
+  }
+
   function applyGroundFriction(state, physics, dt, options) {
     if (physics.groundFriction <= 0 || state.vx === 0) {
       return;
@@ -576,6 +664,8 @@
     FIRST_FALL_DELAY_MS,
     DEFAULT_PHYSICS,
     PHYSICS_LIMITS,
+    ROCK_JUMP_IMPULSE_DURATION_SECONDS,
+    ROCK_JUMP_MIN_SPEED,
     clamp,
     sanitizePhysics,
     migratePhysics,
@@ -583,7 +673,6 @@
     gravityForce,
     gravityAcceleration,
     effectiveHandForce,
-    totalHandForce,
     liftForceSurplus,
     handForceRatio,
     canLift,
@@ -594,6 +683,8 @@
     dragDropSpeed,
     dragDeficitLiftSpeed,
     dragVerticalSpeed,
+    dragFollowProgress,
+    stepDragState,
     cubicBezierProgress,
     sanitizeImprint,
     createImprintAtState,
@@ -602,6 +693,7 @@
     beginFirstFall,
     beginFinalFall,
     applyReleaseImpulse,
+    applyRockJumpImpulse,
     stepState,
     isMoving,
   });

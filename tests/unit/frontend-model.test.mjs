@@ -1,6 +1,5 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import "../../shared/viewport.js";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
@@ -13,6 +12,11 @@ import {
   physicalHeightProgress,
 } from "../../src/lib/drizzleVolume.mjs";
 import { getRainVisualProfile } from "../../src/lib/rainProfile.mjs";
+import {
+  buildFoldBlendMask,
+  foldEffectEnabled,
+  normalizeFoldSettings,
+} from "../../src/lib/fold.mjs";
 import {
   DEFAULT_ROCK_MAX_WIDTH_VW,
   DEFAULT_ROCK_MIN_WIDTH_VW,
@@ -54,7 +58,6 @@ import {
 } from "../../src/config/settings.mjs";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
-const SharedViewport = globalThis.SisyphusViewport;
 
 test("client ID использует randomUUID в secure context", () => {
   const expected = "12345678-1234-4234-8234-123456789abc";
@@ -140,21 +143,6 @@ test("курсор сохраняет положение относительн�
   assert.ok(Math.abs(targetRelative.y - relative.y) < 1e-12);
 });
 
-test("slave масштабирует пиксельные значения по отношению viewport", () => {
-  const scale = SharedViewport.viewportScale(
-    { width: 1905, height: 899 },
-    { width: 1580, height: 745 },
-  );
-
-  assert.ok(Math.abs(scale.x - 1580 / 1905) < 1e-12);
-  assert.ok(Math.abs(scale.y - 745 / 899) < 1e-12);
-  assert.equal(SharedViewport.viewportScale(null, null).x, 1);
-  assert.deepEqual(
-    SharedViewport.sanitizeViewport({ width: 1905.4, height: 898.6 }),
-    { width: 1905, height: 899 },
-  );
-});
-
 test("настройка темы содержит автоматический и ручные режимы", () => {
   const viewGroup = SETTINGS_GROUPS.find((group) => group.title === "Вид");
   const themeMode = viewGroup.controls.find(
@@ -201,12 +189,11 @@ test("session status сохраняет публичные тексты упра
       hasControl: false,
       pendingControl: false,
       remoteControllerId: "other",
-      holderIds: ["other"],
-      requiredHolders: 1,
+      holderId: "other",
       liftReady: false,
     }),
     {
-      text: "В сессии: 2 · камень держат (1 рука)",
+      text: "В сессии: 2 · камень удерживается",
       state: "online",
     },
   );
@@ -320,7 +307,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v18");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v20");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -367,7 +354,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 18);
+  assert.equal(productionSettingsSchemaVersion, 20);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -377,7 +364,6 @@ test("production preset совместим с актуальной схемой 
   );
   assert.equal(productionSettings.mass, 1);
   assert.equal(productionSettings.gravity, 9.8);
-  assert.equal(productionSettings.requiredHolders, undefined);
   assert.deepEqual(
     SETTINGS_GROUPS.flatMap(settingsGroupControls)
       .map((control) => control.name)
@@ -703,6 +689,10 @@ test("настройки размера камня есть в UI и получ�
   assert.deepEqual(
     rockSizeGroup.controls.map((control) => control.name),
     [
+      "randomDropEnabled",
+      "rockJumpEnabled",
+      "rockJumpIntervalSeconds",
+      "rockJumpInertiaSpreadPercent",
       "mass",
       "rockScaleEasing",
       "rockMinWidthVw",
@@ -718,6 +708,105 @@ test("настройки размера камня есть в UI и получ�
   assert.equal(rockMaxWidthVw.type, "number");
   assert.equal(rockMaxWidthVw.label, "Конечный размер, %");
   assert.equal(rockMaxWidthVw.defaultValue, DEFAULT_ROCK_MAX_WIDTH_VW);
+  const byName = (name) =>
+    rockSizeGroup.controls.find((control) => control.name === name);
+  assert.equal(byName("randomDropEnabled").defaultChecked, true);
+  assert.equal(byName("rockJumpEnabled").defaultChecked, true);
+  assert.deepEqual(
+    {
+      min: byName("rockJumpIntervalSeconds").min,
+      max: byName("rockJumpIntervalSeconds").max,
+      step: byName("rockJumpIntervalSeconds").step,
+      defaultValue: byName("rockJumpIntervalSeconds").defaultValue,
+      enabledWhen: byName("rockJumpIntervalSeconds").enabledWhen,
+    },
+    {
+      min: 1,
+      max: 10,
+      step: 1,
+      defaultValue: 5,
+      enabledWhen: "rockJumpEnabled",
+    },
+  );
+  assert.deepEqual(
+    {
+      min: byName("rockJumpInertiaSpreadPercent").min,
+      max: byName("rockJumpInertiaSpreadPercent").max,
+      step: byName("rockJumpInertiaSpreadPercent").step,
+      defaultValue: byName("rockJumpInertiaSpreadPercent").defaultValue,
+    },
+    { min: 0, max: 100, step: 1, defaultValue: 25 },
+  );
+});
+
+test("3D Fold входит в общую схему настроек с утверждёнными значениями", () => {
+  const foldGroup = SETTINGS_GROUPS.find((group) => group.title === "3D Fold");
+  const byName = (name) =>
+    foldGroup.controls.find((control) => control.name === name);
+
+  assert.ok(foldGroup);
+  assert.deepEqual(
+    foldGroup.controls.map((control) => control.name),
+    [
+      "draftFoldAngle",
+      "draftFoldZoneSize",
+      "draftFoldBlendEnabled",
+      "draftFoldBlendCurve",
+    ],
+  );
+  assert.deepEqual(
+    {
+      min: byName("draftFoldAngle").min,
+      max: byName("draftFoldAngle").max,
+      defaultValue: byName("draftFoldAngle").defaultValue,
+    },
+    { min: 0, max: 180, defaultValue: 30 },
+  );
+  assert.deepEqual(
+    {
+      min: byName("draftFoldZoneSize").min,
+      max: byName("draftFoldZoneSize").max,
+      defaultValue: byName("draftFoldZoneSize").defaultValue,
+    },
+    { min: 0, max: 50, defaultValue: 20 },
+  );
+  assert.equal(byName("draftFoldBlendEnabled").defaultChecked, true);
+  assert.equal(
+    byName("draftFoldBlendCurve").defaultValue,
+    "cubic-bezier(0.333, 0, 0.667, 1)",
+  );
+  assert.equal(
+    byName("draftFoldBlendCurve").enabledWhen,
+    "draftFoldBlendEnabled",
+  );
+
+  assert.deepEqual(
+    normalizeFoldSettings({
+      draftFoldAngle: 200,
+      draftFoldZoneSize: -10,
+      draftFoldBlendCurve: "invalid",
+      positionScrollEnabled: false,
+    }),
+    {
+      draftFoldAngle: 180,
+      draftFoldZoneSize: 0,
+      draftFoldBlendEnabled: true,
+      draftFoldBlendCurve: "cubic-bezier(0.333, 0, 0.667, 1)",
+      positionScrollEnabled: false,
+    },
+  );
+  assert.equal(foldEffectEnabled({ draftFoldZoneSize: 0 }), false);
+  assert.equal(
+    foldEffectEnabled({
+      draftFoldZoneSize: 20,
+      positionScrollEnabled: true,
+    }),
+    true,
+  );
+  assert.match(
+    buildFoldBlendMask("cubic-bezier(0.333, 0, 0.667, 1)"),
+    /^linear-gradient\(to bottom, /,
+  );
 });
 
 test("UI содержит настройки автоматики, scroll, overflow и anchor", () => {
@@ -900,15 +989,12 @@ test("общие визуальные настройки комнаты есть
   );
 });
 
-test("размеры рук вынесены в отдельную категорию UI", () => {
+test("параметры единственной руки вынесены в отдельную категорию UI", () => {
   const handSizeGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Руки",
   );
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const handWidthVw = controls.find((control) => control.name === "handWidthVw");
-  const slaveHandWidthPx = controls.find(
-    (control) => control.name === "slaveHandWidthPx"
-  );
 
   assert.ok(handSizeGroup);
   assert.deepEqual(
@@ -918,7 +1004,6 @@ test("размеры рук вынесены в отдельную катего�
       "handForceDeficitEasing",
       "pointerInfluence",
       "handWidthVw",
-      "slaveHandWidthPx",
     ],
   );
   assert.deepEqual(
@@ -937,24 +1022,7 @@ test("размеры рук вынесены в отдельную катего�
       defaultValue: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
     }
   );
-  assert.deepEqual(
-    {
-      type: slaveHandWidthPx.type,
-      min: slaveHandWidthPx.min,
-      max: slaveHandWidthPx.max,
-      step: slaveHandWidthPx.step,
-      defaultValue: slaveHandWidthPx.defaultValue,
-    },
-    {
-      type: "range",
-      min: 8,
-      max: 96,
-      step: 1,
-      defaultValue: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
-    }
-  );
   assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw, 28.75 / 2);
-  assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx, 32 / 2);
 });
 
 test("траектория включена по умолчанию и выключается через настройку", () => {
@@ -1091,7 +1159,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 12);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 15);
   assert.equal(
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
     "cubic-bezier(0.42, 0, 1, 1)",

@@ -1,14 +1,29 @@
 const { test, expect } = require("@playwright/test");
 
+const SOURCE_ROCK = "#root > .world > .rock";
+const SOURCE_HAND = "#root > .world > .hand-cursor:not(.is-remote)";
+
 async function waitForProductionRuntime(page) {
-  await expect(page).toHaveURL(/\/$/);
+  await expect(page).toHaveURL(/\/(?:drafts\/)?$/);
   await expect(page.locator("body")).toHaveAttribute("data-client-role", "master");
   await expect(page.locator("body")).toHaveClass(/state-play/);
-  await expect(page.locator(".rock")).toBeVisible();
+  await expect(page.locator(SOURCE_ROCK)).toBeVisible();
 }
 
+test("production /drafts/ serves the same Fold application", async ({ page }) => {
+  await page.goto("/drafts/");
+  await waitForProductionRuntime(page);
+  await expect(page.locator("#root > .world")).toHaveCount(1);
+  await expect(page.locator("[data-fold-layer]")).toHaveAttribute(
+    "data-fold-ready",
+    "true",
+  );
+  await expect(page.locator('[data-fold-zone="top"]')).toHaveCount(1);
+  await expect(page.locator(".settings-panel")).toHaveCount(0);
+});
+
 async function visibleRockPoint(page) {
-  return page.locator(".rock").evaluate((rock) => {
+  return page.locator(SOURCE_ROCK).evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
     const left = Math.max(rect.left, 0);
     const right = Math.min(rect.right, innerWidth);
@@ -35,7 +50,7 @@ async function visibleRockPoint(page) {
 }
 
 async function scrollToRock(page) {
-  await page.locator(".rock").evaluate((rock) => {
+  await page.locator(SOURCE_ROCK).evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
     const targetY =
       window.scrollY + rect.top + rect.height / 2 - window.innerHeight * 0.45;
@@ -57,7 +72,7 @@ function sessionIdFromWebSocket(url) {
   return new URL(url).searchParams.get("session");
 }
 
-test("production build isolates tabs, keeps a clean URL and shows the hand only on the rock", async ({
+test("production build creates one personal session per user, keeps a clean URL and shows the hand only on the rock", async ({
   browser,
   page,
 }) => {
@@ -77,7 +92,7 @@ test("production build isolates tabs, keeps a clean URL and shows the hand only 
   expect(new URL(page.url()).hash).toBe("");
   await expect.poll(() => firstSockets.length).toBeGreaterThan(0);
 
-  const hand = page.locator(".hand-cursor");
+  const hand = page.locator(SOURCE_HAND);
   await expect(hand).not.toHaveClass(/is-visible/);
   await expect(hand).toHaveCSS("opacity", "0");
 
@@ -98,11 +113,11 @@ test("production build isolates tabs, keeps a clean URL and shows the hand only 
 
     await scrollToRock(page);
     await scrollToRock(second);
-    const firstTopBefore = await page.locator(".rock").evaluate(
+    const firstTopBefore = await page.locator(SOURCE_ROCK).evaluate(
       (rock) => rock.getBoundingClientRect().top
     );
     const secondPoint = await visibleRockPoint(second);
-    const secondHand = second.locator(".hand-cursor");
+    const secondHand = second.locator(SOURCE_HAND);
 
     await second.mouse.move(secondPoint.x, secondPoint.y);
     await expect(secondHand).toHaveClass(/is-visible/);
@@ -127,11 +142,13 @@ test("production build isolates tabs, keeps a clean URL and shows the hand only 
     await second.mouse.move(secondPoint.x, Math.max(24, secondPoint.y - 140), {
       steps: 12,
     });
-    await expect(second.locator(".rock")).toHaveClass(/is-dragging/);
-    await expect(page.locator(".hand-cursor.is-remote.is-visible")).toHaveCount(0);
+    await expect(second.locator(SOURCE_ROCK)).toHaveClass(/is-dragging/);
+    await expect(
+      page.locator("#root > .world .hand-cursor.is-remote.is-visible"),
+    ).toHaveCount(0);
     await expect
       .poll(() =>
-        page.locator(".rock").evaluate(
+        page.locator(SOURCE_ROCK).evaluate(
           (rock) => rock.getBoundingClientRect().top
         )
       )

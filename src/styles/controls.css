@@ -600,6 +600,10 @@ input[type="range"] {
   opacity: 0.5;
 }
 
+.cubic-bezier-control.is-disabled .bezier-editor {
+  pointer-events: none;
+}
+
 .control-subgroup {
   display: grid;
   gap: 0.45rem;

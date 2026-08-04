@@ -125,7 +125,7 @@ async function startService(context, options = {}) {
   };
 }
 
-test("API создаёт уникальные single-client комнаты, root-hub недоступен", async (context) => {
+test("legacy API сохраняет уникальные single-client комнаты", async (context) => {
   const { service, base, wsBase } = await startService(context);
   const firstCreated = await createSession(base, "integration-client-a001");
   const secondCreated = await createSession(base, "integration-client-b001");
@@ -165,7 +165,55 @@ test("API создаёт уникальные single-client комнаты, root
 
   first.socket.close();
   await first.closed;
-  assert.equal(service.manager.sessions.has(firstCreated.sessionId), false);
+  await assert.doesNotReject(async () => {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      if (!service.manager.sessions.has(firstCreated.sessionId)) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 5));
+    }
+    assert.fail("single-client session was not removed after disconnect");
+  });
+});
+
+test("root API подключает несколько равноправных master-участников", async (context) => {
+  const { base, wsBase } = await startService(context);
+  const rootResponse = await fetch(`${base}/api/sessions/root`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(rootResponse.status, 200);
+  const root = await rootResponse.json();
+  assert.equal(root.sessionId, DEFAULT_SESSION_ID);
+
+  const first = connect(
+    `${wsBase}?session=${root.sessionId}&client=root-master-client01`,
+  );
+  const second = connect(
+    `${wsBase}?session=${root.sessionId}&client=root-master-client02`,
+  );
+  await Promise.all([first.opened, second.opened]);
+  const [firstSnapshot, secondSnapshot] = await Promise.all([
+    first.waitFor("session.snapshot"),
+    second.waitFor("session.snapshot"),
+  ]);
+  assert.equal(firstSnapshot.payload.clientRole, "master");
+  assert.equal(secondSnapshot.payload.clientRole, "master");
+  assert.equal(
+    (await first.waitFor("presence.update", (payload) => payload.participants === 2))
+      .payload.participants,
+    2,
+  );
+  assert.equal(
+    (await second.waitFor("presence.update", (payload) => payload.participants === 2))
+      .payload.participants,
+    2,
+  );
+
+  first.socket.close();
+  second.socket.close();
+  await Promise.all([first.closed, second.closed]);
 });
 
 test("debug-каталог шаблонов общий для разных личных сессий", async (context) => {
@@ -226,10 +274,14 @@ test("debug-каталог шаблонов общий для разных ли�
   const thirdPage = await third.waitFor("settingsTemplates.page");
   assert.equal(thirdPage.payload.entries[0].id, entry.id);
   assert.equal(
+    service.manager.getSession(thirdCreated.sessionId).physics.gravity,
+    8.25,
+  );
+  assert.equal(
     third.messages.find(
       (message) => message.type === "productionPreset.current",
     ).payload.canSelect,
-    false,
+    true,
   );
 
   second.send("settingsTemplates.delete", { id: entry.id });

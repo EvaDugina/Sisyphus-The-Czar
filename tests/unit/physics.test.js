@@ -52,8 +52,8 @@ test("сила тяжести и ускорения считаются из ма
   assert.equal(Math.round(Physics.gravityForce(physics) * 100) / 100, 19.6);
   assert.equal(Physics.gravityAcceleration(physics), 9.8);
   assert.equal(Physics.effectiveHandForce(physics), 60);
-  assert.equal(Physics.totalHandForce(physics, 2), 120);
-  assert.equal(Math.round(Physics.liftForceSurplus(physics, 1) * 100) / 100, 40.4);
+  assert.equal(Math.round(Physics.liftForceSurplus(physics) * 100) / 100, 40.4);
+  assert.equal(Physics.handForceRatio(physics), 1);
   assert.equal(Physics.handAcceleration(physics), 30);
   assert.equal(Physics.groundFrictionAcceleration(physics), 4.9);
   assert.ok(
@@ -104,7 +104,7 @@ test("старая шкала силы руки мигрирует без пот
   );
 });
 
-test("подъём зависит от превышения суммарной силы рук над тяжестью", () => {
+test("подъём использует силу единственной руки", () => {
   const heavy = Physics.sanitizePhysics({
     mass: 10,
     gravity: 10,
@@ -121,27 +121,21 @@ test("подъём зависит от превышения суммарной �
     handForce: 100,
   });
 
-  assert.equal(Physics.totalHandForce(heavy, 1), 90);
-  assert.equal(Physics.totalHandForce(heavy, 2), 180);
-  assert.equal(Physics.canLift(heavy, 1), false);
-  assert.equal(Physics.canLift(heavy, 2), true);
-  assert.equal(Physics.dragLiftSpeed(heavy, 1), 0);
-  assert.ok(Physics.dragDropSpeed(heavy, 1) >= Physics.DRAG_LIFT.minSpeed);
-  assert.equal(Physics.handForceRatio(heavy, 1), 0.9);
-  assert.ok(Physics.dragDeficitLiftSpeed(heavy, 1) > 0);
+  assert.equal(Physics.canLift(heavy), false);
+  assert.equal(Physics.canLift(barelyEnough), true);
+  assert.equal(Physics.handForceRatio(heavy), 0.9);
+  assert.equal(Physics.dragLiftSpeed(heavy), 0);
+  assert.ok(Physics.dragDropSpeed(heavy) >= Physics.DRAG_LIFT.minSpeed);
+  assert.ok(Physics.dragDeficitLiftSpeed(heavy) > 0);
   assert.ok(
-    Physics.dragDeficitLiftSpeed(heavy, 1) < Physics.DRAG_LIFT.minSpeed
+    Physics.dragDeficitLiftSpeed(heavy) < Physics.DRAG_LIFT.minSpeed
   );
-  assert.ok(Physics.dragVerticalSpeed(heavy, 1) < 0);
-  assert.ok(Physics.dragVerticalSpeed(heavy, 2) < 0);
-  assert.ok(Physics.dragLiftSpeed(heavy, 2) >= Physics.DRAG_LIFT.minSpeed);
   assert.ok(
-    Physics.dragLiftSpeed(strong, 1) >
-      Physics.dragLiftSpeed(barelyEnough, 1)
+    Physics.dragLiftSpeed(strong) > Physics.dragLiftSpeed(barelyEnough)
   );
 });
 
-test("кривая нехватки силы управляет скоростью замедленного подъёма", () => {
+test("кривая нехватки силы управляет FPS-независимым отставанием", () => {
   const linear = [0, 0, 1, 1];
   const heavy = Physics.sanitizePhysics({
     mass: 10,
@@ -163,23 +157,59 @@ test("кривая нехватки силы управляет скорость
       Physics.DEFAULT_FORCE_DEFICIT_CURVE
     ) < 0.5
   );
-  assert.equal(Physics.dragDeficitLiftSpeed(heavy, 0), 0);
   assert.ok(
     Math.abs(
-      Physics.dragDeficitLiftSpeed(heavy, 1, {
+      Physics.dragFollowProgress(heavy, Physics.FIXED_STEP_SECONDS, {
         forceDeficitCurve: linear,
-      }) -
-        Physics.DRAG_LIFT.minSpeed * 0.5
-    ) < 1e-4
+      }) - 0.5
+    ) < 1e-6
   );
   assert.equal(
-    Physics.dragDeficitLiftSpeed(equal, 1),
-    Physics.DRAG_LIFT.minSpeed
+    Physics.dragFollowProgress(equal, Physics.FIXED_STEP_SECONDS, {
+      forceDeficitCurve: linear,
+    }),
+    1
   );
-  assert.equal(
-    Physics.dragVerticalSpeed(equal, 1),
-    -Physics.DRAG_LIFT.minSpeed
+
+  const oneStep = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 0,
+    y: 1000,
+  });
+  const twoSteps = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 0,
+    y: 1000,
+  });
+  Physics.stepDragState(
+    oneStep,
+    heavy,
+    1000,
+    0,
+    Physics.FIXED_STEP_SECONDS,
+    { forceDeficitCurve: linear },
   );
+  Physics.stepDragState(
+    twoSteps,
+    heavy,
+    1000,
+    0,
+    Physics.FIXED_STEP_SECONDS / 2,
+    { forceDeficitCurve: linear },
+  );
+  Physics.stepDragState(
+    twoSteps,
+    heavy,
+    1000,
+    0,
+    Physics.FIXED_STEP_SECONDS / 2,
+    { forceDeficitCurve: linear },
+  );
+  assert.ok(Math.abs(oneStep.x - twoSteps.x) < 1e-9);
+  assert.ok(Math.abs(oneStep.y - twoSteps.y) < 1e-9);
+  assert.ok(oneStep.x > 0 && oneStep.x < 1000);
+  assert.ok(oneStep.y > 0 && oneStep.y < 1000);
+  assert.equal(oneStep.dragging, true);
 });
 
 test("уменьшенное тяготение замедляет падение камня", () => {
@@ -237,7 +267,7 @@ test("подвешенный игровой старт не падает до п
   assert.equal(Physics.isMoving(state), true);
 });
 
-test("motionScale компенсирует вертикальное ускорение и drag speed", () => {
+test("motionScale компенсирует падение, но не отношение силы руки", () => {
   const normal = Physics.sanitizeState({
     phase: Physics.PHASES.PLAY,
     x: 500,
@@ -264,10 +294,12 @@ test("motionScale компенсирует вертикальное ускоре
     Math.abs(compensated.y - 700 - (normal.y - 700) * 10) < 1e-9
   );
   assert.equal(
-    Physics.dragVerticalSpeed(physics, 1, { motionScale: 10 }),
-    Physics.dragVerticalSpeed(physics, 1) * 10
+    Physics.dragFollowProgress(physics, Physics.FIXED_STEP_SECONDS, {
+      motionScale: 10,
+    }),
+    Physics.dragFollowProgress(physics, Physics.FIXED_STEP_SECONDS)
   );
-  assert.equal(Physics.canLift(physics, 1), false);
+  assert.equal(Physics.canLift(physics), false);
 });
 
 test("турбулентность влияет только на горизонтальную скорость", () => {
@@ -575,6 +607,36 @@ test("импульс отпускания учитывает массу, сил�
   assert.ok(state.vx > 0);
   assert.ok(state.vy < 0);
   assert.equal(state.dragging, false);
+});
+
+test("выпрыгивание всегда направлено вверх в секторе ±45 градусов", () => {
+  const physics = Physics.sanitizePhysics({
+    mass: 1,
+    handForce: 50,
+    inertia: 0.9,
+  });
+
+  for (const angle of [-90, -45, 0, 45, 90]) {
+    const state = Physics.sanitizeState({
+      phase: Physics.PHASES.PLAY,
+      x: 500,
+      y: 700,
+      vy: 9000,
+    });
+    const result = Physics.applyRockJumpImpulse(
+      state,
+      physics,
+      angle,
+      angle === 0 ? 0 : 2,
+    );
+
+    assert.ok(result.angleDegrees >= -45 && result.angleDegrees <= 45);
+    assert.ok(result.speed >= Physics.ROCK_JUMP_MIN_SPEED);
+    assert.ok(state.vy < 0);
+    assert.equal(Math.sign(state.vx), Math.sign(result.angleDegrees));
+    assert.equal(state.dragging, false);
+    assert.equal(state.suspended, false);
+  }
 });
 
 test("влияние рывка масштабирует импульс отпускания", () => {

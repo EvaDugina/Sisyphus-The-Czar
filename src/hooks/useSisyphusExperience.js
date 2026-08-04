@@ -1,12 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef } from "react";
 import { createSisyphusRuntime } from "../runtime/createSisyphusRuntime";
 import { useSettings } from "./useSettings";
 
 export function useSisyphusExperience() {
-  const [clientRole, setClientRole] = useState("pending");
-  const settings = useSettings(
-    clientRole === "master" || clientRole === "slave",
-  );
+  const settings = useSettings(true);
   const realtime = {
     sessionStatusRef: useRef(null),
     sessionRestartButtonRef: useRef(null),
@@ -27,6 +24,10 @@ export function useSisyphusExperience() {
     rainFxCanvasRef: useRef(null),
     rainFallbackCanvasRef: useRef(null),
   };
+  const fold = {
+    settingsRef: useRef(null),
+  };
+  const { settingsRef: foldSettingsRef } = fold;
 
   const {
     settingsPanelRef,
@@ -67,12 +68,13 @@ export function useSisyphusExperience() {
       hint: hintRef.current,
       sessionStatus: sessionStatusRef.current,
       sessionRestartButton: sessionRestartButtonRef.current,
-      onClientRoleChange: setClientRole,
+      foldSettingsRef,
     });
 
     return () => runtime.dispose();
   }, [
     handCursorRef,
+    foldSettingsRef,
     hintRef,
     rainFallbackCanvasRef,
     rainFxCanvasRef,
@@ -88,5 +90,5 @@ export function useSisyphusExperience() {
     worldRef,
   ]);
 
-  return { clientRole, settings, realtime, scene, trail, rain };
+  return { settings, realtime, scene, trail, rain, fold };
 }

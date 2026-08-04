@@ -18,7 +18,7 @@ const SETTINGS_CONTROL_NAMES = SETTINGS_GROUPS.flatMap(settingsGroupControls).ma
   (control) => control.name,
 );
 const SETTINGS_CONTROL_NAME_SET = new Set(SETTINGS_CONTROL_NAMES);
-const SETTINGS_SCHEMA_VERSION = 18;
+const SETTINGS_SCHEMA_VERSION = 20;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
 
@@ -82,6 +82,7 @@ export function createSettingsController(options) {
     catalogPages: [],
     pendingImportBatches: 0,
   };
+  let loadedLocalSettings = false;
 
   function copySettingsVersionEntry(entry) {
     if (!entry) {
@@ -161,7 +162,7 @@ export function createSettingsController(options) {
       typeof onSelectProductionPreset !== "function"
     ) {
       setProductionPresetStatus(
-        "Production preset доступен участникам root-комнаты при DEBUG=true",
+        "Production preset доступен в личной сессии при DEBUG=true",
         "error",
       );
       return false;
@@ -212,6 +213,26 @@ export function createSettingsController(options) {
     return settingsPanel.querySelectorAll(
       "[data-setting-control] input[name], [data-setting-control] select[name]",
     );
+  }
+
+  function syncSettingDependencies() {
+    if (!settingsPanel) {
+      return;
+    }
+    settingsPanel
+      .querySelectorAll("[data-setting-enabled-when]")
+      .forEach((control) => {
+        const dependencyName = control.dataset.settingEnabledWhen;
+        const dependency = dependencyName
+          ? settingsPanel.querySelector(`[name="${dependencyName}"]`)
+          : null;
+        const enabled = Boolean(dependency?.checked);
+        control.querySelectorAll("input, select, button").forEach((input) => {
+          input.disabled = !enabled;
+        });
+        control.classList.toggle("is-disabled", !enabled);
+        control.dataset.settingDisabled = String(!enabled);
+      });
   }
 
   function notifySettingControlSync(input) {
@@ -315,7 +336,7 @@ export function createSettingsController(options) {
       stored = null;
     }
     if (!stored || typeof stored !== "object") {
-      return;
+      return false;
     }
 
     const legacyKeyVersion = settingsStorageKeyVersion(legacyKey);
@@ -363,12 +384,6 @@ export function createSettingsController(options) {
       if (migratedPreV10Settings && Number.isFinite(Number(stored.handWidthVw))) {
         stored.handWidthVw = Number(stored.handWidthVw) / 2;
       }
-      if (
-        migratedPreV10Settings &&
-        Number.isFinite(Number(stored.slaveHandWidthPx))
-      ) {
-        stored.slaveHandWidthPx = Number(stored.slaveHandWidthPx) / 2;
-      }
     }
 
     settingsControlElements().forEach((element) => {
@@ -382,6 +397,7 @@ export function createSettingsController(options) {
         element.value = settingValueToControlValue(key, stored[key]);
       }
     });
+    return true;
   }
 
   function normalizeSettingsVersionEntry(entry) {
@@ -791,6 +807,7 @@ export function createSettingsController(options) {
     sharedRoomSettingKeys.forEach((key) => {
       syncSettingControl(roomSettingControlElement(key), key);
     });
+    syncSettingDependencies();
   }
 
   function setSettingsVersionMenuOpen(open) {
@@ -1005,6 +1022,7 @@ export function createSettingsController(options) {
     if (settingsVersionName) {
       settingsVersionName.value = entry.name;
     }
+    syncSettingDependencies();
     return changedKeys;
   }
 
@@ -1110,9 +1128,15 @@ export function createSettingsController(options) {
         params.positionScrollStartSpeedVh.toFixed(2),
       positionScrollEndSpeedVh:
         params.positionScrollEndSpeedVh.toFixed(2),
+      draftFoldAngle: `${params.draftFoldAngle.toFixed(0)}°`,
+      draftFoldZoneSize: `${params.draftFoldZoneSize.toFixed(0)} vh`,
       finalFallDelaySeconds: secondsOutput(params.finalFallDelaySeconds),
+      rockJumpIntervalSeconds: secondsOutput(
+        params.rockJumpIntervalSeconds,
+      ),
+      rockJumpInertiaSpreadPercent:
+        `${params.rockJumpInertiaSpreadPercent.toFixed(0)}%`,
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
-      slaveHandWidthPx: `${params.slaveHandWidthPx.toFixed(0)}px`,
       drizzleStartVolume: `${Math.round(params.drizzleStartVolume * 100)}%`,
       drizzleEndVolume: `${Math.round(params.drizzleEndVolume * 100)}%`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
@@ -1229,6 +1253,7 @@ export function createSettingsController(options) {
   function bind() {
     settingsControlElements().forEach((element) => {
       const handleControlChange = () => {
+        syncSettingDependencies();
         if (collab.enabled && !localCanEditSettings()) {
           syncSettingControl(element, element.name);
           updateControlOutputs();
@@ -1333,18 +1358,21 @@ export function createSettingsController(options) {
     bind,
     getLatestSettingsVersionPreset: () =>
       settingsFromLatestVersionEntry(settingsVersions.entries),
+    hasLocalSettings: () => loadedLocalSettings,
     getLoadedSettingsVersionEntry: () =>
       copySettingsVersionEntry(baselineSettingsVersion()),
     getSettingsVersions: () =>
       settingsVersions.entries.map(copySettingsVersionEntry),
     load() {
-      loadSettings();
+      loadedLocalSettings = loadSettings();
       loadSettingsVersions();
       const latest = selectLatestSettingsVersionEntry(settingsVersions.entries);
       if (latest) {
+        loadedLocalSettings = true;
         writeSettingsVersionToControls(latest);
         renderSettingsVersions();
       }
+      syncSettingDependencies();
       renderDraftState();
     },
     captureCurrentAsBaseline,

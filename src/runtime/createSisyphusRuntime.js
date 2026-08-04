@@ -2,7 +2,6 @@ import "../../shared/physics.js";
 import "../../shared/room-settings.js";
 import "../../shared/gachi-sounds.js";
 import "../../shared/chain-sounds.js";
-import "../../shared/viewport.js";
 import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
@@ -112,17 +111,12 @@ export function createSisyphusRuntime(elements = {}) {
   const rainFxCanvas = elements.rainFxCanvas || document.querySelector(".weather-rain__canvas--fx");
   const rainFallbackCanvas = elements.rainFallbackCanvas || document.querySelector(".weather-rain__canvas--fallback");
   const sessionStatus = elements.sessionStatus || document.querySelector("[data-session-status]");
-  const onClientRoleChange =
-    typeof elements.onClientRoleChange === "function"
-      ? elements.onClientRoleChange
-      : () => {};
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
   const SharedRoomSettings = window.SisyphusRoomSettings;
   const SharedGachiSounds = window.SisyphusGachiSounds;
   const SharedChainSounds = window.SisyphusChainSounds;
-  const SharedViewport = window.SisyphusViewport;
   const listenerDisposers = [];
   let disposed = false;
   const productionRuntime = import.meta.env.PROD;
@@ -197,12 +191,29 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEndSpeedVh,
     positionScrollEasing:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEasing,
+    draftFoldAngle:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.draftFoldAngle,
+    draftFoldZoneSize:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.draftFoldZoneSize,
+    draftFoldBlendEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.draftFoldBlendEnabled,
+    draftFoldBlendCurve:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.draftFoldBlendCurve,
     manualVerticalScrollEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.manualVerticalScrollEnabled,
     finalFallEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.finalFallEnabled,
     finalFallDelaySeconds:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.finalFallDelaySeconds,
+    randomDropEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.randomDropEnabled,
+    rockJumpEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpEnabled,
+    rockJumpIntervalSeconds:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpIntervalSeconds,
+    rockJumpInertiaSpreadPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+        .rockJumpInertiaSpreadPercent,
     mass: SharedPhysics.DEFAULT_PHYSICS.mass,
     gravity: SharedPhysics.DEFAULT_PHYSICS.gravity,
     firstFallVelocity: SharedPhysics.DEFAULT_PHYSICS.firstFallVelocity,
@@ -219,8 +230,6 @@ export function createSisyphusRuntime(elements = {}) {
     sceneHeightScreens:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneHeightScreens,
     handWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw,
-    slaveHandWidthPx:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
     handForceDeficitEasing:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
 
@@ -281,6 +290,9 @@ export function createSisyphusRuntime(elements = {}) {
   };
   if (productionRuntime) {
     Object.assign(params, productionSettings);
+  }
+  if (elements.foldSettingsRef) {
+    elements.foldSettingsRef.current = params;
   }
   let handForceDeficitCurve =
     SharedRoomSettings.parseCubicBezier(params.handForceDeficitEasing) ||
@@ -416,12 +428,8 @@ export function createSisyphusRuntime(elements = {}) {
     hasControl: false,
     pendingControl: false,
     releasePending: false,
-    clientRole: "pending",
-    masterViewport: null,
-    viewportSignature: "",
-    gachiSoundFilename: null,
-    holderIds: new Set(),
-    requiredHolders: 1,
+    clientRole: "master",
+    holderId: null,
     remoteControllerId: null,
     participants: 1,
     applyingRemotePhysics: false,
@@ -460,6 +468,7 @@ export function createSisyphusRuntime(elements = {}) {
     remotePointers: new Map(),
   };
   collab.enabled = window.location.protocol !== "file:";
+  body.dataset.clientRole = "master";
 
   function currentSummitElapsedMs() {
     if (!summitTimer.running) {
@@ -498,32 +507,24 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function currentViewport() {
-    return SharedViewport.sanitizeViewport({
-      width: window.innerWidth || document.documentElement.clientWidth,
-      height: window.innerHeight || document.documentElement.clientHeight,
-    });
+    return {
+      width: Math.max(
+        1,
+        Math.round(window.innerWidth || document.documentElement.clientWidth || 1),
+      ),
+      height: Math.max(
+        1,
+        Math.round(window.innerHeight || document.documentElement.clientHeight || 1),
+      ),
+    };
   }
 
   function localCanEditSettings() {
-    return (
-      collab.clientRole === "pending" ||
-      collab.clientRole === "master" ||
-      collab.clientRole === "slave"
-    );
-  }
-
-  function slaveViewportScale() {
-    if (collab.clientRole !== "slave") {
-      return { x: 1, y: 1 };
-    }
-    return SharedViewport.viewportScale(
-      collab.masterViewport,
-      currentViewport(),
-    );
+    return true;
   }
 
   function scaledVisualPixel(value) {
-    return Number(value) * slaveViewportScale().x;
+    return Number(value);
   }
 
   const rain = {
@@ -779,31 +780,17 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
-  function setSlaveClickSound(filename) {
-    collab.gachiSoundFilename = SharedGachiSounds.isGachiSoundFilename(filename)
-      ? filename
-      : null;
-    if (collab.gachiSoundFilename) {
-      preloadSessionRoleAudio("slave", collab.gachiSoundFilename);
-    }
-  }
-
   function sessionRoleAudioAvailable(role, filename) {
-    if (role === "master" && SharedChainSounds.isChainSoundFilename(filename)) {
-      return CHAIN_AUDIO_LOADERS_BY_FILENAME.has(filename);
-    }
-    if (role === "slave" && SharedGachiSounds.isGachiSoundFilename(filename)) {
-      return GACHI_AUDIO_LOADERS_BY_FILENAME.has(filename);
-    }
-    return false;
+    return (
+      role === "master" &&
+      SharedChainSounds.isChainSoundFilename(filename) &&
+      CHAIN_AUDIO_LOADERS_BY_FILENAME.has(filename)
+    );
   }
 
   function loadSessionRoleAudioUrl(role, filename) {
     if (role === "master" && SharedChainSounds.isChainSoundFilename(filename)) {
       return loadAudioUrl("chain", CHAIN_AUDIO_LOADERS_BY_FILENAME, filename);
-    }
-    if (role === "slave" && SharedGachiSounds.isGachiSoundFilename(filename)) {
-      return loadAudioUrl("gachi", GACHI_AUDIO_LOADERS_BY_FILENAME, filename);
     }
     return Promise.resolve(null);
   }
@@ -826,13 +813,6 @@ export function createSisyphusRuntime(elements = {}) {
       sessionRoleAudio.elements.set(key, audio);
       return audio;
     });
-  }
-
-  function preloadSessionRoleAudio(role, filename) {
-    const promise = ensureSessionRoleAudio(role, filename);
-    if (promise && typeof promise.catch === "function") {
-      promise.catch(() => {});
-    }
   }
 
   function playSessionRoleAudio(payload) {
@@ -858,10 +838,7 @@ export function createSisyphusRuntime(elements = {}) {
   function receiveSessionRoleAudio(payload) {
     const eventId =
       typeof payload.eventId === "string" ? payload.eventId : "";
-    const role =
-      payload.role === "master" || payload.role === "slave"
-        ? payload.role
-        : null;
+    const role = payload.role === "master" ? "master" : null;
     const filename =
       typeof payload.filename === "string" ? payload.filename : "";
     const playAt = Number(payload.playAt);
@@ -916,15 +893,13 @@ export function createSisyphusRuntime(elements = {}) {
       sendShared("audio.play");
       return;
     }
-    const role = pointerRole(collab.clientRole);
+    const role = "master";
     const filename =
-      role === "master"
-        ? SharedChainSounds.CHAIN_SOUND_FILENAMES[
-            Math.floor(
-              Math.random() * SharedChainSounds.CHAIN_SOUND_FILENAMES.length,
-            )
-          ]
-        : collab.gachiSoundFilename;
+      SharedChainSounds.CHAIN_SOUND_FILENAMES[
+        Math.floor(
+          Math.random() * SharedChainSounds.CHAIN_SOUND_FILENAMES.length,
+        )
+      ];
     playSessionRoleAudio({
       eventId: `local-${Date.now()}`,
       actorId: collab.clientId,
@@ -1382,10 +1357,6 @@ export function createSisyphusRuntime(elements = {}) {
       "--hand-width-vw",
       `${params.handWidthVw}vw`
     );
-    document.documentElement.style.setProperty(
-      "--slave-hand-width-px",
-      `${scaledVisualPixel(params.slaveHandWidthPx)}px`
-    );
   }
 
   function applyViewportScaledVisuals() {
@@ -1757,10 +1728,6 @@ export function createSisyphusRuntime(elements = {}) {
 
   function maxHoldMs() {
     return SharedPhysics.maxHoldMs(params);
-  }
-
-  function activeHandCount() {
-    return collab.enabled ? collab.holderIds.size : 1;
   }
 
   function settingsChangeContext(options = {}) {
@@ -2222,24 +2189,18 @@ export function createSisyphusRuntime(elements = {}) {
     motion.dragTargetY = targetY;
   }
 
-  function applyDragTargetMovement(deltaSeconds, handCount = activeHandCount()) {
+  function applyDragTargetMovement(deltaSeconds) {
     if (!motion.dragging) {
       return;
     }
 
-    const verticalSpeed =
-      (SharedPhysics.dragVerticalSpeed(params, handCount, sceneMotionOptions()) /
-        SharedPhysics.WORLD_HEIGHT) *
-      bounds.maxY;
-    let nextY = motion.dragTargetY;
-    if (motion.dragTargetY < motion.y) {
-      nextY =
-        verticalSpeed < 0
-          ? Math.max(motion.dragTargetY, motion.y + verticalSpeed * deltaSeconds)
-          : Math.min(bounds.maxY, motion.y + verticalSpeed * deltaSeconds);
-    }
-
-    setPosition(motion.dragTargetX, nextY);
+    const progress = SharedPhysics.dragFollowProgress(params, deltaSeconds, {
+      forceDeficitCurve: handForceDeficitCurve,
+    });
+    setPosition(
+      motion.x + (motion.dragTargetX - motion.x) * progress,
+      motion.y + (motion.dragTargetY - motion.y) * progress,
+    );
   }
 
   function initialLocalPosition() {
@@ -2327,24 +2288,17 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function updateSessionStatus() {
-    const holderCount = collab.holderIds.size;
     const status = deriveSessionStatus({
       ...collab,
-      holderIds: [...collab.holderIds],
-      liftReady:
-        holderCount > 0 && SharedPhysics.canLift(params, holderCount),
+      holderId: collab.holderId,
+      liftReady: Boolean(collab.holderId) && SharedPhysics.canLift(params),
     });
     setSessionStatus(status.text, status.state);
   }
 
   function appUrl(relativePath) {
-    const base = new URL(window.location.href);
-    base.search = "";
-    base.hash = "";
-    if (!base.pathname.endsWith("/")) {
-      base.pathname = base.pathname.replace(/[^/]+$/, "");
-    }
-    return new URL(relativePath, base);
+    const normalizedPath = String(relativePath || "").replace(/^\/+/, "");
+    return new URL(`/${normalizedPath}`, window.location.origin);
   }
 
   function localToCanonical(x, y) {
@@ -2401,85 +2355,21 @@ export function createSisyphusRuntime(elements = {}) {
     return target === rock || rock.contains(target);
   }
 
-  function normalizeHolderIds(holderIds) {
-    return Array.isArray(holderIds)
-      ? holderIds
-          .map((clientId) => String(clientId || ""))
-          .filter(Boolean)
-      : [];
+  function normalizeHolderId(holderId) {
+    const normalized = String(holderId || "");
+    return normalized || null;
   }
 
-  function updateSharedHolders(holderIds, requiredHolders) {
-    collab.holderIds = new Set(normalizeHolderIds(holderIds));
-    const nextRequired = Number(requiredHolders);
-    if (Number.isFinite(nextRequired) && nextRequired >= 1) {
-      collab.requiredHolders = Math.round(nextRequired);
-    }
+  function updateSharedHolder(holderId) {
+    collab.holderId = normalizeHolderId(holderId);
   }
 
   function localIsHolder() {
-    return collab.holderIds.has(collab.clientId);
+    return collab.holderId === collab.clientId;
   }
 
-  function cooperativeDragActive() {
-    return localIsHolder() && SharedPhysics.canLift(params, collab.holderIds.size);
-  }
-
-  function pointerRole(value) {
-    if (value === "slave" || value === "partner") {
-      return "slave";
-    }
-    return "master";
-  }
-
-  function applyCursorRole(element, role) {
-    void role;
-    element.classList.remove("is-slave");
-  }
-
-  function setLocalCursorRole(role) {
-    const nextRole = pointerRole(role);
-    collab.clientRole = nextRole;
-    applyCursorRole(handCursor, collab.clientRole);
-    body.dataset.clientRole = nextRole;
-    onClientRoleChange(nextRole);
-    applyViewportScaledVisuals();
-    sendMasterViewport(true);
-  }
-
-  function applyMasterViewport(viewport) {
-    const next = SharedViewport.sanitizeViewport(viewport);
-    const previous = collab.masterViewport;
-    if (
-      !next ||
-      (previous?.width === next.width && previous?.height === next.height)
-    ) {
-      return false;
-    }
-    collab.masterViewport = next;
-    applyViewportScaledVisuals();
-    return true;
-  }
-
-  function sendMasterViewport(force = false) {
-    if (
-      !collab.enabled ||
-      !collab.connected ||
-      !localCanEditSettings()
-    ) {
-      return false;
-    }
-    const viewport = currentViewport();
-    if (!viewport) {
-      return false;
-    }
-    const signature = `${viewport.width}x${viewport.height}`;
-    if (!force && signature === collab.viewportSignature) {
-      return false;
-    }
-    collab.viewportSignature = signature;
-    sendShared("viewport.update", viewport);
-    return true;
+  function sharedDragActive() {
+    return localIsHolder();
   }
 
   function updateLocalSharedPointer(event, mode, visible) {
@@ -2543,7 +2433,6 @@ export function createSisyphusRuntime(elements = {}) {
     const hasRockOffset =
       Number.isFinite(rockOffsetX) && Number.isFinite(rockOffsetY);
     const mode = payload.mode;
-    const role = pointerRole(payload.role || payload.skin);
     if (
       !clientId ||
       !Number.isFinite(x) ||
@@ -2581,7 +2470,6 @@ export function createSisyphusRuntime(elements = {}) {
       };
       collab.remotePointers.set(clientId, pointer);
     }
-    applyCursorRole(pointer.element, role);
     pointer.targetX = x;
     pointer.targetY = y;
     pointer.targetRockOffsetX = hasRockOffset ? rockOffsetX : null;
@@ -2672,12 +2560,6 @@ export function createSisyphusRuntime(elements = {}) {
       vx: (vx / SharedPhysics.WORLD_WIDTH) * bounds.maxX,
       vy: (vy / SharedPhysics.WORLD_HEIGHT) * bounds.maxY,
     };
-  }
-
-  function sharedPhysicsPayload() {
-    return Object.fromEntries(
-      SHARED_PHYSICS_KEYS.map((key) => [key, params[key]])
-    );
   }
 
   function sharedRoomSettingsPayload() {
@@ -2984,7 +2866,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 18,
+      settingsSchemaVersion: 20,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -3038,18 +2920,17 @@ export function createSisyphusRuntime(elements = {}) {
     collab.sessionCreateAbortController = abortController;
     setSessionStatus("Создаём личную сессию…", "connecting");
     try {
+      const sessionPayload = settingsController.hasLocalSettings()
+        ? {
+            physics: SharedPhysics.sanitizePhysics(params),
+            roomSettings: sharedRoomSettingsPayload(),
+          }
+        : {};
       const response = await fetch(appUrl("api/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: abortController.signal,
-        body: JSON.stringify({
-          creatorClientId: collab.clientId,
-          state: currentSharedState(),
-          physics: sharedPhysicsPayload(),
-          roomSettings: sharedRoomSettingsPayload(),
-          masterViewport: currentViewport(),
-          imprint: collab.imprint,
-        }),
+        body: JSON.stringify(sessionPayload),
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -3213,8 +3094,7 @@ export function createSisyphusRuntime(elements = {}) {
     collab.hasControl = false;
     collab.pendingControl = false;
     collab.releasePending = false;
-    collab.holderIds.clear();
-    collab.requiredHolders = 1;
+    collab.holderId = null;
     collab.remoteControllerId = null;
     rock.classList.remove("is-dragging", "is-falling");
     releasePointerCapture(pointerId);
@@ -3349,7 +3229,7 @@ export function createSisyphusRuntime(elements = {}) {
         collab.settingsUpdateInFlight = null;
         collab.settingsUpdateQueued = true;
       }
-      collab.holderIds.clear();
+      collab.holderId = null;
       cancelSharedLocalDrag();
       updateLocalSharedPointer(null, "grab", false);
       hideHandCursor();
@@ -3382,14 +3262,14 @@ export function createSisyphusRuntime(elements = {}) {
     } else if (message.type === "control.granted") {
       collab.pendingControl = false;
       collab.hasControl = true;
-      updateSharedHolders(payload.holderIds, payload.requiredHolders);
-      collab.remoteControllerId = payload.holderId || collab.clientId;
+      updateSharedHolder(payload.holderId || collab.clientId);
+      collab.remoteControllerId = collab.holderId;
       updateSessionStatus();
     } else if (message.type === "control.slipped") {
       collab.pendingControl = false;
       collab.hasControl = false;
       collab.releasePending = false;
-      updateSharedHolders(payload.holderIds, payload.requiredHolders);
+      updateSharedHolder(payload.holderId);
       cancelSharedLocalDrag();
       updateSessionStatus();
     } else if (message.type === "control.denied") {
@@ -3399,7 +3279,7 @@ export function createSisyphusRuntime(elements = {}) {
       updateSessionStatus();
     } else if (message.type === "presence.update") {
       collab.participants = Math.max(1, Number(payload.participants) || 1);
-      updateSharedHolders(payload.holderIds, payload.requiredHolders);
+      updateSharedHolder(payload.holderId);
       collab.remoteControllerId = payload.controllerId || null;
       syncRemotePointers(payload.pointers);
       updateSessionStatus();
@@ -3507,13 +3387,6 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       collab.leaveToken = payload.leaveToken;
     }
-    const incomingRole = payload.clientRole || payload.clientSkin;
-    if (typeof incomingRole === "string") {
-      setLocalCursorRole(incomingRole);
-    }
-    if (Object.hasOwn(payload, "gachiSoundFilename")) {
-      setSlaveClickSound(payload.gachiSoundFilename);
-    }
     const settingsRevision = Number(payload.settingsRevision);
     if (Number.isSafeInteger(settingsRevision) && settingsRevision > 0) {
       collab.settingsRevision = Math.max(
@@ -3538,9 +3411,6 @@ export function createSisyphusRuntime(elements = {}) {
       : offsetSample;
     collab.clockOffsetReady = true;
     applySummitTimerSnapshot(payload);
-    if (Object.hasOwn(payload, "masterViewport")) {
-      applyMasterViewport(payload.masterViewport);
-    }
     if (Object.hasOwn(payload, "physics")) {
       applySharedPhysics(payload.physics);
     }
@@ -3550,8 +3420,8 @@ export function createSisyphusRuntime(elements = {}) {
     if (collab.settingsUpdateQueued) {
       scheduleSharedSettingsUpdate();
     }
-    const holderIds = normalizeHolderIds(payload.holderIds);
-    updateSharedHolders(holderIds, payload.requiredHolders);
+    const holderId = normalizeHolderId(payload.holderId);
+    updateSharedHolder(holderId);
     syncSharedGroundTouchSeq(payload.groundTouchSeq);
 
     if (Object.hasOwn(payload, "imprint")) {
@@ -3579,12 +3449,11 @@ export function createSisyphusRuntime(elements = {}) {
       dragging: Boolean(payload.dragging),
       controllerId: payload.controllerId || null,
       suspended: Boolean(payload.suspended),
-      holderIds,
-      requiredHolders: collab.requiredHolders,
+      holderId,
       revision,
       serverTime: Number(payload.serverTime) || Date.now(),
     };
-    const ownsHold = holderIds.includes(collab.clientId);
+    const ownsHold = holderId === collab.clientId;
     if (
       collab.releasePending &&
       ownsHold
@@ -3618,7 +3487,7 @@ export function createSisyphusRuntime(elements = {}) {
       collab.hasControl = true;
       collab.pendingControl = false;
       collab.releasePending = false;
-      if (cooperativeDragActive()) {
+      if (sharedDragActive()) {
         clearSharedReleaseHandoff();
       }
     } else if (
@@ -3730,9 +3599,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.suspended = Boolean(snapshot.suspended);
     motion.turbTime = 0;
 
-    const visiblyDragging =
-      Boolean(snapshot.dragging) &&
-      SharedPhysics.canLift(params, snapshot.holderIds.length);
+    const visiblyDragging = Boolean(snapshot.dragging && snapshot.holderId);
     const visiblyFalling =
       !visiblyDragging &&
       !motion.suspended &&
@@ -3874,9 +3741,9 @@ export function createSisyphusRuntime(elements = {}) {
     event.preventDefault();
     recordPointerVelocity(event);
     setDragTargetFromPointer(event);
-    const activeTogether = cooperativeDragActive();
-    if (activeTogether) {
-      applyDragTargetMovement(MAX_FRAME_SECONDS, collab.holderIds.size);
+    const activeDrag = sharedDragActive();
+    if (activeDrag) {
+      applyDragTargetMovement(MAX_FRAME_SECONDS);
       syncReturnTheme();
     }
 
@@ -3890,8 +3757,11 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     collab.lastMoveSentAt = now;
-    const position = localToCanonical(motion.x, motion.y);
-    const velocity = activeTogether
+    const position = localToCanonical(
+      motion.dragTargetX,
+      motion.dragTargetY,
+    );
+    const velocity = activeDrag
       ? localVelocityToCanonical(motion.pointerVx, motion.pointerVy)
       : { vx: 0, vy: 0 };
     sendShared("control.move", {
@@ -3905,7 +3775,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    const canReleaseWithImpulse = cooperativeDragActive();
+    const canReleaseWithImpulse = sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
       : { vx: 0, vy: 0 };
@@ -3940,7 +3810,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    const canReleaseWithImpulse = cooperativeDragActive();
+    const canReleaseWithImpulse = sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
       : { vx: 0, vy: 0 };
@@ -4141,7 +4011,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function trailDashArray() {
-    const scale = slaveViewportScale().x;
+    const scale = 1;
     if (params.dashStyle === "dashed") {
       return [params.dashLength * scale, params.dashGap * scale];
     }
@@ -4323,7 +4193,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function syncHoldLimit() {
-    if (!motion.dragging || motion.phase !== PHASES.PLAY) {
+    if (collab.enabled || !motion.dragging || motion.phase !== PHASES.PLAY) {
       clearHoldTimer();
       return;
     }
@@ -4514,12 +4384,6 @@ export function createSisyphusRuntime(elements = {}) {
 
   function applyReleaseImpulse(pointerVelocity = currentPointerVelocity()) {
     const state = SharedPhysics.sanitizeState(currentSharedState());
-    if (!SharedPhysics.canLift(params, activeHandCount())) {
-      motion.vx = 0;
-      motion.vy = 0;
-      motion.suspended = false;
-      return;
-    }
     const velocity = localVelocityToCanonical(
       pointerVelocity.vx,
       pointerVelocity.vy
@@ -4668,9 +4532,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    if (pointerRole(collab.clientRole) !== "slave") {
-      playChainHoverSound();
-    }
+    playChainHoverSound();
     showHandCursor(event);
     if (collab.enabled) {
       sendSharedPointer(event, "grab", true, true);
@@ -4736,7 +4598,6 @@ export function createSisyphusRuntime(elements = {}) {
     fitTopInscription();
     updateBounds();
     applyViewportScaledVisuals();
-    sendMasterViewport();
     resizeTrailCanvas();
     if (collab.enabled && collab.snapshots.length > 0) {
       applySharedFrame(collab.snapshots.at(-1));
@@ -4792,11 +4653,10 @@ export function createSisyphusRuntime(elements = {}) {
             }
           : null;
       },
-      getViewportScale: () => ({ ...slaveViewportScale() }),
+      getViewportScale: () => ({ x: 1, y: 1 }),
       getRenderedVisualSettings: () => ({
         lineWidth: scaledVisualPixel(params.lineWidth),
         rainBlurPx: scaledVisualPixel(params.rainBlurPx),
-        slaveHandWidthPx: scaledVisualPixel(params.slaveHandWidthPx),
       }),
       getRoleAudioState: () => {
         const state = roleAudioFade.latest;
@@ -4887,6 +4747,9 @@ export function createSisyphusRuntime(elements = {}) {
         return;
       }
       disposed = true;
+      if (elements.foldSettingsRef?.current === params) {
+        elements.foldSettingsRef.current = null;
+      }
       collab.leaving = true;
       stopLoop();
       document.documentElement.classList.remove(

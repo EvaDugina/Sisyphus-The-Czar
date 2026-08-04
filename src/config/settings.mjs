@@ -5,9 +5,11 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v18";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v20";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v19",
+  "sisyphus-czar-settings-v18",
   "sisyphus-czar-settings-v17",
   "sisyphus-czar-settings-v16",
   "sisyphus-czar-settings-v15",
@@ -50,14 +52,14 @@ const PHYSICS_FORMULAS = {
     "F_g = m \\cdot g",
     "a_g = \\frac{F_g}{m}",
     "a_{hand} = \\frac{F_{hand}}{m}",
-    "F_{hands} = n \\cdot F_{hand}",
-    "F_{surplus} = F_{hands} - F_g",
+    "F_{surplus} = F_{hand} - F_g",
     "v_{x,release} = v_{x,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
     "v_{y,release} = v_{y,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_y}{10} \\cdot k",
-    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
-    "r = clamp\\left(\\frac{F_{hands}}{F_g}, 0, 1\\right)",
-    "v_y = F_{surplus} > 0 ? -v_{lift} : -v_{min} \\cdot bezier(r)",
-    "v_{lift} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{F_{surplus}}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
+    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hand}}{5 \\cdot F_g}, 500, 3000\\right)",
+    "r = clamp\\left(\\frac{F_{hand}}{F_g}, 0, 1\\right)",
+    "q = bezier(r)",
+    "\\alpha(\\Delta t) = 1 - (1-q)^{\\Delta t / (1/60)}",
+    "P_{rock}' = P_{rock} + \\alpha(\\Delta t)(P_{hand}-P_{rock})",
   ],
   gravity: [
     "F_g = m \\cdot g",
@@ -68,19 +70,19 @@ const PHYSICS_FORMULAS = {
   ],
   handForce: [
     "a_{hand} = \\frac{F_{hand}}{m}",
-    "F_{hands} = n \\cdot F_{hand}",
-    "F_{surplus} = F_{hands} - F_g",
+    "F_{surplus} = F_{hand} - F_g",
     "v_{x,release} = v_{x,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
     "v_{y,release} = v_{y,pointer} \\cdot a_{hand} \\cdot p \\cdot \\frac{I_y}{10} \\cdot k",
-    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hands}}{5 \\cdot F_g}, 500, 3000\\right)",
-    "r = clamp\\left(\\frac{F_{hands}}{F_g}, 0, 1\\right)",
-    "v_y = F_{surplus} > 0 ? -v_{lift} : -v_{min} \\cdot bezier(r)",
-    "v_{lift} = clamp\\left(v_{min} + k_{lift} \\cdot \\frac{F_{surplus}}{5 \\cdot F_g}, v_{min}, v_{max}\\right)",
+    "t_{hold} = clamp\\left(\\frac{3000 \\cdot F_{hand}}{5 \\cdot F_g}, 500, 3000\\right)",
+    "r = clamp\\left(\\frac{F_{hand}}{F_g}, 0, 1\\right)",
+    "q = bezier(r)",
+    "\\alpha(\\Delta t) = 1 - (1-q)^{\\Delta t / (1/60)}",
   ],
   handForceDeficitEasing: [
-    "r = clamp\\left(\\frac{F_{hands}}{F_g}, 0, 1\\right)",
-    "k_{deficit} = bezier(r)",
-    "v_{deficit} = v_{min} \\cdot k_{deficit}",
+    "r = clamp\\left(\\frac{F_{hand}}{F_g}, 0, 1\\right)",
+    "q = bezier(r)",
+    "\\alpha(\\Delta t) = 1 - (1-q)^{\\Delta t / (1/60)}",
+    "P_{rock}' = P_{rock} + \\alpha(\\Delta t)(P_{hand}-P_{rock})",
   ],
   pointerInfluence: [
     "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot \\frac{I_x}{1000} \\cdot k",
@@ -117,6 +119,17 @@ const PHYSICS_FORMULAS = {
   rockMaxWidthVw: [
     "w = w_{min} + (w_{max} - w_{min}) \\cdot bezier(h)",
   ],
+  rockJumpIntervalSeconds: [
+    "t_{jump} = rockJumpIntervalSeconds",
+  ],
+  rockJumpInertiaSpreadPercent: [
+    "S = \\frac{rockJumpInertiaSpreadPercent}{100}",
+    "J_0 = F_{hand} \\cdot t_{impulse} \\cdot I_y",
+    "J = J_0 \\cdot random(1-S, 1+S)",
+    "V = clamp\\left(\\frac{J}{m}, V_{min}, V_{max}\\right)",
+    "v_x = V \\cdot sin(\\theta)",
+    "v_y = -V \\cdot cos(\\theta), \\quad \\theta \\in [-45^\\circ,45^\\circ]",
+  ],
   sceneHeightScreens: [
     "H_{page} = sceneHeightScreens \\cdot 100vh",
     "k_{scene} = \\frac{100}{sceneHeightScreens} \\cdot 10",
@@ -125,7 +138,6 @@ const PHYSICS_FORMULAS = {
   handWidthVw: [
     "w_{hand} = viewportWidth \\cdot \\frac{handWidthVw}{100}",
   ],
-  slaveHandWidthPx: ["w_{slaveHand} = slaveHandWidthPx"],
 };
 
 const TRAIL_STYLE_CONTROLS = [
@@ -374,6 +386,48 @@ export const SETTINGS_GROUPS = [
     ],
   },
   {
+    title: "3D Fold",
+    controls: [
+      {
+        name: "draftFoldAngle",
+        label: "Угол линзы",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.draftFoldAngle[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.draftFoldAngle[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.draftFoldAngle,
+        output: `${DEFAULT_ROOM_SETTINGS.draftFoldAngle}°`,
+        hint: "Угол наклона верхней перспективной Fold-зоны.",
+      },
+      {
+        name: "draftFoldZoneSize",
+        label: "Размер линзы",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.draftFoldZoneSize[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.draftFoldZoneSize[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.draftFoldZoneSize,
+        output: `${DEFAULT_ROOM_SETTINGS.draftFoldZoneSize} vh`,
+        hint: "Высота верхней Fold-зоны. Нулевое значение отключает эффект.",
+      },
+      {
+        name: "draftFoldBlendEnabled",
+        label: "Плавное смешивание",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.draftFoldBlendEnabled,
+        hint: "Смешивает Fold-зону с основной сценой по настраиваемой кривой.",
+      },
+      {
+        name: "draftFoldBlendCurve",
+        label: "Кривая смешивания",
+        type: "cubic-bezier",
+        defaultValue: DEFAULT_ROOM_SETTINGS.draftFoldBlendCurve,
+        enabledWhen: "draftFoldBlendEnabled",
+        hint: "Кривая изменения непрозрачности от верхнего края Fold-зоны к основной сцене.",
+      },
+    ],
+  },
+  {
     title: "Финальное падение",
     controls: [
       {
@@ -477,6 +531,50 @@ export const SETTINGS_GROUPS = [
     title: "Камень",
     controls: [
       {
+        name: "randomDropEnabled",
+        label: "Случайное выпадение",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.randomDropEnabled,
+        hint: "Разрешает существующее случайное выпадение камня из руки через 0,5–2 секунды. Выпрыгивание вверх настраивается отдельно.",
+      },
+      {
+        name: "rockJumpEnabled",
+        label: "Выпрыгивание вверх",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.rockJumpEnabled,
+        hint: "Периодически освобождает камень из руки и задаёт ему случайный восходящий импульс в секторе ±45° от вертикали.",
+      },
+      {
+        name: "rockJumpIntervalSeconds",
+        label: "Интервал выпрыгивания",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockJumpIntervalSeconds[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockJumpIntervalSeconds[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockJumpIntervalSeconds,
+        output: `${DEFAULT_ROOM_SETTINGS.rockJumpIntervalSeconds} s`,
+        enabledWhen: "rockJumpEnabled",
+        hint: "Сколько секунд непрерывного удержания проходит до автоматического выпрыгивания вверх.",
+        formulas: PHYSICS_FORMULAS.rockJumpIntervalSeconds,
+      },
+      {
+        name: "rockJumpInertiaSpreadPercent",
+        label: "Разброс инерции",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockJumpInertiaSpreadPercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockJumpInertiaSpreadPercent[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockJumpInertiaSpreadPercent,
+        output: `${DEFAULT_ROOM_SETTINGS.rockJumpInertiaSpreadPercent}%`,
+        enabledWhen: "rockJumpEnabled",
+        hint: "Случайное отклонение величины импульса относительно базового значения. Ноль оставляет случайным только направление.",
+        formulas: PHYSICS_FORMULAS.rockJumpInertiaSpreadPercent,
+      },
+      {
         name: "mass",
         label: "Масса",
         type: "range",
@@ -535,7 +633,7 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: 50,
         output: "50",
-        hint: "Сила одной руки в шкале от 1 до 1000. Руки суммируются: при нехватке силы камень поднимается медленнее, а избыток силы ускоряет подъём.",
+        hint: "Сила единственной руки в сессии. При нехватке силы камень плавно отстаёт; отношение Fhand/Fg задаёт скорость следования.",
         formulas: PHYSICS_FORMULAS.handForce,
       },
       {
@@ -544,7 +642,7 @@ export const SETTINGS_GROUPS = [
         type: "cubic-bezier",
         defaultValue: DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
         spellCheck: false,
-        hint: "cubic-bezier кривая замедления подъёма, когда суммарная сила рук меньше силы тяжести. Невалидное значение заменяется последней корректной или стандартной кривой.",
+        hint: "cubic-bezier кривая реакции камня, когда сила руки меньше силы тяжести. Невалидное значение заменяется последней корректной или стандартной кривой.",
         formulas: PHYSICS_FORMULAS.handForceDeficitEasing,
       },
       {
@@ -561,27 +659,15 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "handWidthVw",
-        label: "Размер master-руки, vw",
+        label: "Размер руки, vw",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handWidthVw[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handWidthVw[1],
         step: 0.125,
         defaultValue: DEFAULT_ROOM_SETTINGS.handWidthVw,
         output: `${DEFAULT_ROOM_SETTINGS.handWidthVw.toFixed(1)}vw`,
-        hint: "Общая ширина большой master-руки в процентах от ширины экрана. Меняется у всех участников комнаты.",
+        hint: "Ширина единственной руки текущего пользователя в процентах от ширины экрана.",
         formulas: PHYSICS_FORMULAS.handWidthVw,
-      },
-      {
-        name: "slaveHandWidthPx",
-        label: "Размер slave-руки, px",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.slaveHandWidthPx[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.slaveHandWidthPx[1],
-        step: 1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.slaveHandWidthPx,
-        output: `${DEFAULT_ROOM_SETTINGS.slaveHandWidthPx.toFixed(0)}px`,
-        hint: "Общая ширина маленькой slave-руки в пикселях. Меняется у всех участников комнаты.",
-        formulas: PHYSICS_FORMULAS.slaveHandWidthPx,
       },
     ],
   },
@@ -726,14 +812,14 @@ export const SETTINGS_GROUPS = [
         label: "Цвет капель",
         type: "color",
         defaultValue: DEFAULT_ROOM_SETTINGS.rainDropColor,
-        hint: "Общий цвет тела капель дождя для всех участников комнаты.",
+        hint: "Цвет тела капель дождя в текущей сессии.",
       },
       {
         name: "rainHighlightColor",
         label: "Цвет блика",
         type: "color",
         defaultValue: DEFAULT_ROOM_SETTINGS.rainHighlightColor,
-        hint: "Общий цвет блика и specular-части дождя для всех участников комнаты.",
+        hint: "Цвет блика и specular-части дождя в текущей сессии.",
       },
       {
         name: "rainBlurBlendMode",

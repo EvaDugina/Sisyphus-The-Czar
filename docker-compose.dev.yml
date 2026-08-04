@@ -13,7 +13,7 @@ services:
       EMPTY_SESSION_GRACE_SECONDS: "10"
       SESSION_STORE_PATH: "/app/data/sessions.json"
       PRODUCTION_PRESET_PATH: "/app/config/production-preset.json"
-      SETTINGS_TEMPLATE_STORE_PATH: "/app/config/settings-templates.json"
+      SETTINGS_TEMPLATE_STORE_PATH: "/app/repository-config/settings-templates.json"
       SESSION_PERSIST_INTERVAL_MS: "250"
       VITE_HMR_CLIENT_PORT: "18082"
       VITE_SHARED_RELOAD_DELAY_MS: "250"
@@ -30,6 +30,8 @@ services:
       - ./assets:/app/assets:ro
       - ./server:/app/server:ro
       - ./shared:/app/shared:ro
+      - ./tests:/app/tests:ro
+      - ./config:/app/repository-config
       - sisyphus-session-data-dev:/app/data
       - sisyphus-production-preset-data:/app/config
 

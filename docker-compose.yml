@@ -15,7 +15,7 @@ services:
       EMPTY_SESSION_GRACE_SECONDS: "${EMPTY_SESSION_GRACE_SECONDS:-10}"
       SESSION_STORE_PATH: "${SESSION_STORE_PATH:-/app/data/sessions.json}"
       PRODUCTION_PRESET_PATH: "${PRODUCTION_PRESET_PATH:-/app/config/production-preset.json}"
-      SETTINGS_TEMPLATE_STORE_PATH: "${SETTINGS_TEMPLATE_STORE_PATH:-/app/config/settings-templates.json}"
+      SETTINGS_TEMPLATE_STORE_PATH: "${SETTINGS_TEMPLATE_STORE_PATH:-/app/repository-config/settings-templates.json}"
       SESSION_PERSIST_INTERVAL_MS: "${SESSION_PERSIST_INTERVAL_MS:-250}"
     ports:
       - "127.0.0.1:18082:8080"
@@ -28,6 +28,7 @@ services:
     volumes:
       - sisyphus-session-data:/app/data
       - sisyphus-production-preset-data:/app/config
+      - ./config:/app/repository-config
     security_opt:
       - no-new-privileges:true
     logging:

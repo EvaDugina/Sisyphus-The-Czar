@@ -15,7 +15,6 @@ const {
   DISCONNECTED_CLIENT_TTL_MS,
   DEFAULT_EMPTY_SESSION_GRACE_MS,
   DEFAULT_AUDIO_LEAD_MS,
-  REQUIRED_HOLDERS,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
   STATIONARY_HOLD_RELEASE_MS,
@@ -95,65 +94,32 @@ test("реестр звуков цепей совпадает с файлами 
   assert.deepEqual(filenames, [...ChainSounds.CHAIN_SOUND_FILENAMES]);
 });
 
-test("создатель комнаты закрепляется как master, остальные получают slave", () => {
+test("все участники комнаты получают роль master", () => {
   const { manager } = setup();
   const session = manager.createSession({
     creatorClientId: "client-master-0001",
   });
   const master = connect(manager, session, "client-master-0001");
-  const slave = connect(manager, session, "client-slave-0001");
+  const second = connect(manager, session, "client-second-0001");
 
-  assert.equal(session.masterClientId, "client-master-0001");
   assert.equal(master.client.role, "master");
-  assert.equal(slave.client.role, "slave");
-  assert.equal(master.client.gachiSoundFilename, null);
-  assert.ok(
-    GachiSounds.isGachiSoundFilename(slave.client.gachiSoundFilename)
-  );
+  assert.equal(second.client.role, "master");
   assert.equal(
     master.socket.messages.findLast((message) => message.type === "session.snapshot")
       .payload.clientRole,
     "master"
   );
   assert.equal(
-    slave.socket.messages.findLast((message) => message.type === "session.snapshot")
+    second.socket.messages.findLast((message) => message.type === "session.snapshot")
       .payload.clientRole,
-    "slave"
+    "master"
   );
   assert.equal(
-    slave.socket.messages.findLast((message) => message.type === "session.snapshot")
-      .payload.gachiSoundFilename,
-    slave.client.gachiSoundFilename
+    Object.hasOwn(manager.serializeSessions()[0], "masterClientId"),
+    false,
   );
-  assert.equal(manager.serializeSessions()[0].masterClientId, "client-master-0001");
-  assert.equal(
-    Object.hasOwn(manager.serializeSessions()[0], "slaveSoundAssignments"),
-    false
-  );
-});
-
-test("gachi-звук slave стабилен во всех комнатах текущего процесса", () => {
-  const { manager } = setup({ soundRandom: () => 0.5 });
-  const firstSession = manager.createSession({
-    creatorClientId: "client-master-sound1",
-  });
-  const secondSession = manager.createSession({
-    creatorClientId: "client-master-sound2",
-  });
-
-  const first = connect(manager, firstSession, "client-slave-sound1");
-  const second = connect(manager, secondSession, "client-slave-sound1");
-
-  assert.equal(first.client.role, "slave");
-  assert.equal(second.client.role, "slave");
-  assert.equal(
-    first.client.gachiSoundFilename,
-    second.client.gachiSoundFilename
-  );
-  assert.ok(
-    GachiSounds.isGachiSoundFilename(first.client.gachiSoundFilename)
-  );
-  assert.equal(manager.slaveSoundAssignments.size, 1);
+  assert.equal(Object.hasOwn(master.client, "gachiSoundFilename"), false);
+  assert.equal(Object.hasOwn(second.client, "gachiSoundFilename"), false);
 });
 
 test("audio.play рассылает один звук роли всем участникам с общим playAt", () => {
@@ -166,7 +132,7 @@ test("audio.play рассылает один звук роли всем учас
     creatorClientId: "client-audio-master",
   });
   const master = connect(manager, session, "client-audio-master");
-  const slave = connect(manager, session, "client-audio-slave1");
+  const second = connect(manager, session, "client-audio-second1");
 
   manager.handleMessage(session, master.client, {
     v: 1,
@@ -177,11 +143,11 @@ test("audio.play рассылает один звук роли всем учас
   const masterEvent = master.socket.messages.findLast(
     (message) => message.type === "audio.play"
   );
-  const slaveCopy = slave.socket.messages.findLast(
+  const secondCopy = second.socket.messages.findLast(
     (message) => message.type === "audio.play"
   );
 
-  assert.deepEqual(slaveCopy, masterEvent);
+  assert.deepEqual(secondCopy, masterEvent);
   assert.match(masterEvent.payload.eventId, /^[A-Za-z0-9_-]{16}$/);
   assert.deepEqual(masterEvent.payload, {
     eventId: masterEvent.payload.eventId,
@@ -193,52 +159,51 @@ test("audio.play рассылает один звук роли всем учас
   });
 
   clock.value = 1500;
-  manager.handleMessage(session, slave.client, {
+  manager.handleMessage(session, second.client, {
     v: 1,
     type: "audio.play",
     seq: 1,
     payload: {},
   });
-  const slaveEventAtMaster = master.socket.messages.findLast(
+  const secondEventAtMaster = master.socket.messages.findLast(
     (message) => message.type === "audio.play"
   );
-  const slaveEvent = slave.socket.messages.findLast(
+  const secondEvent = second.socket.messages.findLast(
     (message) => message.type === "audio.play"
   );
 
-  assert.deepEqual(slaveEventAtMaster, slaveEvent);
-  assert.deepEqual(slaveEvent.payload, {
-    eventId: slaveEvent.payload.eventId,
-    actorId: slave.client.id,
-    role: "slave",
-    filename: slave.client.gachiSoundFilename,
+  assert.deepEqual(secondEventAtMaster, secondEvent);
+  assert.deepEqual(secondEvent.payload, {
+    eventId: secondEvent.payload.eventId,
+    actorId: second.client.id,
+    role: "master",
+    filename: ChainSounds.CHAIN_SOUND_FILENAMES[0],
     playAt: 1500 + DEFAULT_AUDIO_LEAD_MS,
     serverTime: 1500,
   });
 
   session.state.phase = Physics.PHASES.FALLING;
-  manager.handleMessage(session, slave.client, {
+  manager.handleMessage(session, second.client, {
     v: 1,
     type: "audio.play",
     seq: 2,
     payload: {},
   });
   assert.equal(
-    slave.socket.messages.filter((message) => message.type === "audio.play")
+    second.socket.messages.filter((message) => message.type === "audio.play")
       .length,
     2
   );
 });
 
-test("старая комната без master получает fallback по первому подключению", () => {
+test("каждое новое подключение получает роль master", () => {
   const { manager } = setup();
   const session = manager.createSession();
   const first = connect(manager, session, "client-fallback-01");
   const second = connect(manager, session, "client-fallback-02");
 
-  assert.equal(session.masterClientId, first.client.id);
   assert.equal(first.client.role, "master");
-  assert.equal(second.client.role, "slave");
+  assert.equal(second.client.role, "master");
 });
 
 test("сессия без явного state стартует в нижнем play", () => {
@@ -304,7 +269,7 @@ test("секундомер вершины останавливается с по
     },
   });
   const master = connect(manager, session, "client-timer-master");
-  const slave = connect(manager, session, "client-timer-slave1");
+  const second = connect(manager, session, "client-timer-second1");
 
   session.state.x = session.imprint.x;
   session.state.y = session.imprint.y;
@@ -313,46 +278,26 @@ test("секундомер вершины останавливается с по
   const masterStart = master.socket.messages.findLast(
     (message) => message.type === "session.snapshot"
   );
-  const slaveStart = slave.socket.messages.findLast(
+  const secondStart = second.socket.messages.findLast(
     (message) => message.type === "session.snapshot"
   );
   assert.equal(masterStart.payload.summitElapsedMs, 0);
   assert.equal(masterStart.payload.summitTimerRunning, true);
   assert.equal(masterStart.payload.serverTime, 1000);
-  assert.deepEqual(slaveStart.payload, masterStart.payload);
+  assert.deepEqual(secondStart.payload, masterStart.payload);
 
   clock.value = 3000;
   manager.acquireControl(session, master.client, {
     x: session.imprint.x,
     y: session.imprint.y,
   });
-  manager.acquireControl(session, slave.client, {
-    x: session.imprint.x,
-    y: session.imprint.y,
-  });
   const outsideY = session.imprint.y + session.imprint.toleranceY + 100;
-  manager.moveControl(session, master.client, {
-    x: session.imprint.x,
-    y: outsideY,
-  });
-  manager.moveControl(session, slave.client, {
-    x: session.imprint.x,
-    y: outsideY,
-  });
+  session.state.y = outsideY;
   assert.equal(manager.snapshot(session).summitElapsedMs, 2000);
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 
-  manager.releaseControl(session, master.client, {
-    x: session.imprint.x,
-    y: outsideY,
-    vx: 0,
-    vy: 0,
-  });
-  assert.equal(session.state.dragging, true);
-  assert.equal(manager.snapshot(session).summitTimerRunning, true);
-
   clock.value = 3500;
-  manager.releaseControl(session, slave.client, {
+  manager.releaseControl(session, master.client, {
     x: session.imprint.x,
     y: outsideY,
     vx: 0,
@@ -363,13 +308,13 @@ test("секундомер вершины останавливается с по
       message.type === "session.snapshot" &&
       message.payload.summitTimerRunning === false
   );
-  const slaveStop = slave.socket.messages.findLast(
+  const secondStop = second.socket.messages.findLast(
     (message) =>
       message.type === "session.snapshot" &&
       message.payload.summitTimerRunning === false
   );
   assert.equal(masterStop.payload.summitElapsedMs, 2500);
-  assert.equal(slaveStop.payload.summitElapsedMs, 2500);
+  assert.equal(secondStop.payload.summitElapsedMs, 2500);
   assert.equal(session.state.dragging, false);
 
   clock.value = 5000;
@@ -609,7 +554,7 @@ test("старая сессия внутри вершины получает н�
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 });
 
-test("master сохраняется после restore, leave и новых подключений", () => {
+test("legacy masterClientId игнорируется, а все новые подключения получают master", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
     {
@@ -623,22 +568,21 @@ test("master сохраняется после restore, leave и новых по
   assert.equal(restored, 1);
 
   const session = manager.getSession("cccccccccccccccccccccc");
-  const slave = connect(manager, session, "client-restore-slave");
-  const master = connect(manager, session, "client-master-keep");
+  const first = connect(manager, session, "client-restore-first");
+  const second = connect(manager, session, "client-master-keep");
 
-  assert.equal(slave.client.role, "slave");
-  assert.equal(master.client.role, "master");
-  assert.equal(session.masterClientId, "client-master-keep");
+  assert.equal(first.client.role, "master");
+  assert.equal(second.client.role, "master");
+  assert.equal(Object.hasOwn(session, "masterClientId"), false);
 
   assert.equal(
-    manager.leaveClient(session, master.client.id, master.client.leaveToken),
+    manager.leaveClient(session, second.client.id, second.client.leaveToken),
     true
   );
-  const next = connect(manager, session, "client-next-slave");
+  const next = connect(manager, session, "client-next-master");
 
-  assert.equal(session.masterClientId, "client-master-keep");
-  assert.equal(next.client.role, "slave");
-  assert.equal(manager.serializeSessions()[0].masterClientId, "client-master-keep");
+  assert.equal(next.client.role, "master");
+  assert.equal(Object.hasOwn(manager.serializeSessions()[0], "masterClientId"), false);
 });
 
 test("общие визуальные настройки комнаты нормализуются и попадают в snapshot", () => {
@@ -647,7 +591,6 @@ test("общие визуальные настройки комнаты норм
     roomSettings: {
       sceneHeightScreens: 200,
       handWidthVw: 120,
-      slaveHandWidthPx: 200,
       handForceDeficitEasing: "not-a-curve",
       trailUnlimited: true,
       lineWidth: 99,
@@ -664,7 +607,6 @@ test("общие визуальные настройки комнаты норм
 
   assert.equal(session.roomSettings.sceneHeightScreens, 100);
   assert.equal(session.roomSettings.handWidthVw, 90);
-  assert.equal(session.roomSettings.slaveHandWidthPx, 96);
   assert.equal(
     session.roomSettings.handForceDeficitEasing,
     RoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing
@@ -711,7 +653,6 @@ test("roomSettings.update синхронизирует размер руки и 
     ...RoomSettings.DEFAULT_ROOM_SETTINGS,
     sceneHeightScreens: 50,
     handWidthVw: 42.5,
-    slaveHandWidthPx: 40,
     handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
     rainMaxVolume: 2.5,
     rainDropColor: "#123456",
@@ -731,7 +672,6 @@ test("roomSettings.update синхронизирует размер руки и 
     payload: {
       sceneHeightScreens: 50,
       handWidthVw: 42.5,
-      slaveHandWidthPx: 40,
       handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
       rainMaxVolume: 2.5,
       rainDropColor: "#123456",
@@ -754,60 +694,28 @@ test("roomSettings.update синхронизирует размер руки и 
   );
 });
 
-test("только master изменяет параметры и публикует свой viewport", () => {
+test("любой участник изменяет общие параметры комнаты", () => {
   const { manager } = setup();
-  const session = manager.createSession({
-    creatorClientId: "client-master-view-01",
-    masterViewport: { width: 1905, height: 899 },
-  });
-  const master = connect(manager, session, "client-master-view-01");
-  const slave = connect(manager, session, "client-slave-view-001");
+  const session = manager.createSession();
+  const first = connect(manager, session, "client-settings-first");
+  const second = connect(manager, session, "client-settings-second");
 
-  manager.handleMessage(session, slave.client, {
+  manager.handleMessage(session, second.client, {
     v: 1,
     type: "roomSettings.update",
     seq: 1,
     payload: { lineWidth: 9 },
   });
-  manager.handleMessage(session, slave.client, {
+  manager.handleMessage(session, second.client, {
     v: 1,
     type: "physics.update",
     seq: 2,
     payload: { gravity: 99 },
   });
-  manager.handleMessage(session, slave.client, {
-    v: 1,
-    type: "viewport.update",
-    seq: 3,
-    payload: { width: 1000, height: 500 },
-  });
-
-  assert.equal(
-    session.roomSettings.lineWidth,
-    RoomSettings.DEFAULT_ROOM_SETTINGS.lineWidth,
-  );
-  assert.equal(session.physics.gravity, Physics.DEFAULT_PHYSICS.gravity);
-  assert.deepEqual(session.masterViewport, { width: 1905, height: 899 });
-  assert.equal(
-    slave.socket.messages.findLast((message) => message.type === "error").payload
-      .code,
-    "master_only",
-  );
-
-  manager.handleMessage(session, master.client, {
-    v: 1,
-    type: "viewport.update",
-    seq: 1,
-    payload: { width: 1600, height: 900 },
-  });
-
-  assert.deepEqual(session.masterViewport, { width: 1600, height: 900 });
-  assert.deepEqual(
-    slave.socket.messages.findLast(
-      (message) => message.type === "session.snapshot",
-    ).payload.masterViewport,
-    { width: 1600, height: 900 },
-  );
+  assert.equal(session.roomSettings.lineWidth, 9);
+  assert.equal(session.physics.gravity, 99);
+  assert.equal(first.client.role, "master");
+  assert.equal(second.client.role, "master");
 });
 
 test("старая сохранённая сессия без roomSettings получает дефолты", () => {
@@ -909,26 +817,33 @@ test("control.acquire запрещён до достижения камнем н
 });
 
 test("control.release применяет финальную позицию контроллера", () => {
-  const { manager } = setup();
+  const { clock, manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 200, y: 900 },
   });
   const first = connect(manager, session, "client-release-pos1");
-  const second = connect(manager, session, "client-release-pos2");
 
   manager.acquireControl(session, first.client, { x: 200, y: 900 });
-  manager.acquireControl(session, second.client, { x: 640, y: 780 });
+  manager.moveControl(session, first.client, { x: 640, y: 780 });
+  clock.value = 17;
+  manager.tick();
+  const positionBeforeRelease = {
+    x: session.state.x,
+    y: session.state.y,
+  };
   manager.releaseControl(session, first.client, {
-    x: 640,
-    y: 780,
+    x: 800,
+    y: 700,
     vx: 0,
     vy: 0,
   });
 
-  assert.equal(session.state.x, 640);
-  assert.equal(session.state.y, 780);
-  assert.equal(session.state.dragging, true);
-  assert.equal(session.state.controllerId, second.client.id);
+  assert.deepEqual(
+    { x: session.state.x, y: session.state.y },
+    positionBeforeRelease,
+  );
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.controllerId, null);
 });
 
 test("сохранённая сессия мигрирует со старой шкалы инерции", () => {
@@ -985,55 +900,42 @@ test("старый клиент обновляет sliding как трение �
   assert.equal(session.physics.groundFriction, 0.7);
 });
 
-test("камень движется когда суммарная сила рук больше тяжести", () => {
-  const { manager } = setup();
-  const strongSession = manager.createSession({
-    state: { phase: Physics.PHASES.PLAY, y: Physics.WORLD_HEIGHT },
-    physics: { mass: 1, gravity: 10, handForce: 100 },
-  });
-  const strong = connect(manager, strongSession, "client-strong-hand");
-
-  assert.equal(manager.acquireControl(strongSession, strong.client, {}), true);
-  assert.equal(strongSession.state.dragging, true);
-  assert.equal(strongSession.state.controllerId, strong.client.id);
-  assert.deepEqual([...strongSession.holders.keys()], [strong.client.id]);
-
+test("слабая единственная рука удерживает камень с физическим отставанием", () => {
+  const { clock, manager } = setup();
   const session = manager.createSession({
-    state: { phase: Physics.PHASES.PLAY, y: 1500 },
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 1500 },
     physics: { mass: 10, gravity: 10, handForce: 90 },
+    roomSettings: {
+      stationaryAutoSlipEnabled: false,
+      randomDropEnabled: false,
+      rockJumpEnabled: false,
+    },
   });
   const first = connect(manager, session, "client-lock-a-001");
   const second = connect(manager, session, "client-lock-b-001");
-  setRunningSummitTimer(session);
 
   assert.equal(manager.acquireControl(session, first.client, {}), true);
-  assert.equal(session.state.dragging, false);
-  assert.deepEqual([...session.holders.keys()], [first.client.id]);
-  assert.equal(session.state.controllerId, null);
-  assert.ok(session.state.vy > 0);
-  assert.equal(manager.snapshot(session).summitTimerRunning, false);
-
-  assert.equal(manager.acquireControl(session, second.client, {}), true);
   assert.equal(session.state.dragging, true);
-  assert.equal(session.state.vy, 0);
+  assert.equal(session.holder.clientId, first.client.id);
   assert.equal(session.state.controllerId, first.client.id);
-  assert.deepEqual([...session.holders.keys()], [
-    first.client.id,
-    second.client.id,
-  ]);
 
-  manager.moveControl(session, first.client, { x: 480, y: 1900 });
-  manager.moveControl(session, second.client, { x: 520, y: 1800 });
-  assert.equal(session.state.x, 500);
-  assert.equal(session.state.y, 1850);
+  assert.equal(manager.acquireControl(session, second.client, {}), false);
+  assert.equal(
+    second.socket.messages.findLast(
+      (message) => message.type === "control.denied",
+    ).payload.reason,
+    "already_controlled",
+  );
 
-  manager.releaseControl(session, first.client, { vx: 0, vy: 0 });
-  assert.equal(session.state.dragging, false);
-  assert.equal(session.state.controllerId, null);
-  assert.deepEqual([...session.holders.keys()], [second.client.id]);
+  manager.moveControl(session, first.client, { x: 700, y: 1000 });
+  clock.value = 17;
+  manager.tick();
+  assert.ok(session.state.x > 500 && session.state.x < 700);
+  assert.ok(session.state.y > 1000 && session.state.y < 1500);
+  assert.equal(session.state.controllerId, first.client.id);
 });
 
-test("слабая рука не создаёт инерционный бросок при отпускании", () => {
+test("слабая рука сохраняет захват и передаёт инерцию при отпускании", () => {
   const { manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: Physics.WORLD_HEIGHT },
@@ -1050,9 +952,10 @@ test("слабая рука не создаёт инерционный брос�
   const weak = connect(manager, session, "client-weak-release");
 
   assert.equal(manager.acquireControl(session, weak.client, { x: 500, y: 1900 }), true);
-  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.dragging, true);
+  assert.equal(session.state.controllerId, weak.client.id);
   assert.equal(session.state.vx, 0);
-  assert.ok(session.state.vy >= 0);
+  assert.equal(session.state.vy, 0);
 
   assert.equal(
     manager.releaseControl(session, weak.client, {
@@ -1064,8 +967,8 @@ test("слабая рука не создаёт инерционный брос�
     true
   );
   assert.equal(session.state.dragging, false);
-  assert.equal(session.state.vx, 0);
-  assert.ok(session.state.vy >= 0);
+  assert.ok(session.state.vx > 0);
+  assert.ok(session.state.vy < 0);
 });
 
 test("сильная рука передаёт инерцию при отпускании", () => {
@@ -1299,24 +1202,15 @@ test("разрыв соединения убирает держателя и о�
     state: { phase: Physics.PHASES.PLAY, y: Physics.WORLD_HEIGHT },
   });
   const first = connect(manager, session, "client-drop-00001");
-  const second = connect(manager, session, "client-drop-00002");
   setRunningSummitTimer(session);
   manager.acquireControl(session, first.client, {});
-  manager.acquireControl(session, second.client, {});
   assert.equal(session.state.dragging, true);
-
-  clock.value = 100;
-  manager.disconnectClient(session, first.client.id, first.socket);
-
-  assert.equal(session.state.dragging, true);
-  assert.equal(session.state.controllerId, second.client.id);
-  assert.deepEqual([...session.holders.keys()], [second.client.id]);
-  assert.equal(manager.snapshot(session).summitTimerRunning, true);
 
   clock.value = 250;
-  manager.disconnectClient(session, second.client.id, second.socket);
+  manager.disconnectClient(session, first.client.id, first.socket);
 
   assert.equal(session.state.dragging, false);
+  assert.equal(session.holder, null);
   assert.equal(manager.snapshot(session).summitElapsedMs, 250);
   assert.equal(manager.snapshot(session).summitTimerRunning, false);
 });
@@ -1345,7 +1239,6 @@ test("касание земли увеличивает счётчик для к�
   assert.equal(snapshot.payload.groundTouchSeq, 1);
   assert.equal(Object.hasOwn(snapshot.payload, "physics"), false);
   assert.equal(Object.hasOwn(snapshot.payload, "roomSettings"), false);
-  assert.equal(Object.hasOwn(snapshot.payload, "masterViewport"), false);
   assert.equal(Object.hasOwn(snapshot.payload, "imprint"), false);
 });
 
@@ -1441,7 +1334,7 @@ test("production preset обновляет root-настройки без сбр
   assert.equal(session.revision, revisionBefore + 1);
 });
 
-test("любой debug root-клиент выбирает production preset с broadcast", () => {
+test("любой debug-клиент выбирает production preset с broadcast", () => {
   const saved = [];
   const current = {
     selectedAt: "2026-07-26T10:00:00.000Z",
@@ -1474,7 +1367,7 @@ test("любой debug root-клиент выбирает production preset с b
     creatorClientId: "client-master-preset",
   });
   const master = connect(manager, session, "client-master-preset");
-  const slave = connect(manager, session, "client-slave-preset");
+  const second = connect(manager, session, "client-second-preset");
   const payload = {
     id: "version-next",
     name: "Для production",
@@ -1489,7 +1382,7 @@ test("любой debug root-клиент выбирает production preset с b
     ).payload,
     { canSelect: true, selection: current },
   );
-  manager.handleMessage(session, slave.client, {
+  manager.handleMessage(session, second.client, {
     v: 1,
     seq: 1,
     type: "productionPreset.select",
@@ -1504,7 +1397,7 @@ test("любой debug root-клиент выбирает production preset с b
     true,
   );
   assert.deepEqual(
-    slave.socket.messages.findLast(
+    second.socket.messages.findLast(
       (message) => message.type === "productionPreset.selected",
     ).payload.selection.source,
     {
@@ -1516,14 +1409,25 @@ test("любой debug root-клиент выбирает production preset с b
   );
 });
 
-test("production preset нельзя выбрать вне root или при DEBUG=false", () => {
-  const saveProductionPresetSelection = () => {
-    throw new Error("callback must not be called");
+test("production preset доступен в личной debug-сессии и запрещён при DEBUG=false", () => {
+  let debugSaveCount = 0;
+  const debugSaveProductionPresetSelection = (payload) => {
+    debugSaveCount += 1;
+    return {
+      selectedAt: "2026-08-04T10:00:00.000Z",
+      source: {
+        id: payload.id,
+        name: payload.name,
+        settingsSchemaVersion: payload.settingsSchemaVersion,
+        updatedAt: payload.updatedAt,
+      },
+      settings: payload.settings,
+    };
   };
   const debug = setup({
     productionPresetSelectionEnabled: true,
     settingsTemplatesEnabled: true,
-    saveProductionPresetSelection,
+    saveProductionPresetSelection: debugSaveProductionPresetSelection,
   }).manager;
 
   const legacySession = debug.createSession({
@@ -1538,15 +1442,25 @@ test("production preset нельзя выбрать вне root или при DE
     v: 1,
     seq: 1,
     type: "productionPreset.select",
-    payload: {},
+    payload: {
+      id: "personal-debug-preset",
+      name: "Личный debug preset",
+      settingsSchemaVersion: 19,
+      updatedAt: "2026-08-04T09:00:00.000Z",
+      settings: { gravity: 2 },
+    },
   });
   assert.equal(
     legacyMaster.socket.messages.findLast(
-      (message) => message.type === "error",
-    ).payload.code,
-    "debug_only",
+      (message) => message.type === "productionPreset.selected",
+    ).payload.canSelect,
+    true,
   );
+  assert.equal(debugSaveCount, 1);
 
+  const saveProductionPresetSelection = () => {
+    throw new Error("callback must not be called");
+  };
   const production = setup({
     productionPresetSelectionEnabled: false,
     saveProductionPresetSelection,
@@ -1629,7 +1543,7 @@ test("общий debug-каталог доступен и обновляется
     first.socket.messages.find(
       (message) => message.type === "productionPreset.current",
     ).payload.canSelect,
-    false,
+    true,
   );
   assert.equal(
     second.socket.messages.find(
@@ -1681,7 +1595,7 @@ test("общий debug-каталог доступен и обновляется
   );
 });
 
-test("debug settings.update принимает slave и сохраняет stale snapshot конфликтом", () => {
+test("debug settings.update принимает любого участника и сохраняет stale snapshot конфликтом", () => {
   const conflicts = [];
   const conflictEntry = {
     id: "settings-conflict-1",
@@ -1706,14 +1620,14 @@ test("debug settings.update принимает slave и сохраняет stale
     creatorClientId: "client-settings-master",
   });
   const master = connect(manager, session, "client-settings-master");
-  const slave = connect(manager, session, "client-settings-slave");
+  const second = connect(manager, session, "client-settings-second");
 
-  manager.handleMessage(session, slave.client, {
+  manager.handleMessage(session, second.client, {
     v: 1,
     seq: 1,
     type: "settings.update",
     payload: {
-      requestId: "request-slave",
+      requestId: "request-second",
       baseRevision: 1,
       settingsSchemaVersion: 18,
       settings: {
@@ -1727,7 +1641,7 @@ test("debug settings.update принимает slave и сохраняет stale
   assert.equal(session.physics.gravity, 8);
   assert.equal(session.settingsRevision, 2);
   assert.equal(
-    slave.socket.messages.findLast(
+    second.socket.messages.findLast(
       (message) => message.type === "settings.applied",
     ).payload.settingsRevision,
     2,
@@ -1758,7 +1672,7 @@ test("debug settings.update принимает slave и сохраняет stale
   assert.equal(conflict.payload.entry.id, "settings-conflict-1");
   assert.equal(conflict.payload.settings.gravity, 8);
   assert.equal(
-    slave.socket.messages.findLast(
+    second.socket.messages.findLast(
       (message) => message.type === "settingsTemplates.changed",
     ).payload.entries[0].id,
     "settings-conflict-1",
@@ -1798,7 +1712,6 @@ test("первый старт сохраняет отпечаток без фи�
     state: { phase: Physics.PHASES.INTRO, x: 500, y: 700 },
   });
   const first = connect(manager, session, "client-win-000001");
-  const second = connect(manager, session, "client-win-000002");
   manager.startSession(session, {
     imprint: { toleranceX: 40, toleranceY: 30 },
   });
@@ -1810,14 +1723,15 @@ test("первый старт сохраняет отпечаток без фи�
   });
   session.state.phase = Physics.PHASES.PLAY;
   manager.acquireControl(session, first.client, { x: 541, y: 700 });
-  manager.acquireControl(session, second.client, { x: 541, y: 700 });
   manager.moveControl(session, first.client, { x: 541, y: 700 });
-  manager.moveControl(session, second.client, { x: 541, y: 700 });
+  clock.value = 17;
+  manager.tick();
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.dragging, true);
 
   manager.moveControl(session, first.client, { x: 539, y: 700 });
-  manager.moveControl(session, second.client, { x: 539, y: 700 });
+  clock.value = 34;
+  manager.tick();
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.x, 539);
   assert.equal(session.state.y, 700);
@@ -1833,17 +1747,6 @@ test("первый старт сохраняет отпечаток без фи�
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.x, 539);
   assert.equal(session.state.y, 700);
-  assert.equal(session.state.vx, 0);
-  assert.equal(session.state.vy, 0);
-  assert.equal(session.state.dragging, true);
-  assert.equal(session.state.controllerId, second.client.id);
-
-  manager.releaseControl(session, second.client, {
-    x: 539,
-    y: 700,
-    vx: 0,
-    vy: -2000,
-  });
   assert.equal(session.state.dragging, false);
   assert.equal(session.state.controllerId, null);
   assert.ok(session.state.vy < 0);
@@ -1860,18 +1763,115 @@ test("каждый захват получает случайное окно с�
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
   });
   const first = connect(manager, session, "client-slip-range1");
-  const second = connect(manager, session, "client-slip-range2");
 
   manager.acquireControl(session, first.client, { x: 500, y: 900 });
-  manager.acquireControl(session, second.client, { x: 500, y: 900 });
 
-  const slipTimes = [...session.holders.values()].map((holder) => holder.slipAt);
-  assert.deepEqual(slipTimes, [1250, 1250]);
-  assert.equal(session.holdReleaseAt, 1250);
-  assert.equal(REQUIRED_HOLDERS, 1);
+  assert.equal(session.holder.slipAt, 1250);
+  assert.equal(session.holder.jumpAt, 5000);
   assert.equal(SLIP_DELAY_MIN_MS, 500);
   assert.equal(SLIP_DELAY_MAX_MS, 2000);
   assert.equal(session.state.dragging, true);
+});
+
+test("камень выпрыгивает строго вверх в пределах ±45° по настроенному таймеру", () => {
+  const { clock, manager } = setup({ random: () => 0.5 });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
+    roomSettings: {
+      stationaryAutoSlipEnabled: false,
+      randomDropEnabled: false,
+      rockJumpEnabled: true,
+      rockJumpIntervalSeconds: 5,
+      rockJumpInertiaSpreadPercent: 25,
+    },
+  });
+  const holder = connect(manager, session, "client-jump-timer01");
+
+  manager.acquireControl(session, holder.client, { x: 500, y: 900 });
+  assert.equal(session.holder.slipAt, null);
+  assert.equal(session.holder.jumpAt, 5000);
+
+  clock.value = 4999;
+  manager.tick();
+  assert.equal(session.holder.clientId, holder.client.id);
+
+  clock.value = 5000;
+  manager.tick();
+  const jumpMessage = holder.socket.messages.findLast(
+    (message) => message.type === "control.slipped",
+  );
+  assert.equal(session.holder, null);
+  assert.equal(jumpMessage.payload.reason, "jumped");
+  assert.ok(jumpMessage.payload.angleDegrees >= -45);
+  assert.ok(jumpMessage.payload.angleDegrees <= 45);
+  assert.ok(session.state.vy < 0);
+  assert.ok(Math.abs(session.state.vx) <= -session.state.vy + 1e-9);
+});
+
+test("выпрыгивание имеет приоритет над случайным выпадением в один тик", () => {
+  const { clock, manager } = setup({
+    random: () => 0.5,
+    slipDelayMinMs: 1000,
+    slipDelayMaxMs: 1000,
+  });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
+    roomSettings: {
+      stationaryAutoSlipEnabled: false,
+      randomDropEnabled: true,
+      rockJumpEnabled: true,
+      rockJumpIntervalSeconds: 1,
+      rockJumpInertiaSpreadPercent: 0,
+    },
+  });
+  const holder = connect(manager, session, "client-jump-priority1");
+
+  manager.acquireControl(session, holder.client, { x: 500, y: 900 });
+  assert.equal(session.holder.slipAt, 1000);
+  assert.equal(session.holder.jumpAt, 1000);
+
+  clock.value = 1000;
+  manager.tick();
+  const behaviorMessage = holder.socket.messages.findLast(
+    (message) => message.type === "control.slipped",
+  );
+  assert.equal(behaviorMessage.payload.reason, "jumped");
+  assert.ok(session.state.vy < 0);
+});
+
+test("переключатели поведения запускают и останавливают независимые таймеры", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 750,
+    slipDelayMaxMs: 750,
+  });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
+    roomSettings: {
+      stationaryAutoSlipEnabled: false,
+      randomDropEnabled: false,
+      rockJumpEnabled: false,
+    },
+  });
+  const holder = connect(manager, session, "client-jump-toggle01");
+  manager.acquireControl(session, holder.client, { x: 500, y: 900 });
+  assert.equal(session.holder.slipAt, null);
+  assert.equal(session.holder.jumpAt, null);
+
+  clock.value = 100;
+  manager.updateRoomSettings(session, {
+    randomDropEnabled: true,
+    rockJumpEnabled: true,
+    rockJumpIntervalSeconds: 3,
+  });
+  assert.equal(session.holder.slipAt, 850);
+  assert.equal(session.holder.jumpAt, 3100);
+
+  manager.updateRoomSettings(session, {
+    randomDropEnabled: false,
+    rockJumpEnabled: false,
+  });
+  assert.equal(session.holder.slipAt, null);
+  assert.equal(session.holder.jumpAt, null);
 });
 
 test("границы соскальзывания можно зафиксировать для детерминированной сессии", () => {
@@ -1895,20 +1895,18 @@ test("неподвижный камень в воздухе выпадает и�
     physics: { turbulence: 0 },
   });
   const first = connect(manager, session, "client-still-drop-01");
-  const second = connect(manager, session, "client-still-drop-02");
   setRunningSummitTimer(session);
 
   manager.acquireControl(session, first.client, { x: 500, y: 700 });
-  manager.acquireControl(session, second.client, { x: 500, y: 700 });
   assert.equal(STATIONARY_HOLD_RELEASE_MS, 200);
 
   clock.value = STATIONARY_HOLD_RELEASE_MS - 1;
   manager.tick();
-  assert.equal(session.holders.size, 2);
+  assert.equal(session.holder.clientId, first.client.id);
 
   clock.value = STATIONARY_HOLD_RELEASE_MS;
   manager.tick();
-  assert.equal(session.holders.size, 0);
+  assert.equal(session.holder, null);
   assert.equal(session.state.dragging, false);
   assert.equal(session.state.controllerId, null);
   assert.equal(manager.snapshot(session).summitElapsedMs, 200);
@@ -1919,13 +1917,6 @@ test("неподвижный камень в воздухе выпадает и�
     ).payload.reason,
     "stationary"
   );
-  assert.equal(
-    second.socket.messages.findLast(
-      (message) => message.type === "control.slipped"
-    ).payload.reason,
-    "stationary"
-  );
-
   clock.value += 20;
   manager.tick();
   assert.ok(session.state.y > 700);
@@ -1948,7 +1939,7 @@ test("выключенное автовыскальзывание сохраня
   clock.value = STATIONARY_HOLD_RELEASE_MS * 5;
   manager.tick();
 
-  assert.equal(session.holders.size, 1);
+  assert.equal(session.holder.clientId, holder.client.id);
   assert.equal(session.state.dragging, true);
   assert.equal(session.stationaryHoldSince, null);
   assert.equal(
@@ -1969,6 +1960,7 @@ test("фактическое движение камня перезапуска�
   });
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
+    physics: { mass: 1, gravity: 1, handForce: 100 },
   });
   const holder = connect(manager, session, "client-still-reset01");
   manager.acquireControl(session, holder.client, { x: 500, y: 700 });
@@ -1978,11 +1970,19 @@ test("фактическое движение камня перезапуска�
 
   clock.value = 349;
   manager.tick();
-  assert.equal(session.holders.size, 1);
+  assert.equal(session.holder.clientId, holder.client.id);
 
   clock.value = 350;
   manager.tick();
-  assert.equal(session.holders.size, 0);
+  assert.equal(session.holder.clientId, holder.client.id);
+
+  clock.value = 549;
+  manager.tick();
+  assert.equal(session.holder.clientId, holder.client.id);
+
+  clock.value = 550;
+  manager.tick();
+  assert.equal(session.holder, null);
 });
 
 test("неподвижное удержание на земле не запускает дополнительное выпадение", () => {
@@ -2007,7 +2007,7 @@ test("неподвижное удержание на земле не запус�
   clock.value = 1000;
   manager.tick();
 
-  assert.equal(session.holders.size, 1);
+  assert.equal(session.holder.clientId, holder.client.id);
   assert.equal(session.stationaryHoldSince, null);
 });
 
@@ -2027,7 +2027,7 @@ test("победный отпечаток не блокирует stationary-в�
   clock.value = 1000;
   manager.tick();
 
-  assert.equal(session.holders.size, 0);
+  assert.equal(session.holder, null);
   assert.equal(session.state.dragging, false);
   assert.equal(
     holder.socket.messages.findLast(
@@ -2053,7 +2053,7 @@ test("победный отпечаток не блокирует случайн
   clock.value = 500;
   manager.tick();
 
-  assert.equal(session.holders.size, 0);
+  assert.equal(session.holder, null);
   assert.equal(session.state.dragging, false);
   assert.equal(
     holder.socket.messages.findLast(
@@ -2101,6 +2101,9 @@ test("финальное падение включается только пос
     roomSettings: {
       finalFallEnabled: true,
       finalFallDelaySeconds: 2,
+      stationaryAutoSlipEnabled: false,
+      randomDropEnabled: false,
+      rockJumpEnabled: false,
     },
     imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
   });
@@ -2144,9 +2147,13 @@ test("выход с вершины сбрасывает таймер финал�
   const { clock, manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
+    physics: { mass: 1, gravity: 1, handForce: 100 },
     roomSettings: {
       finalFallEnabled: true,
       finalFallDelaySeconds: 2,
+      stationaryAutoSlipEnabled: false,
+      randomDropEnabled: false,
+      rockJumpEnabled: false,
     },
     imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
   });
@@ -2155,10 +2162,12 @@ test("выход с вершины сбрасывает таймер финал�
   manager.acquireControl(session, holder.client, { x: 500, y: 100 });
   clock.value = 1500;
   manager.moveControl(session, holder.client, { x: 500, y: 200 });
+  manager.tick();
   assert.equal(session.finalFallEnteredAt, null);
 
   clock.value = 2000;
   manager.moveControl(session, holder.client, { x: 500, y: 100 });
+  manager.tick();
   assert.equal(session.finalFallEnteredAt, 2000);
 
   clock.value = 3500;
@@ -2196,7 +2205,7 @@ test("движущийся камень сохраняет независимо�
   }
   manager.tick();
 
-  assert.equal(session.holders.size, 0);
+  assert.equal(session.holder, null);
   assert.equal(manager.snapshot(session).summitElapsedMs, 501);
   assert.equal(manager.snapshot(session).summitTimerRunning, false);
   assert.equal(
@@ -2207,7 +2216,7 @@ test("движущийся камень сохраняет независимо�
   );
 });
 
-test("соскальзывание одной руки пересчитывает оставшуюся суммарную силу", () => {
+test("в каждый момент камень может удерживать только одна рука", () => {
   const randomValues = [0, 1, 1];
   const { clock, manager } = setup({
     random: () => randomValues.shift() ?? 1,
@@ -2219,14 +2228,16 @@ test("соскальзывание одной руки пересчитывае�
   const first = connect(manager, session, "client-slip-catch1");
   const second = connect(manager, session, "client-slip-catch2");
   manager.acquireControl(session, first.client, { x: 500, y: 700 });
-  manager.acquireControl(session, second.client, { x: 500, y: 700 });
+  assert.equal(
+    manager.acquireControl(session, second.client, { x: 500, y: 700 }),
+    false,
+  );
 
   clock.value = SLIP_DELAY_MIN_MS + 1;
   manager.tick();
 
-  assert.equal(session.state.dragging, true);
-  assert.equal(session.state.controllerId, second.client.id);
-  assert.deepEqual([...session.holders.keys()], [second.client.id]);
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.holder, null);
   assert.equal(
     first.socket.messages.findLast(
       (message) => message.type === "control.slipped"
@@ -2234,19 +2245,13 @@ test("соскальзывание одной руки пересчитывае�
     "slipped"
   );
 
-  clock.value += 100;
-  manager.tick();
-  assert.equal(session.state.y, 700);
-
-  manager.acquireControl(session, first.client, {
+  assert.equal(manager.acquireControl(session, second.client, {
     x: session.state.x,
     y: session.state.y,
-  });
+  }), true);
   assert.equal(session.state.dragging, true);
-  assert.deepEqual([...session.holders.keys()], [
-    second.client.id,
-    first.client.id,
-  ]);
+  assert.equal(session.holder.clientId, second.client.id);
+  assert.equal(session.state.controllerId, second.client.id);
 });
 
 test("брошенный камень не останавливается при попадании в отпечаток", () => {
@@ -2257,13 +2262,8 @@ test("брошенный камень не останавливается при
     imprint: { toleranceX: 40, toleranceY: 20 },
   });
   const first = connect(manager, session, "client-throw-win-01");
-  const second = connect(manager, session, "client-throw-win-02");
   manager.acquireControl(session, first.client, { x: 500, y: 900 });
-  manager.acquireControl(session, second.client, { x: 500, y: 900 });
   manager.releaseControl(session, first.client, {
-    vy: -4000,
-  });
-  manager.releaseControl(session, second.client, {
     vy: -4000,
   });
 

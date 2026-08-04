@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 12;
+  const ROOM_SETTINGS_VERSION = 15;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -22,6 +22,8 @@
   const DEFAULT_RETURN_SCROLL_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const DEFAULT_POSITION_SCROLL_EASING =
     "cubic-bezier(0.17, 0.67, 0.83, 0.67)";
+  const DEFAULT_DRAFT_FOLD_BLEND_CURVE =
+    "cubic-bezier(0.333, 0, 0.667, 1)";
   const DEFAULT_DRIZZLE_VOLUME_EASING =
     "cubic-bezier(0.4, 0, 0.2, 1)";
   const ROCK_WIDTH_VW_LIMITS = Object.freeze([1, 150]);
@@ -52,11 +54,14 @@
     returnScrollDurationSeconds: [0, 10],
     positionScrollZonePercent: [0, 20],
     positionScrollSpeedVh: [0, 2],
+    draftFoldAngle: [0, 180],
+    draftFoldZoneSize: [0, 50],
     finalFallDelaySeconds: [0, 10],
     drizzleVolume: [0, 1],
     handWidthVw: [10, 90],
-    slaveHandWidthPx: [8, 96],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
+    rockJumpIntervalSeconds: [1, 10],
+    rockJumpInertiaSpreadPercent: [0, 100],
     rainStrength: [0.25, 1.5],
     rainMaxVolume: [0, 3],
     rainBackgroundBlurSteps: [0, 8],
@@ -88,14 +93,21 @@
     positionScrollStartSpeedVh: 0.2,
     positionScrollEndSpeedVh: 1,
     positionScrollEasing: DEFAULT_POSITION_SCROLL_EASING,
+    draftFoldAngle: 30,
+    draftFoldZoneSize: 20,
+    draftFoldBlendEnabled: true,
+    draftFoldBlendCurve: DEFAULT_DRAFT_FOLD_BLEND_CURVE,
     manualVerticalScrollEnabled: true,
     finalFallEnabled: false,
     finalFallDelaySeconds: 2,
+    randomDropEnabled: true,
+    rockJumpEnabled: true,
+    rockJumpIntervalSeconds: 5,
+    rockJumpInertiaSpreadPercent: 25,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     handWidthVw: 14.375,
-    slaveHandWidthPx: 16,
     handForceDeficitEasing: DEFAULT_HAND_FORCE_DEFICIT_EASING,
     drizzleStartVolume: 0.1,
     drizzleEndVolume: 1,
@@ -276,12 +288,19 @@
       ROOM_SETTINGS_LIMITS.positionScrollZonePercent;
     const [positionScrollSpeedMin, positionScrollSpeedMax] =
       ROOM_SETTINGS_LIMITS.positionScrollSpeedVh;
+    const [draftFoldAngleMin, draftFoldAngleMax] =
+      ROOM_SETTINGS_LIMITS.draftFoldAngle;
+    const [draftFoldZoneMin, draftFoldZoneMax] =
+      ROOM_SETTINGS_LIMITS.draftFoldZoneSize;
     const [finalFallDelayMin, finalFallDelayMax] =
       ROOM_SETTINGS_LIMITS.finalFallDelaySeconds;
+    const [rockJumpIntervalMin, rockJumpIntervalMax] =
+      ROOM_SETTINGS_LIMITS.rockJumpIntervalSeconds;
+    const [rockJumpSpreadMin, rockJumpSpreadMax] =
+      ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent;
     const [drizzleVolumeMin, drizzleVolumeMax] =
       ROOM_SETTINGS_LIMITS.drizzleVolume;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
-    const [slaveHandMin, slaveHandMax] = ROOM_SETTINGS_LIMITS.slaveHandWidthPx;
     const [rainStrengthMin, rainStrengthMax] = ROOM_SETTINGS_LIMITS.rainStrength;
     const [rainVolumeMin, rainVolumeMax] =
       ROOM_SETTINGS_LIMITS.rainMaxVolume;
@@ -364,6 +383,30 @@
         fallbackSource,
         "positionScrollEasing"
       ),
+      draftFoldAngle: integerSetting(
+        source,
+        fallbackSource,
+        "draftFoldAngle",
+        draftFoldAngleMin,
+        draftFoldAngleMax
+      ),
+      draftFoldZoneSize: integerSetting(
+        source,
+        fallbackSource,
+        "draftFoldZoneSize",
+        draftFoldZoneMin,
+        draftFoldZoneMax
+      ),
+      draftFoldBlendEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "draftFoldBlendEnabled"
+      ),
+      draftFoldBlendCurve: cubicBezierSetting(
+        source,
+        fallbackSource,
+        "draftFoldBlendCurve"
+      ),
       manualVerticalScrollEnabled: boolSetting(
         source,
         fallbackSource,
@@ -381,6 +424,30 @@
         finalFallDelayMin,
         finalFallDelayMax
       ),
+      randomDropEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "randomDropEnabled"
+      ),
+      rockJumpEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "rockJumpEnabled"
+      ),
+      rockJumpIntervalSeconds: integerSetting(
+        source,
+        fallbackSource,
+        "rockJumpIntervalSeconds",
+        rockJumpIntervalMin,
+        rockJumpIntervalMax
+      ),
+      rockJumpInertiaSpreadPercent: integerSetting(
+        source,
+        fallbackSource,
+        "rockJumpInertiaSpreadPercent",
+        rockJumpSpreadMin,
+        rockJumpSpreadMax
+      ),
       rockScaleEasing: cubicBezierSetting(
         source,
         fallbackSource,
@@ -393,13 +460,6 @@
         "handWidthVw",
         handMin,
         handMax
-      ),
-      slaveHandWidthPx: integerSetting(
-        source,
-        fallbackSource,
-        "slaveHandWidthPx",
-        slaveHandMin,
-        slaveHandMax
       ),
       handForceDeficitEasing: cubicBezierSetting(
         source,
@@ -610,9 +670,6 @@
     if (finiteNumber(version, 1) < 4) {
       if (Number.isFinite(Number(source.handWidthVw))) {
         source.handWidthVw = Number(source.handWidthVw) / 2;
-      }
-      if (Number.isFinite(Number(source.slaveHandWidthPx))) {
-        source.slaveHandWidthPx = Number(source.slaveHandWidthPx) / 2;
       }
     }
     return source;

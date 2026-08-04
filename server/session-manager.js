@@ -3,9 +3,7 @@
 const crypto = require("node:crypto");
 const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
-const GachiSounds = require("../shared/gachi-sounds");
 const ChainSounds = require("../shared/chain-sounds");
-const Viewport = require("../shared/viewport");
 
 const SNAPSHOT_INTERVAL_MS = 1000 / 20;
 const DISCONNECT_GRACE_MS = 500;
@@ -16,11 +14,9 @@ const MAX_TRAIL_POINTS = 1000;
 const TRAIL_SYNC_INTERVAL_MS = 30_000;
 const MAX_ROCK_POINTER_OFFSET = 4;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
-const CLIENT_ROLES = new Set(["master", "slave"]);
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const DEFAULT_SESSION_ID = "SisyphusGlobalRoom0000";
-const REQUIRED_HOLDERS = 1;
 const SLIP_DELAY_MIN_MS = 500;
 const SLIP_DELAY_MAX_MS = 2000;
 const STATIONARY_HOLD_RELEASE_MS = 200;
@@ -54,6 +50,9 @@ function pointerVelocityAt(pointer, updatedAt, now) {
 function sceneMotionOptions(session) {
   return {
     motionScale: RoomSettings.sceneMotionMultiplier(session.roomSettings),
+    forceDeficitCurve: RoomSettings.parseCubicBezier(
+      session.roomSettings.handForceDeficitEasing
+    ),
   };
 }
 
@@ -70,9 +69,10 @@ function rescaleSceneVerticalMotion(
   const ratio = nextScale / previousScale;
   session.state.vy *= ratio;
   session.lastPointer.vy *= ratio;
-  session.holders.forEach((holder) => {
+  if (session.holder) {
+    const holder = session.holder;
     holder.vy *= ratio;
-  });
+  }
 }
 
 function tokensMatch(actual, expected) {
@@ -90,16 +90,6 @@ function tokensMatch(actual, expected) {
 function normalizeClientId(value) {
   const clientId = String(value || "");
   return CLIENT_ID_PATTERN.test(clientId) ? clientId : null;
-}
-
-function clientRole(value) {
-  if (value === "primary") {
-    return "master";
-  }
-  if (value === "partner") {
-    return "slave";
-  }
-  return CLIENT_ROLES.has(value) ? value : "slave";
 }
 
 function sanitizeTrail(input) {
@@ -133,11 +123,8 @@ function hasSessionBootstrapPayload(payload) {
     "state",
     "physics",
     "roomSettings",
-    "masterViewport",
     "imprint",
     "trail",
-    "creatorClientId",
-    "masterClientId",
   ].some((key) => Object.hasOwn(payload, key));
 }
 
@@ -198,7 +185,6 @@ class SessionManager {
       (() => ({ revision: 0, entry: null }));
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
-    this.slaveSoundAssignments = new Map();
     this.sharedTrailHub = null;
     this.sharedTrailRevision = 0;
     this.sharedTrailEvents = [];
@@ -220,7 +206,6 @@ class SessionManager {
     );
     const physics = Physics.sanitizePhysics(payload.physics);
     const roomSettings = RoomSettings.sanitizeRoomSettings(payload.roomSettings);
-    const masterViewport = Viewport.sanitizeViewport(payload.masterViewport);
     const imprint = Physics.createSummitImprint(payload.imprint);
     const summitInside = Physics.stateInsideImprint(state, imprint);
 
@@ -234,16 +219,12 @@ class SessionManager {
       state,
       physics,
       roomSettings,
-      masterViewport,
       trail: sanitizeTrail(payload.trail),
       imprint,
-      masterClientId: normalizeClientId(
-        payload.creatorClientId || payload.masterClientId
-      ),
       persistent,
       singleClient,
       clients: new Map(),
-      holders: new Map(),
+      holder: null,
       revision: 1,
       settingsRevision: 1,
       createdAt: now,
@@ -256,7 +237,6 @@ class SessionManager {
       lastTrailAt: now,
       groundTouchSeq: Math.max(0, Number(payload.groundTouchSeq) || 0),
       firstFallAt: null,
-      holdReleaseAt: null,
       stationaryHoldSince: null,
       stationaryHoldPosition: null,
       summitElapsedMs: 0,
@@ -328,15 +308,9 @@ class SessionManager {
     const roomSettings = Object.hasOwn(payload, "roomSettings")
       ? RoomSettings.sanitizeRoomSettings(payload.roomSettings)
       : null;
-    const masterViewport = Object.hasOwn(payload, "masterViewport")
-      ? Viewport.sanitizeViewport(payload.masterViewport)
-      : undefined;
     const imprint = Object.hasOwn(payload, "imprint")
       ? Physics.createSummitImprint(payload.imprint)
       : null;
-    const masterClientId = normalizeClientId(
-      payload.creatorClientId || payload.masterClientId
-    );
 
     if (state) {
       session.state = state;
@@ -347,17 +321,11 @@ class SessionManager {
     if (roomSettings) {
       session.roomSettings = roomSettings;
     }
-    if (masterViewport !== undefined) {
-      session.masterViewport = masterViewport;
-    }
     if (imprint) {
       session.imprint = imprint;
     }
     if (Object.hasOwn(payload, "trail")) {
       session.trail = sanitizeTrail(payload.trail);
-    }
-    if (masterClientId && !session.masterClientId) {
-      session.masterClientId = masterClientId;
     }
     if (state || imprint) {
       const now = this.now();
@@ -395,18 +363,20 @@ class SessionManager {
     }
 
     if (roomSettingsChanged) {
+      const previousRoomSettings = session.roomSettings;
       rescaleSceneVerticalMotion(
         session,
-        session.roomSettings,
+        previousRoomSettings,
         nextRoomSettings
       );
       session.roomSettings = nextRoomSettings;
+      this.syncHolderBehaviorTimers(session, previousRoomSettings);
     }
     if (physicsChanged) {
       session.physics = nextPhysics;
     }
     session.settingsRevision += 1;
-    this.syncCooperativeDrag(session);
+    this.syncDrag(session);
     this.markChanged(session);
     this.broadcastSnapshot(session, { includeConfig: true });
     return true;
@@ -421,12 +391,8 @@ class SessionManager {
       roomSettings: { ...session.roomSettings },
       roomSettingsVersion: RoomSettings.ROOM_SETTINGS_VERSION,
       settingsRevision: session.settingsRevision,
-      masterViewport: session.masterViewport
-        ? { ...session.masterViewport }
-        : null,
       trail: session.trail.map((point) => [...point]),
       imprint: session.imprint ? { ...session.imprint } : null,
-      masterClientId: session.masterClientId,
       persistent: Boolean(session.persistent),
       singleClient: Boolean(session.singleClient),
       revision: session.revision,
@@ -484,7 +450,6 @@ class SessionManager {
           record.roomSettingsVersion
         )
       );
-      const masterViewport = Viewport.sanitizeViewport(record.masterViewport);
       const imprint = Physics.createSummitImprint(record.imprint);
       const summitInside = Physics.stateInsideImprint(state, imprint);
       const hasSummitRunningSince = Object.hasOwn(
@@ -545,14 +510,12 @@ class SessionManager {
         state,
         physics,
         roomSettings,
-        masterViewport,
         trail: sanitizeTrail(record.trail),
         imprint,
-        masterClientId: normalizeClientId(record.masterClientId),
         persistent,
         singleClient: record.singleClient === true,
         clients: new Map(),
-        holders: new Map(),
+        holder: null,
         revision: Number.isSafeInteger(record.revision)
           ? Math.max(1, record.revision)
           : 1,
@@ -569,7 +532,6 @@ class SessionManager {
         lastTrailAt: now,
         groundTouchSeq: Math.max(0, Number(record.groundTouchSeq) || 0),
         firstFallAt: null,
-        holdReleaseAt: null,
         stationaryHoldSince: null,
         stationaryHoldPosition: null,
         summitElapsedMs,
@@ -665,38 +627,6 @@ class SessionManager {
     });
   }
 
-  ensureMasterClientId(session, clientId) {
-    const normalizedClientId = normalizeClientId(clientId);
-    if (!session.masterClientId && normalizedClientId) {
-      session.masterClientId = normalizedClientId;
-      this.markChanged(session);
-    }
-    return session.masterClientId;
-  }
-
-  assignClientRole(session, clientId) {
-    this.ensureMasterClientId(session, clientId);
-    return session.masterClientId === clientId ? "master" : "slave";
-  }
-
-  assignSlaveSound(clientId) {
-    const existing = this.slaveSoundAssignments.get(clientId);
-    if (existing) {
-      return existing;
-    }
-    const filenames = GachiSounds.GACHI_SOUND_FILENAMES;
-    if (filenames.length === 0) {
-      return null;
-    }
-    const index = Math.min(
-      filenames.length - 1,
-      Math.floor(Math.max(0, this.soundRandom()) * filenames.length)
-    );
-    const filename = filenames[index];
-    this.slaveSoundAssignments.set(clientId, filename);
-    return filename;
-  }
-
   slipDelayMs() {
     return Math.round(
       this.slipDelayMinMs +
@@ -704,14 +634,41 @@ class SessionManager {
     );
   }
 
-  holderIds(session) {
-    return [...session.holders.keys()].filter((clientId) =>
-      session.clients.has(clientId)
-    );
+  activeHolder(session) {
+    const holder = session?.holder;
+    if (!holder || !session.clients.has(holder.clientId)) {
+      return null;
+    }
+    return holder;
   }
 
-  holderCount(session) {
-    return this.holderIds(session).length;
+  syncHolderBehaviorTimers(session, previousSettings, now = this.now()) {
+    const holder = this.activeHolder(session);
+    if (!holder) {
+      return;
+    }
+    const previous = previousSettings || session.roomSettings;
+    const next = session.roomSettings;
+
+    if (!next.randomDropEnabled) {
+      holder.slipAt = null;
+    } else if (!previous.randomDropEnabled || holder.slipAt === null) {
+      holder.slipAt = now + this.slipDelayMs();
+    }
+
+    if (!next.rockJumpEnabled) {
+      holder.jumpAt = null;
+    } else if (
+      !previous.rockJumpEnabled ||
+      previous.rockJumpIntervalSeconds !== next.rockJumpIntervalSeconds ||
+      holder.jumpAt === null
+    ) {
+      holder.jumpAt = now + next.rockJumpIntervalSeconds * 1000;
+    }
+  }
+
+  holderId(session) {
+    return this.activeHolder(session)?.clientId || null;
   }
 
   holderVelocity(session, holder, now = this.now()) {
@@ -813,10 +770,11 @@ class SessionManager {
       return false;
     }
     const state = session.state;
+    const holder = this.activeHolder(session);
     const isOnGround = state.y >= Physics.WORLD_HEIGHT - STATIONARY_POSITION_EPSILON;
     if (
       !state.dragging ||
-      this.holderCount(session) === 0 ||
+      !holder ||
       isOnGround
     ) {
       this.clearStationaryHold(session);
@@ -827,7 +785,9 @@ class SessionManager {
     const moved =
       !previous ||
       Math.abs(state.x - previous.x) > STATIONARY_POSITION_EPSILON ||
-      Math.abs(state.y - previous.y) > STATIONARY_POSITION_EPSILON;
+      Math.abs(state.y - previous.y) > STATIONARY_POSITION_EPSILON ||
+      Math.abs(holder.x - state.x) > STATIONARY_POSITION_EPSILON ||
+      Math.abs(holder.y - state.y) > STATIONARY_POSITION_EPSILON;
     if (moved) {
       session.stationaryHoldPosition = { x: state.x, y: state.y };
       session.stationaryHoldSince = now;
@@ -837,39 +797,16 @@ class SessionManager {
     return now - session.stationaryHoldSince >= this.stationaryHoldReleaseMs;
   }
 
-  syncCooperativeDrag(session, now = this.now()) {
-    const holderIds = this.holderIds(session);
+  syncDrag(session, now = this.now()) {
+    const holder = this.activeHolder(session);
     const state = session.state;
     const wasDragging = state.dragging;
 
-    session.holdReleaseAt = holderIds.reduce((earliest, clientId) => {
-      const holder = session.holders.get(clientId);
-      if (!holder || holder.slipAt === null) {
-        return earliest;
-      }
-      return earliest === null ? holder.slipAt : Math.min(earliest, holder.slipAt);
-    }, null);
-
-    if (!Physics.canLift(session.physics, holderIds.length)) {
+    if (!holder) {
       state.dragging = false;
       state.controllerId = null;
-      if (holderIds.length > 0 && state.phase === Physics.PHASES.PLAY) {
-        state.vx = 0;
-          state.vy = Math.max(
-            state.vy,
-            Physics.dragDropSpeed(
-              session.physics,
-              holderIds.length,
-              sceneMotionOptions(session)
-            )
-          );
-      } else if (wasDragging && state.phase === Physics.PHASES.PLAY) {
+      if (wasDragging && state.phase === Physics.PHASES.PLAY) {
         state.vy = Math.max(0, state.vy);
-      }
-      if (
-        state.phase === Physics.PHASES.PLAY &&
-        (wasDragging || holderIds.length > 0)
-      ) {
         this.stopSummitTimer(session, now);
       }
       this.updateStationaryHold(session, now);
@@ -877,29 +814,13 @@ class SessionManager {
       return;
     }
 
-    let x = 0;
-    let y = 0;
-    let vx = 0;
-    let vy = 0;
-    holderIds.forEach((clientId) => {
-      const holder = session.holders.get(clientId);
-      const velocity = this.holderVelocity(session, holder, now);
-      x += holder.x;
-      y += holder.y;
-      vx += velocity.vx;
-      vy += velocity.vy;
-    });
-
-    const count = holderIds.length;
+    const velocity = this.holderVelocity(session, holder, now);
     state.dragging = true;
-    state.controllerId = holderIds[0] || null;
-    state.vx = 0;
-    state.vy = 0;
-    state.x = Physics.clamp(x / count, 0, Physics.WORLD_WIDTH);
-    state.y = Physics.clamp(y / count, 0, Physics.WORLD_HEIGHT);
+    state.controllerId = holder.clientId;
+    state.suspended = false;
     session.lastPointer = {
-      vx: Physics.clamp(vx / count, -4000, 4000),
-      vy: Physics.clamp(vy / count, -9000, 9000),
+      vx: velocity.vx,
+      vy: velocity.vy,
     };
     session.lastPointerAt = now;
     session.firstFallAt = null;
@@ -908,8 +829,8 @@ class SessionManager {
   }
 
   removeHolder(session, clientId, options = {}) {
-    const holder = session.holders.get(clientId);
-    if (!holder) {
+    const holder = this.activeHolder(session);
+    if (!holder || holder.clientId !== clientId) {
       return false;
     }
 
@@ -926,13 +847,14 @@ class SessionManager {
     const notify = options.notify !== false;
     const reason = options.reason || "released";
     const client = session.clients.get(clientId);
-    session.holders.delete(clientId);
+    session.holder = null;
     if (client?.pointer) {
       client.pointer.mode = "grab";
       client.pointer.updatedAt = now;
       this.broadcastPointer(session, client);
     }
-    this.syncCooperativeDrag(session, now);
+    this.syncDrag(session, now);
+    let jump = null;
     if (
       options.applyReleaseImpulse &&
       wasDragging &&
@@ -949,6 +871,21 @@ class SessionManager {
           releaseVelocity.vy
         );
       }
+    } else if (
+      options.applyRockJumpImpulse &&
+      wasDragging &&
+      session.state.phase === Physics.PHASES.PLAY
+    ) {
+      const angleDegrees = -45 + this.random() * 90;
+      const spread =
+        session.roomSettings.rockJumpInertiaSpreadPercent / 100;
+      const inertiaFactor = 1 - spread + this.random() * spread * 2;
+      jump = Physics.applyRockJumpImpulse(
+        session.state,
+        session.physics,
+        angleDegrees,
+        inertiaFactor
+      );
     }
     this.syncFinalFallGate(session, now);
     this.markChanged(session);
@@ -957,8 +894,8 @@ class SessionManager {
     if (notify && client) {
       this.sendTo(client, "control.slipped", {
         reason,
-        holderIds: this.holderIds(session),
-        requiredHolders: REQUIRED_HOLDERS,
+        holderId: this.holderId(session),
+        ...(jump || {}),
       });
     }
     return true;
@@ -997,9 +934,7 @@ class SessionManager {
       trailHistoryCursor: 0,
     };
 
-    client.role = this.assignClientRole(session, clientId);
-    client.gachiSoundFilename =
-      client.role === "slave" ? this.assignSlaveSound(clientId) : null;
+    client.role = "master";
     client.socket = socket;
     client.lastSeq = -1;
     client.disconnectedAt = null;
@@ -1020,7 +955,6 @@ class SessionManager {
       ...this.snapshot(session, true),
       leaveToken: client.leaveToken,
       clientRole: client.role,
-      gachiSoundFilename: client.gachiSoundFilename,
     });
     this.sendSharedTrailHistory(client);
     this.sendTo(client, "productionPreset.current", {
@@ -1171,9 +1105,6 @@ class SessionManager {
       case "productionPreset.select":
         this.selectProductionPreset(session, client, payload);
         break;
-      case "viewport.update":
-        this.updateMasterViewport(session, client, payload);
-        break;
       case "session.restart":
         this.restartSession(session, payload);
         break;
@@ -1204,7 +1135,6 @@ class SessionManager {
     if (session.state.phase !== Physics.PHASES.PLAY) {
       return false;
     }
-    const role = clientRole(client.role);
     const chainSoundIndex = Math.min(
       ChainSounds.CHAIN_SOUND_FILENAMES.length - 1,
       Math.max(
@@ -1214,15 +1144,8 @@ class SessionManager {
         )
       )
     );
-    const filename =
-      role === "master"
-        ? ChainSounds.CHAIN_SOUND_FILENAMES[chainSoundIndex]
-        : client.gachiSoundFilename;
-    const validFilename =
-      role === "master"
-        ? ChainSounds.isChainSoundFilename(filename)
-        : GachiSounds.isGachiSoundFilename(filename);
-    if (!validFilename) {
+    const filename = ChainSounds.CHAIN_SOUND_FILENAMES[chainSoundIndex];
+    if (!ChainSounds.isChainSoundFilename(filename)) {
       return false;
     }
 
@@ -1230,7 +1153,7 @@ class SessionManager {
     const payload = {
       eventId: crypto.randomBytes(12).toString("base64url"),
       actorId: client.id,
-      role,
+      role: "master",
       filename,
       playAt: now + this.audioLeadMs,
       serverTime: now,
@@ -1246,7 +1169,7 @@ class SessionManager {
     if (
       state.phase !== Physics.PHASES.INTRO ||
       state.dragging ||
-      this.holderCount(session) > 0
+      this.activeHolder(session)
     ) {
       return false;
     }
@@ -1265,7 +1188,6 @@ class SessionManager {
       );
     }
     session.firstFallAt = null;
-    session.holdReleaseAt = null;
     this.clearStationaryHold(session);
     session.lastPointer = { vx: 0, vy: 0 };
     session.lastPointerAt = this.now();
@@ -1283,25 +1205,33 @@ class SessionManager {
     }
 
     const now = this.now();
+    const activeHolder = this.activeHolder(session);
+    if (activeHolder) {
+      this.sendTo(client, "control.denied", { reason: "already_controlled" });
+      return false;
+    }
     state.suspended = false;
-    session.holders.set(client.id, {
+    session.holder = {
+      clientId: client.id,
       x: Physics.clamp(finite(payload.x, state.x), 0, Physics.WORLD_WIDTH),
       y: Physics.clamp(finite(payload.y, state.y), 0, Physics.WORLD_HEIGHT),
       vx: 0,
       vy: 0,
       acquiredAt: now,
       lastMoveAt: now,
-      slipAt: now + this.slipDelayMs(),
-    });
+      slipAt: session.roomSettings.randomDropEnabled
+        ? now + this.slipDelayMs()
+        : null,
+      jumpAt: session.roomSettings.rockJumpEnabled
+        ? now + session.roomSettings.rockJumpIntervalSeconds * 1000
+        : null,
+    };
     session.firstFallAt = null;
-    this.syncCooperativeDrag(session, now);
+    this.syncDrag(session, now);
     this.markChanged(session);
 
     this.sendTo(client, "control.granted", {
       holderId: client.id,
-      holderIds: this.holderIds(session),
-      requiredHolders: REQUIRED_HOLDERS,
-      holdReleaseAt: session.holdReleaseAt,
     });
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
@@ -1317,8 +1247,8 @@ class SessionManager {
 
   moveControl(session, client, payload = {}) {
     const state = session.state;
-    const holder = session.holders.get(client.id);
-    if (!holder) {
+    const holder = this.activeHolder(session);
+    if (!holder || holder.clientId !== client.id) {
       return false;
     }
 
@@ -1330,14 +1260,14 @@ class SessionManager {
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
-    this.syncCooperativeDrag(session);
+    this.syncDrag(session);
     this.markChanged(session);
     return true;
   }
 
   releaseControl(session, client, payload = {}) {
-    const holder = session.holders.get(client.id);
-    if (!holder) {
+    const holder = this.activeHolder(session);
+    if (!holder || holder.clientId !== client.id) {
       return false;
     }
 
@@ -1349,7 +1279,7 @@ class SessionManager {
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
-    this.syncCooperativeDrag(session);
+    this.syncDrag(session);
     return this.removeHolder(session, client.id, {
       applyReleaseImpulse: true,
       notify: false,
@@ -1358,11 +1288,7 @@ class SessionManager {
   }
 
   clientCanEditSettings(session, client) {
-    return Boolean(
-      client &&
-        client.role === "master" &&
-        client.id === session.masterClientId,
-    );
+    return Boolean(client && session.clients.get(client.id) === client);
   }
 
   clientCanUseDebugSettings(session, client) {
@@ -1376,16 +1302,15 @@ class SessionManager {
   clientCanSelectProductionPreset(session, client) {
     return Boolean(
       this.productionPresetSelectionEnabled &&
-        session?.id === DEFAULT_SESSION_ID &&
         this.clientCanUseDebugSettings(session, client),
     );
   }
 
-  rejectMasterOnly(client) {
+  rejectSettingsAccess(client) {
     this.sendError(
       client,
-      "master_only",
-      "Параметры комнаты может изменять только царь",
+      "settings_forbidden",
+      "Параметры комнаты недоступны этому подключению",
     );
     return false;
   }
@@ -1403,7 +1328,7 @@ class SessionManager {
       this.sendError(
         client,
         "debug_only",
-        "Production preset доступен только в root-комнате при DEBUG=true",
+        "Production preset доступен участнику личной сессии при DEBUG=true",
       );
       return false;
     }
@@ -1416,13 +1341,15 @@ class SessionManager {
         selectedAt: document.selectedAt,
         source: { ...document.source },
       };
-      session.clients.forEach((participant) => {
-        this.sendTo(participant, "productionPreset.selected", {
-          canSelect: this.clientCanSelectProductionPreset(
-            session,
-            participant,
-          ),
-          selection,
+      this.sessions.forEach((targetSession) => {
+        targetSession.clients.forEach((participant) => {
+          this.sendTo(participant, "productionPreset.selected", {
+            canSelect: this.clientCanSelectProductionPreset(
+              targetSession,
+              participant,
+            ),
+            selection,
+          });
         });
       });
       return true;
@@ -1648,19 +1575,21 @@ class SessionManager {
       RoomSettings.ROOM_SETTINGS_KEYS,
     );
     if (roomSettingsChanged) {
+      const previousRoomSettings = session.roomSettings;
       rescaleSceneVerticalMotion(
         session,
-        session.roomSettings,
+        previousRoomSettings,
         nextRoomSettings,
       );
       session.roomSettings = nextRoomSettings;
+      this.syncHolderBehaviorTimers(session, previousRoomSettings);
     }
     if (physicsChanged) {
       session.physics = nextPhysics;
     }
     if (physicsChanged || roomSettingsChanged) {
       session.settingsRevision += 1;
-      this.syncCooperativeDrag(session);
+      this.syncDrag(session);
       this.markChanged(session);
       this.broadcastSnapshot(session, { includeConfig: true });
     }
@@ -1675,7 +1604,7 @@ class SessionManager {
     const client = maybePayload === undefined ? null : clientOrPayload;
     const payload = maybePayload === undefined ? clientOrPayload : maybePayload;
     if (client && !this.clientCanEditSettings(session, client)) {
-      return this.rejectMasterOnly(client);
+      return this.rejectSettingsAccess(client);
     }
     const sourcePayload =
       payload && typeof payload === "object" ? payload : {};
@@ -1689,7 +1618,7 @@ class SessionManager {
       session.physics
     );
     session.settingsRevision += 1;
-    this.syncCooperativeDrag(session);
+    this.syncDrag(session);
     this.markChanged(session);
     this.broadcastSnapshot(session, { includeConfig: true });
   }
@@ -1698,7 +1627,7 @@ class SessionManager {
     const client = maybePayload === undefined ? null : clientOrPayload;
     const payload = maybePayload === undefined ? clientOrPayload : maybePayload;
     if (client && !this.clientCanEditSettings(session, client)) {
-      return this.rejectMasterOnly(client);
+      return this.rejectSettingsAccess(client);
     }
     const sourcePayload =
       payload && typeof payload === "object" ? payload : {};
@@ -1709,30 +1638,10 @@ class SessionManager {
     );
     rescaleSceneVerticalMotion(session, previousRoomSettings, nextRoomSettings);
     session.roomSettings = nextRoomSettings;
+    this.syncHolderBehaviorTimers(session, previousRoomSettings);
     session.settingsRevision += 1;
     this.markChanged(session);
     this.broadcastSnapshot(session, { includeConfig: true });
-  }
-
-  updateMasterViewport(session, client, payload = {}) {
-    if (!this.clientCanEditSettings(session, client)) {
-      return this.rejectMasterOnly(client);
-    }
-    const viewport = Viewport.sanitizeViewport(payload);
-    if (!viewport) {
-      this.sendError(client, "invalid_viewport", "Некорректный размер viewport");
-      return false;
-    }
-    if (
-      session.masterViewport?.width === viewport.width &&
-      session.masterViewport?.height === viewport.height
-    ) {
-      return true;
-    }
-    session.masterViewport = viewport;
-    this.markChanged(session);
-    this.broadcastSnapshot(session, { includeConfig: true });
-    return true;
   }
 
   restartSession(session, payload = {}) {
@@ -1759,9 +1668,8 @@ class SessionManager {
     session.state = state;
     session.trail = [];
     session.imprint = Physics.createSummitImprint(payload.imprint);
-    session.holders.clear();
+    session.holder = null;
     session.firstFallAt = null;
-    session.holdReleaseAt = null;
     session.lastPointer = { vx: 0, vy: 0 };
     session.lastPointerAt = now;
     session.accumulator = 0;
@@ -1811,7 +1719,7 @@ class SessionManager {
       this.sendError(client, "invalid_pointer", "Некорректное состояние указателя");
       return false;
     }
-    if (mode === "grabbing" && !session.holders.has(client.id)) {
+    if (mode === "grabbing" && this.holderId(session) !== client.id) {
       this.sendError(client, "pointer_not_controller", "Указатель не управляет камнем");
       return false;
     }
@@ -1969,54 +1877,64 @@ class SessionManager {
         continue;
       }
 
-      this.holderIds(session).forEach((clientId) => {
-        const client = session.clients.get(clientId);
+      const connectedHolder = this.activeHolder(session);
+      if (connectedHolder) {
+        const client = session.clients.get(connectedHolder.clientId);
         if (
           client &&
           !socketIsOpen(client.socket) &&
           client.disconnectedAt !== null &&
           now - client.disconnectedAt >= DISCONNECT_GRACE_MS
         ) {
-          this.removeHolder(session, clientId, {
+          this.removeHolder(session, connectedHolder.clientId, {
             notify: false,
             reason: "disconnect",
           });
         }
-      });
+      }
 
       session.clients.forEach((client, clientId) => {
         if (
           !socketIsOpen(client.socket) &&
           client.disconnectedAt !== null &&
           now - client.disconnectedAt >= DISCONNECTED_CLIENT_TTL_MS &&
-          !session.holders.has(clientId)
+          this.holderId(session) !== clientId
         ) {
           session.clients.delete(clientId);
         }
       });
 
       if (this.updateStationaryHold(session, now)) {
-        this.holderIds(session).forEach((clientId) => {
-          this.removeHolder(session, clientId, {
+        const stationaryHolder = this.activeHolder(session);
+        if (stationaryHolder) {
+          this.removeHolder(session, stationaryHolder.clientId, {
             notify: true,
             reason: "stationary",
           });
-        });
+        }
       }
 
-      this.holderIds(session).forEach((clientId) => {
-        const holder = session.holders.get(clientId);
-        if (
-          holder &&
-          holder.slipAt !== null &&
-          now >= holder.slipAt
-        ) {
-          this.removeHolder(session, clientId, {
+      const timedHolder = this.activeHolder(session);
+      if (
+        timedHolder &&
+        timedHolder.jumpAt !== null &&
+        now >= timedHolder.jumpAt
+      ) {
+        this.removeHolder(session, timedHolder.clientId, {
+          applyRockJumpImpulse: true,
+          notify: true,
+          reason: "jumped",
+        });
+      } else if (
+        timedHolder &&
+        timedHolder.slipAt !== null &&
+        now >= timedHolder.slipAt
+      ) {
+          this.removeHolder(session, timedHolder.clientId, {
             notify: true,
             reason: "slipped",
           });
-        }
-      });
+      }
 
       const elapsed = Math.min(Math.max((now - session.lastTickAt) / 1000, 0), 0.25);
       session.lastTickAt = now;
@@ -2032,17 +1950,27 @@ class SessionManager {
         Physics.isMoving(session.state)
       ) {
         const wasAboveGround = session.state.y < Physics.WORLD_HEIGHT - 0.01;
-        Physics.stepState(
-          session.state,
-          session.physics,
-          Physics.FIXED_STEP_SECONDS,
-          sceneMotionOptions(session)
-        );
+        const dragHolder = this.activeHolder(session);
+        const stepped = session.state.dragging && dragHolder
+          ? Physics.stepDragState(
+              session.state,
+              session.physics,
+              dragHolder.x,
+              dragHolder.y,
+              Physics.FIXED_STEP_SECONDS,
+              sceneMotionOptions(session)
+            )
+          : Physics.stepState(
+              session.state,
+              session.physics,
+              Physics.FIXED_STEP_SECONDS,
+              sceneMotionOptions(session)
+            );
         if (wasAboveGround && session.state.y >= Physics.WORLD_HEIGHT - 0.01) {
           groundTouched = true;
         }
         session.accumulator -= Physics.FIXED_STEP_SECONDS;
-        physicsChanged = true;
+        physicsChanged = stepped || physicsChanged;
       }
 
       if (groundTouched) {
@@ -2087,8 +2015,7 @@ class SessionManager {
       controllerId: session.state.controllerId,
       suspended: Boolean(session.state.suspended),
       turbTime: roundNetworkNumber(session.state.turbTime),
-      holderIds: this.holderIds(session),
-      requiredHolders: REQUIRED_HOLDERS,
+      holderId: this.holderId(session),
       groundTouchSeq: session.groundTouchSeq,
       summitElapsedMs: this.summitElapsedAt(session, serverTime),
       summitTimerRunning: session.summitRunningSince !== null,
@@ -2099,11 +2026,7 @@ class SessionManager {
     if (normalized.includeConfig) {
       payload.physics = { ...session.physics };
       payload.roomSettings = { ...session.roomSettings };
-      payload.masterViewport = session.masterViewport
-        ? { ...session.masterViewport }
-        : null;
       payload.imprint = session.imprint ? { ...session.imprint } : null;
-      payload.masterClientId = session.masterClientId;
       payload.expiresAt = session.expiresAt;
     }
     if (normalized.includeTrail) {
@@ -2131,8 +2054,7 @@ class SessionManager {
     const payload = {
       participants: this.connectedCount(session),
       controllerId: session.state.controllerId,
-      holderIds: this.holderIds(session),
-      requiredHolders: REQUIRED_HOLDERS,
+      holderId: this.holderId(session),
       pointers: [...session.clients.values()]
         .filter((client) => socketIsOpen(client.socket) && client.pointer?.visible)
         .map((client) => this.pointerPayload(client)),
@@ -2158,7 +2080,7 @@ class SessionManager {
         : {}),
       mode: client.pointer.mode,
       visible: client.pointer.visible,
-      role: clientRole(client.role),
+      role: "master",
       serverTime: this.now(),
     };
   }
@@ -2214,7 +2136,6 @@ module.exports = {
   TRAIL_SYNC_INTERVAL_MS,
   DISCONNECTED_CLIENT_TTL_MS,
   DEFAULT_EMPTY_SESSION_GRACE_MS,
-  REQUIRED_HOLDERS,
   SLIP_DELAY_MIN_MS,
   SLIP_DELAY_MAX_MS,
   STATIONARY_HOLD_RELEASE_MS,

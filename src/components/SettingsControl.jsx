@@ -4,6 +4,7 @@ export function SettingsControl({ control }) {
   const {
     defaultChecked,
     defaultValue,
+    enabledWhen,
     formulas,
     hint,
     label,
@@ -66,6 +67,7 @@ export function SettingsControl({ control }) {
       data-hint={hint}
       data-formulas={formulasAttr}
       data-setting-control
+      data-setting-enabled-when={enabledWhen}
     >
       <span className="control-label">
         <span>{label}</span>

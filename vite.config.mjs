@@ -61,13 +61,13 @@ function reloadSharedPhysics() {
   };
 }
 
-function serveDraftFromSource() {
+function serveMainFromDraftPath() {
   return {
-    name: "serve-draft-from-source",
+    name: "serve-main-from-draft-path",
     configureServer(server) {
       server.middlewares.use((request, _response, next) => {
         if (request.url === "/drafts" || request.url === "/drafts/") {
-          request.url = "/src/drafts/index.html";
+          request.url = "/index.html";
         }
         next();
       });
@@ -82,7 +82,7 @@ export default defineConfig(({ command }) => {
 
   return {
     base: "./",
-    plugins: [react(), reloadSharedPhysics(), serveDraftFromSource()],
+    plugins: [react(), reloadSharedPhysics(), serveMainFromDraftPath()],
     resolve: {
       alias: isProductionBuild && !debugUiEnabled
         ? [

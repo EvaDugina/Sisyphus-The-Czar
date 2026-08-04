@@ -45,13 +45,16 @@ test("settings template store атомарно сохраняет whitelist и �
   const { filePath, store } = temporaryStore(context, { now: () => now });
 
   const saved = store.saveEntry(entry("version-a"));
-  const document = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const rawDocument = fs.readFileSync(filePath, "utf8");
+  const document = JSON.parse(rawDocument);
 
   assert.equal(document.version, STORE_VERSION);
   assert.equal(document.revision, 1);
   assert.equal(saved.entry.updatedAt, "2026-07-26T12:00:00.000Z");
   assert.equal(saved.entry.settings.gravity, 7);
   assert.equal(Object.hasOwn(saved.entry.settings, "ignored"), false);
+  assert.match(rawDocument, /^\{\n  "version": 1,/);
+  assert.equal(rawDocument.endsWith("\n"), true);
   assert.deepEqual(
     fs.readdirSync(path.dirname(filePath)).filter((name) => name.endsWith(".tmp")),
     [],

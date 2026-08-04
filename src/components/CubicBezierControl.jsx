@@ -10,7 +10,7 @@ function clamp(value, min, max) {
 }
 
 function roundCoordinate(value) {
-  return Math.round(value * 100) / 100;
+  return Math.round(value * 1000) / 1000;
 }
 
 function formatCoordinate(value) {
@@ -60,6 +60,7 @@ function CurvePreview({ curve, previewKey }) {
 export function CubicBezierControl({ control }) {
   const {
     defaultValue,
+    enabledWhen,
     formulas,
     hint,
     label,
@@ -189,6 +190,7 @@ export function CubicBezierControl({ control }) {
       data-hint={hint}
       data-formulas={formulasAttr}
       data-setting-control
+      data-setting-enabled-when={enabledWhen}
     >
       <label className="control-label" htmlFor={`setting-${name}`}>
         <span>{label}</span>
@@ -255,7 +257,7 @@ export function CubicBezierControl({ control }) {
                 onChange={(event) =>
                   handleCoordinate(index, event.target.value)
                 }
-                step="0.01"
+                step="0.001"
                 type="number"
                 value={formatCoordinate(points[index])}
               />

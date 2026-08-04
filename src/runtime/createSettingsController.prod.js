@@ -8,6 +8,7 @@ export function createSettingsController() {
     getLatestSettingsVersionPreset: () => null,
     getLoadedSettingsVersionEntry: () => null,
     getSettingsVersions: () => [],
+    hasLocalSettings: () => false,
     load() {},
     markSettingsVersionDraft() {},
     readPhysicsControls: () => EMPTY_SETTINGS,

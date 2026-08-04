@@ -247,18 +247,15 @@ function createService(options = {}) {
   manager.restoreSessions(sessionStore.load());
   const persistSessions = (force = false) =>
     sessionStore.save(manager.serializeSessions(), { force });
+  const settingsPresetForNewSession = () =>
+    config.debug
+      ? settingsTemplateStore.latest()?.settings || null
+      : storedProductionPreset?.settings || ProductionPreset.settings;
   const defaultSession = manager.ensureDefaultSession();
   defaultSession.trailHubOnly = true;
-  if (config.debug) {
-    const latestSettingsTemplate = settingsTemplateStore.latest();
-    if (latestSettingsTemplate) {
-      manager.applySettingsPreset(defaultSession, latestSettingsTemplate.settings);
-    }
-  } else {
-    manager.applySettingsPreset(
-      defaultSession,
-      storedProductionPreset?.settings || ProductionPreset.settings,
-    );
+  const startupSettingsPreset = settingsPresetForNewSession();
+  if (startupSettingsPreset) {
+    manager.applySettingsPreset(defaultSession, startupSettingsPreset);
   }
   persistSessions(true);
   const createLimiter = new WindowRateLimiter(
@@ -291,11 +288,39 @@ function createService(options = {}) {
       return;
     }
 
+    const requestedSettings = Boolean(
+      config.debug &&
+        request.body?.physics &&
+        typeof request.body.physics === "object" &&
+        request.body?.roomSettings &&
+        typeof request.body.roomSettings === "object"
+    );
     const session = manager.createSession(request.body || {}, {
       singleClient: true,
     });
+    const settingsPreset = settingsPresetForNewSession();
+    if (settingsPreset && !requestedSettings) {
+      manager.applySettingsPreset(session, settingsPreset);
+    }
     persistSessions();
     response.status(201).json({
+      sessionId: session.id,
+      expiresAt: session.expiresAt,
+    });
+  });
+
+  app.post("/api/sessions/root", (request, response) => {
+    if (!originAllowed(request, config.allowedOrigins, config.debug)) {
+      response.status(403).json({ error: "origin_not_allowed" });
+      return;
+    }
+    if (!createLimiter.consume(request.ip || requestIp(request))) {
+      response.status(429).json({ error: "rate_limited" });
+      return;
+    }
+
+    const session = manager.ensureDefaultSession();
+    response.status(200).json({
       sessionId: session.id,
       expiresAt: session.expiresAt,
     });
@@ -365,6 +390,14 @@ function createService(options = {}) {
       maxAge: config.debug ? 0 : "1y",
     })
   );
+  app.use(
+    "/drafts/assets",
+    express.static(path.join(DIST_DIR, "assets"), {
+      dotfiles: "deny",
+      immutable: !config.debug,
+      maxAge: config.debug ? 0 : "1y",
+    })
+  );
 
   app.get("/shared/physics.js", (_request, response) => {
     response.type("application/javascript");
@@ -411,21 +444,13 @@ function createService(options = {}) {
     response.sendFile(path.join(ROOT_DIR, "shared", "chain-sounds.js"));
   });
 
-  app.get("/shared/viewport.js", (_request, response) => {
-    response.type("application/javascript");
-    response.setHeader(
-      "Cache-Control",
-      config.debug ? "no-store" : "public, max-age=3600"
-    );
-    response.sendFile(path.join(ROOT_DIR, "shared", "viewport.js"));
-  });
-
   const sendIndex = (_request, response) => {
     response.setHeader("Cache-Control", "no-store");
     response.sendFile(path.join(DIST_DIR, "index.html"));
   };
   app.get("/", sendIndex);
   app.get("/index.html", sendIndex);
+  app.get(["/drafts", "/drafts/"], sendIndex);
 
   app.use((error, _request, response, next) => {
     if (error && error.type === "entity.too.large") {
@@ -478,7 +503,6 @@ function createService(options = {}) {
     const clientId = url.searchParams.get("client") || "";
     if (
       !SESSION_ID_PATTERN.test(requestedSessionId) ||
-      requestedSessionId === DEFAULT_SESSION_ID ||
       !CLIENT_ID_PATTERN.test(clientId)
     ) {
       socket.write("HTTP/1.1 400 Bad Request\r\nConnection: close\r\n\r\n");

@@ -1,6 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v18";
+const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v20";
 const VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 
 async function openSettingsPanel(page) {
@@ -93,7 +93,7 @@ test("production DEBUG мгновенно применяет последний 
     .toBe("800vh");
 });
 
-test("production DEBUG включает UI, draft и изолирует личные настройки", async ({
+test("production DEBUG включает UI, draft и равные возможности master", async ({
   browser,
   page,
 }) => {
@@ -185,7 +185,7 @@ test("production DEBUG включает UI, draft и изолирует личн
   const productionButton = page.locator(
     '[data-production-preset-select="latest"]',
   );
-  await expect(productionButton).toBeDisabled();
+  await expect(productionButton).toBeEnabled();
   await page.locator(".settings-version-toggle").click();
 
   await setRangeValue(page, "gravity", 9);
@@ -199,33 +199,33 @@ test("production DEBUG включает UI, draft и изолирует личн
     Date.parse("2026-07-25T12:00:00.000Z"),
   );
 
-  const slaveContext = await browser.newContext();
-  const slave = await slaveContext.newPage();
+  const secondContext = await browser.newContext();
+  const second = await secondContext.newPage();
   try {
-    await slave.goto("/");
-    await expect(slave.locator("body")).toHaveAttribute(
+    await second.goto("/");
+    await expect(second.locator("body")).toHaveAttribute(
       "data-client-role",
       "master",
     );
-    await openSettingsPanel(slave);
-    await expect(slave.locator("#settings-version-current")).toHaveText(
-      "Черновик",
-    );
-    await slave.locator(".settings-version-toggle").click();
-    const slaveProductionButton = slave.locator(
-      '[data-production-preset-select="latest"]',
-    );
-    await expect(slaveProductionButton).toBeDisabled();
-    await slave
-      .locator('[data-settings-version-choice="latest"]')
-      .click();
-    await expect(slave.locator("#settings-version-current")).toContainText(
+    await openSettingsPanel(second);
+    await expect(second.locator("#settings-version-current")).toContainText(
       "Последний",
     );
-    await expect(slave.locator('[name="gravity"]')).toHaveValue("9");
-    await setRangeValue(slave, "gravity", 8.25);
-    await expect(page.locator('[name="gravity"]')).toHaveValue("9");
+    await second.locator(".settings-version-toggle").click();
+    const secondProductionButton = second.locator(
+      '[data-production-preset-select="latest"]',
+    );
+    await expect(secondProductionButton).toBeEnabled();
+    await second
+      .locator('[data-settings-version-choice="latest"]')
+      .click();
+    await expect(second.locator("#settings-version-current")).toContainText(
+      "Последний",
+    );
+    await expect(second.locator('[name="gravity"]')).toHaveValue("9");
+    await setRangeValue(second, "gravity", 8.25);
+    await expect(page.locator('[name="gravity"]')).toHaveValue("8.25");
   } finally {
-    await slaveContext.close();
+    await secondContext.close();
   }
 });

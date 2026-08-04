@@ -11,7 +11,8 @@ COPY src/ ./src/
 COPY assets/ ./assets/
 COPY server/ ./server/
 COPY shared/ ./shared/
-RUN mkdir -p /app/data /app/config && chown -R node:node /app
+COPY config/ ./repository-config/
+RUN mkdir -p /app/data /app/config /app/repository-config && chown -R node:node /app
 
 USER node
 EXPOSE 8080 8081
@@ -43,8 +44,9 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --chown=node:node server/ ./server/
 COPY --chown=node:node shared/ ./shared/
+COPY --chown=node:node config/ ./repository-config/
 COPY --chown=node:node --from=frontend-build /app/dist/ ./dist/
-RUN mkdir -p /app/data /app/config && chown node:node /app/data /app/config
+RUN mkdir -p /app/data /app/config /app/repository-config && chown node:node /app/data /app/config /app/repository-config
 
 USER node
 EXPOSE 8080

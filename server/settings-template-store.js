@@ -7,7 +7,7 @@ const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
 
 const STORE_VERSION = 1;
-const SETTINGS_SCHEMA_VERSION = 18;
+const SETTINGS_SCHEMA_VERSION = 20;
 const MAX_ENTRIES = 50;
 const MAX_ID_LENGTH = 180;
 const MAX_NAME_LENGTH = 120;
@@ -243,7 +243,7 @@ class SettingsTemplateStore {
     const temporaryPath = `${this.filePath}.${process.pid}.tmp`;
     try {
       fs.mkdirSync(directory, { recursive: true });
-      fs.writeFileSync(temporaryPath, JSON.stringify(document), {
+      fs.writeFileSync(temporaryPath, `${JSON.stringify(document, null, 2)}\n`, {
         encoding: "utf8",
         mode: 0o600,
       });

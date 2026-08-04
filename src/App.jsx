@@ -1,3 +1,4 @@
+import { FoldLayer } from "./components/FoldLayer";
 import { Scene } from "./components/Scene";
 import { SettingsPanel } from "./components/SettingsPanel";
 import { Toolbar } from "./components/Toolbar";
@@ -5,11 +6,10 @@ import { useSisyphusExperience } from "./hooks/useSisyphusExperience";
 
 export function App() {
   const experience = useSisyphusExperience();
-  const { clientRole, settings, realtime, scene, trail, rain } = experience;
+  const { fold, settings, realtime, scene, trail, rain } = experience;
   const settingsUiEnabled =
     import.meta.env.DEV || import.meta.env.VITE_DEBUG_UI === "true";
-  const settingsAvailable =
-    settingsUiEnabled && (clientRole === "master" || clientRole === "slave");
+  const settingsAvailable = settingsUiEnabled;
 
   return (
     <>
@@ -36,6 +36,7 @@ export function App() {
         />
       ) : null}
       <Scene scene={scene} trail={trail} rain={rain} />
+      <FoldLayer settingsRef={fold.settingsRef} worldRef={scene.worldRef} />
     </>
   );
 }

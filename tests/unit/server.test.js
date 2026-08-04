@@ -8,6 +8,14 @@ const {
   WindowRateLimiter,
 } = require("../../server");
 
+function emptySessionStore() {
+  return {
+    enabled: false,
+    load: () => [],
+    save: () => false,
+  };
+}
+
 test("rate limiter очищает истёкшие ключи при достижении лимита памяти", () => {
   let now = 1000;
   const limiter = new WindowRateLimiter(1, 60_000, () => now);
@@ -50,6 +58,7 @@ test("backend публикует shared-модули клиента", async (con
     port: 0,
     host: "127.0.0.1",
     debug: true,
+    sessionStore: emptySessionStore(),
     logger: () => {},
   });
   const address = await service.start();
@@ -58,7 +67,6 @@ test("backend публикует shared-модули клиента", async (con
   const modules = [
     ["gachi-sounds.js", /SisyphusGachiSounds/],
     ["chain-sounds.js", /SisyphusChainSounds/],
-    ["viewport.js", /SisyphusViewport/],
     ["production-preset.js", /SisyphusProductionPreset/],
   ];
   for (const [filename, exportName] of modules) {
@@ -88,6 +96,7 @@ test("production startup применяет preset из отдельного sto
     port: 0,
     host: "127.0.0.1",
     debug: false,
+    sessionStore: emptySessionStore(),
     productionPresetStore,
     logger: () => {},
   });
@@ -119,6 +128,7 @@ test("debug startup применяет последний общий шабло�
     port: 0,
     host: "127.0.0.1",
     debug: true,
+    sessionStore: emptySessionStore(),
     settingsTemplateStore,
     logger: () => {},
   });
@@ -129,4 +139,47 @@ test("debug startup применяет последний общий шабло�
   assert.equal(root.physics.gravity, 5.5);
   assert.equal(root.roomSettings.sceneHeightScreens, 17);
   assert.equal(root.settingsRevision, 2);
+});
+
+test("debug-сессия сохраняет локальный черновик поверх общего шаблона", async (context) => {
+  const settingsTemplateStore = {
+    load: () => [],
+    latest: () => ({ settings: { gravity: 5.5, draftFoldAngle: 30 } }),
+    page: () => ({ revision: 1, offset: 0, nextOffset: null, entries: [] }),
+    importEntries: () => ({ revision: 1, entries: [] }),
+    saveEntry: () => ({ revision: 1, entry: null, branched: false }),
+    deleteEntry: () => ({ revision: 1, deletedId: null }),
+    createConflict: () => ({ revision: 1, entry: null }),
+  };
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    sessionStore: emptySessionStore(),
+    settingsTemplateStore,
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+
+  const response = await fetch(`http://127.0.0.1:${address.port}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      physics: { gravity: 8.5 },
+      roomSettings: {
+        draftFoldAngle: 45,
+        draftFoldZoneSize: 10,
+        draftFoldBlendEnabled: true,
+        draftFoldBlendCurve: "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
+      },
+    }),
+  });
+  const payload = await response.json();
+  const session = service.manager.getSession(payload.sessionId);
+
+  assert.equal(response.status, 201);
+  assert.equal(session.physics.gravity, 8.5);
+  assert.equal(session.roomSettings.draftFoldAngle, 45);
+  assert.equal(session.roomSettings.draftFoldZoneSize, 10);
 });

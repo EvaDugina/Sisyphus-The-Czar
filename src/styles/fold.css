@@ -1,0 +1,93 @@
+.fold-layer {
+  --fold-perspective: 250px;
+  --fold-seam-scale: 1.002004008016032;
+
+  position: fixed;
+  inset: 0;
+  z-index: 25;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.fold-layer[data-fold-enabled="false"],
+.fold-layer[data-fold-ready="false"] {
+  visibility: hidden;
+}
+
+.fold-zone {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: var(--fold-zone-height);
+  overflow: hidden;
+  background: var(--surface);
+  -webkit-mask-image: var(--fold-mask-image, none);
+  mask-image: var(--fold-mask-image, none);
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
+  pointer-events: none;
+}
+
+.fold-zone--top {
+  top: 0;
+}
+
+.fold-camera {
+  position: absolute;
+  inset: 0;
+  perspective: var(--fold-perspective);
+  perspective-origin: center center;
+  transform-style: preserve-3d;
+}
+
+.fold-surface {
+  position: absolute;
+  left: 0;
+  width: 100%;
+  height: calc(var(--fold-zone-height) + var(--fold-zone-height));
+  overflow: visible;
+  backface-visibility: visible;
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+
+.fold-zone--top .fold-surface {
+  top: calc(-1 * var(--fold-zone-height));
+  transform: translateZ(0) rotateX(calc(-1 * var(--fold-angle)))
+    scaleY(var(--fold-seam-scale));
+  transform-origin: 50% 100%;
+}
+
+.fold-source-window {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--surface);
+  transform-style: preserve-3d;
+}
+
+.fold-track {
+  --fold-scroll-offset: 0px;
+
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: var(--scene-height-vh, 1000vh);
+  transform: translate3d(
+    0,
+    calc(var(--fold-zone-height) - var(--fold-scroll-offset)),
+    0
+  );
+  will-change: transform;
+}
+
+.fold-track > .world {
+  width: 100%;
+}
+
+.fold-track :is(.trail, .weather-rain, .hand-cursor) {
+  translate: 0 var(--fold-scroll-offset);
+}

@@ -108,7 +108,7 @@ test(`compose lifecycle: ${MODE}`, async ({ page }) => {
     return;
   }
 
-  await expect(page.locator(".rock")).toBeVisible();
+  await expect(page.locator("#root > .world > .rock")).toBeVisible();
   await expect(page.locator(".settings-toggle")).toHaveCount(0);
   expect(
     await page.evaluate(() => Object.hasOwn(window, "__sisyphusTestApi")),

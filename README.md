@@ -2,7 +2,7 @@
 
 Стадия: POC B
 
-Интерактивная веб-миниатюра с общей realtime-сессией: участники открывают одну ссылку, видят один падающий камень и поднимают его общей физикой; для движения достаточно одной активной руки. Клиент собран на React + Vite, API и WebSocket обслуживает Node.js.
+Интерактивная веб-миниатюра с серверной физикой: каждый пользователь получает отдельную single-client-сессию, один камень и одну руку. Между сессиями общими остаются история следов и debug-каталог шаблонов. Клиент собран на React + Vite, API и WebSocket обслуживает Node.js.
 
 ## Локальный запуск
 
@@ -31,20 +31,24 @@ docker compose -f docker-compose.dev.yml down
 ## Три режима запуска
 
 - **Dev:** `docker compose -f docker-compose.dev.yml up -d --build`. Панель настроек, Vite HMR и test API доступны.
-- **Отладочный production:** `DEBUG=true docker compose up -d --build --force-recreate`. Это production-сборка Vite без HMR и test API, но с полной панелью настроек у всех пользователей root-комнаты.
+- **Отладочный production:** `DEBUG=true docker compose up -d --build --force-recreate`. Это production-сборка Vite без HMR и test API, но с полной панелью настроек личной сессии.
 - **Настоящий production:** `DEBUG=false docker compose up -d --build --force-recreate`. Панель и controller настроек не входят в frontend bundle.
 
 Dev и production используют один локальный origin `http://127.0.0.1:18082/`, поэтому режимы запускаются последовательно. Перед переключением остановите текущий Compose-проект. `DEBUG` одновременно является build argument frontend и runtime-переменной сервера: одной перезагрузки страницы или restart контейнера недостаточно, после смены значения обязательны rebuild и recreate.
 
-## Совместная сессия
+## Личные сессии и общий след
 
-1. Откройте приложение по `/`: сервер подключит браузер к единой общей комнате.
-2. Нажмите верхнюю кнопку с иконкой ссылки.
-3. Отправьте скопированный корневой URL второму участнику.
+1. Откройте приложение по `/`: сервер создаст браузеру новую single-client-сессию.
+2. Откройте тот же URL в другом браузере: второй пользователь получит другой session ID и свой камень.
+3. Движение камня и захват изолированы; shared trail агрегируется сервером отдельно.
 
-Один участник держит камень, остальные наблюдают и могут взять его после отпускания. Физика общая. В dev и отладочном production сервер детерминированно выбирает наиболее поздний общий шаблон по `updatedAt`, затем `createdAt` и `id`, применяет его shared-часть к восстановленной root-комнате и отдаёт всем пользователям как UI baseline. Любой root-клиент может менять настройки: клиент отправляет один полный snapshot с базовой `settingsRevision`, сервер применяет только свежую ревизию и рассылает результат всем. Stale-правка не меняет комнату, а сохраняется отдельным общим конфликтным шаблоном. Reload/reconnect и пересоздание контейнера сохраняют серверное состояние общей комнаты в Docker volume. Настоящий production применяет явно выбранный флагом preset только к physics и room settings root-комнаты, не сбрасывая фазу, положение, trail, роли или общий таймер. После выхода последнего участника root-комната остаётся жить, поэтому общее время и состояние не начинаются заново при следующем открытии `/`.
+В каждой сессии есть единственная роль `master`, единственная рука и не более одного holder. Сила не суммируется между пользователями. В dev и отладочном production сохранённый локальный черновик/версия имеет приоритет для новой личной сессии, а без локальных данных сервер выбирает наиболее поздний общий шаблон; slim production использует выбранный production preset. Каталог шаблонов общий, но текущие положение камня, настройки сессии и таймеры автоматического поведения не рассылаются другим пользователям.
 
-Production frontend использует существующий `rock.webp`, уже сжатые PNG-курсоры и lazy-загрузку MP3. Регулярные multiplayer snapshots отправляются lean без неизменных `physics`, `roomSettings`, `masterViewport`, `imprint` и `expiresAt`; `pointer.update` не эхо-рассылается отправителю. Частоты остаются прежними: до 30 Hz input и до 20 Hz snapshots.
+Маршруты `/` и `/drafts/` открывают одну основную страницу с одинаковыми сценой, 3D Fold-слоем и меню настроек; `/drafts/` сохранён только как совместимый URL.
+
+Если `Fhand < m · g`, рука не отпускает камень: он плавно отстаёт со скоростью, зависящей от `Fhand / Fg`. В группе «Камень» независимо включаются случайное выпадение через `0.5–2 s` и выпрыгивание вверх. Для выпрыгивания задаются интервал `1–10 s` (default `5`) и разброс инерции `0–100%` (default `25%`); направление всегда находится в секторе `±45°` от вертикали вверх.
+
+Production frontend использует существующий `rock.webp`, PNG-курсоры единственной руки и lazy-загрузку MP3. Регулярные snapshots отправляются без неизменных `physics`, `roomSettings`, `imprint` и `expiresAt`. Частоты: до 30 Hz input и до 20 Hz snapshots.
 
 В slim production dev-controller настроек и KaTeX-подсказки не входят в bundle. Production build с `DEBUG=true` включает их для временной отладки, но test API остаётся доступен только в Vite dev. Production smoke проверяет комнату и движение камня через реальные действия браузера.
 
@@ -52,7 +56,7 @@ Production frontend использует существующий `rock.webp`, �
 
 В `DEBUG=true` каталог до 50 полноценных шаблонов хранится на сервере и одинаков для всех пользователей. Старые версии из `localStorage` импортируются один раз пакетами с дедупликацией по `id + updatedAt`; расхождение одного id сохраняется отдельной веткой. Локальные изменения выбранной версии или её имени создают черновик: изменённые контролы и общий индикатор подсвечиваются синим, а при закрытии или reload вкладки браузер показывает стандартный confirm. Точный возврат к исходным значениям или сохранение очищает dirty-состояние. Сохранение черновика, основанного на версии, обновляет эту версию; concurrent mismatch по `updatedAt` создаёт новую ветку вместо перезаписи, а явный выбор «Черновик» создаёт новую.
 
-Любой пользователь root-комнаты в `DEBUG=true` может поставить флаг в строке сохранённой версии: это назначает её preset’ом следующего настоящего production и не применяет её к текущей комнате. Новый флаг атомарно заменяет прежний. Помеченную версию нельзя удалить до выбора другой; её последующее сохранение автоматически публикует обновлённый snapshot. Каталог `/app/config/settings-templates.json` и назначение `/app/config/production-preset.json` хранятся в named volume `sisyphus-the-czar-production-preset`.
+Любой пользователь в `DEBUG=true` может поставить флаг в строке сохранённой версии: это назначает её baseline’ом новых slim-production сессий и не применяет немедленно к текущей личной сессии. Новый флаг атомарно заменяет прежний. Каталог шаблонов хранится в отслеживаемом файле [`config/settings-templates.json`](config/settings-templates.json), подключённом как `/app/repository-config/settings-templates.json`; canonical production preset хранится отдельно в `/app/config/production-preset.json` внутри named volume.
 
 ## Настройки
 
@@ -63,10 +67,10 @@ Production frontend использует существующий `rock.webp`, �
 | `DEBUG` | `true` для dev-послаблений, `false` для production hardening |
 | `ALLOWED_ORIGIN` | публичный HTTPS origin; несколько значений через запятую |
 | `SESSION_TTL_SECONDS` | время жизни комнаты после последней активности, по умолчанию `86400` |
-| `EMPTY_SESSION_GRACE_SECONDS` | задержка удаления пустой legacy-комнаты; root-комната по `/` не удаляется, по умолчанию `10` |
+| `EMPTY_SESSION_GRACE_SECONDS` | задержка удаления пустой совместимой комнаты; persistent trail hub не удаляется, по умолчанию `10` |
 | `SESSION_STORE_PATH` | файл состояния в Docker volume, по умолчанию `/app/data/sessions.json` |
 | `PRODUCTION_PRESET_PATH` | canonical production preset, по умолчанию `/app/config/production-preset.json` |
-| `SETTINGS_TEMPLATE_STORE_PATH` | общий каталог debug-шаблонов, по умолчанию `/app/config/settings-templates.json` |
+| `SETTINGS_TEMPLATE_STORE_PATH` | отслеживаемый каталог debug-шаблонов, по умолчанию `/app/repository-config/settings-templates.json` |
 | `SESSION_PERSIST_INTERVAL_MS` | интервал фонового сохранения, по умолчанию `250` мс |
 
 Секретов приложение не использует. Файл `.env` не коммитится.
@@ -80,7 +84,7 @@ docker run --rm -v "$(pwd):/app" -v /app/node_modules -w /app node:24.18.0-alpin
 docker run --rm --ipc=host -v "$(pwd):/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "npm ci && npm run test:smoke"
 ```
 
-Перед крупным релизом замените `npm run test:smoke` на `npm run test:soak`: два браузера проверяются не менее 10 минут.
+Перед крупным релизом замените `npm run test:smoke` на `npm run test:soak`: две независимые пользовательские сессии проверяются не менее 10 минут.
 
 ## Деплой
 
@@ -94,6 +98,6 @@ bash deploy.sh
 
 Multi-stage Docker build собирает React-клиент в `dist`, а production-образ запускает только Express/WebSocket и раздаёт hashed assets. Контейнер слушает `127.0.0.1:18082`; внешний nginx хоста публикует HTTPS, поддерживает WebSocket Upgrade и использует `proxy_read_timeout` не менее 75 секунд.
 
-Named volumes с комнатами, общим каталогом и production preset сохраняются при `deploy.sh`, `docker compose restart`, rebuild/recreate и обычном `docker compose down`. Каталог и preset теряются только при повреждении volume или его явном удалении, например `docker compose down -v` либо `docker volume rm sisyphus-the-czar-production-preset`.
+Named volumes с комнатами и production preset сохраняются при `deploy.sh`, `docker compose restart`, rebuild/recreate и обычном `docker compose down`. Каталог шаблонов синхронизируется вместе с репозиторием через `config/settings-templates.json`; production preset теряется только при повреждении или явном удалении volume, например `docker compose down -v` либо `docker volume rm sisyphus-the-czar-production-preset`.
 
-Минимум для комнаты на двух участников: Ubuntu Server 24.04 LTS, 1 vCPU, 512 МБ RAM, 2 ГБ диска и канал от 1 Мбит/с. Рекомендуется 1 ГБ RAM, 10 Мбит/с, RTT до 100 мс и jitter до 30 мс.
+Минимум для двух одновременных личных сессий: Ubuntu Server 24.04 LTS, 1 vCPU, 512 МБ RAM, 2 ГБ диска и канал от 1 Мбит/с. Рекомендуется 1 ГБ RAM, 10 Мбит/с, RTT до 100 мс и jitter до 30 мс.
