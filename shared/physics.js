@@ -524,7 +524,7 @@
     inertiaFactor = 1
   ) {
     const params = sanitizePhysics(physics);
-    const angle = clamp(finiteNumber(angleDegrees, 0), -45, 45);
+    const angle = clamp(finiteNumber(angleDegrees, 0), -90, 90);
     const factor = clamp(finiteNumber(inertiaFactor, 1), 0, 2);
     const baseImpulse =
       effectiveHandForce(params) *

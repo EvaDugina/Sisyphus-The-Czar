@@ -1773,8 +1773,8 @@ test("каждый захват получает случайное окно с�
   assert.equal(session.state.dragging, true);
 });
 
-test("камень выпрыгивает строго вверх в пределах ±45° по настроенному таймеру", () => {
-  const { clock, manager } = setup({ random: () => 0.5 });
+test("камень выпрыгивает в настроенном симметричном секторе по таймеру", () => {
+  const { clock, manager } = setup({ random: () => 1 });
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
     roomSettings: {
@@ -1782,6 +1782,7 @@ test("камень выпрыгивает строго вверх в преде�
       randomDropEnabled: false,
       rockJumpEnabled: true,
       rockJumpIntervalSeconds: 5,
+      rockJumpAngleSpreadDegrees: 180,
       rockJumpInertiaSpreadPercent: 25,
     },
   });
@@ -1802,10 +1803,10 @@ test("камень выпрыгивает строго вверх в преде�
   );
   assert.equal(session.holder, null);
   assert.equal(jumpMessage.payload.reason, "jumped");
-  assert.ok(jumpMessage.payload.angleDegrees >= -45);
-  assert.ok(jumpMessage.payload.angleDegrees <= 45);
+  assert.equal(jumpMessage.payload.angleDegrees, 90);
+  assert.equal(jumpMessage.payload.inertiaFactor, 1.25);
   assert.ok(session.state.vy < 0);
-  assert.ok(Math.abs(session.state.vx) <= -session.state.vy + 1e-9);
+  assert.ok(session.state.vx > 0);
 });
 
 test("выпрыгивание имеет приоритет над случайным выпадением в один тик", () => {
@@ -1821,6 +1822,7 @@ test("выпрыгивание имеет приоритет над случай
       randomDropEnabled: true,
       rockJumpEnabled: true,
       rockJumpIntervalSeconds: 1,
+      rockJumpAngleSpreadDegrees: 0,
       rockJumpInertiaSpreadPercent: 0,
     },
   });
@@ -1836,6 +1838,8 @@ test("выпрыгивание имеет приоритет над случай
     (message) => message.type === "control.slipped",
   );
   assert.equal(behaviorMessage.payload.reason, "jumped");
+  assert.equal(behaviorMessage.payload.angleDegrees, 0);
+  assert.equal(behaviorMessage.payload.inertiaFactor, 1);
   assert.ok(session.state.vy < 0);
 });
 

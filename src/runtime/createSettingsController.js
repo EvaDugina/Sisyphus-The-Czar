@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 20;
+const SETTINGS_SCHEMA_VERSION = 21;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
 
@@ -1207,6 +1207,8 @@ export function createSettingsController(options) {
       rockJumpIntervalSeconds: secondsOutput(
         params.rockJumpIntervalSeconds,
       ),
+      rockJumpAngleSpreadDegrees:
+        `${params.rockJumpAngleSpreadDegrees.toFixed(0)}°`,
       rockJumpInertiaSpreadPercent:
         `${params.rockJumpInertiaSpreadPercent.toFixed(0)}%`,
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,

@@ -184,6 +184,9 @@ test("настройки выпадения и выпрыгивания один
     const randomDrop = page.locator('[name="randomDropEnabled"]');
     const rockJump = page.locator('[name="rockJumpEnabled"]');
     const jumpInterval = page.locator('[name="rockJumpIntervalSeconds"]');
+    const jumpAngleSpread = page.locator(
+      '[name="rockJumpAngleSpreadDegrees"]',
+    );
     const jumpSpread = page.locator(
       '[name="rockJumpInertiaSpreadPercent"]',
     );
@@ -193,11 +196,18 @@ test("настройки выпадения и выпрыгивания один
     await expect(randomDrop).toBeChecked();
     await expect(rockJump).toBeChecked();
     await expect(jumpInterval).toBeEnabled();
+    await expect(jumpAngleSpread).toBeEnabled();
     await expect(jumpSpread).toBeEnabled();
+
+    await setSettingValue(page, "rockJumpAngleSpreadDegrees", 180);
+    await setSettingValue(page, "rockJumpInertiaSpreadPercent", 40);
+    await expect(jumpAngleSpread).toHaveValue("180");
+    await expect(jumpSpread).toHaveValue("40");
 
     await setSettingValue(page, "rockJumpEnabled", false);
     await expect(rockJump).not.toBeChecked();
     await expect(jumpInterval).toBeDisabled();
+    await expect(jumpAngleSpread).toBeDisabled();
     await expect(jumpSpread).toBeDisabled();
   }
 });

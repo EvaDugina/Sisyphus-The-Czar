@@ -1423,24 +1423,32 @@ test("личная сессия выпрыгивает вверх по неза�
 
   await openSettingsPanel(page);
   await openControlGroup(page, "Камень");
+  await setCheckbox(page, "stationaryAutoSlipEnabled", false);
   await setCheckbox(page, "randomDropEnabled", false);
   await setCheckbox(page, "rockJumpEnabled", true);
   await setRange(page, "rockJumpIntervalSeconds", 1);
+  await setRange(page, "rockJumpAngleSpreadDegrees", 0);
   await setRange(page, "rockJumpInertiaSpreadPercent", 0);
   await closeSettingsPanel(page);
 
   await grabVisibleRock(page);
   await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(true);
-  const heldY = await page.evaluate(() => motion.y);
   await expect
-    .poll(
-      () => page.evaluate(() => motion.y),
-      { timeout: 5000, intervals: [20] },
-    )
-    .toBeLessThan(heldY - 1);
-  await expect
-    .poll(() => page.evaluate(() => collab.hasControl), { timeout: 3000 })
+    .poll(() => page.evaluate(() => collab.hasControl), { timeout: 5000 })
     .toBe(false);
+  await expect
+    .poll(() => page.evaluate(() => motion.vy), {
+      timeout: 3000,
+      intervals: [20],
+    })
+    .toBeLessThan(0);
+  const releasedY = await page.evaluate(() => motion.y);
+  await expect
+    .poll(() => page.evaluate(() => motion.y), {
+      timeout: 3000,
+      intervals: [20],
+    })
+    .toBeLessThan(releasedY - 1);
   await expect(page.locator(SOURCE_ROCK)).not.toHaveClass(/is-dragging/);
 
   await context.close();

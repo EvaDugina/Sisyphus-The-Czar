@@ -233,6 +233,8 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpEnabled,
     rockJumpIntervalSeconds:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpIntervalSeconds,
+    rockJumpAngleSpreadDegrees:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpAngleSpreadDegrees,
     rockJumpInertiaSpreadPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS
         .rockJumpInertiaSpreadPercent,

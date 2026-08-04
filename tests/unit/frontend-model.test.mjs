@@ -365,7 +365,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 20);
+  assert.equal(productionSettingsSchemaVersion, 21);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -704,6 +704,7 @@ test("настройки размера камня есть в UI и получ�
       "randomDropEnabled",
       "rockJumpEnabled",
       "rockJumpIntervalSeconds",
+      "rockJumpAngleSpreadDegrees",
       "rockJumpInertiaSpreadPercent",
       "mass",
       "rockScaleEasing",
@@ -742,12 +743,39 @@ test("настройки размера камня есть в UI и получ�
   );
   assert.deepEqual(
     {
+      label: byName("rockJumpAngleSpreadDegrees").label,
+      min: byName("rockJumpAngleSpreadDegrees").min,
+      max: byName("rockJumpAngleSpreadDegrees").max,
+      step: byName("rockJumpAngleSpreadDegrees").step,
+      defaultValue: byName("rockJumpAngleSpreadDegrees").defaultValue,
+      enabledWhen: byName("rockJumpAngleSpreadDegrees").enabledWhen,
+    },
+    {
+      label: "Разброс угла",
+      min: 0,
+      max: 180,
+      step: 1,
+      defaultValue: 90,
+      enabledWhen: "rockJumpEnabled",
+    },
+  );
+  assert.deepEqual(
+    {
+      label: byName("rockJumpInertiaSpreadPercent").label,
       min: byName("rockJumpInertiaSpreadPercent").min,
       max: byName("rockJumpInertiaSpreadPercent").max,
       step: byName("rockJumpInertiaSpreadPercent").step,
       defaultValue: byName("rockJumpInertiaSpreadPercent").defaultValue,
+      enabledWhen: byName("rockJumpInertiaSpreadPercent").enabledWhen,
     },
-    { min: 0, max: 100, step: 1, defaultValue: 25 },
+    {
+      label: "Разброс силы",
+      min: 0,
+      max: 100,
+      step: 1,
+      defaultValue: 25,
+      enabledWhen: "rockJumpEnabled",
+    },
   );
 });
 
@@ -1261,7 +1289,17 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 15);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 16);
+  assert.equal(
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpAngleSpreadDegrees,
+    90,
+  );
+  assert.equal(
+    SharedRoomSettings.sanitizeRoomSettings({
+      rockJumpAngleSpreadDegrees: 999,
+    }).rockJumpAngleSpreadDegrees,
+    180,
+  );
   assert.equal(
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing,
     "cubic-bezier(0.42, 0, 1, 1)",

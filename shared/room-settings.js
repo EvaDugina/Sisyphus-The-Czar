@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 15;
+  const ROOM_SETTINGS_VERSION = 16;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -61,6 +61,7 @@
     handWidthVw: [10, 90],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     rockJumpIntervalSeconds: [1, 10],
+    rockJumpAngleSpreadDegrees: [0, 180],
     rockJumpInertiaSpreadPercent: [0, 100],
     rainStrength: [0.25, 1.5],
     rainMaxVolume: [0, 3],
@@ -103,6 +104,7 @@
     randomDropEnabled: true,
     rockJumpEnabled: true,
     rockJumpIntervalSeconds: 5,
+    rockJumpAngleSpreadDegrees: 90,
     rockJumpInertiaSpreadPercent: 25,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
@@ -296,6 +298,8 @@
       ROOM_SETTINGS_LIMITS.finalFallDelaySeconds;
     const [rockJumpIntervalMin, rockJumpIntervalMax] =
       ROOM_SETTINGS_LIMITS.rockJumpIntervalSeconds;
+    const [rockJumpAngleSpreadMin, rockJumpAngleSpreadMax] =
+      ROOM_SETTINGS_LIMITS.rockJumpAngleSpreadDegrees;
     const [rockJumpSpreadMin, rockJumpSpreadMax] =
       ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent;
     const [drizzleVolumeMin, drizzleVolumeMax] =
@@ -440,6 +444,13 @@
         "rockJumpIntervalSeconds",
         rockJumpIntervalMin,
         rockJumpIntervalMax
+      ),
+      rockJumpAngleSpreadDegrees: integerSetting(
+        source,
+        fallbackSource,
+        "rockJumpAngleSpreadDegrees",
+        rockJumpAngleSpreadMin,
+        rockJumpAngleSpreadMax
       ),
       rockJumpInertiaSpreadPercent: integerSetting(
         source,

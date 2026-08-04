@@ -128,13 +128,17 @@ const PHYSICS_FORMULAS = {
   rockJumpIntervalSeconds: [
     "t_{jump} = rockJumpIntervalSeconds",
   ],
+  rockJumpAngleSpreadDegrees: [
+    "A = rockJumpAngleSpreadDegrees",
+    "\\theta = random\\left(-\\frac{A}{2}, \\frac{A}{2}\\right)",
+  ],
   rockJumpInertiaSpreadPercent: [
     "S = \\frac{rockJumpInertiaSpreadPercent}{100}",
     "J_0 = F_{hand} \\cdot t_{impulse} \\cdot I_y",
     "J = J_0 \\cdot random(1-S, 1+S)",
     "V = clamp\\left(\\frac{J}{m}, V_{min}, V_{max}\\right)",
     "v_x = V \\cdot sin(\\theta)",
-    "v_y = -V \\cdot cos(\\theta), \\quad \\theta \\in [-45^\\circ,45^\\circ]",
+    "v_y = -V \\cdot cos(\\theta), \\quad \\theta \\in \\left[-\\frac{A}{2},\\frac{A}{2}\\right]",
   ],
   sceneHeightScreens: [
     "H_{page} = sceneHeightScreens \\cdot 100vh",
@@ -629,7 +633,7 @@ export const SETTINGS_GROUPS = [
         label: "Выпрыгивание вверх",
         type: "checkbox",
         defaultChecked: DEFAULT_ROOM_SETTINGS.rockJumpEnabled,
-        hint: "Периодически освобождает камень из руки и задаёт ему случайный восходящий импульс в секторе ±45° от вертикали.",
+        hint: "Периодически освобождает камень из руки и задаёт ему случайный импульс в настраиваемом секторе вокруг вертикали вверх.",
       },
       {
         name: "rockJumpIntervalSeconds",
@@ -647,8 +651,23 @@ export const SETTINGS_GROUPS = [
         formulas: PHYSICS_FORMULAS.rockJumpIntervalSeconds,
       },
       {
+        name: "rockJumpAngleSpreadDegrees",
+        label: "Разброс угла",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockJumpAngleSpreadDegrees[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockJumpAngleSpreadDegrees[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockJumpAngleSpreadDegrees,
+        output: `${DEFAULT_ROOM_SETTINGS.rockJumpAngleSpreadDegrees}°`,
+        enabledWhen: "rockJumpEnabled",
+        hint: "Полная ширина сектора вокруг вертикали вверх. Ноль направляет камень строго вверх, 180° разрешает всю верхнюю полуплоскость.",
+        formulas: PHYSICS_FORMULAS.rockJumpAngleSpreadDegrees,
+      },
+      {
         name: "rockJumpInertiaSpreadPercent",
-        label: "Разброс инерции",
+        label: "Разброс силы",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
           .rockJumpInertiaSpreadPercent[0],
@@ -658,7 +677,7 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROOM_SETTINGS.rockJumpInertiaSpreadPercent,
         output: `${DEFAULT_ROOM_SETTINGS.rockJumpInertiaSpreadPercent}%`,
         enabledWhen: "rockJumpEnabled",
-        hint: "Случайное отклонение величины импульса относительно базового значения. Ноль оставляет случайным только направление.",
+        hint: "Симметричное случайное отклонение величины импульса относительно базового значения. Ноль сохраняет базовую силу без разброса.",
         formulas: PHYSICS_FORMULAS.rockJumpInertiaSpreadPercent,
       },
       {

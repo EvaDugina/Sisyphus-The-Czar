@@ -876,7 +876,9 @@ class SessionManager {
       wasDragging &&
       session.state.phase === Physics.PHASES.PLAY
     ) {
-      const angleDegrees = -45 + this.random() * 90;
+      const angleDegrees =
+        (this.random() - 0.5) *
+        session.roomSettings.rockJumpAngleSpreadDegrees;
       const spread =
         session.roomSettings.rockJumpInertiaSpreadPercent / 100;
       const inertiaFactor = 1 - spread + this.random() * spread * 2;

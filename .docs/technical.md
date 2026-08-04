@@ -29,7 +29,7 @@ React отвечает за структуру UI, imperative runtime — за r
 - `id`, `persistent`, `singleClient`, TTL и empty-grace metadata;
 - `state`: phase, x/y, vx/vy, dragging, controllerId, suspended;
 - `physics`, `physicsVersion=11`;
-- `roomSettings`, `roomSettingsVersion=15`, `settingsRevision`;
+- `roomSettings`, `roomSettingsVersion=16`, `settingsRevision`;
 - `clients: Map<clientId, client>`;
 - `holder: null | {clientId,x,y,vx,vy,acquiredAt,lastMoveAt,slipAt,jumpAt}`;
 - trail, imprint, summit timer, ground touch sequence, final-fall и stationary metadata.
@@ -70,6 +70,7 @@ Prock' = Prock + alpha(dt) · (Phand - Prock)
 | `randomDropEnabled` | `true` | Существующее случайное выпадение через `0.5–2 s` |
 | `rockJumpEnabled` | `true` | Периодическое выпрыгивание вверх |
 | `rockJumpIntervalSeconds` | `1–10`, default `5` | Непрерывное удержание до выпрыгивания |
+| `rockJumpAngleSpreadDegrees` | `0–180`, default `90` | Полная ширина симметричного сектора вокруг вертикали вверх |
 | `rockJumpInertiaSpreadPercent` | `0–100`, default `25` | Разброс множителя импульса |
 
 При захвате сервер создаёт два независимых deadline: `slipAt` и `jumpAt`. Изменение toggle во время удержания очищает или запускает соответствующий deadline; изменение интервала перезапускает только `jumpAt`. В `tick` сначала проверяется `jumpAt`, затем `slipAt`, поэтому совпадение заканчивается событием `reason="jumped"`.
@@ -81,17 +82,18 @@ S = spreadPercent / 100
 k = random(1 - S, 1 + S)
 J0 = Fhand · 4s · inertia
 V = clamp((J0 / m) · k, 120, 1800)
-theta = random(-45°, +45°)
+A = rockJumpAngleSpreadDegrees
+theta = random(-A / 2, +A / 2)
 vx = V · sin(theta)
 vy = -V · cos(theta)
 ```
 
-Экранная ось Y направлена вниз, поэтому `vy` всегда отрицательна. Stationary-автовыскальзывание проверяется отдельно; наличие незавершённого drag target считается движением и не даёт ложного stationary release.
+Экранная ось Y направлена вниз, поэтому для прыжка `vy ≤ 0`: внутри сектора импульс направлен вверх, а на крайних `±90°` он горизонтален. Stationary-автовыскальзывание проверяется отдельно; наличие незавершённого drag target считается движением и не даёт ложного stationary release.
 
 ## UI и схемы
 
-- Серверная settings schema остаётся `20`; localStorage key — `sisyphus-czar-settings-v21`, `v20` и более ранние ключи мигрируются как legacy без потери `trailEnabled` из v20.
-- В группе «Камень» два checkbox и два range-контрола.
+- Серверная settings schema — `21`; localStorage key — `sisyphus-czar-settings-v21`, `v20` и более ранние ключи мигрируются как legacy без потери `trailEnabled` из v20.
+- В группе «Камень» два checkbox и три range-контрола: интервал, угловой разброс и разброс силы.
 - Контролы используют декларативный `enabledWhen`: строка означает checkbox-зависимость, объект `{name, values}` — допустимые значения select. Controller синхронизирует native `disabled`, `.is-disabled`, `aria-disabled` и пояснение после input/change, загрузки и remote settings.
 - `glowOptimizationMode`, `glowTargetFps`, `glowBufferScalePercent`, `glowUpdateFps`, `glowMaxPoints` и `glowDecimation` имеют `scope: "local"`: сохраняются в v21, но фильтруются из version snapshots, server templates и broadcast.
 - Частые range/color/cubic-bezier input объединяются через `requestAnimationFrame`; запись localStorage и сетевой update выполняются на `change` или после debounce `180 ms`.
@@ -108,7 +110,7 @@ vy = -V · cos(theta)
 - `control.granted` возвращает единственный `holderId`.
 - Второй `control.acquire` получает `control.denied {reason:"already_controlled"}`.
 - `control.slipped` использует причины `slipped`, `jumped` или `stationary`; для `jumped` добавляются `angleDegrees`, `inertiaFactor`, `speed`.
-- `settings.update` использует schema `20` и optimistic `settingsRevision`.
+- `settings.update` использует schema `21` и optimistic `settingsRevision`.
 
 ## HTTP
 
@@ -129,7 +131,7 @@ vy = -V · cos(theta)
 ## Безопасность и производительность
 
 - Origin проверяется для HTTP и WebSocket.
-- Числа проходят общие sanitizers; угол прыжка дополнительно clamp’ится до `±45°`.
+- Числа проходят общие sanitizers; ширина углового сектора ограничивается `0–180°`, а итоговый угол импульса — верхней полуплоскостью `±90°`.
 - Fold-зеркало имеет `inert`, `aria-hidden` и `role=presentation`; у клона удаляются `id` и `data-testid`.
 - Production CSP разрешает scripts только своего origin.
 - Container работает от непривилегированного пользователя с read-only root filesystem.

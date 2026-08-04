@@ -609,14 +609,14 @@ test("импульс отпускания учитывает массу, сил�
   assert.equal(state.dragging, false);
 });
 
-test("выпрыгивание всегда направлено вверх в секторе ±45 градусов", () => {
+test("выпрыгивание поддерживает весь верхний сектор ±90 градусов", () => {
   const physics = Physics.sanitizePhysics({
     mass: 1,
     handForce: 50,
     inertia: 0.9,
   });
 
-  for (const angle of [-90, -45, 0, 45, 90]) {
+  for (const angle of [-120, -90, -45, 0, 45, 90, 120]) {
     const state = Physics.sanitizeState({
       phase: Physics.PHASES.PLAY,
       x: 500,
@@ -630,9 +630,9 @@ test("выпрыгивание всегда направлено вверх в �
       angle === 0 ? 0 : 2,
     );
 
-    assert.ok(result.angleDegrees >= -45 && result.angleDegrees <= 45);
+    assert.equal(result.angleDegrees, Physics.clamp(angle, -90, 90));
     assert.ok(result.speed >= Physics.ROCK_JUMP_MIN_SPEED);
-    assert.ok(state.vy < 0);
+    assert.ok(state.vy <= 0);
     assert.equal(Math.sign(state.vx), Math.sign(result.angleDegrees));
     assert.equal(state.dragging, false);
     assert.equal(state.suspended, false);
