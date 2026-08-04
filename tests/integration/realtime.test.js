@@ -244,7 +244,7 @@ test("debug-каталог шаблонов общий для разных ли�
   const entry = {
     id: "shared-browser-template",
     name: "Межбраузерный шаблон",
-    settingsSchemaVersion: 18,
+    settingsSchemaVersion: 20,
     createdAt: "2026-07-27T19:00:00.000Z",
     updatedAt: "2026-07-27T19:00:00.000Z",
     settings: { gravity: 8.25, sceneHeightScreens: 7 },

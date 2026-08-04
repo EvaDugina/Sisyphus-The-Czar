@@ -678,7 +678,6 @@
     canLift,
     handAcceleration,
     groundFrictionAcceleration,
-    maxHoldMs,
     dragLiftSpeed,
     dragDropSpeed,
     dragDeficitLiftSpeed,

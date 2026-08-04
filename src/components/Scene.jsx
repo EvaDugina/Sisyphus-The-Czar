@@ -29,6 +29,15 @@ export function Scene({ scene, trail, rain }) {
       />
       <RockImprint rockImprintRef={scene.rockImprintRef} />
       <Rock rockRef={scene.rockRef} />
+      <div
+        ref={scene.heightGateStatusRef}
+        className="height-gate-status"
+        data-testid="height-gate-status"
+        role="status"
+        aria-live="polite"
+        aria-hidden="true"
+        hidden
+      />
       <div ref={scene.remoteCursorLayerRef} className="remote-cursors" aria-hidden="true" />
       <div ref={scene.handCursorRef} className="hand-cursor" aria-hidden="true" />
     </main>

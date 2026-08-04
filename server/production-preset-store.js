@@ -6,7 +6,7 @@ const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
 
 const STORE_VERSION = 1;
-const SETTINGS_SCHEMA_VERSION = 21;
+const SETTINGS_SCHEMA_VERSION = 22;
 const MAX_SOURCE_ID_LENGTH = 180;
 const MAX_SOURCE_NAME_LENGTH = 120;
 

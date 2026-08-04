@@ -3,6 +3,7 @@ import {
   settingsGroupControls,
 } from "../config/settings.mjs";
 import { SettingsControl } from "./SettingsControl";
+import { WindowObstaclePermissionControl } from "./WindowObstaclePermissionControl";
 
 export function SettingsPanel({
   panelRef,
@@ -114,6 +115,9 @@ export function SettingsPanel({
               aria-label={`${group.title}: ${subgroup.title}`}
             >
               <h3>{subgroup.title}</h3>
+              {subgroup.permissionControl === "window-obstacle" && (
+                <WindowObstaclePermissionControl />
+              )}
               {settingsGroupControls(subgroup).map((control) => (
                 <SettingsControl control={control} key={control.name} />
               ))}

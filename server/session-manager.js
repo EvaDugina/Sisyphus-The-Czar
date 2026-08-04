@@ -129,7 +129,12 @@ function hasSessionBootstrapPayload(payload) {
 }
 
 function settingsEqual(left, right, keys) {
-  return keys.every((key) => Object.is(left[key], right[key]));
+  return keys.every((key) => {
+    if (Array.isArray(left[key]) || Array.isArray(right[key])) {
+      return JSON.stringify(left[key] || []) === JSON.stringify(right[key] || []);
+    }
+    return Object.is(left[key], right[key]);
+  });
 }
 
 class SessionManager {
@@ -239,6 +244,8 @@ class SessionManager {
       firstFallAt: null,
       stationaryHoldSince: null,
       stationaryHoldPosition: null,
+      passedHeightGateIds: new Set(),
+      activeHeightGate: null,
       summitElapsedMs: 0,
       summitRunningSince: summitInside ? now : null,
       summitWasInside: summitInside,
@@ -371,6 +378,7 @@ class SessionManager {
       );
       session.roomSettings = nextRoomSettings;
       this.syncHolderBehaviorTimers(session, previousRoomSettings);
+      this.reconcileHeightGateProgress(session);
     }
     if (physicsChanged) {
       session.physics = nextPhysics;
@@ -405,6 +413,12 @@ class SessionManager {
       groundTouchSeq: session.groundTouchSeq,
       summitElapsedMs: session.summitElapsedMs,
       summitRunningSince: session.summitRunningSince,
+      heightGateProgress: {
+        passedGateIds: [...session.passedHeightGateIds],
+        activeGate: session.activeHeightGate
+          ? { ...session.activeHeightGate }
+          : null,
+      },
     }));
   }
 
@@ -483,6 +497,33 @@ class SessionManager {
       };
       const lastPointerAt = finite(record.lastPointerAt, 0);
       const releasePointer = pointerVelocityAt(lastPointer, lastPointerAt, now);
+      const configuredHeightGateIds = new Set(
+        roomSettings.heightGates.map((gate) => gate.id)
+      );
+      const passedHeightGateIds = new Set(
+        Array.isArray(record.heightGateProgress?.passedGateIds)
+          ? record.heightGateProgress.passedGateIds.filter((id) =>
+              configuredHeightGateIds.has(id)
+            )
+          : []
+      );
+      const storedActiveGate = record.heightGateProgress?.activeGate;
+      const configuredActiveGate = roomSettings.heightGates.find(
+        (gate) => gate.id === storedActiveGate?.id
+      );
+      const activeHeightGate =
+        configuredActiveGate &&
+        Number.isFinite(Number(storedActiveGate?.unlockAt)) &&
+        Number(storedActiveGate.unlockAt) > now
+          ? {
+              id: configuredActiveGate.id,
+              heightPercent: configuredActiveGate.heightPercent,
+              unlockAt: Number(storedActiveGate.unlockAt),
+            }
+          : null;
+      if (configuredActiveGate && !activeHeightGate) {
+        passedHeightGateIds.add(configuredActiveGate.id);
+      }
 
       let releasedStoredDrag = false;
       if (record.state?.dragging) {
@@ -534,6 +575,8 @@ class SessionManager {
         firstFallAt: null,
         stationaryHoldSince: null,
         stationaryHoldPosition: null,
+        passedHeightGateIds,
+        activeHeightGate,
         summitElapsedMs,
         summitRunningSince,
         summitWasInside: summitInside,
@@ -542,6 +585,12 @@ class SessionManager {
         lastPointerAt,
         dirty: true,
       };
+
+      if (activeHeightGate) {
+        const gateY =
+          Physics.WORLD_HEIGHT * (1 - activeHeightGate.heightPercent / 100);
+        session.state.y = Math.max(session.state.y, gateY);
+      }
 
       if (releasedStoredDrag) {
         this.stopSummitTimer(session, now);
@@ -759,6 +808,101 @@ class SessionManager {
     );
   }
 
+  heightGateY(gate) {
+    return Physics.WORLD_HEIGHT * (1 - gate.heightPercent / 100);
+  }
+
+  heightGateState(session) {
+    return {
+      passedGateIds: [...session.passedHeightGateIds],
+      activeGate: session.activeHeightGate
+        ? { ...session.activeHeightGate }
+        : null,
+    };
+  }
+
+  broadcastHeightGateState(session, type) {
+    const payload = {
+      ...this.heightGateState(session),
+      serverTime: this.now(),
+    };
+    session.clients.forEach((client) => this.sendTo(client, type, payload));
+  }
+
+  reconcileHeightGateProgress(session, now = this.now()) {
+    const configuredIds = new Set(
+      session.roomSettings.heightGates.map((gate) => gate.id)
+    );
+    session.passedHeightGateIds = new Set(
+      [...session.passedHeightGateIds].filter((id) => configuredIds.has(id))
+    );
+    const activeConfig = session.roomSettings.heightGates.find(
+      (gate) => gate.id === session.activeHeightGate?.id
+    );
+    if (!activeConfig) {
+      const hadActiveGate = Boolean(session.activeHeightGate);
+      session.activeHeightGate = null;
+      if (hadActiveGate) {
+        this.broadcastHeightGateState(session, "heightGate.released");
+      }
+      return hadActiveGate;
+    }
+    session.activeHeightGate.heightPercent = activeConfig.heightPercent;
+    return this.completeActiveHeightGate(session, now);
+  }
+
+  activateHeightGate(session, gate, now = this.now()) {
+    if (
+      !gate ||
+      session.activeHeightGate ||
+      session.passedHeightGateIds.has(gate.id)
+    ) {
+      return false;
+    }
+    session.activeHeightGate = {
+      id: gate.id,
+      heightPercent: gate.heightPercent,
+      unlockAt: now + gate.durationSeconds * 1000,
+    };
+    this.broadcastHeightGateState(session, "heightGate.activated");
+    return true;
+  }
+
+  completeActiveHeightGate(session, now = this.now()) {
+    const active = session.activeHeightGate;
+    if (!active || now < active.unlockAt) {
+      return false;
+    }
+    session.passedHeightGateIds.add(active.id);
+    session.activeHeightGate = null;
+    this.markChanged(session);
+    this.broadcastHeightGateState(session, "heightGate.released");
+    return true;
+  }
+
+  constrainHeightGateMovement(session, fromY, desiredY, now = this.now()) {
+    this.completeActiveHeightGate(session, now);
+    const active = session.activeHeightGate;
+    if (active) {
+      return Math.max(desiredY, this.heightGateY(active));
+    }
+    if (desiredY >= fromY) {
+      return desiredY;
+    }
+    const gate = session.roomSettings.heightGates.find((candidate) => {
+      if (session.passedHeightGateIds.has(candidate.id)) {
+        return false;
+      }
+      const gateY = this.heightGateY(candidate);
+      return fromY >= gateY && desiredY <= gateY;
+    });
+    if (!gate) {
+      return desiredY;
+    }
+    this.activateHeightGate(session, gate, now);
+    return this.heightGateY(gate);
+  }
+
   clearStationaryHold(session) {
     session.stationaryHoldSince = null;
     session.stationaryHoldPosition = null;
@@ -772,11 +916,7 @@ class SessionManager {
     const state = session.state;
     const holder = this.activeHolder(session);
     const isOnGround = state.y >= Physics.WORLD_HEIGHT - STATIONARY_POSITION_EPSILON;
-    if (
-      !state.dragging ||
-      !holder ||
-      isOnGround
-    ) {
+    if (!state.dragging || !holder || isOnGround) {
       this.clearStationaryHold(session);
       return false;
     }
@@ -1254,15 +1394,16 @@ class SessionManager {
       return false;
     }
 
+    const now = this.now();
     holder.x = Physics.clamp(finite(payload.x, state.x), 0, Physics.WORLD_WIDTH);
     holder.y = Physics.clamp(finite(payload.y, state.y), 0, Physics.WORLD_HEIGHT);
     holder.vx = Physics.clamp(finite(payload.vx, holder.vx), -4000, 4000);
     holder.vy = Physics.clamp(finite(payload.vy, holder.vy), -9000, 9000);
-    holder.lastMoveAt = this.now();
+    holder.lastMoveAt = now;
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
-    this.syncDrag(session);
+    this.syncDrag(session, now);
     this.markChanged(session);
     return true;
   }
@@ -1585,6 +1726,7 @@ class SessionManager {
       );
       session.roomSettings = nextRoomSettings;
       this.syncHolderBehaviorTimers(session, previousRoomSettings);
+      this.reconcileHeightGateProgress(session);
     }
     if (physicsChanged) {
       session.physics = nextPhysics;
@@ -1641,6 +1783,7 @@ class SessionManager {
     rescaleSceneVerticalMotion(session, previousRoomSettings, nextRoomSettings);
     session.roomSettings = nextRoomSettings;
     this.syncHolderBehaviorTimers(session, previousRoomSettings);
+    this.reconcileHeightGateProgress(session);
     session.settingsRevision += 1;
     this.markChanged(session);
     this.broadcastSnapshot(session, { includeConfig: true });
@@ -1672,6 +1815,9 @@ class SessionManager {
     session.imprint = Physics.createSummitImprint(payload.imprint);
     session.holder = null;
     session.firstFallAt = null;
+    session.passedHeightGateIds = new Set();
+    session.activeHeightGate = null;
+    this.clearStationaryHold(session);
     session.lastPointer = { vx: 0, vy: 0 };
     session.lastPointerAt = now;
     session.accumulator = 0;
@@ -1906,6 +2052,8 @@ class SessionManager {
         }
       });
 
+      this.completeActiveHeightGate(session, now);
+
       if (this.updateStationaryHold(session, now)) {
         const stationaryHolder = this.activeHolder(session);
         if (stationaryHolder) {
@@ -1951,6 +2099,7 @@ class SessionManager {
         session.accumulator >= Physics.FIXED_STEP_SECONDS &&
         Physics.isMoving(session.state)
       ) {
+        const previousY = session.state.y;
         const wasAboveGround = session.state.y < Physics.WORLD_HEIGHT - 0.01;
         const dragHolder = this.activeHolder(session);
         const stepped = session.state.dragging && dragHolder
@@ -1968,6 +2117,18 @@ class SessionManager {
               Physics.FIXED_STEP_SECONDS,
               sceneMotionOptions(session)
             );
+        if (session.state.dragging && dragHolder) {
+          const constrainedY = this.constrainHeightGateMovement(
+            session,
+            previousY,
+            session.state.y,
+            now
+          );
+          if (constrainedY !== session.state.y) {
+            session.state.y = constrainedY;
+            session.state.vy = 0;
+          }
+        }
         if (wasAboveGround && session.state.y >= Physics.WORLD_HEIGHT - 0.01) {
           groundTouched = true;
         }
@@ -2024,6 +2185,7 @@ class SessionManager {
       settingsRevision: session.settingsRevision,
       revision: session.revision,
       serverTime,
+      heightGateState: this.heightGateState(session),
     };
     if (normalized.includeConfig) {
       payload.physics = { ...session.physics };

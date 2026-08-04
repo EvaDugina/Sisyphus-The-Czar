@@ -45,7 +45,7 @@ function setup(options = {}) {
     soundRandom: options.soundRandom || (() => 0.5),
     slipDelayMinMs: options.slipDelayMinMs,
     slipDelayMaxMs: options.slipDelayMaxMs,
-    stationaryHoldReleaseMs: options.stationaryHoldReleaseMs ?? 10_000,
+    stationaryHoldReleaseMs: options.stationaryHoldReleaseMs,
     audioLeadMs: options.audioLeadMs,
     productionPresetSelectionEnabled:
       options.productionPresetSelectionEnabled,
@@ -255,10 +255,7 @@ test("подвешенный play-старт не двигается до пер
 });
 
 test("секундомер вершины останавливается с последней рукой и продолжается при новом входе", () => {
-  const { clock, manager } = setup({
-    slipDelayMinMs: 10_000,
-    slipDelayMaxMs: 10_000,
-  });
+  const { clock, manager } = setup();
   clock.value = 1000;
   const session = manager.createSession({
     state: {
@@ -1757,8 +1754,8 @@ test("первый старт сохраняет отпечаток без фи�
   assert.ok(session.state.y < 700);
 });
 
-test("каждый захват получает случайное окно соскальзывания 0.5–2 секунды", () => {
-  const { manager } = setup({ random: () => 0.5 });
+test("захват получает независимые таймеры случайного выпадения и прыжка", () => {
+  const { clock, manager } = setup();
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
   });
@@ -2067,6 +2064,118 @@ test("победный отпечаток не блокирует случайн
   );
 });
 
+test("метки высоты блокируют только подъём и срабатывают по одному разу", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 1500 },
+    roomSettings: {
+      heightGates: [
+        { id: "lower", heightPercent: 30, durationSeconds: 2 },
+        { id: "upper", heightPercent: 70, durationSeconds: 5 },
+      ],
+    },
+  });
+  const holder = connect(manager, session, "client-height-gates01");
+
+  clock.value = 100;
+  assert.equal(manager.constrainHeightGateMovement(session, 1500, 1100), 1400);
+  assert.deepEqual(session.activeHeightGate, {
+    id: "lower",
+    heightPercent: 30,
+    unlockAt: 2100,
+  });
+  assert.equal(
+    holder.socket.messages.findLast(
+      (message) => message.type === "heightGate.activated"
+    ).payload.activeGate.id,
+    "lower"
+  );
+
+  assert.equal(manager.constrainHeightGateMovement(session, 1400, 1500), 1500);
+  assert.equal(manager.constrainHeightGateMovement(session, 1400, 1000), 1400);
+
+  clock.value = 2100;
+  assert.equal(manager.constrainHeightGateMovement(session, 1400, 1000), 1000);
+  assert.deepEqual([...session.passedHeightGateIds], ["lower"]);
+  assert.equal(session.activeHeightGate, null);
+
+  assert.ok(
+    Math.abs(manager.constrainHeightGateMovement(session, 1000, 400) - 600) <
+      1e-9,
+  );
+  assert.deepEqual(session.activeHeightGate, {
+    id: "upper",
+    heightPercent: 70,
+    unlockAt: 7100,
+  });
+
+  clock.value = 7100;
+  assert.equal(manager.constrainHeightGateMovement(session, 600, 400), 400);
+  assert.equal(manager.constrainHeightGateMovement(session, 400, 1500), 1500);
+  assert.equal(manager.constrainHeightGateMovement(session, 1500, 300), 300);
+  assert.deepEqual([...session.passedHeightGateIds], ["lower", "upper"]);
+  assert.equal(
+    holder.socket.messages.filter(
+      (message) => message.type === "heightGate.activated"
+    ).length,
+    2
+  );
+});
+
+test("прогресс меток сохраняется после restore и очищается только restart", () => {
+  const firstSetup = setup();
+  const session = firstSetup.manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 1500 },
+    roomSettings: {
+      heightGates: [
+        { id: "persisted", heightPercent: 40, durationSeconds: 3 },
+      ],
+    },
+  });
+  const holder = connect(firstSetup.manager, session, "client-gate-persist1");
+  firstSetup.clock.value = 100;
+  session.state.y = firstSetup.manager.constrainHeightGateMovement(
+    session,
+    1500,
+    900,
+  );
+  const record = firstSetup.manager.serializeSessions()[0];
+  assert.deepEqual(record.heightGateProgress, {
+    passedGateIds: [],
+    activeGate: { id: "persisted", heightPercent: 40, unlockAt: 3100 },
+  });
+
+  const restoredSetup = setup();
+  restoredSetup.clock.value = 1000;
+  assert.equal(restoredSetup.manager.restoreSessions([record]), 1);
+  const restored = restoredSetup.manager.getSession(record.id);
+  assert.equal(restored.state.y, 1200);
+  const reconnected = connect(
+    restoredSetup.manager,
+    restored,
+    "client-gate-reconnect"
+  );
+  assert.deepEqual(
+    reconnected.socket.messages.findLast(
+      (message) => message.type === "session.snapshot"
+    ).payload.heightGateState,
+    {
+      passedGateIds: [],
+      activeGate: { id: "persisted", heightPercent: 40, unlockAt: 3100 },
+    }
+  );
+
+  restoredSetup.clock.value = 3100;
+  restoredSetup.manager.tick();
+  assert.deepEqual([...restored.passedHeightGateIds], ["persisted"]);
+  assert.equal(restored.activeHeightGate, null);
+  restoredSetup.manager.restartSession(restored, {
+    phase: Physics.PHASES.PLAY,
+  });
+  assert.deepEqual([...restored.passedHeightGateIds], []);
+  assert.equal(restored.activeHeightGate, null);
+});
+
 test("финальное падение по умолчанию выключено", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({
@@ -2228,6 +2337,7 @@ test("в каждый момент камень может удерживать 
   const session = manager.createSession({
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
     physics: { gravity: 0.45, turbulence: 0, bounce: 0 },
+    roomSettings: { stationaryAutoSlipEnabled: false },
   });
   const first = connect(manager, session, "client-slip-catch1");
   const second = connect(manager, session, "client-slip-catch2");

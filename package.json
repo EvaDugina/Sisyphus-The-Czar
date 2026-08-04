@@ -15,7 +15,7 @@
     "lint": "npm run lint:server && npm run lint:frontend",
     "lint:server": "node --check server/index.js && node --check server/session-manager.js && node --check server/session-store.js && node --check server/production-preset-store.js && node --check server/settings-template-store.js && node --check shared/physics.js",
     "lint:frontend": "eslint src vite.config.mjs",
-    "test": "node --test tests/unit/physics.test.js tests/unit/session-manager.test.js tests/unit/session-store.test.js tests/unit/production-preset-store.test.js tests/unit/settings-template-store.test.js tests/unit/server.test.js tests/unit/frontend-model.test.mjs tests/unit/crossfaded-audio-loop.test.mjs tests/integration/realtime.test.js",
+    "test": "node --test tests/unit/physics.test.js tests/unit/session-manager.test.js tests/unit/session-store.test.js tests/unit/production-preset-store.test.js tests/unit/settings-template-store.test.js tests/unit/server.test.js tests/unit/frontend-model.test.mjs tests/unit/crossfaded-audio-loop.test.mjs tests/unit/window-obstacle-controller.test.mjs tests/integration/realtime.test.js",
     "test:smoke": "npm run test:smoke:prod",
     "test:smoke:prod": "playwright test tests/smoke/prod.spec.js",
     "test:smoke:dev": "playwright test --config=playwright.dev.config.js",

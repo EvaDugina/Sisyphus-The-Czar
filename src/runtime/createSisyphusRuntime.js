@@ -44,6 +44,11 @@ import {
   settings as productionSettings,
 } from "../config/production-preset.mjs";
 import { createSettingsController } from "./createSettingsController.js";
+import {
+  createWindowObstacleController,
+  WINDOW_OBSTACLE_PERMISSION,
+  windowObstacleHeightVh,
+} from "./createWindowObstacleController.js";
 
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
@@ -110,6 +115,8 @@ export function createSisyphusRuntime(elements = {}) {
   const rock = elements.rock || document.querySelector(".rock");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
   const handCursor = elements.handCursor || document.querySelector(".hand-cursor");
+  const heightGateStatus =
+    elements.heightGateStatus || document.querySelector(".height-gate-status");
   const remoteCursorLayer = elements.remoteCursorLayer || document.querySelector(".remote-cursors");
   const trailCanvas = elements.trailCanvas || document.querySelector(".trail");
   const trailCtx = trailCanvas.getContext("2d");
@@ -120,6 +127,15 @@ export function createSisyphusRuntime(elements = {}) {
   const rainFxCanvas = elements.rainFxCanvas || document.querySelector(".weather-rain__canvas--fx");
   const rainFallbackCanvas = elements.rainFallbackCanvas || document.querySelector(".weather-rain__canvas--fallback");
   const sessionStatus = elements.sessionStatus || document.querySelector("[data-session-status]");
+  const windowObstaclePopupStatus = document.querySelector(
+    "[data-window-obstacle-popup-status]",
+  );
+  const windowObstaclePopupHelp = document.querySelector(
+    "[data-window-obstacle-popup-help]",
+  );
+  const windowObstaclePopupTest = document.querySelector(
+    "[data-window-obstacle-popup-test]",
+  );
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
@@ -201,8 +217,6 @@ export function createSisyphusRuntime(elements = {}) {
     themeMode: DEFAULT_THEME_MODE,
     returnScrollDurationSeconds: DEFAULT_RETURN_SCROLL_DURATION_SECONDS,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
-    stationaryAutoSlipEnabled:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.stationaryAutoSlipEnabled,
     positionScrollEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEnabled,
     positionScrollZonePercent:
@@ -345,7 +359,6 @@ export function createSisyphusRuntime(elements = {}) {
     dragging: false,
     suspended: false,
     activePointerId: null,
-    holdTimerId: null,
     firstFallTriggered: false,
     firstFallTouchY: null,
     introFallTimerId: null,
@@ -507,6 +520,12 @@ export function createSisyphusRuntime(elements = {}) {
     lastRenderAt: 0,
     imprint: null,
     groundTouchSeq: null,
+    heightGateState: {
+      passedGateIds: new Set(),
+      activeGate: null,
+    },
+    heightGateDeadlineAt: 0,
+    heightGateTickerId: null,
     releaseHandoff: {
       active: false,
       fromX: 0,
@@ -667,6 +686,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function settingValueToControlValue(key, value) {
+    if (key === "heightGates") {
+      return JSON.stringify(SharedRoomSettings.sanitizeHeightGates(value));
+    }
     if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
       const seconds = Number(value) / 1000;
       return Number.isFinite(seconds) ? String(seconds) : "0";
@@ -680,6 +702,15 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (input.type === "checkbox") {
       return Boolean(input.checked);
+    }
+    if (key === "heightGates") {
+      try {
+        return SharedRoomSettings.sanitizeHeightGates(
+          JSON.parse(input.value || "[]"),
+        );
+      } catch {
+        return [];
+      }
     }
     if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
       const seconds = Number(input.value);
@@ -713,6 +744,44 @@ export function createSisyphusRuntime(elements = {}) {
     settingValueToControlValue,
     settingsPanel: elements.settingsPanel,
     stageControlChange,
+  });
+  const windowObstacleController = createWindowObstacleController({
+    getHeightVh: () => {
+      const canonical = localToCanonical(motion.x, motion.y);
+      return windowObstacleHeightVh(
+        canonical.y,
+        params.sceneHeightScreens,
+        SharedPhysics.WORLD_HEIGHT,
+      );
+    },
+    getSettings: () => SharedRoomSettings.sanitizeRoomSettings(params),
+    onActiveWindowsChange: (count) => {
+      const blocked = count > 0;
+      body.classList.toggle("is-window-obstacle-active", blocked);
+      rock.classList.toggle("is-window-obstacle-blocked", blocked);
+      if (blocked) {
+        rock.setAttribute("aria-disabled", "true");
+        if (motion.dragging) {
+          forceReleaseRock({ neutral: true });
+        }
+      } else {
+        rock.removeAttribute("aria-disabled");
+      }
+    },
+    onPermissionChange: (permission, label) => {
+      if (windowObstaclePopupStatus) {
+        windowObstaclePopupStatus.dataset.state = permission;
+        windowObstaclePopupStatus.textContent = label;
+      }
+      if (windowObstaclePopupHelp) {
+        windowObstaclePopupHelp.hidden =
+          permission !== WINDOW_OBSTACLE_PERMISSION.BLOCKED;
+      }
+      if (windowObstaclePopupTest) {
+        windowObstaclePopupTest.disabled =
+          permission === WINDOW_OBSTACLE_PERMISSION.TEST_OPENED;
+      }
+    },
   });
   const settingsUiEnabled = settingsController.enabled;
 
@@ -1802,10 +1871,6 @@ export function createSisyphusRuntime(elements = {}) {
     body.classList.add(`state-${phase}`);
   }
 
-  function maxHoldMs() {
-    return SharedPhysics.maxHoldMs(params);
-  }
-
   function settingsChangeContext(options = {}) {
     const changedKey = options.changedKey || "";
     const hasExplicitChangedKeys = Array.isArray(options.changedKeys);
@@ -2061,6 +2126,7 @@ export function createSisyphusRuntime(elements = {}) {
         scheduleSharedRoomSettingsUpdate();
       }
     }
+    windowObstacleController.refresh();
   }
 
   function readControls(options = {}) {
@@ -2217,6 +2283,7 @@ export function createSisyphusRuntime(elements = {}) {
     rock.style.setProperty("--rock-y", `${motion.y}px`);
     applyRockScale();
     syncDrizzleLoopVolume();
+    windowObstacleController.refresh();
   }
 
   function createSummitSharedImprint(input = {}) {
@@ -2331,9 +2398,12 @@ export function createSisyphusRuntime(elements = {}) {
     const progress = SharedPhysics.dragFollowProgress(params, deltaSeconds, {
       forceDeficitCurve: handForceDeficitCurve,
     });
+    const nextX = motion.x + (motion.dragTargetX - motion.x) * progress;
+    const desiredY = motion.y + (motion.dragTargetY - motion.y) * progress;
+    const nextY = constrainLocalHeightGateY(motion.y, desiredY);
     setPosition(
-      motion.x + (motion.dragTargetX - motion.x) * progress,
-      motion.y + (motion.dragTargetY - motion.y) * progress,
+      nextX,
+      nextY,
     );
   }
 
@@ -2864,6 +2934,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function roomSettingValueEqual(key, left, right) {
+    if (key === "heightGates") {
+      return (
+        JSON.stringify(SharedRoomSettings.sanitizeHeightGates(left)) ===
+        JSON.stringify(SharedRoomSettings.sanitizeHeightGates(right))
+      );
+    }
     if (BOOLEAN_ROOM_SETTING_KEYS.has(key)) {
       const leftBool = left === true || left === "true";
       const rightBool = right === true || right === "true";
@@ -2877,7 +2953,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function roomSettingsSignature(settings) {
     const clean = SharedRoomSettings.sanitizeRoomSettings(settings, params);
-    return SHARED_ROOM_SETTING_KEYS.map((key) => clean[key]).join(":");
+    return JSON.stringify(clean);
   }
 
   function applySharedRoomSettings(roomSettings) {
@@ -2921,6 +2997,7 @@ export function createSisyphusRuntime(elements = {}) {
           input.checked = Boolean(remoteValue);
         } else {
           input.value = settingValueToControlValue(key, remoteValue);
+          input.dispatchEvent(new Event("settings-control-sync"));
         }
         changedKeys.push(key);
       }
@@ -3220,7 +3297,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function resetLocalExperience() {
     const pointerId = motion.activePointerId;
-    clearHoldTimer();
+    resetHeightGateState();
     stopLoop();
     motion.dragging = false;
     motion.activePointerId = null;
@@ -3415,6 +3492,11 @@ export function createSisyphusRuntime(elements = {}) {
       collab.releasePending = false;
       updateSharedHolder(payload.holderId);
       cancelSharedLocalDrag();
+    } else if (
+      message.type === "heightGate.activated" ||
+      message.type === "heightGate.released"
+    ) {
+      syncHeightGateState(payload, payload.serverTime);
       updateSessionStatus();
     } else if (message.type === "control.denied") {
       collab.pendingControl = false;
@@ -3561,6 +3643,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (Object.hasOwn(payload, "roomSettings")) {
       applySharedRoomSettings(payload.roomSettings);
     }
+    syncHeightGateState(payload.heightGateState, payload.serverTime);
     if (collab.settingsUpdateQueued) {
       scheduleSharedSettingsUpdate();
     }
@@ -3833,6 +3916,10 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function beginSharedDrag(event) {
+    if (windowObstacleController.isControlBlocked()) {
+      event.preventDefault();
+      return;
+    }
     if (!collab.connected) {
       updateSessionStatus();
       return;
@@ -3951,11 +4038,11 @@ export function createSisyphusRuntime(elements = {}) {
     updateSessionStatus();
   }
 
-  function forceReleaseSharedDrag(hidePointer = false) {
+  function forceReleaseSharedDrag(hidePointer = false, neutral = false) {
     if (!motion.dragging) {
       return;
     }
-    const canReleaseWithImpulse = sharedDragActive();
+    const canReleaseWithImpulse = !neutral && sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
       : { vx: 0, vy: 0 };
@@ -4541,31 +4628,103 @@ export function createSisyphusRuntime(elements = {}) {
     motion.lastFrameAt = null;
   }
 
-  function clearHoldTimer() {
-    if (motion.holdTimerId === null) {
-      return;
+  function clearHeightGateTicker() {
+    if (collab.heightGateTickerId !== null) {
+      window.clearInterval(collab.heightGateTickerId);
+      collab.heightGateTickerId = null;
     }
-
-    window.clearTimeout(motion.holdTimerId);
-    motion.holdTimerId = null;
   }
 
-  function scheduleHoldLimit() {
-    clearHoldTimer();
-    motion.holdTimerId = window.setTimeout(
-      () => forceReleaseRock(),
-      maxHoldMs()
-    );
+  function activeHeightGateRemainingSeconds(now = performance.now()) {
+    if (!collab.heightGateState.activeGate) {
+      return 0;
+    }
+    return Math.max(0, Math.ceil((collab.heightGateDeadlineAt - now) / 1000));
   }
 
-  function syncHoldLimit() {
-    if (collab.enabled || !motion.dragging || motion.phase !== PHASES.PLAY) {
-      clearHoldTimer();
+  function renderHeightGateStatus() {
+    const active = collab.heightGateState.activeGate;
+    const blocked = Boolean(active);
+    rock.classList.toggle("is-height-gate-blocked", blocked);
+    if (!heightGateStatus) {
       return;
     }
-    if (motion.holdTimerId === null) {
-      scheduleHoldLimit();
+    heightGateStatus.hidden = !blocked;
+    heightGateStatus.setAttribute("aria-hidden", String(!blocked));
+    heightGateStatus.textContent = blocked
+      ? `Остановка на ${active.heightPercent}% · продолжение через ${activeHeightGateRemainingSeconds()} с`
+      : "";
+  }
+
+  function syncHeightGateState(payload = {}, serverTime = Date.now()) {
+    const passedGateIds = Array.isArray(payload.passedGateIds)
+      ? payload.passedGateIds.map(String)
+      : [];
+    const rawActive = payload.activeGate;
+    const activeGate =
+      rawActive &&
+      typeof rawActive.id === "string" &&
+      Number.isFinite(Number(rawActive.heightPercent)) &&
+      Number.isFinite(Number(rawActive.unlockAt))
+        ? {
+            id: rawActive.id,
+            heightPercent: Number(rawActive.heightPercent),
+            unlockAt: Number(rawActive.unlockAt),
+          }
+        : null;
+    collab.heightGateState = {
+      passedGateIds: new Set(passedGateIds),
+      activeGate,
+    };
+    clearHeightGateTicker();
+    collab.heightGateDeadlineAt = activeGate
+      ? performance.now() + Math.max(0, activeGate.unlockAt - Number(serverTime))
+      : 0;
+    renderHeightGateStatus();
+    if (activeGate) {
+      collab.heightGateTickerId = window.setInterval(
+        renderHeightGateStatus,
+        250,
+      );
     }
+  }
+
+  function resetHeightGateState() {
+    clearHeightGateTicker();
+    collab.heightGateState = {
+      passedGateIds: new Set(),
+      activeGate: null,
+    };
+    collab.heightGateDeadlineAt = 0;
+    renderHeightGateStatus();
+  }
+
+  function heightGateCanonicalY(gate) {
+    return SharedPhysics.WORLD_HEIGHT * (1 - gate.heightPercent / 100);
+  }
+
+  function constrainLocalHeightGateY(fromY, desiredY) {
+    if (!collab.enabled || desiredY >= fromY) {
+      return desiredY;
+    }
+    const fromCanonicalY = localToCanonical(0, fromY).y;
+    const desiredCanonicalY = localToCanonical(0, desiredY).y;
+    const active = collab.heightGateState.activeGate;
+    const gate =
+      active ||
+      SharedRoomSettings.sanitizeHeightGates(params.heightGates).find(
+        (candidate) => {
+          if (collab.heightGateState.passedGateIds.has(candidate.id)) {
+            return false;
+          }
+          const gateY = heightGateCanonicalY(candidate);
+          return fromCanonicalY >= gateY && desiredCanonicalY <= gateY;
+        },
+      );
+    if (!gate) {
+      return desiredY;
+    }
+    return canonicalToLocal(0, heightGateCanonicalY(gate)).y;
   }
 
   function rockInsideImprint() {
@@ -4698,7 +4857,6 @@ export function createSisyphusRuntime(elements = {}) {
       (motion.phase === PHASES.INTRO || motion.phase === PHASES.PLAY)
     ) {
       applyDragTargetMovement(deltaSeconds);
-      syncHoldLimit();
       syncReturnTheme();
     }
 
@@ -4767,9 +4925,10 @@ export function createSisyphusRuntime(elements = {}) {
     motion.suspended = false;
   }
 
-  function forceReleaseRock() {
+  function forceReleaseRock(options = {}) {
+    const neutral = options.neutral === true;
     if (collab.enabled) {
-      forceReleaseSharedDrag(true);
+      forceReleaseSharedDrag(true, neutral);
       return;
     }
 
@@ -4785,7 +4944,6 @@ export function createSisyphusRuntime(elements = {}) {
       releasedInImprint && syncFinalFallGate();
     motion.dragging = false;
     motion.activePointerId = null;
-    motion.holdTimerId = null;
     rock.classList.remove("is-dragging");
     setGrabbingCursor(false);
     releasePointerCapture(pointerId);
@@ -4793,6 +4951,10 @@ export function createSisyphusRuntime(elements = {}) {
     resetFinalFallGate();
     if (finalFallReady) {
       beginFinalReturnFall();
+    } else if (neutral) {
+      motion.vx = 0;
+      motion.vy = 0;
+      motion.suspended = false;
     } else {
       applyReleaseImpulse();
     }
@@ -4808,6 +4970,11 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     if (motion.phase !== PHASES.PLAY) {
+      return;
+    }
+
+    if (windowObstacleController.isControlBlocked()) {
+      event.preventDefault();
       return;
     }
 
@@ -4837,7 +5004,6 @@ export function createSisyphusRuntime(elements = {}) {
     rock.classList.remove("is-falling");
     rock.classList.add("is-dragging");
     rock.setPointerCapture(event.pointerId);
-    syncHoldLimit();
     syncReturnTheme();
     startLoop();
   }
@@ -4848,11 +5014,12 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    moveHandCursor(event);
-
     if (!motion.dragging || motion.phase !== PHASES.PLAY) {
+      moveHandCursor(event);
       return;
     }
+
+    moveHandCursor(event);
 
     event.preventDefault();
     recordPointerVelocity(event);
@@ -4874,7 +5041,6 @@ export function createSisyphusRuntime(elements = {}) {
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
     const finalFallReady =
       releasedInImprint && syncFinalFallGate();
-    clearHoldTimer();
     motion.dragging = false;
     motion.activePointerId = null;
     rock.classList.remove("is-dragging");
@@ -4921,7 +5087,6 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    clearHoldTimer();
     motion.dragging = false;
     motion.activePointerId = null;
     rock.classList.remove("is-dragging");
@@ -4934,6 +5099,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   settingsController.bind();
+  listen(windowObstaclePopupTest, "click", () => {
+    windowObstacleController.testPopupPermission();
+  });
 
   // Открытием панели управляет React-хук useSettings.
   listen(rock, "pointerenter", enterRock);
@@ -5059,6 +5227,14 @@ export function createSisyphusRuntime(elements = {}) {
         serverTime: summitTimer.serverTime,
         text: summitTimerElement?.textContent || "",
       }),
+      getHeightGateState: () => ({
+        activeGate: collab.heightGateState.activeGate
+          ? { ...collab.heightGateState.activeGate }
+          : null,
+        passedGateIds: [...collab.heightGateState.passedGateIds],
+        remainingSeconds: activeHeightGateRemainingSeconds(),
+      }),
+      getWindowObstacleState: windowObstacleController.getState,
       fitTopInscription,
       drawTrail,
       getGlowRenderState: () => ({
@@ -5131,12 +5307,13 @@ export function createSisyphusRuntime(elements = {}) {
       stopLoop();
       cancelGlowRenderSchedule();
       settingsController.dispose?.();
+      windowObstacleController.dispose();
       document.documentElement.classList.remove(
         "is-manual-scroll-disabled",
       );
       body.classList.remove("is-manual-scroll-disabled");
       stopRainRenderers();
-      clearHoldTimer();
+      resetHeightGateState();
       clearFirstFallTimer();
       clearSharedConnectionTimers();
       clearSharedReleaseHandoff();

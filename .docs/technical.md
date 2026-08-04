@@ -18,7 +18,8 @@ React отвечает за структуру UI, imperative runtime — за r
 3. Клиент соединяется с `WS /realtime?session=<id>&client=<id>`.
 4. Input отправляется не чаще 30 Hz; snapshots публикуются до 20 Hz.
 5. Сервер хранит один `holder` и рассчитывает движение камня.
-6. Trail-дельты личных сессий агрегируются отдельным root trail hub и подтверждаются независимо от физики камня.
+6. Клиентский `createWindowObstacleController` считает высоту центра камня, управляет popup lifecycle и блокирует только input при наличии активных окон; серверный fixed-step цикл продолжает работать.
+7. Trail-дельты личных сессий агрегируются отдельным root trail hub и подтверждаются независимо от физики камня.
 
 `POST /api/sessions/root` сохранён для trail hub и совместимости, но пользовательский runtime к root-комнате не подключается.
 
@@ -29,10 +30,10 @@ React отвечает за структуру UI, imperative runtime — за r
 - `id`, `persistent`, `singleClient`, TTL и empty-grace metadata;
 - `state`: phase, x/y, vx/vy, dragging, controllerId, suspended;
 - `physics`, `physicsVersion=11`;
-- `roomSettings`, `roomSettingsVersion=16`, `settingsRevision`;
+- `roomSettings`, `roomSettingsVersion=17`, `settingsRevision`;
 - `clients: Map<clientId, client>`;
 - `holder: null | {clientId,x,y,vx,vy,acquiredAt,lastMoveAt,slipAt,jumpAt}`;
-- trail, imprint, summit timer, ground touch sequence, final-fall и stationary metadata.
+- trail, imprint, summit timer, ground touch sequence, final-fall, stationary и height-gate metadata.
 
 В модели нет `holders Map`, числа рук, суммарной силы, усреднения pointer или required-holder threshold.
 
@@ -90,12 +91,32 @@ vy = -V · cos(theta)
 
 Экранная ось Y направлена вниз, поэтому для прыжка `vy ≤ 0`: внутри сектора импульс направлен вверх, а на крайних `±90°` он горизонтален. Stationary-автовыскальзывание проверяется отдельно; наличие незавершённого drag target считается движением и не даёт ложного stationary release.
 
+## Препятствие «Окна»
+
+`src/runtime/createWindowObstacleController.js` не участвует в серверной физике и открывает только реальные пустые browser windows через `window.open("", "_blank", features)`. Высота считается из канонической координаты центра камня:
+
+```text
+heightVh = (1 - canonicalY / WORLD_HEIGHT) · sceneHeightScreens · 100
+```
+
+При `canonicalY = WORLD_HEIGHT` получается `0vh`. Диапазон включителен по обеим границам.
+
+- `refresh()` сравнивает signature девяти obstacle-настроек и состояние входа в диапазон. На изменение, выход или dispose текущий schedule timeout отменяется.
+- В диапазоне существует не более одного timeout следующего показа. После успешного открытия следующий интервал выбирается заново; неуспешный `window.open()` переводит permission в `blocked` и не создаёт новый schedule.
+- Каждое окно имеет собственный двухсекундный close timeout и click listener. Все окна отслеживаются независимо в `Map`; один общий interval проверяет `popup.closed` и выключается, когда Map пуст.
+- Ширина и высота выбираются независимо с шагом `10 px`, затем clamp-ятся по `screen.availWidth/availHeight`; позиция учитывает `availLeft/availTop` конкретного экрана.
+- Test popup имеет kind `test`: он меняет состояния `unchecked → test-opened → allowed/blocked`, но не увеличивает obstacle count и не блокирует камень.
+- Runtime при переходе obstacle count `0 → 1` нейтрально освобождает текущий захват без pointer-импульса. Пока count больше нуля, `startDrag` и shared acquire отклоняются; animation/physics loop не останавливается.
+- Выход из диапазона отменяет только будущий schedule. Уже открытые окна сохраняют свои click/auto-close правила.
+
 ## UI и схемы
 
-- Серверная settings schema — `21`; localStorage key — `sisyphus-czar-settings-v21`, `v20` и более ранние ключи мигрируются как legacy без потери `trailEnabled` из v20.
+- Серверная settings schema — `22`; localStorage key — `sisyphus-czar-settings-v22`, `v21`, `v20` и более ранние ключи мигрируются как legacy без потери `trailEnabled` из v20.
+- Shared room settings schema — `17`. Она добавляет `windowObstacleEnabled` и четыре нормализуемые пары: высота `0–10000vh`, interval `0.1–30 s`, ширина `100–1920 px`, высота `100–1080 px`. Миграция старого payload безопасно оставляет препятствие выключенным.
+- Категория единственной руки называется «Рука». «Препятствия → Окна» содержит девять versioned controls и `WindowObstaclePermissionControl` со статусом и test action.
 - В группе «Камень» два checkbox и три range-контрола: интервал, угловой разброс и разброс силы.
 - Контролы используют декларативный `enabledWhen`: строка означает checkbox-зависимость, объект `{name, values}` — допустимые значения select. Controller синхронизирует native `disabled`, `.is-disabled`, `aria-disabled` и пояснение после input/change, загрузки и remote settings.
-- `glowOptimizationMode`, `glowTargetFps`, `glowBufferScalePercent`, `glowUpdateFps`, `glowMaxPoints` и `glowDecimation` имеют `scope: "local"`: сохраняются в v21, но фильтруются из version snapshots, server templates и broadcast.
+- `glowOptimizationMode`, `glowTargetFps`, `glowBufferScalePercent`, `glowUpdateFps`, `glowMaxPoints` и `glowDecimation` имеют `scope: "local"`: сохраняются в v22, но фильтруются из version snapshots, server templates и broadcast.
 - Частые range/color/cubic-bezier input объединяются через `requestAnimationFrame`; запись localStorage и сетевой update выполняются на `change` или после debounce `180 ms`.
 - `FoldLayer` входит в основной `<App />`, читает живой `params` runtime через ref и синхронизирует неинтерактивную копию сцены, canvas-следа и дождя. Для trail-canvas копирование выполняется только при изменении `data-canvas-revision`; rain-canvas сохраняют покадровую синхронизацию.
 - Группа `3D Fold` хранит `draftFoldAngle`, `draftFoldZoneSize`, `draftFoldBlendEnabled`, `draftFoldBlendCurve` в общем `roomSettings`; диапазоны санитизируются сервером и клиентом.
@@ -110,7 +131,7 @@ vy = -V · cos(theta)
 - `control.granted` возвращает единственный `holderId`.
 - Второй `control.acquire` получает `control.denied {reason:"already_controlled"}`.
 - `control.slipped` использует причины `slipped`, `jumped` или `stationary`; для `jumped` добавляются `angleDegrees`, `inertiaFactor`, `speed`.
-- `settings.update` использует schema `21` и optimistic `settingsRevision`.
+- `settings.update` использует schema `22` и optimistic `settingsRevision`.
 
 ## HTTP
 
@@ -132,6 +153,7 @@ vy = -V · cos(theta)
 
 - Origin проверяется для HTTP и WebSocket.
 - Числа проходят общие sanitizers; ширина углового сектора ограничивается `0–180°`, а итоговый угол импульса — верхней полуплоскостью `±90°`.
+- Min/max пары препятствия нормализуются после clamp, поэтому нижняя граница никогда не превышает верхнюю даже для старого или вручную изменённого payload.
 - Fold-зеркало имеет `inert`, `aria-hidden` и `role=presentation`; у клона удаляются `id` и `data-testid`.
 - Production CSP разрешает scripts только своего origin.
 - Container работает от непривилегированного пользователя с read-only root filesystem.
@@ -152,8 +174,9 @@ vy = -V · cos(theta)
 - `npm run build` — production Vite bundle.
 - `npm test` — unit и integration.
 - Production smoke проверяет разные session ID двух браузеров и отсутствие взаимного управления.
-- Draft smoke проверяет идентичность основной Fold-сцены и настроек на `/` и `/drafts/`, сохранение glow-профиля, select-зависимости и безопасную структуру зеркала.
-- Dev smoke проверяет миграцию v20→v21, лимит glow-точек, отсутствие проходов при `glow=0` и копирование Fold только при новой canvas revision.
+- Draft smoke проверяет идентичность основной Fold-сцены и настроек на `/` и `/drafts/`, obstacle defaults, popup-blocked UI, сохранение glow-профиля, select-зависимости и безопасную структуру зеркала.
+- Dev smoke проверяет миграцию v20→v22, лимит glow-точек, отсутствие проходов при `glow=0` и копирование Fold только при новой canvas revision.
+- Unit-тест контроллера использует виртуальные timeout/interval и fake popup: проверяет отсутствие дублирующего schedule, одновременные окна, независимый click/2s close, выход/возврат в диапазон и паузу при блокировке.
 
 Изменения `config/settings-templates.json` и `config/production-preset.json`, полученные через `git pull`, перечитываются при старте сервера; после обновления конфигурации работающий production-контейнер нужно перезапустить.
 

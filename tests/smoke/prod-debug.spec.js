@@ -1,6 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v21";
+const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v22";
 const VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 
 async function openSettingsPanel(page) {
@@ -108,7 +108,7 @@ test("production DEBUG включает UI, draft и изолированные 
             {
               id: "older",
               name: "Старый",
-              settingsSchemaVersion: 18,
+              settingsSchemaVersion: 20,
               createdAt: "2026-07-24T10:00:00.000Z",
               updatedAt: "2026-07-24T10:00:00.000Z",
               settings: {
@@ -119,7 +119,7 @@ test("production DEBUG включает UI, draft и изолированные 
             {
               id: "latest",
               name: "Последний",
-              settingsSchemaVersion: 18,
+              settingsSchemaVersion: 20,
               createdAt: "2026-07-25T10:00:00.000Z",
               updatedAt: "2026-07-25T12:00:00.000Z",
               settings: {

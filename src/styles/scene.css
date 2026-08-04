@@ -160,6 +160,25 @@ body.theme-dark .rock-imprint {
   filter: drop-shadow(0 1.5rem 1.4rem var(--shadow));
 }
 
+.height-gate-status {
+  position: fixed;
+  left: 50%;
+  top: 1rem;
+  z-index: 24;
+  max-width: calc(100vw - 2rem);
+  padding: 0.55rem 0.8rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--panel) 92%, transparent);
+  color: var(--ink);
+  box-shadow: 0 0.7rem 1.5rem color-mix(in srgb, var(--shadow) 42%, transparent);
+  font-size: 0.86rem;
+  font-weight: 700;
+  pointer-events: none;
+  transform: translateX(-50%);
+  backdrop-filter: blur(10px);
+}
+
 body.state-intro .rock,
 body.state-fallingToBottom .rock {
   cursor: default;
@@ -416,4 +435,8 @@ body.state-fallingToBottom .hand-cursor {
     transition-delay: 0s !important;
     transition-duration: 0.001ms !important;
   }
+}
+.rock.is-window-obstacle-blocked {
+  cursor: not-allowed;
+  filter: saturate(0.72);
 }

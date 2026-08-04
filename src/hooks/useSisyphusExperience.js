@@ -15,6 +15,7 @@ export function useSisyphusExperience() {
     handCursorRef: useRef(null),
     remoteCursorLayerRef: useRef(null),
     hintRef: useRef(null),
+    heightGateStatusRef: useRef(null),
   };
   const trail = {
     trailCanvasRef: useRef(null),
@@ -40,6 +41,7 @@ export function useSisyphusExperience() {
   } = realtime;
   const {
     handCursorRef,
+    heightGateStatusRef,
     hintRef,
     remoteCursorLayerRef,
     rockImprintRef,
@@ -59,6 +61,7 @@ export function useSisyphusExperience() {
       rock: rockRef.current,
       rockImprint: rockImprintRef.current,
       handCursor: handCursorRef.current,
+      heightGateStatus: heightGateStatusRef.current,
       remoteCursorLayer: remoteCursorLayerRef.current,
       settingsToggle: settingsToggleRef.current,
       settingsPanel: settingsPanelRef.current,
@@ -76,6 +79,7 @@ export function useSisyphusExperience() {
     return () => runtime.dispose();
   }, [
     handCursorRef,
+    heightGateStatusRef,
     foldSettingsRef,
     hintRef,
     rainFallbackCanvasRef,

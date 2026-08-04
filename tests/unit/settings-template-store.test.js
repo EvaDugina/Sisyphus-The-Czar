@@ -16,7 +16,7 @@ function entry(id, overrides = {}) {
   return {
     id,
     name: overrides.name || `Шаблон ${id}`,
-    settingsSchemaVersion: 18,
+    settingsSchemaVersion: 20,
     createdAt: overrides.createdAt || "2026-07-26T10:00:00.000Z",
     updatedAt: overrides.updatedAt || "2026-07-26T10:00:00.000Z",
     settings: {

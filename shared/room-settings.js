@@ -12,7 +12,8 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 16;
+  const ROOM_SETTINGS_VERSION = 17;
+  const MAX_HEIGHT_GATES = 10;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -59,6 +60,13 @@
     finalFallDelaySeconds: [0, 10],
     drizzleVolume: [0, 1],
     handWidthVw: [10, 90],
+    heightGateCount: [0, MAX_HEIGHT_GATES],
+    heightGatePercent: [1, 99],
+    heightGateDurationSeconds: [1, 60],
+    windowObstacleHeightVh: [0, 10000],
+    windowObstacleIntervalSeconds: [0.1, 30],
+    windowObstacleWidthPx: [100, 1920],
+    windowObstacleHeightPx: [100, 1080],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
@@ -110,7 +118,17 @@
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     handWidthVw: 14.375,
+    heightGates: Object.freeze([]),
     handForceDeficitEasing: DEFAULT_HAND_FORCE_DEFICIT_EASING,
+    windowObstacleEnabled: false,
+    windowObstacleMinHeightVh: 1000,
+    windowObstacleMaxHeightVh: 1500,
+    windowObstacleMinIntervalSeconds: 0.5,
+    windowObstacleMaxIntervalSeconds: 1.5,
+    windowObstacleMinWidthPx: 240,
+    windowObstacleMaxWidthPx: 640,
+    windowObstacleMinHeightPx: 160,
+    windowObstacleMaxHeightPx: 480,
     drizzleStartVolume: 0.1,
     drizzleEndVolume: 1,
     drizzleVolumeEasing: DEFAULT_DRIZZLE_VOLUME_EASING,
@@ -162,6 +180,55 @@
   function finiteNumber(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
+  }
+
+  function sanitizeHeightGates(input, fallback = []) {
+    const source = Array.isArray(input)
+      ? input
+      : Array.isArray(fallback)
+        ? fallback
+        : [];
+    const [heightMin, heightMax] = ROOM_SETTINGS_LIMITS.heightGatePercent;
+    const [durationMin, durationMax] =
+      ROOM_SETTINGS_LIMITS.heightGateDurationSeconds;
+    const usedIds = new Set();
+    const usedHeights = new Set();
+    const gates = [];
+
+    source.slice(0, MAX_HEIGHT_GATES).forEach((candidate, index) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        return;
+      }
+      const heightPercent = Math.round(
+        clamp(finiteNumber(candidate.heightPercent, heightMin), heightMin, heightMax)
+      );
+      if (usedHeights.has(heightPercent)) {
+        return;
+      }
+      const durationSeconds = Math.round(
+        clamp(
+          finiteNumber(candidate.durationSeconds, durationMin),
+          durationMin,
+          durationMax
+        )
+      );
+      const rawId = String(candidate.id || "").trim();
+      const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(rawId)
+        ? rawId
+        : `height-gate-${index + 1}-${heightPercent}`;
+      let id = safeId;
+      let suffix = 2;
+      while (usedIds.has(id)) {
+        const suffixText = `-${suffix}`;
+        id = `${safeId.slice(0, 64 - suffixText.length)}${suffixText}`;
+        suffix += 1;
+      }
+      usedIds.add(id);
+      usedHeights.add(heightPercent);
+      gates.push({ id, heightPercent, durationSeconds });
+    });
+
+    return gates.sort((left, right) => left.heightPercent - right.heightPercent);
   }
 
   function finiteSetting(source, fallbackSource, key, min, max) {
@@ -279,6 +346,24 @@
     };
   }
 
+  function normalizeNumericRange(
+    source,
+    fallbackSource,
+    minKey,
+    maxKey,
+    limits,
+    integer = false
+  ) {
+    const [limitMin, limitMax] = limits;
+    const read = integer ? integerSetting : finiteSetting;
+    const start = read(source, fallbackSource, minKey, limitMin, limitMax);
+    const end = read(source, fallbackSource, maxKey, limitMin, limitMax);
+    return {
+      [minKey]: Math.min(start, end),
+      [maxKey]: Math.max(start, end),
+    };
+  }
+
   function sanitizeRoomSettings(input, fallback = DEFAULT_ROOM_SETTINGS) {
     const source = input && typeof input === "object" ? input : {};
     const fallbackSource =
@@ -305,6 +390,37 @@
     const [drizzleVolumeMin, drizzleVolumeMax] =
       ROOM_SETTINGS_LIMITS.drizzleVolume;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
+    const windowObstacleHeightRange = normalizeNumericRange(
+      source,
+      fallbackSource,
+      "windowObstacleMinHeightVh",
+      "windowObstacleMaxHeightVh",
+      ROOM_SETTINGS_LIMITS.windowObstacleHeightVh,
+      true
+    );
+    const windowObstacleIntervalRange = normalizeNumericRange(
+      source,
+      fallbackSource,
+      "windowObstacleMinIntervalSeconds",
+      "windowObstacleMaxIntervalSeconds",
+      ROOM_SETTINGS_LIMITS.windowObstacleIntervalSeconds
+    );
+    const windowObstacleWidthRange = normalizeNumericRange(
+      source,
+      fallbackSource,
+      "windowObstacleMinWidthPx",
+      "windowObstacleMaxWidthPx",
+      ROOM_SETTINGS_LIMITS.windowObstacleWidthPx,
+      true
+    );
+    const windowObstacleHeightPxRange = normalizeNumericRange(
+      source,
+      fallbackSource,
+      "windowObstacleMinHeightPx",
+      "windowObstacleMaxHeightPx",
+      ROOM_SETTINGS_LIMITS.windowObstacleHeightPx,
+      true
+    );
     const [rainStrengthMin, rainStrengthMax] = ROOM_SETTINGS_LIMITS.rainStrength;
     const [rainVolumeMin, rainVolumeMax] =
       ROOM_SETTINGS_LIMITS.rainMaxVolume;
@@ -472,11 +588,24 @@
         handMin,
         handMax
       ),
+      heightGates: sanitizeHeightGates(
+        source.heightGates,
+        fallbackSource.heightGates
+      ),
       handForceDeficitEasing: cubicBezierSetting(
         source,
         fallbackSource,
         "handForceDeficitEasing"
       ),
+      windowObstacleEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "windowObstacleEnabled"
+      ),
+      ...windowObstacleHeightRange,
+      ...windowObstacleIntervalRange,
+      ...windowObstacleWidthRange,
+      ...windowObstacleHeightPxRange,
       drizzleStartVolume: finiteSetting(
         source,
         fallbackSource,
@@ -683,6 +812,30 @@
         source.handWidthVw = Number(source.handWidthVw) / 2;
       }
     }
+    if (finiteNumber(version, 1) < 14) {
+      delete source.handRestSeconds;
+      delete source.stationaryAutoSlipEnabled;
+      if (!Array.isArray(source.heightGates)) {
+        source.heightGates = [];
+      }
+    }
+    if (finiteNumber(version, 1) < 17) {
+      source.windowObstacleEnabled = false;
+      [
+        "windowObstacleMinHeightVh",
+        "windowObstacleMaxHeightVh",
+        "windowObstacleMinIntervalSeconds",
+        "windowObstacleMaxIntervalSeconds",
+        "windowObstacleMinWidthPx",
+        "windowObstacleMaxWidthPx",
+        "windowObstacleMinHeightPx",
+        "windowObstacleMaxHeightPx",
+      ].forEach((key) => {
+        if (!Object.hasOwn(source, key)) {
+          source[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
     return source;
   }
 
@@ -698,12 +851,14 @@
     DEFAULT_SCENE_HEIGHT_SCREENS,
     SCENE_MOTION_REFERENCE_SCREENS,
     SCENE_MOTION_COMPENSATION_BOOST,
+    MAX_HEIGHT_GATES,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,
     DEFAULT_ROOM_SETTINGS,
     normalizeHexColor,
     parseCubicBezier,
+    sanitizeHeightGates,
     migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,

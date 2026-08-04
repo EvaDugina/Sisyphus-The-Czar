@@ -50,6 +50,45 @@ async function setCheckbox(page, name, checked) {
   }, checked);
 }
 
+async function clearHeightGates(page) {
+  const removeButtons = page.getByTestId("height-gate-remove");
+  while ((await removeButtons.count()) > 0) {
+    await removeButtons.first().click();
+  }
+  await expect
+    .poll(() => page.locator('[name="heightGates"]').inputValue())
+    .toBe("[]");
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.params.heightGates),
+    )
+    .toEqual([]);
+}
+
+async function setSingleHeightGate(page, heightPercent, durationSeconds) {
+  await clearHeightGates(page);
+  await page.getByTestId("height-gate-add").click();
+  await page.getByLabel("Высота метки 1").fill(String(heightPercent));
+  await page
+    .getByLabel("Длительность метки 1")
+    .fill(String(durationSeconds));
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        gates: window.__sisyphusTestApi.params.heightGates,
+        inFlight: Boolean(collab.settingsUpdateInFlight),
+        pendingKeys: Object.keys(collab.pendingRoomSettingsChanges),
+        queued: collab.settingsUpdateQueued,
+      })),
+    )
+    .toMatchObject({
+      gates: [{ heightPercent, durationSeconds }],
+      inFlight: false,
+      pendingKeys: [],
+      queued: false,
+    });
+}
+
 async function watchAudioPlayCalls(page, filename) {
   await page.addInitScript((targetFilenames) => {
     const targets = Array.isArray(targetFilenames)
@@ -216,10 +255,13 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await openControlGroup(page, "Финальное падение");
   await openControlGroup(page, "Физика");
   await openControlGroup(page, "Камень");
+  await openControlGroup(page, "Руки");
   await openControlGroup(page, "Траектория");
   await openControlGroup(page, "Капель");
 
-  await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toBeChecked();
+  await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(0);
+  await expect(page.locator('[name="heightGates"]')).toHaveCount(1);
+  await expect(page.getByTestId("height-gate-add")).toBeVisible();
   await expect(page.locator('[name="positionScrollEnabled"]')).toBeChecked();
   await expect(page.locator('[name="manualVerticalScrollEnabled"]')).toBeChecked();
   await expect(page.locator('[name="positionScrollZonePercent"]')).toHaveValue(
@@ -409,7 +451,7 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -993,7 +1035,7 @@ async function trailHasVisiblePixels(page) {
 test("dev при запуске переносит последний локальный шаблон из legacy storage", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v18",
+      "sisyphus-czar-settings-v20",
       JSON.stringify({ gravity: 3 }),
     );
     localStorage.setItem(
@@ -1004,7 +1046,7 @@ test("dev при запуске переносит последний локал
           {
             id: "older",
             name: "Старый",
-            settingsSchemaVersion: 18,
+            settingsSchemaVersion: 20,
             createdAt: "2026-07-24T10:00:00.000Z",
             updatedAt: "2026-07-24T10:00:00.000Z",
             settings: { gravity: 5 },
@@ -1012,7 +1054,7 @@ test("dev при запуске переносит последний локал
           {
             id: "latest",
             name: "Последний",
-            settingsSchemaVersion: 18,
+            settingsSchemaVersion: 20,
             createdAt: "2026-07-25T10:00:00.000Z",
             updatedAt: "2026-07-25T12:00:00.000Z",
             settings: { gravity: 9.8 },
@@ -1033,7 +1075,7 @@ test("dev при запуске переносит последний локал
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}",
         );
         return stored.gravity;
       }),
@@ -1041,11 +1083,11 @@ test("dev при запуске переносит последний локал
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v21 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v22 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v21");
+    localStorage.removeItem("sisyphus-czar-settings-v22");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1067,7 +1109,7 @@ test("локальные настройки v20 мигрируют в v21 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2142,7 +2184,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -2181,7 +2223,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2317,7 +2359,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2352,7 +2394,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2369,7 +2411,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
         );
         return stored.rainEnabled;
       })

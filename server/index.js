@@ -8,9 +8,6 @@ const { WebSocketServer } = require("ws");
 const {
   SessionManager,
   DEFAULT_SESSION_ID,
-  SLIP_DELAY_MIN_MS,
-  SLIP_DELAY_MAX_MS,
-  STATIONARY_HOLD_RELEASE_MS,
 } = require("./session-manager");
 const { SessionStore } = require("./session-store");
 const { ProductionPresetStore } = require("./production-preset-store");
@@ -159,21 +156,6 @@ function createService(options = {}) {
           10
       )
     ),
-    slipDelayMinMs: Number(
-      options.slipDelayMinMs ??
-        process.env.SLIP_DELAY_MIN_MS ??
-        SLIP_DELAY_MIN_MS
-    ),
-    slipDelayMaxMs: Number(
-      options.slipDelayMaxMs ??
-        process.env.SLIP_DELAY_MAX_MS ??
-        SLIP_DELAY_MAX_MS
-    ),
-    stationaryHoldReleaseMs: Number(
-      options.stationaryHoldReleaseMs ??
-        process.env.STATIONARY_HOLD_RELEASE_MS ??
-        STATIONARY_HOLD_RELEASE_MS
-    ),
     sessionStorePath: String(
       options.sessionStorePath ?? process.env.SESSION_STORE_PATH ?? ""
     ).trim(),
@@ -217,9 +199,6 @@ function createService(options = {}) {
     new SessionManager({
       ttlMs: config.ttlMs,
       emptyGraceMs: config.emptyGraceMs,
-      slipDelayMinMs: config.slipDelayMinMs,
-      slipDelayMaxMs: config.slipDelayMaxMs,
-      stationaryHoldReleaseMs: config.stationaryHoldReleaseMs,
       audioLeadMs: options.audioLeadMs,
       trailSyncIntervalMs: options.trailSyncIntervalMs,
       soundRandom: options.soundRandom,

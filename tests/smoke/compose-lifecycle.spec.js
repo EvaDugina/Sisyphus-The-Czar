@@ -20,7 +20,7 @@ test.beforeEach(async ({ context }) => {
             {
               id: versionId,
               name: "Compose preset",
-              settingsSchemaVersion: 18,
+              settingsSchemaVersion: 20,
               createdAt: updatedAt,
               updatedAt,
               settings: {

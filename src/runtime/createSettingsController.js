@@ -28,7 +28,8 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 21;
+const SETTINGS_SCHEMA_VERSION = 22;
+const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
 
@@ -115,6 +116,9 @@ export function createSettingsController(options) {
   }
 
   function settingValuesEqual(left, right) {
+    if (Array.isArray(left) || Array.isArray(right)) {
+      return JSON.stringify(left || []) === JSON.stringify(right || []);
+    }
     if (typeof left === "number" || typeof right === "number") {
       const leftNumber = Number(left);
       const rightNumber = Number(right);
@@ -286,7 +290,11 @@ export function createSettingsController(options) {
   }
 
   function notifySettingControlSync(input) {
-    if (input?.matches("[data-cubic-bezier-control] input[name]")) {
+    if (
+      input?.matches(
+        "[data-cubic-bezier-control] input[name], [data-structured-setting-control] input[name]",
+      )
+    ) {
       input.dispatchEvent(new Event("settings-control-sync"));
     }
   }
@@ -342,7 +350,7 @@ export function createSettingsController(options) {
   }
 
   function migrateStoredInertiaSettings(settings, settingsSchemaVersion = 0) {
-    if (settingsSchemaVersion >= SETTINGS_SCHEMA_VERSION) {
+    if (settingsSchemaVersion >= INERTIA_SETTINGS_SCHEMA_VERSION) {
       return settings;
     }
     let migrated = settings;
@@ -447,6 +455,7 @@ export function createSettingsController(options) {
         element.checked = Boolean(stored[key]);
       } else {
         element.value = settingValueToControlValue(key, stored[key]);
+        notifySettingControlSync(element);
       }
     });
     return true;
@@ -1212,6 +1221,22 @@ export function createSettingsController(options) {
       rockJumpInertiaSpreadPercent:
         `${params.rockJumpInertiaSpreadPercent.toFixed(0)}%`,
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
+      windowObstacleMinHeightVh:
+        `${params.windowObstacleMinHeightVh.toFixed(0)}vh`,
+      windowObstacleMaxHeightVh:
+        `${params.windowObstacleMaxHeightVh.toFixed(0)}vh`,
+      windowObstacleMinIntervalSeconds:
+        secondsOutput(params.windowObstacleMinIntervalSeconds),
+      windowObstacleMaxIntervalSeconds:
+        secondsOutput(params.windowObstacleMaxIntervalSeconds),
+      windowObstacleMinWidthPx:
+        `${params.windowObstacleMinWidthPx.toFixed(0)}px`,
+      windowObstacleMaxWidthPx:
+        `${params.windowObstacleMaxWidthPx.toFixed(0)}px`,
+      windowObstacleMinHeightPx:
+        `${params.windowObstacleMinHeightPx.toFixed(0)}px`,
+      windowObstacleMaxHeightPx:
+        `${params.windowObstacleMaxHeightPx.toFixed(0)}px`,
       drizzleStartVolume: `${Math.round(params.drizzleStartVolume * 100)}%`,
       drizzleEndVolume: `${Math.round(params.drizzleEndVolume * 100)}%`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,

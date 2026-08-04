@@ -70,6 +70,68 @@ test("основной и drafts маршруты используют одну 
   }
 });
 
+test("препятствие Окна имеет одинаковый UI и сообщает о popup-блокировке", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    window.open = () => null;
+  });
+
+  for (const path of ["/", "/drafts/"]) {
+    await page.goto(path);
+    await waitForFoldReady(page);
+    await page.locator(".settings-toggle").click();
+    await expect(page.locator("#settings-panel")).toHaveAttribute(
+      "aria-hidden",
+      "false",
+    );
+
+    await expect(
+      page.locator(".control-group > summary", { hasText: /^Рука$/ }),
+    ).toHaveCount(1);
+    const obstacleGroup = page.locator(".control-group").filter({
+      has: page.locator("summary", { hasText: /^Препятствия$/ }),
+    });
+    await expect(obstacleGroup).toHaveCount(1);
+    await obstacleGroup.evaluate((element) => {
+      element.open = true;
+    });
+
+    const windowsGroup = obstacleGroup.locator(
+      '[aria-label="Препятствия: Окна"]',
+    );
+    await expect(windowsGroup.getByRole("heading", { name: "Окна" })).toBeVisible();
+    await expect(page.locator('[name="windowObstacleEnabled"]')).not.toBeChecked();
+    await expect(page.locator('[name="windowObstacleMinHeightVh"]')).toHaveValue("1000");
+    await expect(page.locator('[name="windowObstacleMaxHeightVh"]')).toHaveValue("1500");
+    await expect(page.locator('[name="windowObstacleMinIntervalSeconds"]')).toHaveValue("0.5");
+    await expect(page.locator('[name="windowObstacleMaxIntervalSeconds"]')).toHaveValue("1.5");
+    await expect(page.locator('[name="windowObstacleMinWidthPx"]')).toHaveValue("240");
+    await expect(page.locator('[name="windowObstacleMaxWidthPx"]')).toHaveValue("640");
+    await expect(page.locator('[name="windowObstacleMinHeightPx"]')).toHaveValue("160");
+    await expect(page.locator('[name="windowObstacleMaxHeightPx"]')).toHaveValue("480");
+    await expect(page.locator('[name="windowObstacleMinHeightVh"]')).toHaveAttribute("step", "100");
+    await expect(page.locator('[name="windowObstacleMinIntervalSeconds"]')).toHaveAttribute("step", "0.1");
+    await expect(page.locator('[name="windowObstacleMinWidthPx"]')).toHaveAttribute("step", "10");
+
+    const status = page.locator("[data-window-obstacle-popup-status]");
+    await expect(status).toHaveAttribute("data-state", "unchecked");
+    await page.locator("[data-window-obstacle-popup-test]").click();
+    await expect(status).toHaveAttribute("data-state", "blocked");
+    await expect(status).toContainText("Заблокировано");
+    await expect(page.locator("[data-window-obstacle-popup-help]")).toBeVisible();
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__sisyphusTestApi.getWindowObstacleState()),
+      )
+      .toMatchObject({
+        activeWindowCount: 0,
+        permission: "blocked",
+        schedulePending: false,
+      });
+  }
+});
+
 test("Fold синхронизирует сцену и применяет общие сохраняемые настройки", async ({
   page,
 }) => {
@@ -277,7 +339,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v21") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v22") || "{}",
         );
         return [
           stored.glowOptimizationMode,

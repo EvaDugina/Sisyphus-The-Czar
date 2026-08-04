@@ -318,7 +318,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v21");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v22");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -365,7 +365,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 21);
+  assert.equal(productionSettingsSchemaVersion, 22);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -959,7 +959,6 @@ test("UI содержит настройки автоматики, scroll, overf
   assert.deepEqual(
     automationGroup.controls.map((control) => control.name),
     [
-      "stationaryAutoSlipEnabled",
       "positionScrollEnabled",
       "positionScrollZonePercent",
       "positionScrollStartSpeedVh",
@@ -968,7 +967,6 @@ test("UI содержит настройки автоматики, scroll, overf
       "manualVerticalScrollEnabled",
     ],
   );
-  assert.equal(byName("stationaryAutoSlipEnabled").defaultChecked, true);
   assert.equal(byName("positionScrollEnabled").defaultChecked, true);
   assert.equal(byName("manualVerticalScrollEnabled").defaultChecked, true);
   assert.deepEqual(
@@ -1121,10 +1119,11 @@ test("общие визуальные настройки комнаты есть
 
 test("параметры единственной руки вынесены в отдельную категорию UI", () => {
   const handSizeGroup = SETTINGS_GROUPS.find(
-    (group) => group.title === "Руки",
+    (group) => group.title === "Рука",
   );
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const handWidthVw = controls.find((control) => control.name === "handWidthVw");
+  const heightGates = controls.find((control) => control.name === "heightGates");
 
   assert.ok(handSizeGroup);
   assert.deepEqual(
@@ -1133,8 +1132,47 @@ test("параметры единственной руки вынесены в �
       "handForce",
       "handForceDeficitEasing",
       "pointerInfluence",
+      "heightGates",
       "handWidthVw",
     ],
+  );
+  assert.equal(heightGates.type, "height-gates");
+  assert.equal(heightGates.defaultValue, "[]");
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeHeightGates([
+      { id: "invalid id", heightPercent: 0, durationSeconds: 0 },
+      { id: "top", heightPercent: 100, durationSeconds: 61 },
+      { id: "duplicate", heightPercent: 99, durationSeconds: 5 },
+    ]),
+    [
+      { id: "height-gate-1-1", heightPercent: 1, durationSeconds: 1 },
+      { id: "top", heightPercent: 99, durationSeconds: 60 },
+    ],
+  );
+  assert.equal(
+    SharedRoomSettings.sanitizeHeightGates(
+      Array.from({ length: 12 }, (_, index) => ({
+        id: `gate-${index + 1}`,
+        heightPercent: index + 1,
+        durationSeconds: index + 1,
+      })),
+    ).length,
+    10,
+  );
+  const maximumLengthId = "a".repeat(64);
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeHeightGates([
+      { id: maximumLengthId, heightPercent: 20, durationSeconds: 5 },
+      { id: maximumLengthId, heightPercent: 40, durationSeconds: 5 },
+    ]).map((gate) => gate.id),
+    [maximumLengthId, `${"a".repeat(62)}-2`],
+  );
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings({
+      handRestSeconds: 10,
+      stationaryAutoSlipEnabled: true,
+    }).heightGates,
+    [],
   );
   assert.deepEqual(
     {
@@ -1153,6 +1191,75 @@ test("параметры единственной руки вынесены в �
     }
   );
   assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw, 28.75 / 2);
+});
+
+test("настройки препятствия Окна нормализуют диапазоны и мигрируют с версии 16", () => {
+  const obstacleGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Препятствия",
+  );
+  const windowsGroup = obstacleGroup?.subgroups?.find(
+    (group) => group.title === "Окна",
+  );
+  const controls = windowsGroup?.controls || [];
+
+  assert.ok(windowsGroup);
+  assert.equal(windowsGroup.permissionControl, "window-obstacle");
+  assert.deepEqual(
+    controls.map((control) => control.name),
+    [
+      "windowObstacleEnabled",
+      "windowObstacleMinHeightVh",
+      "windowObstacleMaxHeightVh",
+      "windowObstacleMinIntervalSeconds",
+      "windowObstacleMaxIntervalSeconds",
+      "windowObstacleMinWidthPx",
+      "windowObstacleMaxWidthPx",
+      "windowObstacleMinHeightPx",
+      "windowObstacleMaxHeightPx",
+    ],
+  );
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings({
+      windowObstacleEnabled: true,
+      windowObstacleMinHeightVh: 2000,
+      windowObstacleMaxHeightVh: 1000,
+      windowObstacleMinIntervalSeconds: 99,
+      windowObstacleMaxIntervalSeconds: 0,
+      windowObstacleMinWidthPx: 2000,
+      windowObstacleMaxWidthPx: 50,
+      windowObstacleMinHeightPx: 1200,
+      windowObstacleMaxHeightPx: 80,
+    }),
+    {
+      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+      windowObstacleEnabled: true,
+      windowObstacleMinHeightVh: 1000,
+      windowObstacleMaxHeightVh: 2000,
+      windowObstacleMinIntervalSeconds: 0.1,
+      windowObstacleMaxIntervalSeconds: 30,
+      windowObstacleMinWidthPx: 100,
+      windowObstacleMaxWidthPx: 1920,
+      windowObstacleMinHeightPx: 100,
+      windowObstacleMaxHeightPx: 1080,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings(
+      { windowObstacleEnabled: true },
+      16,
+    ),
+    {
+      windowObstacleEnabled: false,
+      windowObstacleMinHeightVh: 1000,
+      windowObstacleMaxHeightVh: 1500,
+      windowObstacleMinIntervalSeconds: 0.5,
+      windowObstacleMaxIntervalSeconds: 1.5,
+      windowObstacleMinWidthPx: 240,
+      windowObstacleMaxWidthPx: 640,
+      windowObstacleMinHeightPx: 160,
+      windowObstacleMaxHeightPx: 480,
+    },
+  );
 });
 
 test("траектория включена по умолчанию и выключается через настройку", () => {
@@ -1289,7 +1396,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 16);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 17);
   assert.equal(
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpAngleSpreadDegrees,
     90,

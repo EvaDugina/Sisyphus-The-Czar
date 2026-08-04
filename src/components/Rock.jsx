@@ -1,4 +1,4 @@
-import rockImage from "../../assets/rock.webp";
+import rockImage from "../../assets/rock2.png";
 
 export function Rock({ rockRef }) {
   return (

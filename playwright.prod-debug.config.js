@@ -25,9 +25,6 @@ module.exports = defineConfig({
       SESSION_TTL_SECONDS: "86400",
       EMPTY_SESSION_GRACE_SECONDS: "2",
       SESSION_CREATE_RATE_LIMIT: "50",
-      SLIP_DELAY_MIN_MS: "10000",
-      SLIP_DELAY_MAX_MS: "10000",
-      STATIONARY_HOLD_RELEASE_MS: "10000",
       SESSION_STORE_PATH: "/tmp/sisyphus-prod-debug-sessions.json",
       PRODUCTION_PRESET_PATH: "/tmp/sisyphus-prod-debug-preset.json",
       SETTINGS_TEMPLATE_STORE_PATH:

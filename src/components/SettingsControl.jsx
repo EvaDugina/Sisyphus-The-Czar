@@ -1,4 +1,5 @@
 import { CubicBezierControl } from "./CubicBezierControl";
+import { HeightGatesControl } from "./HeightGatesControl";
 import { serializeSettingDependency } from "../lib/settingsDependencies.mjs";
 
 export function SettingsControl({ control }) {
@@ -23,6 +24,10 @@ export function SettingsControl({ control }) {
 
   if (type === "cubic-bezier") {
     return <CubicBezierControl control={control} />;
+  }
+
+  if (type === "height-gates") {
+    return <HeightGatesControl control={control} />;
   }
 
   if (type === "checkbox") {
