@@ -1201,6 +1201,7 @@ export function createSettingsController(options) {
       horizontalInertia: params.horizontalInertia.toFixed(2),
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
+      rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,

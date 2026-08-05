@@ -162,3 +162,25 @@ export function rockScaleForY(y, maxY, options = {}) {
     Number(maxY) > 0 ? 1 - clamp(Number(y) / maxY, 0, 1) : 1;
   return rockScaleForHeightProgress(normalizedHeight, options);
 }
+
+export function rockActivationScaleFactor(currentScale, options = {}) {
+  const scale = Number(currentScale);
+  const targetWidthVw = Number(options.targetWidthVw);
+  const baseWidthPx = Number(options.baseWidthPx);
+  const viewportWidthPx = Number(options.viewportWidthPx);
+  if (
+    !Number.isFinite(scale) ||
+    scale <= 0 ||
+    !Number.isFinite(targetWidthVw) ||
+    targetWidthVw <= 0 ||
+    !Number.isFinite(baseWidthPx) ||
+    baseWidthPx <= 0 ||
+    !Number.isFinite(viewportWidthPx) ||
+    viewportWidthPx <= 0
+  ) {
+    return 1;
+  }
+  const currentWidthPx = baseWidthPx * scale;
+  const targetWidthPx = (viewportWidthPx * targetWidthVw) / 100;
+  return targetWidthPx / currentWidthPx;
+}

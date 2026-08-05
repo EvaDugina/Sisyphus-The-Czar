@@ -28,6 +28,7 @@ import {
   DEFAULT_ROCK_MIN_WIDTH_VW,
   DEFAULT_ROCK_SCALE_EASING,
   parseCubicBezier,
+  rockActivationScaleFactor,
   rockScaleForY,
 } from "../../src/lib/rockScale.mjs";
 import {
@@ -669,6 +670,9 @@ test("настройки размера камня есть в UI и получ�
   const rockScaleEasing = controls.find(
     (control) => control.name === "rockScaleEasing",
   );
+  const rockActivatedWidthVw = controls.find(
+    (control) => control.name === "rockActivatedWidthVw",
+  );
   const rockMinWidthVw = controls.find(
     (control) => control.name === "rockMinWidthVw",
   );
@@ -708,6 +712,7 @@ test("настройки размера камня есть в UI и получ�
       "rockJumpInertiaSpreadPercent",
       "mass",
       "rockScaleEasing",
+      "rockActivatedWidthVw",
       "rockMinWidthVw",
       "rockMaxWidthVw",
     ],
@@ -715,6 +720,12 @@ test("настройки размера камня есть в UI и получ�
   assert.equal(rockScaleEasing.type, "cubic-bezier");
   assert.equal(rockScaleEasing.label, "Кривая размера");
   assert.equal(rockScaleEasing.defaultValue, DEFAULT_ROCK_SCALE_EASING);
+  assert.equal(rockActivatedWidthVw.type, "number");
+  assert.equal(
+    rockActivatedWidthVw.label,
+    "Размер после запуска физики, %",
+  );
+  assert.equal(rockActivatedWidthVw.defaultValue, 10);
   assert.equal(rockMinWidthVw.type, "number");
   assert.equal(rockMinWidthVw.label, "Начальный размер, %");
   assert.equal(rockMinWidthVw.defaultValue, DEFAULT_ROCK_MIN_WIDTH_VW);
@@ -776,6 +787,24 @@ test("настройки размера камня есть в UI и получ�
       defaultValue: 25,
       enabledWhen: "rockJumpEnabled",
     },
+  );
+});
+
+test("коэффициент активации приводит камень к целевой ширине vw", () => {
+  const factor = rockActivationScaleFactor(0.5, {
+    targetWidthVw: 10,
+    baseWidthPx: 400,
+    viewportWidthPx: 1000,
+  });
+  assert.equal(factor, 0.5);
+  assert.equal(400 * 0.5 * factor, 100);
+  assert.equal(
+    rockActivationScaleFactor(0, {
+      targetWidthVw: 10,
+      baseWidthPx: 400,
+      viewportWidthPx: 1000,
+    }),
+    1,
   );
 });
 
@@ -1092,8 +1121,32 @@ test("общие визуальные настройки комнаты есть
   );
   assert.deepEqual(
     viewGroup.controls.map((control) => control.name),
-    ["themeMode", "sceneHeightScreens"],
+    [
+      "themeMode",
+      "lightBackgroundColor",
+      "lightBackgroundDeepColor",
+      "lightBackgroundLowColor",
+      "darkBackgroundColor",
+      "darkBackgroundDeepColor",
+      "darkBackgroundLowColor",
+      "sceneHeightScreens",
+    ],
   );
+  [
+    "lightBackgroundColor",
+    "lightBackgroundDeepColor",
+    "lightBackgroundLowColor",
+    "darkBackgroundColor",
+    "darkBackgroundDeepColor",
+    "darkBackgroundLowColor",
+  ].forEach((name) => {
+    const control = viewGroup.controls.find((item) => item.name === name);
+    assert.equal(control.type, "color");
+    assert.equal(
+      control.defaultValue,
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS[name],
+    );
+  });
   assert.deepEqual(
     physicsGroup.controls.map((control) => control.name),
     [
@@ -1258,6 +1311,13 @@ test("настройки препятствия Окна нормализуют 
       windowObstacleMaxWidthPx: 640,
       windowObstacleMinHeightPx: 160,
       windowObstacleMaxHeightPx: 480,
+      lightBackgroundColor: "#f8f8f5",
+      lightBackgroundDeepColor: "#e9e8e2",
+      lightBackgroundLowColor: "#d9d8d1",
+      darkBackgroundColor: "#101211",
+      darkBackgroundDeepColor: "#191a16",
+      darkBackgroundLowColor: "#070807",
+      rockActivatedWidthVw: 10,
     },
   );
 });
@@ -1396,7 +1456,30 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 17);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 18);
+  const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
+    lightBackgroundColor: "#ABC",
+    darkBackgroundLowColor: "invalid",
+    rockActivatedWidthVw: 999,
+  });
+  assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
+  assert.equal(
+    visualSettings.darkBackgroundLowColor,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundLowColor,
+  );
+  assert.equal(visualSettings.rockActivatedWidthVw, 150);
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({}, 17),
+    {
+      lightBackgroundColor: "#f8f8f5",
+      lightBackgroundDeepColor: "#e9e8e2",
+      lightBackgroundLowColor: "#d9d8d1",
+      darkBackgroundColor: "#101211",
+      darkBackgroundDeepColor: "#191a16",
+      darkBackgroundLowColor: "#070807",
+      rockActivatedWidthVw: 10,
+    },
+  );
   assert.equal(
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpAngleSpreadDegrees,
     90,

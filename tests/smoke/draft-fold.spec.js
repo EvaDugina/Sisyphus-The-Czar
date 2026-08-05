@@ -274,6 +274,61 @@ test("настройки выпадения и выпрыгивания один
   }
 });
 
+test("первый клик анимирует размер камня, а темы используют свои градиенты", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+
+  await setSettingValue(page, "darkBackgroundColor", "#112233");
+  await setSettingValue(page, "darkBackgroundDeepColor", "#223344");
+  await setSettingValue(page, "darkBackgroundLowColor", "#334455");
+  await setSettingValue(page, "themeMode", "dark");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        background: getComputedStyle(document.querySelector("#root > .world"))
+          .backgroundImage,
+        surface: getComputedStyle(document.body)
+          .getPropertyValue("--surface")
+          .trim(),
+      })),
+    )
+    .toEqual({
+      background:
+        "linear-gradient(rgb(17, 34, 51) 0%, rgb(34, 51, 68) 48%, rgb(51, 68, 85) 100%), none",
+      surface: "#112233",
+    });
+
+  await setSettingValue(page, "lightBackgroundColor", "#ddeeff");
+  await setSettingValue(page, "lightBackgroundDeepColor", "#ccddee");
+  await setSettingValue(page, "lightBackgroundLowColor", "#bbccdd");
+  await setSettingValue(page, "themeMode", "light");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        getComputedStyle(document.body).getPropertyValue("--surface").trim(),
+      ),
+    )
+    .toBe("#ddeeff");
+
+  await setSettingValue(page, "rockActivatedWidthVw", 10);
+  const rock = page.locator("#root > .world > .rock");
+  const box = await rock.boundingBox();
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+  await page.mouse.down();
+  await expect(rock).toHaveClass(/is-activation-scaling/);
+  await page.waitForTimeout(350);
+  const activated = await rock.evaluate((element) => ({
+    activated: window.__sisyphusTestApi.motion.physicsActivated,
+    width: element.getBoundingClientRect().width,
+    viewportWidth: window.innerWidth,
+  }));
+  expect(activated.activated).toBe(true);
+  expect(activated.width).toBeCloseTo(activated.viewportWidth * 0.1, 0);
+  await page.mouse.up();
+});
+
 test("glow-профили и зависимости select одинаковы на обоих маршрутах", async ({
   page,
 }) => {

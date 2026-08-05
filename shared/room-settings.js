@@ -12,11 +12,12 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 17;
+  const ROOM_SETTINGS_VERSION = 18;
   const MAX_HEIGHT_GATES = 10;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
+  const DEFAULT_ROCK_ACTIVATED_WIDTH_VW = 10;
   const DEFAULT_ROCK_SCALE_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const DEFAULT_HAND_FORCE_DEFICIT_EASING =
     "cubic-bezier(0.42, 0, 1, 1)";
@@ -93,6 +94,12 @@
 
   const DEFAULT_ROOM_SETTINGS = Object.freeze({
     themeMode: "auto",
+    lightBackgroundColor: "#f8f8f5",
+    lightBackgroundDeepColor: "#e9e8e2",
+    lightBackgroundLowColor: "#d9d8d1",
+    darkBackgroundColor: "#101211",
+    darkBackgroundDeepColor: "#191a16",
+    darkBackgroundLowColor: "#070807",
     sceneHeightScreens: DEFAULT_SCENE_HEIGHT_SCREENS,
     returnScrollDurationSeconds: 4,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
@@ -115,6 +122,7 @@
     rockJumpAngleSpreadDegrees: 90,
     rockJumpInertiaSpreadPercent: 25,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
+    rockActivatedWidthVw: DEFAULT_ROCK_ACTIVATED_WIDTH_VW,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     handWidthVw: 14.375,
@@ -288,6 +296,13 @@
     return DEFAULT_ROOM_SETTINGS.rainDropColor;
   }
 
+  function hexColorSetting(source, fallbackSource, key) {
+    return normalizeHexColor(
+      source[key],
+      fallbackSource[key] || DEFAULT_ROOM_SETTINGS[key]
+    );
+  }
+
   function parseCubicBezier(value) {
     const match = String(value || "").trim().match(CUBIC_BEZIER_RE);
     if (!match) {
@@ -448,6 +463,36 @@
 
     return {
       themeMode: enumSetting(source, fallbackSource, "themeMode", THEME_MODES),
+      lightBackgroundColor: hexColorSetting(
+        source,
+        fallbackSource,
+        "lightBackgroundColor"
+      ),
+      lightBackgroundDeepColor: hexColorSetting(
+        source,
+        fallbackSource,
+        "lightBackgroundDeepColor"
+      ),
+      lightBackgroundLowColor: hexColorSetting(
+        source,
+        fallbackSource,
+        "lightBackgroundLowColor"
+      ),
+      darkBackgroundColor: hexColorSetting(
+        source,
+        fallbackSource,
+        "darkBackgroundColor"
+      ),
+      darkBackgroundDeepColor: hexColorSetting(
+        source,
+        fallbackSource,
+        "darkBackgroundDeepColor"
+      ),
+      darkBackgroundLowColor: hexColorSetting(
+        source,
+        fallbackSource,
+        "darkBackgroundLowColor"
+      ),
       sceneHeightScreens: integerSetting(
         source,
         fallbackSource,
@@ -579,6 +624,13 @@
         source,
         fallbackSource,
         "rockScaleEasing"
+      ),
+      rockActivatedWidthVw: finiteSetting(
+        source,
+        fallbackSource,
+        "rockActivatedWidthVw",
+        ROOM_SETTINGS_LIMITS.rockWidthVw[0],
+        ROOM_SETTINGS_LIMITS.rockWidthVw[1]
       ),
       ...rockWidths,
       handWidthVw: finiteSetting(
@@ -830,6 +882,21 @@
         "windowObstacleMaxWidthPx",
         "windowObstacleMinHeightPx",
         "windowObstacleMaxHeightPx",
+      ].forEach((key) => {
+        if (!Object.hasOwn(source, key)) {
+          source[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
+    if (finiteNumber(version, 1) < 18) {
+      [
+        "lightBackgroundColor",
+        "lightBackgroundDeepColor",
+        "lightBackgroundLowColor",
+        "darkBackgroundColor",
+        "darkBackgroundDeepColor",
+        "darkBackgroundLowColor",
+        "rockActivatedWidthVw",
       ].forEach((key) => {
         if (!Object.hasOwn(source, key)) {
           source[key] = DEFAULT_ROOM_SETTINGS[key];

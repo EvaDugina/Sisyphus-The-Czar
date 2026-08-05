@@ -33,6 +33,7 @@ import {
   normalizeThemeMode,
 } from "../lib/settingsModel.mjs";
 import {
+  rockActivationScaleFactor,
   rockScaleForY,
 } from "../lib/rockScale.mjs";
 import {
@@ -52,7 +53,16 @@ import {
 
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
+const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
+const THEME_BACKGROUND_SETTING_KEYS = [
+  "lightBackgroundColor",
+  "lightBackgroundDeepColor",
+  "lightBackgroundLowColor",
+  "darkBackgroundColor",
+  "darkBackgroundDeepColor",
+  "darkBackgroundLowColor",
+];
 
 const chainAudioLoaders = import.meta.glob(
   "../../assets/audio/Кандалы_*.mp3",
@@ -215,6 +225,18 @@ export function createSisyphusRuntime(elements = {}) {
 
   const params = {
     themeMode: DEFAULT_THEME_MODE,
+    lightBackgroundColor:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lightBackgroundColor,
+    lightBackgroundDeepColor:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lightBackgroundDeepColor,
+    lightBackgroundLowColor:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lightBackgroundLowColor,
+    darkBackgroundColor:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundColor,
+    darkBackgroundDeepColor:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundDeepColor,
+    darkBackgroundLowColor:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundLowColor,
     returnScrollDurationSeconds: DEFAULT_RETURN_SCROLL_DURATION_SECONDS,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     positionScrollEnabled:
@@ -263,6 +285,8 @@ export function createSisyphusRuntime(elements = {}) {
     groundFriction: 0.35,
     turbulence: 0.4,
     rockScaleEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockScaleEasing,
+    rockActivatedWidthVw:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
     rockMinWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
     rockMaxWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMaxWidthVw,
     sceneHeightScreens:
@@ -364,6 +388,9 @@ export function createSisyphusRuntime(elements = {}) {
     introFallTimerId: null,
     sceneReady: false,
     rockScale: 1,
+    physicsActivated: false,
+    rockActivationScaleFactor: 1,
+    rockActivationScaleTimerId: null,
     animationId: null,
     lastFrameAt: null,
     lastPointerX: 0,
@@ -1837,6 +1864,17 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function applyThemeBackgroundSettings() {
+    [
+      ["--light-background", params.lightBackgroundColor],
+      ["--light-background-deep", params.lightBackgroundDeepColor],
+      ["--light-background-low", params.lightBackgroundLowColor],
+      ["--dark-background", params.darkBackgroundColor],
+      ["--dark-background-deep", params.darkBackgroundDeepColor],
+      ["--dark-background-low", params.darkBackgroundLowColor],
+    ].forEach(([name, value]) => body.style.setProperty(name, value));
+  }
+
   function applyManualVerticalScrollSetting() {
     const disabled = !params.manualVerticalScrollEnabled;
     document.documentElement.classList.toggle(
@@ -1973,6 +2011,10 @@ export function createSisyphusRuntime(elements = {}) {
     broadcastChanges = false,
   }) {
     normalizeCurrentParams(previousRoomSettings, preservedState);
+
+    if (shouldHandleChange(...THEME_BACKGROUND_SETTING_KEYS)) {
+      applyThemeBackgroundSettings();
+    }
 
     if (syncControls) {
       settingsController.syncRoomSettingControls();
@@ -2257,7 +2299,7 @@ export function createSisyphusRuntime(elements = {}) {
     bounds.maxY = Math.max(0, bounds.worldHeight - visualBottomOffset);
   }
 
-  function scaleForLocalY(y) {
+  function baseScaleForLocalY(y) {
     return rockScaleForY(y, bounds.maxY, {
       easing: params.rockScaleEasing,
       minWidthVw: params.rockMinWidthVw,
@@ -2265,6 +2307,52 @@ export function createSisyphusRuntime(elements = {}) {
       baseWidthPx: bounds.rockWidth,
       viewportWidthPx: bounds.worldWidth,
     });
+  }
+
+  function scaleForLocalY(y) {
+    return baseScaleForLocalY(y) * motion.rockActivationScaleFactor;
+  }
+
+  function clearRockActivationScaleTransition() {
+    if (motion.rockActivationScaleTimerId !== null) {
+      window.clearTimeout(motion.rockActivationScaleTimerId);
+      motion.rockActivationScaleTimerId = null;
+    }
+    rock.classList.remove("is-activation-scaling");
+  }
+
+  function resetRockActivationScale() {
+    clearRockActivationScaleTransition();
+    motion.physicsActivated = false;
+    motion.rockActivationScaleFactor = 1;
+  }
+
+  function activateRockPhysicsScale() {
+    if (motion.physicsActivated) {
+      return false;
+    }
+    updateBounds();
+    const baseScale = baseScaleForLocalY(motion.y);
+    const factor = rockActivationScaleFactor(baseScale, {
+      targetWidthVw: params.rockActivatedWidthVw,
+      baseWidthPx: bounds.rockWidth,
+      viewportWidthPx: bounds.worldWidth,
+    });
+    clearRockActivationScaleTransition();
+    if (!reducedMotion.matches) {
+      rock.classList.add("is-activation-scaling");
+      void rock.offsetWidth;
+    }
+    motion.physicsActivated = true;
+    motion.rockActivationScaleFactor = factor;
+    applyRockScale();
+    if (!reducedMotion.matches) {
+      motion.rockActivationScaleTimerId = window.setTimeout(() => {
+        motion.rockActivationScaleTimerId = null;
+        rock.classList.remove("is-activation-scaling");
+      }, ROCK_ACTIVATION_SCALE_DURATION_MS);
+    }
+    return true;
   }
 
   function applyRockScale() {
@@ -3317,6 +3405,7 @@ export function createSisyphusRuntime(elements = {}) {
     collab.releasePending = false;
     collab.holderId = null;
     collab.remoteControllerId = null;
+    resetRockActivationScale();
     rock.classList.remove("is-dragging", "is-falling");
     releasePointerCapture(pointerId);
     setGrabbingCursor(false);
@@ -3810,6 +3899,14 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       return;
     }
+    const wasSuspended = motion.suspended;
+    if (snapshot.suspended) {
+      if (motion.physicsActivated) {
+        resetRockActivationScale();
+      }
+    } else if (wasSuspended) {
+      activateRockPhysicsScale();
+    }
     const local = snapshot.suspended
       ? initialLocalPosition()
       : canonicalToLocal(snapshot.x, snapshot.y);
@@ -3933,6 +4030,7 @@ export function createSisyphusRuntime(elements = {}) {
     collab.releasePending = false;
     toggleHandVariant();
     updateBounds();
+    activateRockPhysicsScale();
     const position = localToCanonical(motion.x, motion.y);
     motion.suspended = false;
     motion.dragging = true;
@@ -4989,6 +5087,7 @@ export function createSisyphusRuntime(elements = {}) {
     event.preventDefault();
     toggleHandVariant();
     updateBounds();
+    activateRockPhysicsScale();
     motion.suspended = false;
     motion.dragging = true;
     motion.activePointerId = event.pointerId;

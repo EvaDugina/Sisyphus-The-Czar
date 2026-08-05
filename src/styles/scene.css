@@ -94,6 +94,12 @@
   font-size: 3.2rem;
 }
 
+@property --rock-scale {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
 .rock {
   --rock-x: 0px;
   --rock-y: 0px;
@@ -113,9 +119,17 @@
   transform: translate3d(var(--rock-x), var(--rock-y), 0) scale(var(--rock-scale));
   transform-origin: center;
   transition:
+    --rock-scale 0ms ease-out,
     filter 160ms ease,
     opacity 240ms ease;
   will-change: transform;
+}
+
+.rock.is-activation-scaling {
+  transition:
+    --rock-scale 300ms ease-out,
+    filter 160ms ease,
+    opacity 240ms ease;
 }
 
 .rock-imprint {
