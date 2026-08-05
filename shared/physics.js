@@ -49,9 +49,9 @@
   const MAX_RELEASE_DOWNWARD_SPEED = 900;
   const ROCK_JUMP_IMPULSE_DURATION_SECONDS = 4;
   const ROCK_JUMP_MIN_SPEED = 120;
-  const BOUNCE_MIN_VELOCITY = 120;
   const BOUNCE_IMPACT_CAP = 900;
   const TURB_ACCEL = 1600;
+  const GROUND_FRICTION_DECAY_RATE = 5;
 
   const PHYSICS_LIMITS = Object.freeze({
     mass: [0.1, 100],
@@ -271,12 +271,10 @@
     return effectiveHandForce(params) / params.mass;
   }
 
-  function groundFrictionAcceleration(physics, options) {
+  function groundFrictionRetention(physics, deltaSeconds) {
     const params = sanitizePhysics(physics);
-    return (
-      ((params.groundFriction * gravityForce(params)) / params.mass) *
-      motionScale(options)
-    );
+    const dt = clamp(finiteNumber(deltaSeconds, 0), 0, 0.05);
+    return Math.exp(-GROUND_FRICTION_DECAY_RATE * params.groundFriction * dt);
   }
 
   function maxHoldMs(physics) {
@@ -550,7 +548,7 @@
     };
   }
 
-  function applyGroundFriction(state, physics, dt, options) {
+  function applyGroundFriction(state, physics, dt) {
     if (physics.groundFriction <= 0 || state.vx === 0) {
       return;
     }
@@ -558,14 +556,7 @@
       state.vx = 0;
       return;
     }
-
-    const slowdown = groundFrictionAcceleration(physics, options) * dt;
-    if (Math.abs(state.vx) <= slowdown) {
-      state.vx = 0;
-      return;
-    }
-
-    state.vx -= Math.sign(state.vx) * slowdown;
+    state.vx *= groundFrictionRetention(physics, dt);
   }
 
   function stepState(state, physics, deltaSeconds, options) {
@@ -583,6 +574,11 @@
       return false;
     }
 
+    const wasAboveGround = state.y < WORLD_HEIGHT;
+    if (physics.groundFriction >= 1 && !wasAboveGround) {
+      state.vx = 0;
+    }
+
     state.vy += gravityAcceleration(physics) * motionScale(options) * dt;
 
     if (physics.turbulence > 0 && state.y < WORLD_HEIGHT - 1) {
@@ -591,10 +587,6 @@
       const strength = physics.turbulence * TURB_ACCEL;
       state.vx +=
         strength * (Math.sin(t * 5.3) + 0.6 * Math.sin(t * 11.7 + 1.3)) * dt;
-    }
-
-    if (physics.groundFriction >= 1 && state.y >= WORLD_HEIGHT - 0.01) {
-      state.vx = 0;
     }
 
     state.x += state.vx * dt;
@@ -609,13 +601,13 @@
 
     if (state.y >= WORLD_HEIGHT) {
       state.y = WORLD_HEIGHT;
-      applyGroundFriction(state, physics, dt, options);
+      applyGroundFriction(state, physics, dt);
 
       if (state.phase === PHASES.FALLING) {
         state.phase = PHASES.PLAY;
       }
 
-      if (physics.bounce > 0 && state.vy > BOUNCE_MIN_VELOCITY) {
+      if (wasAboveGround && physics.bounce > 0 && state.vy > 0) {
         const impact = Math.min(state.vy, BOUNCE_IMPACT_CAP);
         state.vy = -impact * physics.bounce;
       } else {
@@ -646,7 +638,7 @@
       return false;
     }
     return (
-      state.y < WORLD_HEIGHT - 0.01 ||
+      state.y < WORLD_HEIGHT ||
       Math.abs(state.vx) >= 0.5 ||
       Math.abs(state.vy) >= 0.5
     );
@@ -677,7 +669,8 @@
     handForceRatio,
     canLift,
     handAcceleration,
-    groundFrictionAcceleration,
+    GROUND_FRICTION_DECAY_RATE,
+    groundFrictionRetention,
     dragLiftSpeed,
     dragDropSpeed,
     dragDeficitLiftSpeed,

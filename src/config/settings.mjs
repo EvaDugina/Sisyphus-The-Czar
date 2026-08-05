@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v22";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v23";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v22",
   "sisyphus-czar-settings-v21",
   "sisyphus-czar-settings-v20",
   "sisyphus-czar-settings-v19",
@@ -108,9 +109,10 @@ const PHYSICS_FORMULAS = {
     "v_{x,release} = v_{x,pointer} \\cdot \\frac{F_{hand}}{m} \\cdot p \\cdot I_x \\cdot k",
   ],
   groundFriction: [
-    "F_f = \\mu \\cdot F_g",
-    "a_f = \\frac{F_f}{m} \\cdot k_{scene}",
-    "v_x' = v_x - sign(v_x) \\cdot a_f \\cdot \\Delta t",
+    "r_f(\\Delta t) = e^{-k_f \\cdot \\mu \\cdot \\Delta t}",
+    "v_x' = 0, \\; \\mu = 1",
+    "v_x' = v_x \\cdot r_f(\\Delta t), \\; 0 < \\mu < 1",
+    "k_f = 5 \\; s^{-1}",
   ],
   turbulence: [
     "v_x' = v_x + T \\cdot (sin(5.3t) + 0.6sin(11.7t + 1.3)) \\cdot \\Delta t",
@@ -601,7 +603,7 @@ export const SETTINGS_GROUPS = [
         step: 0.01,
         defaultValue: 0.35,
         output: "0.35",
-        hint: "Сила пружинистого подпрыгивания камня при ударе о низ. Ноль — камень просто останавливается без отскока.",
+        hint: "Сила пружинистого подпрыгивания камня при ударе о низ. Ноль — без отскока, единица — максимальный отскок.",
         formulas: PHYSICS_FORMULAS.bounce,
       },
       {
@@ -637,7 +639,7 @@ export const SETTINGS_GROUPS = [
         step: 0.05,
         defaultValue: 0.35,
         output: "0.35",
-        hint: "Сила трения на нижней земле. Больше значение — камень быстрее гасит инерцию после падения на дно.",
+        hint: "Сила трения на нижней земле. Ноль — без дополнительного торможения, промежуточные значения плавно гасят инерцию, единица полностью исключает проскальзывание.",
         formulas: PHYSICS_FORMULAS.groundFriction,
       },
       {
@@ -746,7 +748,7 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
         output: `${DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw}%`,
-        hint: "Целевая ширина камня в vw при первом клике, который запускает физику. Переход длится 300 мс.",
+        hint: "Целевая ширина камня в vw при первом свободном движении вниз после захвата. Переход длится 300 мс.",
       },
       {
         name: "rockMinWidthVw",
@@ -777,6 +779,13 @@ export const SETTINGS_GROUPS = [
   {
     title: "Рука",
     controls: [
+      {
+        name: "handAudioEnabled",
+        label: "Звуки руки",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.handAudioEnabled,
+        hint: "Включает звуки наведения руки на камень и захвата камня.",
+      },
       {
         name: "handForce",
         label: "Сила",
@@ -1208,6 +1217,13 @@ export const SETTINGS_GROUPS = [
     title: "Капель",
     controls: [
       {
+        name: "drizzleEnabled",
+        label: "Включить капель",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.drizzleEnabled,
+        hint: "Включает или полностью останавливает непрерывный звук капели.",
+      },
+      {
         name: "drizzleStartVolume",
         label: "Начальная громкость",
         type: "range",
@@ -1216,6 +1232,7 @@ export const SETTINGS_GROUPS = [
         step: 0.01,
         defaultValue: DEFAULT_ROOM_SETTINGS.drizzleStartVolume,
         output: `${Math.round(DEFAULT_ROOM_SETTINGS.drizzleStartVolume * 100)}%`,
+        enabledWhen: "drizzleEnabled",
         hint: "Громкость непрерывной капели, когда камень находится на нижней земле.",
       },
       {
@@ -1227,6 +1244,7 @@ export const SETTINGS_GROUPS = [
         step: 0.01,
         defaultValue: DEFAULT_ROOM_SETTINGS.drizzleEndVolume,
         output: `${Math.round(DEFAULT_ROOM_SETTINGS.drizzleEndVolume * 100)}%`,
+        enabledWhen: "drizzleEnabled",
         hint: "Громкость непрерывной капели только в самой верхней точке пути.",
       },
       {
@@ -1234,6 +1252,7 @@ export const SETTINGS_GROUPS = [
         label: "Кривая громкости",
         type: "cubic-bezier",
         defaultValue: DEFAULT_ROOM_SETTINGS.drizzleVolumeEasing,
+        enabledWhen: "drizzleEnabled",
         hint: "Кривая изменения громкости по физической высоте камня от нижней земли к вершине.",
       },
     ],

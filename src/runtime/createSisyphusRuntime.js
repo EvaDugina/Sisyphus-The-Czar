@@ -53,6 +53,7 @@ import {
 
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
+const AUDIO_TOGGLE_FADE_OUT_MS = 250;
 const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
 const THEME_BACKGROUND_SETTING_KEYS = [
@@ -388,6 +389,7 @@ export function createSisyphusRuntime(elements = {}) {
     introFallTimerId: null,
     sceneReady: false,
     rockScale: 1,
+    rockActivationArmed: false,
     physicsActivated: false,
     rockActivationScaleFactor: 1,
     rockActivationScaleTimerId: null,
@@ -685,7 +687,12 @@ export function createSisyphusRuntime(elements = {}) {
     src: drizzleAudioUrl,
   });
   const drizzleLoopAudio = {
+    fadeDurationMs: 0,
+    fadeFrameId: null,
+    fadeTargetVolume: 0,
+    fadeToken: 0,
     playing: false,
+    requestToken: 0,
     volume: 0,
   };
   const rainLoopController = createCrossfadedAudioLoop({
@@ -848,8 +855,69 @@ export function createSisyphusRuntime(elements = {}) {
     roleAudioFade.entries.delete(audio);
   }
 
-  function cancelAllRoleAudioFades() {
-    Array.from(roleAudioFade.entries.keys()).forEach(cancelRoleAudioFade);
+  function finishRoleAudioStop(audio, state) {
+    if (roleAudioFade.entries.get(audio) === state) {
+      roleAudioFade.entries.delete(audio);
+    }
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {
+      // Media element может стать недоступен во время закрытия страницы.
+    }
+    audio.volume = 0;
+  }
+
+  function fadeOutRoleAudio(audio, role, immediate = false) {
+    cancelRoleAudioFade(audio);
+    const startVolume = clamp(Number(audio.volume) || 0, 0, ROLE_AUDIO_VOLUME);
+    const state = {
+      audio,
+      durationMs: immediate ? 0 : AUDIO_TOGGLE_FADE_OUT_MS,
+      frameId: null,
+      role,
+      targetVolume: 0,
+    };
+    roleAudioFade.entries.set(audio, state);
+    roleAudioFade.latest = state;
+    if (immediate || startVolume <= 0.001) {
+      finishRoleAudioStop(audio, state);
+      return;
+    }
+
+    const startedAt = performance.now();
+    const step = (now) => {
+      if (roleAudioFade.entries.get(audio) !== state) {
+        return;
+      }
+      const progress = clamp(
+        (now - startedAt) / AUDIO_TOGGLE_FADE_OUT_MS,
+        0,
+        1,
+      );
+      audio.volume = startVolume * (1 - progress);
+      if (progress < 1) {
+        state.frameId = window.requestAnimationFrame(step);
+        return;
+      }
+      state.frameId = null;
+      finishRoleAudioStop(audio, state);
+    };
+    state.frameId = window.requestAnimationFrame(step);
+  }
+
+  function stopHandInteractionSounds({ immediate = false } = {}) {
+    sessionRoleAudio.timerIds.forEach((timerId) => {
+      window.clearTimeout(timerId);
+    });
+    sessionRoleAudio.timerIds.clear();
+    const elements = new Set([
+      ...chainHoverAudio.elements.filter(Boolean),
+      ...sessionRoleAudio.elements.values(),
+    ]);
+    elements.forEach((audio) => {
+      fadeOutRoleAudio(audio, "master", immediate);
+    });
   }
 
   function fadeInRoleAudio(audio, role) {
@@ -886,6 +954,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function playRoleAudio(audio, role) {
+    if (!params.handAudioEnabled) {
+      return;
+    }
     cancelRoleAudioFade(audio);
     try {
       audio.currentTime = 0;
@@ -917,6 +988,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function playChainHoverSound() {
     if (
+      !params.handAudioEnabled ||
       typeof Audio !== "function" ||
       motion.phase !== PHASES.PLAY ||
       motion.dragging
@@ -935,6 +1007,7 @@ export function createSisyphusRuntime(elements = {}) {
       (url) => {
         if (
           disposed ||
+          !params.handAudioEnabled ||
           !url ||
           motion.phase !== PHASES.PLAY ||
           motion.dragging
@@ -988,14 +1061,14 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function playSessionRoleAudio(payload) {
-    if (typeof Audio !== "function") {
+    if (!params.handAudioEnabled || typeof Audio !== "function") {
       return;
     }
     if (!sessionRoleAudioAvailable(payload.role, payload.filename)) {
       return;
     }
     ensureSessionRoleAudio(payload.role, payload.filename).then((audio) => {
-      if (disposed || !audio) {
+      if (disposed || !params.handAudioEnabled || !audio) {
         return;
       }
       sessionRoleAudio.latest = {
@@ -1008,6 +1081,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function receiveSessionRoleAudio(payload) {
+    if (!params.handAudioEnabled) {
+      return false;
+    }
     const eventId =
       typeof payload.eventId === "string" ? payload.eventId : "";
     const role = payload.role === "master" ? "master" : null;
@@ -1061,6 +1137,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function playRockPointerDownSound() {
+    if (!params.handAudioEnabled) {
+      return;
+    }
     if (collab.enabled && collab.connected) {
       sendShared("audio.play");
       return;
@@ -1124,35 +1203,127 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function setDrizzleLoopVolume(value) {
+    const volume = clamp(Number(value) || 0, 0, 1);
+    drizzleLoopAudio.volume = volume;
+    drizzleLoopController.setVolume(volume);
+  }
+
+  function cancelDrizzleLoopFade() {
+    drizzleLoopAudio.fadeToken += 1;
+    if (drizzleLoopAudio.fadeFrameId !== null) {
+      window.cancelAnimationFrame(drizzleLoopAudio.fadeFrameId);
+      drizzleLoopAudio.fadeFrameId = null;
+    }
+    drizzleLoopAudio.fadeDurationMs = 0;
+  }
+
+  function finishDrizzleLoopSound() {
+    drizzleLoopAudio.requestToken += 1;
+    drizzleLoopController.stop();
+    setDrizzleLoopVolume(0);
+    drizzleLoopAudio.fadeTargetVolume = 0;
+    drizzleLoopAudio.playing = false;
+  }
+
+  function fadeDrizzleLoopVolume(targetVolume, durationMs, onDone = () => {}) {
+    cancelDrizzleLoopFade();
+    const token = drizzleLoopAudio.fadeToken;
+    const startVolume = drizzleLoopAudio.volume;
+    const endVolume = clamp(Number(targetVolume) || 0, 0, 1);
+    const duration = Math.max(0, Math.round(Number(durationMs) || 0));
+    drizzleLoopAudio.fadeDurationMs = duration;
+    drizzleLoopAudio.fadeTargetVolume = endVolume;
+    if (duration <= 0 || Math.abs(startVolume - endVolume) < 0.001) {
+      setDrizzleLoopVolume(endVolume);
+      drizzleLoopAudio.fadeDurationMs = 0;
+      onDone();
+      return;
+    }
+
+    const startedAt = performance.now();
+    const step = (now) => {
+      if (token !== drizzleLoopAudio.fadeToken) {
+        return;
+      }
+      const progress = clamp((now - startedAt) / duration, 0, 1);
+      setDrizzleLoopVolume(
+        startVolume + (endVolume - startVolume) * progress,
+      );
+      if (progress < 1) {
+        drizzleLoopAudio.fadeFrameId = window.requestAnimationFrame(step);
+        return;
+      }
+      drizzleLoopAudio.fadeFrameId = null;
+      drizzleLoopAudio.fadeDurationMs = 0;
+      onDone();
+    };
+    drizzleLoopAudio.fadeFrameId = window.requestAnimationFrame(step);
+  }
+
   function syncDrizzleLoopVolume() {
+    if (!params.drizzleEnabled) {
+      return drizzleLoopAudio.volume;
+    }
     const volume = drizzleVolumeForY(motion.y, bounds.maxY, {
       startVolume: params.drizzleStartVolume,
       endVolume: params.drizzleEndVolume,
       easing: params.drizzleVolumeEasing,
     });
-    drizzleLoopAudio.volume = volume;
-    drizzleLoopController.setVolume(volume);
+    setDrizzleLoopVolume(volume);
     return volume;
   }
 
   function playDrizzleLoopSound() {
-    if (drizzleLoopAudio.playing) {
+    if (!params.drizzleEnabled) {
       return;
     }
+    if (drizzleLoopAudio.playing) {
+      cancelDrizzleLoopFade();
+      syncDrizzleLoopVolume();
+      return;
+    }
+    cancelDrizzleLoopFade();
     drizzleLoopAudio.playing = true;
     syncDrizzleLoopVolume();
+    const requestToken = ++drizzleLoopAudio.requestToken;
     const promise = drizzleLoopController.start();
     if (promise && typeof promise.then === "function") {
       promise
         .then((started) => {
-          if (!started && !disposed) {
+          if (
+            requestToken === drizzleLoopAudio.requestToken &&
+            !started &&
+            !disposed
+          ) {
             drizzleLoopAudio.playing = false;
           }
         })
         .catch(() => {
-          drizzleLoopAudio.playing = false;
+          if (requestToken === drizzleLoopAudio.requestToken) {
+            drizzleLoopAudio.playing = false;
+          }
         });
     }
+  }
+
+  function stopDrizzleLoopSound({ immediate = false } = {}) {
+    drizzleLoopAudio.requestToken += 1;
+    if (!drizzleLoopAudio.playing) {
+      cancelDrizzleLoopFade();
+      finishDrizzleLoopSound();
+      return;
+    }
+    if (immediate) {
+      cancelDrizzleLoopFade();
+      finishDrizzleLoopSound();
+      return;
+    }
+    fadeDrizzleLoopVolume(
+      0,
+      AUDIO_TOGGLE_FADE_OUT_MS,
+      finishDrizzleLoopSound,
+    );
   }
 
   function setRainLoopVolume(value) {
@@ -2051,10 +2222,21 @@ export function createSisyphusRuntime(elements = {}) {
     if (shouldHandleChange("manualVerticalScrollEnabled")) {
       applyManualVerticalScrollSetting();
     }
+    if (shouldHandleChange("handAudioEnabled") && !params.handAudioEnabled) {
+      stopHandInteractionSounds();
+    }
+    if (shouldHandleChange("drizzleEnabled")) {
+      if (!params.drizzleEnabled) {
+        stopDrizzleLoopSound();
+      } else if (hasTargetedChanges) {
+        playDrizzleLoopSound();
+      }
+    }
     if (
       shouldHandleChange(
         "drizzleStartVolume",
         "drizzleEndVolume",
+        "drizzleVolumeEasing",
         "rainMaxVolume",
       )
     ) {
@@ -2290,8 +2472,10 @@ export function createSisyphusRuntime(elements = {}) {
       baseWidthPx: bounds.rockWidth,
       viewportWidthPx: bounds.worldWidth,
     });
+    const effectiveBottomScale =
+      bottomScale * motion.rockActivationScaleFactor;
     const visualBottomOffset =
-      (bounds.rockHeight * (1 + bottomScale)) / 2 + FLOOR_INSET;
+      (bounds.rockHeight * (1 + effectiveBottomScale)) / 2 + FLOOR_INSET;
     bounds.worldHeight = Math.max(
       window.innerHeight * params.sceneHeightScreens,
       visualBottomOffset
@@ -2323,8 +2507,28 @@ export function createSisyphusRuntime(elements = {}) {
 
   function resetRockActivationScale() {
     clearRockActivationScaleTransition();
+    motion.rockActivationArmed = false;
     motion.physicsActivated = false;
     motion.rockActivationScaleFactor = 1;
+  }
+
+  function armRockActivationScale() {
+    if (!motion.physicsActivated) {
+      motion.rockActivationArmed = true;
+    }
+  }
+
+  function maybeActivateRockPhysicsScale({ dragging, suspended, vy }) {
+    if (
+      !motion.rockActivationArmed ||
+      motion.physicsActivated ||
+      dragging ||
+      suspended ||
+      !(Number(vy) > 0)
+    ) {
+      return false;
+    }
+    return activateRockPhysicsScale();
   }
 
   function activateRockPhysicsScale() {
@@ -3167,7 +3371,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 20,
+      settingsSchemaVersion: 23,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -3572,6 +3776,7 @@ export function createSisyphusRuntime(elements = {}) {
     } else if (message.type === "control.granted") {
       collab.pendingControl = false;
       collab.hasControl = true;
+      armRockActivationScale();
       updateSharedHolder(payload.holderId || collab.clientId);
       collab.remoteControllerId = collab.holderId;
       updateSessionStatus();
@@ -3899,14 +4104,14 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       return;
     }
-    const wasSuspended = motion.suspended;
     if (snapshot.suspended) {
-      if (motion.physicsActivated) {
+      if (motion.rockActivationArmed || motion.physicsActivated) {
         resetRockActivationScale();
       }
-    } else if (wasSuspended) {
-      activateRockPhysicsScale();
+    } else if (snapshot.dragging && snapshot.holderId) {
+      armRockActivationScale();
     }
+    maybeActivateRockPhysicsScale(snapshot);
     const local = snapshot.suspended
       ? initialLocalPosition()
       : canonicalToLocal(snapshot.x, snapshot.y);
@@ -4030,7 +4235,6 @@ export function createSisyphusRuntime(elements = {}) {
     collab.releasePending = false;
     toggleHandVariant();
     updateBounds();
-    activateRockPhysicsScale();
     const position = localToCanonical(motion.x, motion.y);
     motion.suspended = false;
     motion.dragging = true;
@@ -4921,6 +5125,7 @@ export function createSisyphusRuntime(elements = {}) {
       deltaSeconds,
       sceneMotionOptions()
     );
+    maybeActivateRockPhysicsScale(state);
     const touchedGroundCanonical =
       wasAboveGround && state.y >= SharedPhysics.WORLD_HEIGHT - 0.01;
     applyCanonicalMotion(state);
@@ -5087,7 +5292,7 @@ export function createSisyphusRuntime(elements = {}) {
     event.preventDefault();
     toggleHandVariant();
     updateBounds();
-    activateRockPhysicsScale();
+    armRockActivationScale();
     motion.suspended = false;
     motion.dragging = true;
     motion.activePointerId = event.pointerId;
@@ -5312,6 +5517,9 @@ export function createSisyphusRuntime(elements = {}) {
         const loopState = drizzleLoopController.getState();
         return {
           ...loopState,
+          fadeActive: drizzleLoopAudio.fadeFrameId !== null,
+          fadeDurationMs: drizzleLoopAudio.fadeDurationMs,
+          fadeTargetVolume: drizzleLoopAudio.fadeTargetVolume,
           playing: drizzleLoopAudio.playing,
           volume: drizzleLoopAudio.volume,
         };
@@ -5420,17 +5628,11 @@ export function createSisyphusRuntime(elements = {}) {
       window.clearTimeout(collab.settingsUpdateTimerId);
       stopRainLoopSound({ immediate: true });
       rainLoopController.dispose();
-      drizzleLoopAudio.playing = false;
+      stopDrizzleLoopSound({ immediate: true });
       drizzleLoopController.dispose();
       resetFinalFallGate();
-      cancelAllRoleAudioFades();
-      chainHoverAudio.elements.forEach((audio) => audio?.pause());
+      stopHandInteractionSounds({ immediate: true });
       groundTouchAudio.elements.forEach((audio) => audio.pause());
-      sessionRoleAudio.timerIds.forEach((timerId) => {
-        window.clearTimeout(timerId);
-      });
-      sessionRoleAudio.timerIds.clear();
-      sessionRoleAudio.elements.forEach((audio) => audio.pause());
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {

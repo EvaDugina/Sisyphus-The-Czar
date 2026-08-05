@@ -274,7 +274,7 @@ test("настройки выпадения и выпрыгивания один
   }
 });
 
-test("первый клик анимирует размер камня, а темы используют свои градиенты", async ({
+test("первое падение анимирует размер камня, сохраняет контакт с полом, а темы используют свои градиенты", async ({
   page,
 }) => {
   await page.goto("/");
@@ -313,11 +313,55 @@ test("первый клик анимирует размер камня, а те�
     .toBe("#ddeeff");
 
   await setSettingValue(page, "rockActivatedWidthVw", 10);
+  await setSettingValue(page, "gravity", 0.1);
+  await setSettingValue(page, "pointerInfluence", 0);
   const rock = page.locator("#root > .world > .rock");
   const box = await rock.boundingBox();
+  const initialWidth = box.width;
   await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
   await page.mouse.down();
-  await expect(rock).toHaveClass(/is-activation-scaling/);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        activated: window.__sisyphusTestApi.motion.physicsActivated,
+        armed: window.__sisyphusTestApi.motion.rockActivationArmed,
+      })),
+    )
+    .toEqual({ activated: false, armed: true });
+  await expect(rock).not.toHaveClass(/is-activation-scaling/);
+  expect((await rock.boundingBox()).width).toBeCloseTo(initialWidth, 0);
+
+  await page.mouse.move(
+    box.x + box.width / 2,
+    Math.max(80, box.y + box.height / 2 - 180),
+    { steps: 8 },
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const { bounds, motion } = window.__sisyphusTestApi;
+        return bounds.maxY - motion.y;
+      }),
+    )
+    .toBeGreaterThan(20);
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const { bounds, collab, motion } = window.__sisyphusTestApi;
+        return {
+          activated: motion.physicsActivated,
+          armed: motion.rockActivationArmed,
+          dragging: motion.dragging,
+          suspended: motion.suspended,
+          vy: motion.vy,
+          y: motion.y,
+          maxY: bounds.maxY,
+          releasePending: collab.releasePending,
+        };
+      }),
+    )
+    .toMatchObject({ activated: true });
   await page.waitForTimeout(350);
   const activated = await rock.evaluate((element) => ({
     activated: window.__sisyphusTestApi.motion.physicsActivated,
@@ -325,8 +369,53 @@ test("первый клик анимирует размер камня, а те�
     viewportWidth: window.innerWidth,
   }));
   expect(activated.activated).toBe(true);
-  expect(activated.width).toBeCloseTo(activated.viewportWidth * 0.1, 0);
-  await page.mouse.up();
+  expect(
+    Math.abs(activated.width - activated.viewportWidth * 0.1),
+  ).toBeLessThanOrEqual(10);
+
+  const floorContact = await page.evaluate(() => {
+    const { bounds, motion, setPosition, updateBounds } =
+      window.__sisyphusTestApi;
+    updateBounds();
+    setPosition(bounds.maxX / 2, bounds.maxY);
+    const rock = document.querySelector("#root > .world > .rock");
+    const visualBottom =
+      motion.y + (rock.offsetHeight * (1 + motion.rockScale)) / 2;
+    return {
+      gap: document.querySelector("#root > .world").offsetHeight - visualBottom,
+      y: motion.y,
+      maxY: bounds.maxY,
+    };
+  });
+  expect(floorContact.y).toBeCloseTo(floorContact.maxY, 5);
+  expect(Math.abs(floorContact.gap)).toBeLessThanOrEqual(2);
+
+  const directionTrigger = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.motion.physicsActivated = false;
+    api.motion.rockActivationArmed = true;
+    api.motion.rockActivationScaleFactor = 1;
+    api.motion.dragging = false;
+    api.motion.suspended = false;
+    api.motion.vy = -100;
+    api.setPosition(api.bounds.maxX / 2, api.bounds.maxY / 2);
+    api.applyPhysics(SharedPhysics.FIXED_STEP_SECONDS);
+    const whileMovingUp = api.motion.physicsActivated;
+    api.motion.vy = 1;
+    api.applyPhysics(SharedPhysics.FIXED_STEP_SECONDS);
+    return {
+      afterMovingDown: api.motion.physicsActivated,
+      animationStarted: document
+        .querySelector("#root > .world > .rock")
+        .classList.contains("is-activation-scaling"),
+      whileMovingUp,
+    };
+  });
+  expect(directionTrigger).toEqual({
+    afterMovingDown: true,
+    animationStarted: true,
+    whileMovingUp: false,
+  });
 });
 
 test("glow-профили и зависимости select одинаковы на обоих маршрутах", async ({
@@ -394,7 +483,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}",
         );
         return [
           stored.glowOptimizationMode,

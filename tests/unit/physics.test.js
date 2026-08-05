@@ -41,7 +41,7 @@ test("начальная скорость первого падения огра
   );
 });
 
-test("сила тяжести и ускорения считаются из массы и g", () => {
+test("сила тяжести и затухание трения считаются независимо", () => {
   const physics = Physics.sanitizePhysics({
     mass: 2,
     gravity: 9.8,
@@ -55,11 +55,12 @@ test("сила тяжести и ускорения считаются из ма
   assert.equal(Math.round(Physics.liftForceSurplus(physics) * 100) / 100, 40.4);
   assert.equal(Physics.handForceRatio(physics), 1);
   assert.equal(Physics.handAcceleration(physics), 30);
-  assert.equal(Physics.groundFrictionAcceleration(physics), 4.9);
+  assert.equal(Physics.GROUND_FRICTION_DECAY_RATE, 5);
   assert.ok(
     Math.abs(
-      Physics.groundFrictionAcceleration(physics, { motionScale: 100 }) - 490
-    ) < 1e-9
+      Physics.groundFrictionRetention(physics, Physics.FIXED_STEP_SECONDS) -
+        Math.exp(-5 * 0.5 * Physics.FIXED_STEP_SECONDS)
+    ) < 1e-12
   );
 });
 
@@ -536,6 +537,76 @@ test("значение пружинистости меняет отскок пр
   assert.ok(bouncing.vy < resting.vy);
 });
 
+test("максимальная пружинистость отрабатывает слабые и сильные настоящие удары", () => {
+  [1, 119, 300, 1200].forEach((initialVy) => {
+    const state = Physics.sanitizeState({
+      phase: Physics.PHASES.PLAY,
+      x: 500,
+      y: Physics.WORLD_HEIGHT - 0.001,
+      vx: 0,
+      vy: initialVy,
+    });
+    const physics = Physics.sanitizePhysics({ bounce: 1, turbulence: 0 });
+    const impact = Math.min(
+      initialVy +
+        Physics.gravityAcceleration(physics) * Physics.FIXED_STEP_SECONDS,
+      900,
+    );
+
+    Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS);
+
+    assert.equal(state.y, Physics.WORLD_HEIGHT);
+    assert.ok(Math.abs(state.vy + impact) < 1e-9);
+  });
+});
+
+test("максимальная пружинистость не раскачивает лежащий камень", () => {
+  const state = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 500,
+    y: Physics.WORLD_HEIGHT,
+    vx: 0,
+    vy: 0,
+  });
+  const physics = Physics.sanitizePhysics({ bounce: 1, turbulence: 0 });
+
+  for (let index = 0; index < 120; index += 1) {
+    Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS);
+  }
+
+  assert.equal(state.y, Physics.WORLD_HEIGHT);
+  assert.equal(state.vy, 0);
+});
+
+test("пружинистость не зависит от трения земли", () => {
+  const reboundSpeeds = [0, 0.5, 1].map((groundFriction) => {
+    const state = Physics.sanitizeState({
+      phase: Physics.PHASES.FALLING,
+      x: 500,
+      y: Physics.WORLD_HEIGHT - 1,
+      vx: 300,
+      vy: 300,
+    });
+    const physics = Physics.sanitizePhysics({
+      bounce: 0.5,
+      groundFriction,
+      turbulence: 0,
+    });
+
+    Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS, {
+      motionScale: 10,
+    });
+    return state.vy;
+  });
+
+  assert.deepEqual(reboundSpeeds, [
+    reboundSpeeds[0],
+    reboundSpeeds[0],
+    reboundSpeeds[0],
+  ]);
+  assert.ok(reboundSpeeds[0] < 0);
+});
+
 test("отпечаток распознаётся без остановки камня", () => {
   const imprint = {
     x: 500,
@@ -765,8 +836,8 @@ test("инерция масштабирует импульс и сохраняе
   assert.equal(horizontalOnly.vy, 0);
 });
 
-test("трение земли заметно и монотонно гасит инерцию", () => {
-  function simulateGroundFriction(groundFriction, seconds) {
+test("трение земли заметно и монотонно гасит инерцию при любом масштабе", () => {
+  function simulateGroundFriction(groundFriction, seconds, motionScale) {
     const state = Physics.sanitizeState({
       phase: Physics.PHASES.PLAY,
       x: 50,
@@ -783,25 +854,39 @@ test("трение земли заметно и монотонно гасит и
 
     for (let index = 0; index < steps; index += 1) {
       Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS, {
-        motionScale: 100,
+        motionScale,
       });
     }
     return state;
   }
 
-  const icy = simulateGroundFriction(0, 1);
-  const medium = simulateGroundFriction(0.5, 1);
-  const rough = simulateGroundFriction(1, 1);
-  const stopped = simulateGroundFriction(1, 2);
+  const scales = [10, 100, 1000];
+  const results = scales.map((motionScale) =>
+    [0, 0.25, 0.5, 0.75, 0.99, 1].map((groundFriction) =>
+      simulateGroundFriction(groundFriction, 1, motionScale),
+    ),
+  );
+  const [baseline] = results;
 
-  assert.ok(icy.vx > 800);
-  assert.ok(medium.vx < icy.vx * 0.6);
-  assert.ok(medium.vx > rough.vx);
-  assert.equal(rough.vx, 0);
-  assert.equal(stopped.vx, 0);
+  results.forEach((states) => {
+    states.slice(1).forEach((state, index) => {
+      assert.ok(state.vx < states[index].vx);
+      assert.ok(state.x < states[index].x);
+    });
+    states.forEach((state, index) => {
+      assert.ok(Math.abs(state.vx - baseline[index].vx) < 1e-9);
+      assert.ok(Math.abs(state.x - baseline[index].x) < 1e-9);
+    });
+  });
+  assert.ok(baseline[0].vx > 800);
+  assert.ok(baseline[2].vx < baseline[0].vx * 0.1);
+  assert.ok(baseline[4].vx > 0);
+  assert.equal(baseline[5].vx, 0);
+  assert.equal(baseline[5].x, 50);
+  assert.equal(simulateGroundFriction(1, 2, 10).vx, 0);
 });
 
-test("максимальное трение блокирует проскальзывание по земле", () => {
+test("максимальное трение мгновенно блокирует проскальзывание по земле", () => {
   [0, 0.1, 1].forEach((inertia) => {
     const state = Physics.sanitizeState({
       phase: Physics.PHASES.PLAY,
@@ -824,6 +909,26 @@ test("максимальное трение блокирует проскаль�
     assert.equal(state.x, 500);
     assert.equal(state.vx, 0);
   });
+
+  const landing = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 500,
+    y: Physics.WORLD_HEIGHT - 0.1,
+    vx: 900,
+    vy: 300,
+  });
+  Physics.stepState(
+    landing,
+    Physics.sanitizePhysics({
+      groundFriction: 1,
+      turbulence: 0,
+      bounce: 0,
+    }),
+    Physics.FIXED_STEP_SECONDS,
+  );
+
+  assert.equal(landing.y, Physics.WORLD_HEIGHT);
+  assert.equal(landing.vx, 0);
 });
 
 test("трение земли не действует в воздухе или во время удержания", () => {

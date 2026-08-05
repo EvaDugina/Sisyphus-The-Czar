@@ -589,6 +589,8 @@ test("общие визуальные настройки комнаты норм
       sceneHeightScreens: 200,
       handWidthVw: 120,
       handForceDeficitEasing: "not-a-curve",
+      handAudioEnabled: false,
+      drizzleEnabled: false,
       trailUnlimited: true,
       lineWidth: 99,
       rainDropColor: "bad",
@@ -604,6 +606,8 @@ test("общие визуальные настройки комнаты норм
 
   assert.equal(session.roomSettings.sceneHeightScreens, 100);
   assert.equal(session.roomSettings.handWidthVw, 90);
+  assert.equal(session.roomSettings.handAudioEnabled, false);
+  assert.equal(session.roomSettings.drizzleEnabled, false);
   assert.equal(
     session.roomSettings.handForceDeficitEasing,
     RoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing

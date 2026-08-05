@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 18;
+  const ROOM_SETTINGS_VERSION = 19;
   const MAX_HEIGHT_GATES = 10;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
@@ -137,6 +137,8 @@
     windowObstacleMaxWidthPx: 640,
     windowObstacleMinHeightPx: 160,
     windowObstacleMaxHeightPx: 480,
+    handAudioEnabled: true,
+    drizzleEnabled: true,
     drizzleStartVolume: 0.1,
     drizzleEndVolume: 1,
     drizzleVolumeEasing: DEFAULT_DRIZZLE_VOLUME_EASING,
@@ -658,6 +660,12 @@
       ...windowObstacleIntervalRange,
       ...windowObstacleWidthRange,
       ...windowObstacleHeightPxRange,
+      handAudioEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "handAudioEnabled"
+      ),
+      drizzleEnabled: boolSetting(source, fallbackSource, "drizzleEnabled"),
       drizzleStartVolume: finiteSetting(
         source,
         fallbackSource,
@@ -898,6 +906,13 @@
         "darkBackgroundLowColor",
         "rockActivatedWidthVw",
       ].forEach((key) => {
+        if (!Object.hasOwn(source, key)) {
+          source[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
+    if (finiteNumber(version, 1) < 19) {
+      ["handAudioEnabled", "drizzleEnabled"].forEach((key) => {
         if (!Object.hasOwn(source, key)) {
           source[key] = DEFAULT_ROOM_SETTINGS[key];
         }

@@ -319,7 +319,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v22");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v23");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -366,7 +366,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 22);
+  assert.equal(productionSettingsSchemaVersion, 23);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1015,11 +1015,21 @@ test("UI содержит настройки автоматики, scroll, overf
   assert.deepEqual(
     drizzleGroup.controls.map((control) => control.name),
     [
+      "drizzleEnabled",
       "drizzleStartVolume",
       "drizzleEndVolume",
       "drizzleVolumeEasing",
     ],
   );
+  assert.equal(byName("drizzleEnabled").type, "checkbox");
+  assert.equal(byName("drizzleEnabled").defaultChecked, true);
+  [
+    "drizzleStartVolume",
+    "drizzleEndVolume",
+    "drizzleVolumeEasing",
+  ].forEach((name) => {
+    assert.equal(byName(name).enabledWhen, "drizzleEnabled");
+  });
   assert.deepEqual(
     [
       byName("drizzleStartVolume").min,
@@ -1182,6 +1192,7 @@ test("параметры единственной руки вынесены в �
   assert.deepEqual(
     handSizeGroup.controls.map((control) => control.name),
     [
+      "handAudioEnabled",
       "handForce",
       "handForceDeficitEasing",
       "pointerInfluence",
@@ -1189,6 +1200,11 @@ test("параметры единственной руки вынесены в �
       "handWidthVw",
     ],
   );
+  const handAudioEnabled = controls.find(
+    (control) => control.name === "handAudioEnabled",
+  );
+  assert.equal(handAudioEnabled.type, "checkbox");
+  assert.equal(handAudioEnabled.defaultChecked, true);
   assert.equal(heightGates.type, "height-gates");
   assert.equal(heightGates.defaultValue, "[]");
   assert.deepEqual(
@@ -1318,6 +1334,8 @@ test("настройки препятствия Окна нормализуют 
       darkBackgroundDeepColor: "#191a16",
       darkBackgroundLowColor: "#070807",
       rockActivatedWidthVw: 10,
+      handAudioEnabled: true,
+      drizzleEnabled: true,
     },
   );
 });
@@ -1392,7 +1410,11 @@ test("настройка трения земли заменяет скольже
     { min: 0, max: 1, step: 0.05, defaultValue: 0.35 }
   );
   assert.ok(
-    groundFriction.formulas.some((formula) => formula.includes("k_{scene}"))
+    groundFriction.formulas.some((formula) => formula.includes("e^{-k_f"))
+  );
+  assert.equal(
+    groundFriction.formulas.some((formula) => formula.includes("k_{scene}")),
+    false,
   );
 });
 
@@ -1456,7 +1478,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 18);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 19);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -1478,6 +1500,26 @@ test("группа дождя содержит общий toggle и blur тём�
       darkBackgroundDeepColor: "#191a16",
       darkBackgroundLowColor: "#070807",
       rockActivatedWidthVw: 10,
+      handAudioEnabled: true,
+      drizzleEnabled: true,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({}, 18),
+    {
+      handAudioEnabled: true,
+      drizzleEnabled: true,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings({
+      handAudioEnabled: "false",
+      drizzleEnabled: false,
+    }),
+    {
+      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+      handAudioEnabled: false,
+      drizzleEnabled: false,
     },
   );
   assert.equal(
