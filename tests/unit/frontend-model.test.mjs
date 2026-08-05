@@ -38,6 +38,12 @@ import {
   positionScrollState,
 } from "../../src/lib/positionScroll.mjs";
 import { trailAnchorPoint } from "../../src/lib/trailAnchor.mjs";
+import {
+  canonicalVisualTrailPointToLocal,
+  localVisualTrailPointToCanonical,
+  normalizeStoredTrailPoint,
+  VISUAL_TRAIL_POINT_VERSION,
+} from "../../src/lib/trailPersistence.mjs";
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
 import { formatSummitElapsedMs } from "../../src/lib/summitTimer.mjs";
@@ -72,6 +78,35 @@ import {
 } from "../../src/config/settings.mjs";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
+
+test("визуальная точка следа сохраняет позицию после canonical round-trip", () => {
+  const geometry = {
+    viewportWidth: 1280,
+    sceneHeight: 72_000,
+    worldWidth: 1000,
+    worldHeight: 2000,
+  };
+  const source = { x: 837.25, y: 45_678.75 };
+  const canonical = localVisualTrailPointToCanonical(source, geometry);
+  const restored = canonicalVisualTrailPointToLocal(canonical, geometry);
+
+  assert.equal(canonical[2], VISUAL_TRAIL_POINT_VERSION);
+  assert.ok(Math.abs(restored.x - source.x) < 1);
+  assert.ok(Math.abs(restored.y - source.y) < 1);
+});
+
+test("нормализация различает legacy и визуальные точки следа", () => {
+  const geometry = { worldWidth: 1000, worldHeight: 2000 };
+
+  assert.deepEqual(normalizeStoredTrailPoint([100.4, 300.6], geometry), [
+    100.4,
+    300.6,
+  ]);
+  assert.deepEqual(
+    normalizeStoredTrailPoint([-5, 2500, VISUAL_TRAIL_POINT_VERSION], geometry),
+    [0, 2000, VISUAL_TRAIL_POINT_VERSION],
+  );
+});
 
 test("client ID использует randomUUID в secure context", () => {
   const expected = "12345678-1234-4234-8234-123456789abc";

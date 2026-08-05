@@ -44,6 +44,11 @@ import {
 } from "../lib/positionScroll.mjs";
 import { trailAnchorPoint } from "../lib/trailAnchor.mjs";
 import {
+  canonicalVisualTrailPointToLocal,
+  localVisualTrailPointToCanonical,
+  normalizeStoredTrailPoint,
+} from "../lib/trailPersistence.mjs";
+import {
   settings as productionSettings,
 } from "../config/production-preset.mjs";
 import { createSettingsController } from "./createSettingsController.js";
@@ -171,6 +176,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   const trail = {
     points: [],
+    canonicalPoints: [],
     lastX: null,
     lastY: null,
     followX: null,
@@ -545,6 +551,7 @@ export function createSisyphusRuntime(elements = {}) {
     sessionCreateInFlight: false,
     sessionCreateAbortController: null,
     trailCursor: 0,
+    trailWriterId: null,
     firstFallRequestSent: false,
     lastMoveSentAt: 0,
     lastPointerSentAt: 0,
@@ -2308,6 +2315,17 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       renderImprint();
     }
+    if (
+      shouldHandleChange(
+        "sceneHeightScreens",
+        "rockMinWidthVw",
+        "rockMaxWidthVw",
+        "rockScaleEasing",
+        "trailAnchorHeightPercent",
+      )
+    ) {
+      reprojectTrail();
+    }
     if (trail.dirty || trail.glowDirty) {
       drawTrail();
     }
@@ -3120,40 +3138,64 @@ export function createSisyphusRuntime(elements = {}) {
     };
   }
 
-  function sharedTrailPointsToLocal(points) {
+  function trailProjectionOptions() {
+    return {
+      viewportWidth: bounds.worldWidth,
+      sceneHeight: bounds.worldHeight,
+      worldWidth: SharedPhysics.WORLD_WIDTH,
+      worldHeight: SharedPhysics.WORLD_HEIGHT,
+    };
+  }
+
+  function normalizeSharedTrailPoints(points) {
     if (!Array.isArray(points)) {
       return [];
     }
-    updateBounds();
-    return points.slice(-1000).flatMap((point) => {
-      if (!Array.isArray(point) || point.length < 2) {
-        return [];
-      }
-      const x = Number(point[0]);
-      const y = Number(point[1]);
-      if (!Number.isFinite(x) || !Number.isFinite(y)) {
-        return [];
-      }
-      const localX =
-        (clamp(x, 0, SharedPhysics.WORLD_WIDTH) /
-          SharedPhysics.WORLD_WIDTH) * bounds.maxX;
-      const localY =
-        (clamp(y, 0, SharedPhysics.WORLD_HEIGHT) /
-          SharedPhysics.WORLD_HEIGHT) * bounds.maxY;
-      const scale = scaleForLocalY(localY);
-      return [{
-        x:
-          localX +
-          rockHorizontalWallCompensation(
-            localX,
-            bounds.maxX,
-            bounds.rockWidth,
-            scale
-          ) +
-          bounds.rockWidth / 2,
-        y: localY + bounds.rockHeight / 2,
-      }];
+    return points.flatMap((point) => {
+      const normalized = normalizeStoredTrailPoint(point, {
+        worldWidth: SharedPhysics.WORLD_WIDTH,
+        worldHeight: SharedPhysics.WORLD_HEIGHT,
+      });
+      return normalized ? [normalized] : [];
     });
+  }
+
+  function sharedTrailPointToLocal(point) {
+    const visualPoint = canonicalVisualTrailPointToLocal(
+      point,
+      trailProjectionOptions(),
+    );
+    if (visualPoint) {
+      return visualPoint;
+    }
+
+    // Legacy points are rock top-left positions. Keep them readable while all
+    // newly recorded points use the exact visual anchor (v2).
+    const localX =
+      (point[0] / SharedPhysics.WORLD_WIDTH) * bounds.maxX;
+    const localY =
+      (point[1] / SharedPhysics.WORLD_HEIGHT) * bounds.maxY;
+    const scale = scaleForLocalY(localY);
+    return trailAnchorPoint({
+      x:
+        localX +
+        rockHorizontalWallCompensation(
+          localX,
+          bounds.maxX,
+          bounds.rockWidth,
+          scale,
+        ),
+      y: localY,
+      width: bounds.rockWidth,
+      height: bounds.rockHeight,
+      scale,
+      heightPercent: params.trailAnchorHeightPercent,
+    });
+  }
+
+  function sharedTrailPointsToLocal(points) {
+    updateBounds();
+    return normalizeSharedTrailPoints(points).map(sharedTrailPointToLocal);
   }
 
   function syncTrailTail() {
@@ -3167,16 +3209,29 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function loadSharedTrail(points) {
-    trail.points = sharedTrailPointsToLocal(points);
+    trail.canonicalPoints = normalizeSharedTrailPoints(points);
+    trail.points = sharedTrailPointsToLocal(trail.canonicalPoints);
+    trimTrailToLimit();
     syncTrailTail();
   }
 
   function appendSharedTrail(points) {
-    const appended = sharedTrailPointsToLocal(points);
-    if (appended.length === 0) {
+    const canonicalPoints = normalizeSharedTrailPoints(points);
+    if (canonicalPoints.length === 0) {
       return;
     }
+    const appended = sharedTrailPointsToLocal(canonicalPoints);
+    trail.canonicalPoints.push(...canonicalPoints);
     trail.points.push(...appended);
+    trimTrailToLimit();
+    syncTrailTail();
+  }
+
+  function reprojectTrail() {
+    if (trail.canonicalPoints.length === 0) {
+      return;
+    }
+    trail.points = sharedTrailPointsToLocal(trail.canonicalPoints);
     trimTrailToLimit();
     syncTrailTail();
   }
@@ -3796,6 +3851,9 @@ export function createSisyphusRuntime(elements = {}) {
     } else if (message.type === "control.granted") {
       collab.pendingControl = false;
       collab.hasControl = true;
+      collab.trailWriterId = normalizeHolderId(
+        payload.trailWriterId || payload.holderId || collab.clientId,
+      );
       armRockActivationScale();
       updateSharedHolder(payload.holderId || collab.clientId);
       collab.remoteControllerId = collab.holderId;
@@ -3945,6 +4003,7 @@ export function createSisyphusRuntime(elements = {}) {
 
     const previousPhase = motion.phase;
     collab.lastRevision = revision;
+    collab.trailWriterId = normalizeHolderId(payload.trailWriterId);
     const offsetSample = Date.now() - Number(payload.serverTime || Date.now());
     collab.clockOffset = collab.clockOffsetReady
       ? collab.clockOffset * 0.8 + offsetSample * 0.2
@@ -4505,6 +4564,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function resetTrail() {
     trail.points.length = 0;
+    trail.canonicalPoints.length = 0;
     trail.lastX = null;
     trail.lastY = null;
     trail.followX = null;
@@ -4553,6 +4613,7 @@ export function createSisyphusRuntime(elements = {}) {
     const overflow = trail.points.length - params.trailMaxPoints;
     if (overflow > 0) {
       trail.points.splice(0, overflow);
+      trail.canonicalPoints.splice(0, overflow);
       trail.dirty = true;
       trail.glowDirty = true;
     }
@@ -4609,9 +4670,24 @@ export function createSisyphusRuntime(elements = {}) {
       }
     }
 
+    const canonicalPoint = localVisualTrailPointToCanonical(
+      { x, y },
+      trailProjectionOptions(),
+    );
+    if (!canonicalPoint) {
+      return;
+    }
+
     trail.points.push({ x, y });
+    trail.canonicalPoints.push(canonicalPoint);
     trail.lastX = x;
     trail.lastY = y;
+    if (
+      collab.enabled &&
+      collab.trailWriterId === collab.clientId
+    ) {
+      sendShared("trail.append", { points: [canonicalPoint] });
+    }
     if (params.trailEnabled) {
       trail.dirty = true;
       trail.glowDirty = true;
@@ -5463,6 +5539,7 @@ export function createSisyphusRuntime(elements = {}) {
     fitTopInscription();
     updateBounds();
     applyViewportScaledVisuals();
+    reprojectTrail();
     resizeTrailCanvas();
     if (collab.enabled && collab.snapshots.length > 0) {
       applySharedFrame(collab.snapshots.at(-1));
