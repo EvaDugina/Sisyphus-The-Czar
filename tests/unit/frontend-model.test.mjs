@@ -29,6 +29,8 @@ import {
   DEFAULT_ROCK_SCALE_EASING,
   parseCubicBezier,
   rockActivationScaleFactor,
+  rockHorizontalWallCompensation,
+  rockLocalXForVisualGrab,
   rockScaleForY,
 } from "../../src/lib/rockScale.mjs";
 import {
@@ -310,7 +312,7 @@ test("повторный hide не перезапускает таймер ис�
   );
 });
 
-test("настройки инерции отображают шкалу 0–1", () => {
+test("настройки инерции отображают шкалу 0–5", () => {
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const inertia = controls.find(
     (control) => control.name === "inertia"
@@ -331,7 +333,7 @@ test("настройки инерции отображают шкалу 0–1", 
       step: inertia.step,
       defaultValue: inertia.defaultValue,
     },
-    { min: 0, max: 1, step: 0.01, defaultValue: 0.9 }
+    { min: 0, max: 5, step: 0.01, defaultValue: 0.9 }
   );
   assert.deepEqual(
     {
@@ -340,7 +342,7 @@ test("настройки инерции отображают шкалу 0–1", 
       step: horizontalInertia.step,
       defaultValue: horizontalInertia.defaultValue,
     },
-    { min: 0, max: 1, step: 0.01, defaultValue: 0.02 }
+    { min: 0, max: 5, step: 0.01, defaultValue: 0.02 }
   );
 });
 
@@ -805,6 +807,47 @@ test("коэффициент активации приводит камень к
       viewportWidthPx: 1000,
     }),
     1,
+  );
+});
+
+test("масштабированный камень касается обеих боковых границ", () => {
+  const baseWidth = 200;
+  const maxX = 800;
+
+  [0.5, 1, 2].forEach((scale) => {
+    const visualOffset = (baseWidth * (1 - scale)) / 2;
+    const leftCompensation = rockHorizontalWallCompensation(
+      0,
+      maxX,
+      baseWidth,
+      scale,
+    );
+    const rightCompensation = rockHorizontalWallCompensation(
+      maxX,
+      maxX,
+      baseWidth,
+      scale,
+    );
+
+    assert.equal(leftCompensation + visualOffset, 0);
+    assert.equal(
+      maxX + rightCompensation + baseWidth - visualOffset,
+      maxX + baseWidth,
+    );
+    assert.equal(
+      rockHorizontalWallCompensation(maxX / 2, maxX, baseWidth, scale),
+      0,
+    );
+  });
+
+  assert.equal(rockLocalXForVisualGrab(0, 0, maxX, baseWidth, 0.5), 0);
+  assert.equal(
+    rockLocalXForVisualGrab(1000, baseWidth, maxX, baseWidth, 0.5),
+    maxX,
+  );
+  assert.equal(
+    rockLocalXForVisualGrab(500, baseWidth / 2, maxX, baseWidth, 0.5),
+    maxX / 2,
   );
 });
 

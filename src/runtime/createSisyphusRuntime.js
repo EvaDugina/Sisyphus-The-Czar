@@ -34,6 +34,8 @@ import {
 } from "../lib/settingsModel.mjs";
 import {
   rockActivationScaleFactor,
+  rockHorizontalWallCompensation,
+  rockLocalXForVisualGrab,
   rockScaleForY,
 } from "../lib/rockScale.mjs";
 import {
@@ -2563,8 +2565,18 @@ export function createSisyphusRuntime(elements = {}) {
     updateBounds();
     const scale = scaleForLocalY(motion.y);
     const roundedScale = Math.round(scale * 10000) / 10000;
+    const wallCompensation = rockHorizontalWallCompensation(
+      motion.x,
+      bounds.maxX,
+      bounds.rockWidth,
+      scale
+    );
     motion.rockScale = scale;
     rock.style.setProperty("--rock-scale", `${roundedScale}`);
+    rock.style.setProperty(
+      "--rock-wall-compensation",
+      `${Math.round(wallCompensation * 10000) / 10000}px`
+    );
   }
 
   function setPosition(x, y) {
@@ -2673,11 +2685,12 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     const scale = scaleForLocalY(targetY);
-    const scaledOffsetX = (bounds.rockWidth * (1 - scale)) / 2;
-    motion.dragTargetX = clamp(
-      targetPointX - scaledOffsetX - motion.grabX * scale,
-      0,
-      bounds.maxX
+    motion.dragTargetX = rockLocalXForVisualGrab(
+      targetPointX,
+      motion.grabX,
+      bounds.maxX,
+      bounds.rockWidth,
+      scale
     );
     motion.dragTargetY = targetY;
   }
@@ -3112,8 +3125,6 @@ export function createSisyphusRuntime(elements = {}) {
       return [];
     }
     updateBounds();
-    const xScale = bounds.maxX / SharedPhysics.WORLD_WIDTH;
-    const yScale = bounds.maxY / SharedPhysics.WORLD_HEIGHT;
     return points.slice(-1000).flatMap((point) => {
       if (!Array.isArray(point) || point.length < 2) {
         return [];
@@ -3123,16 +3134,25 @@ export function createSisyphusRuntime(elements = {}) {
       if (!Number.isFinite(x) || !Number.isFinite(y)) {
         return [];
       }
-      return [
-        {
-          x:
-            clamp(x, 0, SharedPhysics.WORLD_WIDTH) * xScale +
-            bounds.rockWidth / 2,
-          y:
-            clamp(y, 0, SharedPhysics.WORLD_HEIGHT) * yScale +
-            bounds.rockHeight / 2,
-        },
-      ];
+      const localX =
+        (clamp(x, 0, SharedPhysics.WORLD_WIDTH) /
+          SharedPhysics.WORLD_WIDTH) * bounds.maxX;
+      const localY =
+        (clamp(y, 0, SharedPhysics.WORLD_HEIGHT) /
+          SharedPhysics.WORLD_HEIGHT) * bounds.maxY;
+      const scale = scaleForLocalY(localY);
+      return [{
+        x:
+          localX +
+          rockHorizontalWallCompensation(
+            localX,
+            bounds.maxX,
+            bounds.rockWidth,
+            scale
+          ) +
+          bounds.rockWidth / 2,
+        y: localY + bounds.rockHeight / 2,
+      }];
     });
   }
 
@@ -4548,8 +4568,14 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function recordTrailPoint(deltaSeconds) {
+    const wallCompensation = rockHorizontalWallCompensation(
+      motion.x,
+      bounds.maxX,
+      bounds.rockWidth,
+      motion.rockScale
+    );
     const anchor = trailAnchorPoint({
-      x: motion.x,
+      x: motion.x + wallCompensation,
       y: motion.y,
       width: bounds.rockWidth,
       height: bounds.rockHeight,

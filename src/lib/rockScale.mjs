@@ -184,3 +184,60 @@ export function rockActivationScaleFactor(currentScale, options = {}) {
   const targetWidthPx = (viewportWidthPx * targetWidthVw) / 100;
   return targetWidthPx / currentWidthPx;
 }
+
+export function rockHorizontalWallCompensation(
+  localX,
+  maxX,
+  baseWidthPx,
+  scale,
+) {
+  const travel = Math.max(0, finiteNumber(maxX, 0));
+  const width = Math.max(0, finiteNumber(baseWidthPx, 0));
+  const safeScale = Math.max(0, finiteNumber(scale, 1));
+  const x = clamp(finiteNumber(localX, travel / 2), 0, travel);
+  const visualWidth = width * safeScale;
+  const worldWidth = travel + width;
+
+  if (travel === 0 || width === 0) {
+    return 0;
+  }
+  if (visualWidth > worldWidth) {
+    return travel / 2 - x;
+  }
+
+  const compensation = (x / travel - 0.5) * (width - visualWidth);
+  return compensation === 0 ? 0 : compensation;
+}
+
+export function rockLocalXForVisualGrab(
+  pointerX,
+  grabX,
+  maxX,
+  baseWidthPx,
+  scale,
+) {
+  const travel = Math.max(0, finiteNumber(maxX, 0));
+  const width = Math.max(0, finiteNumber(baseWidthPx, 0));
+  const safeScale = Math.max(0, finiteNumber(scale, 1));
+  const visualTravel = travel + width - width * safeScale;
+
+  if (travel === 0 || width === 0) {
+    return 0;
+  }
+  if (visualTravel <= 0) {
+    return travel / 2;
+  }
+
+  const visualGrabOffset = clamp(
+    finiteNumber(grabX, width / 2),
+    0,
+    width,
+  ) * safeScale;
+  const progress = clamp(
+    (finiteNumber(pointerX, visualGrabOffset) - visualGrabOffset) /
+      visualTravel,
+    0,
+    1,
+  );
+  return progress * travel;
+}

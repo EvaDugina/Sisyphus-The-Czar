@@ -711,10 +711,17 @@ test("любой участник изменяет общие параметры
     v: 1,
     type: "physics.update",
     seq: 2,
-    payload: { gravity: 99 },
+    payload: { gravity: 99, inertia: 5, horizontalInertia: 5 },
   });
   assert.equal(session.roomSettings.lineWidth, 9);
   assert.equal(session.physics.gravity, 99);
+  assert.equal(session.physics.inertia, 5);
+  assert.equal(session.physics.horizontalInertia, 5);
+  const syncedPhysics = first.socket.messages.findLast(
+    (message) => message.type === "session.snapshot"
+  ).payload.physics;
+  assert.equal(syncedPhysics.inertia, 5);
+  assert.equal(syncedPhysics.horizontalInertia, 5);
   assert.equal(first.client.role, "master");
   assert.equal(second.client.role, "master");
 });

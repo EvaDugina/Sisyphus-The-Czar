@@ -336,10 +336,11 @@ test("турбулентность влияет только на горизон
   assert.notEqual(windy.vx, calm.vx);
 });
 
-test("инерция использует шкалу от 0 до 1", () => {
+test("инерция использует шкалу от 0 до 5", () => {
   assert.equal(Physics.sanitizePhysics({ inertia: -1 }).inertia, 0);
   assert.equal(Physics.sanitizePhysics({ inertia: 0.5 }).inertia, 0.5);
-  assert.equal(Physics.sanitizePhysics({ inertia: 1.5 }).inertia, 1);
+  assert.equal(Physics.sanitizePhysics({ inertia: 1.5 }).inertia, 1.5);
+  assert.equal(Physics.sanitizePhysics({ inertia: 6 }).inertia, 5);
   assert.equal(
     Physics.sanitizePhysics({ horizontalInertia: -1 }).horizontalInertia,
     0
@@ -350,7 +351,11 @@ test("инерция использует шкалу от 0 до 1", () => {
   );
   assert.equal(
     Physics.sanitizePhysics({ horizontalInertia: 1.5 }).horizontalInertia,
-    1
+    1.5
+  );
+  assert.equal(
+    Physics.sanitizePhysics({ horizontalInertia: 6 }).horizontalInertia,
+    5
   );
 });
 
@@ -375,7 +380,7 @@ test("старая шкала инерции мигрирует в ослабл�
   );
   assert.equal(
     migratedInertia(1.4, 8),
-    1
+    1.4
   );
   assert.equal(
     migratedInertia(0.09, 9),
@@ -834,6 +839,84 @@ test("инерция масштабирует импульс и сохраняе
   assert.ok(verticalOnly.vy < 0);
   assert.ok(horizontalOnly.vx > 0);
   assert.equal(horizontalOnly.vy, 0);
+});
+
+test("значения инерции выше единицы усиливают обе компоненты импульса", () => {
+  const release = (inertia, horizontalInertia) => {
+    const state = Physics.sanitizeState({ phase: Physics.PHASES.PLAY });
+    Physics.applyReleaseImpulse(
+      state,
+      Physics.sanitizePhysics({
+        mass: 10,
+        handForce: 1,
+        pointerInfluence: 1,
+        inertia,
+        horizontalInertia,
+      }),
+      100,
+      -100,
+    );
+    return state;
+  };
+
+  const normal = release(1, 1);
+  const high = release(5, 5);
+
+  assert.ok(Math.abs(high.vx - normal.vx * 5) < 1e-12);
+  assert.ok(Math.abs(high.vy - normal.vy * 25) < 1e-12);
+});
+
+test("ограничители release-скорости работают независимо по осям", () => {
+  const state = Physics.sanitizeState({ phase: Physics.PHASES.PLAY });
+  Physics.applyReleaseImpulse(
+    state,
+    Physics.sanitizePhysics({
+      mass: 0.1,
+      handForce: 1000,
+      pointerInfluence: 10,
+      inertia: 5,
+      horizontalInertia: 5,
+    }),
+    4000,
+    -9000,
+  );
+
+  assert.equal(state.vx, 900);
+  assert.equal(state.vy, -1800);
+});
+
+test("горизонтальная инерция не участвует в трении земли", () => {
+  const stepWithHorizontalInertia = (horizontalInertia) => {
+    const state = Physics.sanitizeState({
+      phase: Physics.PHASES.PLAY,
+      x: 500,
+      y: Physics.WORLD_HEIGHT,
+      vx: 600,
+      vy: 0,
+    });
+    Physics.stepState(
+      state,
+      Physics.sanitizePhysics({
+        groundFriction: 0.5,
+        horizontalInertia,
+        turbulence: 0,
+        bounce: 0,
+      }),
+      Physics.FIXED_STEP_SECONDS,
+    );
+    return state;
+  };
+
+  const withoutHorizontalInertia = stepWithHorizontalInertia(0);
+  const withMaximumHorizontalInertia = stepWithHorizontalInertia(5);
+  assert.equal(
+    withMaximumHorizontalInertia.x,
+    withoutHorizontalInertia.x,
+  );
+  assert.equal(
+    withMaximumHorizontalInertia.vx,
+    withoutHorizontalInertia.vx,
+  );
 });
 
 test("трение земли заметно и монотонно гасит инерцию при любом масштабе", () => {

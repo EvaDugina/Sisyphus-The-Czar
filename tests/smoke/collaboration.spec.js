@@ -281,6 +281,11 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
     "100",
   );
   await expect(page.locator('[name="bounce"]')).toHaveAttribute("step", "0.01");
+  await expect(page.locator('[name="inertia"]')).toHaveAttribute("max", "5");
+  await expect(page.locator('[name="horizontalInertia"]')).toHaveAttribute(
+    "max",
+    "5",
+  );
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("35");
   await expect(page.locator('[name^="returnScroll"]')).toHaveCount(0);
@@ -1746,13 +1751,19 @@ test("вход на корень открывает рабочую личную 
   const scaleSamples = await page.evaluate(() => {
     const rock = document.querySelector(".rock");
     const sample = (y) => {
+      setPosition(0, y);
+      const leftRect = rock.getBoundingClientRect();
+      setPosition(bounds.maxX, y);
+      const rightRect = rock.getBoundingClientRect();
       setPosition(bounds.maxX / 2, y);
-      const rect = rock.getBoundingClientRect();
+      const centerRect = rock.getBoundingClientRect();
       return {
         scale: Number.parseFloat(
           getComputedStyle(rock).getPropertyValue("--rock-scale")
         ),
-        width: rect.width,
+        leftGap: leftRect.left,
+        rightGap: window.innerWidth - rightRect.right,
+        width: centerRect.width,
       };
     };
     const viewportWidth = window.innerWidth;
@@ -1778,6 +1789,12 @@ test("вход на корень открывает рабочую личную 
   expect(
     Math.abs(scaleSamples.bottom.width - scaleSamples.viewportWidth * 0.1)
   ).toBeLessThan(1);
+  [scaleSamples.bottom, scaleSamples.middle, scaleSamples.top].forEach(
+    (sample) => {
+      expect(Math.abs(sample.leftGap)).toBeLessThan(1);
+      expect(Math.abs(sample.rightGap)).toBeLessThan(1);
+    }
+  );
   await expect
     .poll(() => page.evaluate(() => motion.firstFallTriggered))
     .toBe(false);

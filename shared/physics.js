@@ -60,8 +60,8 @@
     handForce: [1, 1000],
     pointerInfluence: [0, 10],
     bounce: [0, 1],
-    inertia: [0, 1],
-    horizontalInertia: [0, 1],
+    inertia: [0, 5],
+    horizontalInertia: [0, 5],
     groundFriction: [0, 1],
     turbulence: [0, 1],
   });
@@ -500,16 +500,18 @@
       releaseVy < 0
         ? MAX_RELEASE_UPWARD_SPEED
         : MAX_RELEASE_DOWNWARD_SPEED;
-    const limitScale = Math.min(
-      1,
-      Math.abs(releaseVx) > 0
-        ? MAX_RELEASE_HORIZONTAL_SPEED / Math.abs(releaseVx)
-        : 1,
-      Math.abs(releaseVy) > 0 ? verticalLimit / Math.abs(releaseVy) : 1
-    );
-
-    state.vx = releaseVx === 0 ? 0 : releaseVx * limitScale;
-    state.vy = releaseVy === 0 ? 0 : releaseVy * limitScale;
+    state.vx =
+      releaseVx === 0
+        ? 0
+        : clamp(
+            releaseVx,
+            -MAX_RELEASE_HORIZONTAL_SPEED,
+            MAX_RELEASE_HORIZONTAL_SPEED
+          );
+    state.vy =
+      releaseVy === 0
+        ? 0
+        : clamp(releaseVy, -verticalLimit, verticalLimit);
     state.dragging = false;
     state.controllerId = null;
     state.suspended = false;
