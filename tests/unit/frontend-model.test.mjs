@@ -1047,7 +1047,7 @@ test("UI содержит настройки автоматики, scroll, overf
       byName("positionScrollZonePercent").step,
       byName("positionScrollZonePercent").defaultValue,
     ],
-    [0, 20, 0.1, 20],
+    [0, 50, 0.1, 20],
   );
   assert.deepEqual(
     [

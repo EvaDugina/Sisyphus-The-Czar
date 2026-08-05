@@ -54,7 +54,7 @@
   const ROOM_SETTINGS_LIMITS = Object.freeze({
     sceneHeightScreens: [1, 100],
     returnScrollDurationSeconds: [0, 10],
-    positionScrollZonePercent: [0, 20],
+    positionScrollZonePercent: [0, 50],
     positionScrollSpeedVh: [0, 2],
     draftFoldAngle: [0, 180],
     draftFoldZoneSize: [0, 50],

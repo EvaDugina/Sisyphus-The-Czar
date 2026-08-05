@@ -267,6 +267,10 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await expect(page.locator('[name="positionScrollZonePercent"]')).toHaveValue(
     "20",
   );
+  await expect(page.locator('[name="positionScrollZonePercent"]')).toHaveAttribute(
+    "max",
+    "50",
+  );
   await expect(page.locator('[name="positionScrollStartSpeedVh"]')).toHaveValue(
     "0.2",
   );
