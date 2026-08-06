@@ -406,6 +406,61 @@ test("между комнатами передаются только подтв
   newcomer.socket.close();
 });
 
+test("визуальная trail-история длиннее 1000 точек восстанавливается при reconnect", async (context) => {
+  const { service, base, wsBase } = await startService(context);
+  const created = await createSession(base, "integration-trail-writer01");
+  const writer = connect(
+    `${wsBase}?session=${created.sessionId}&client=integration-trail-writer01`,
+  );
+  await writer.opened;
+  await writer.waitFor("session.snapshot");
+  await writer.waitFor("trail.history");
+
+  writer.send("roomSettings.update", { trailUnlimited: true });
+  await writer.waitFor(
+    "session.snapshot",
+    (payload) => payload.roomSettings?.trailUnlimited === true,
+  );
+  writer.send("control.acquire", { x: 500, y: 1000 });
+  const granted = await writer.waitFor("control.granted");
+  assert.equal(granted.payload.trailWriterId, "integration-trail-writer01");
+
+  const points = Array.from({ length: 1005 }, (_, index) => [
+    index % 1001,
+    (index * 2) % 2001,
+    2,
+  ]);
+  for (let offset = 0; offset < points.length; offset += 64) {
+    writer.send("trail.append", {
+      points: points.slice(offset, offset + 64),
+    });
+  }
+
+  const writerSession = service.manager.getSession(created.sessionId);
+  await waitUntil(
+    () =>
+      writerSession.trail.length === points.length &&
+      service.manager.sharedTrailHub.trail.length === points.length,
+  );
+
+  const newcomerCreated = await createSession(
+    base,
+    "integration-trail-reader01",
+  );
+  const newcomer = connect(
+    `${wsBase}?session=${newcomerCreated.sessionId}&client=integration-trail-reader01`,
+  );
+  await newcomer.opened;
+  const history = await newcomer.waitFor("trail.history");
+
+  assert.equal(history.payload.points.length, points.length);
+  assert.deepEqual(history.payload.points[0], [0, 0, 2]);
+  assert.equal(history.payload.points.at(-1)[2], 2);
+
+  writer.socket.close();
+  newcomer.socket.close();
+});
+
 test("leave-token немедленно закрывает личную сессию", async (context) => {
   const { service, base, wsBase } = await startService(context);
   const created = await createSession(base, "integration-leave-a001");

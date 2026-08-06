@@ -44,6 +44,7 @@
 - **Изоляция:** текущий worktree, отдельная ветка не создаётся.
 - **Что временно:** build-time flag, экспериментальные DOM-классы и CSS custom properties, отдельный smoke-сценарий.
 - **Guard ID:** `hotfix_2026-08-06_10-59_preclick-rock-guidance`
+- **Проверка после синхронизации:** после merge `origin/main@73afc26` повторно выполнены lint, build, полный набор тестов и browser smoke; удалённые изменения в общих runtime/CSS-файлах разрешены вручную, аварийное отключение эксперимента остаётся доступно через default-off flag или revert коммита `c192a7c`.
 - **Rollback проверен:** да — `verify-all` подтверждает чистый вычисляемый rollback, а baseline smoke проходит при выключенном flag.
 
 ## Evidence
@@ -55,6 +56,8 @@
 | Lint, build, unit/integration | `docker run --rm -v "C:\Users\Benedict\Work\Sisyphus-The-Czar:/app" -v /app/node_modules -w /app node:24.18.0-alpine3.23 sh -c "npm ci && npm run lint && npm run build && npm test"` | PASS | Lint и production build зелёные; `166/166` тестов прошли. `npm ci` сообщает о 5 известных audit findings зависимостей, их исправление не входит в UI-гипотезу. |
 | Flag off / baseline | `docker run --rm --ipc=host -v "C:\Users\Benedict\Work\Sisyphus-The-Czar:/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "npm ci && npm run test:smoke"` | PASS | `2/2`; старый контракт «рука только над камнем» сохранён при default-off. |
 | Flag on / эксперимент | `docker run --rm --ipc=host -v "C:\Users\Benedict\Work\Sisyphus-The-Czar:/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "export EXPERIMENT_PRECLICK_ROCK_GUIDANCE=true; npm ci && npx playwright test tests/smoke/preclick-rock-guidance.spec.js"` | PASS | `1/1`; X parallax меняет знак вслед за указателем, первый click удаляет parallax и обнуляет offset, рука остаётся visible вне камня. |
+| Совместимость после merge | Docker Node `24.18.0`: `npm ci && npm run lint && npm run build && npm test` | PASS | Merge с `origin/main@73afc26`: lint и production build зелёные; `178/178` тестов прошли. |
+| Browser regression после merge | Playwright `1.61.1`: production smoke, draft smoke и отдельный сценарий с flag on | PASS | Production `2/2`, draft `6/6`, эксперимент `1/1`. |
 | Визуальная проверка | `test-results/preclick-rock-guidance-fla-4dde1-ого-клика-и-постоянную-руку/*.png` | PASS | На обоих кадрах фото-рука видима отдельно от камня; после click камень отображается без экспериментального parallax-класса. |
 
 ### Ручная демонстрация

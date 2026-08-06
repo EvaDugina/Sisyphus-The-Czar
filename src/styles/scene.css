@@ -94,6 +94,18 @@
   font-size: 3.2rem;
 }
 
+@property --rock-scale {
+  syntax: "<number>";
+  inherits: false;
+  initial-value: 1;
+}
+
+@property --rock-wall-compensation {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
 .rock {
   --rock-x: 0px;
   --rock-y: 0px;
@@ -102,6 +114,7 @@
   --rock-parallax-y: 0px;
   --rock-parallax-rotate-x: 0deg;
   --rock-parallax-rotate-y: 0deg;
+  --rock-wall-compensation: 0px;
 
   position: absolute;
   left: 0;
@@ -114,9 +127,17 @@
   -webkit-user-drag: none;
   user-drag: none;
   filter: drop-shadow(0 1.05rem 1.1rem var(--shadow));
-  transform: translate3d(var(--rock-x), var(--rock-y), 0) scale(var(--rock-scale));
+  transform:
+    translate3d(
+      calc(var(--rock-x) + var(--rock-wall-compensation)),
+      var(--rock-y),
+      0
+    )
+    scale(var(--rock-scale));
   transform-origin: center;
   transition:
+    --rock-scale 0ms ease-out,
+    --rock-wall-compensation 0ms ease-out,
     filter 160ms ease,
     opacity 240ms ease;
   will-change: transform;
@@ -126,13 +147,24 @@
   transform:
     perspective(900px)
     translate3d(
-      calc(var(--rock-x) + var(--rock-parallax-x)),
+      calc(
+        var(--rock-x) + var(--rock-wall-compensation) +
+          var(--rock-parallax-x)
+      ),
       calc(var(--rock-y) + var(--rock-parallax-y)),
       0
     )
     rotateX(var(--rock-parallax-rotate-x))
     rotateY(var(--rock-parallax-rotate-y))
     scale(var(--rock-scale));
+}
+
+.rock.is-activation-scaling {
+  transition:
+    --rock-scale 300ms ease-out,
+    --rock-wall-compensation 300ms ease-out,
+    filter 160ms ease,
+    opacity 240ms ease;
 }
 
 .rock-imprint {
@@ -453,7 +485,13 @@ body.state-fallingToBottom .hand-cursor {
 
 @media (prefers-reduced-motion: reduce) {
   .rock.is-preclick-parallax {
-    transform: translate3d(var(--rock-x), var(--rock-y), 0) scale(var(--rock-scale));
+    transform:
+      translate3d(
+        calc(var(--rock-x) + var(--rock-wall-compensation)),
+        var(--rock-y),
+        0
+      )
+      scale(var(--rock-scale));
   }
 
   .weather-rain,

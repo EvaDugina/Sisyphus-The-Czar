@@ -42,9 +42,15 @@ body.is-scroll-locked {
 }
 
 body {
-  --surface: #f8f8f5;
-  --surface-deep: #e9e8e2;
-  --surface-low: #d9d8d1;
+  --light-background: #f8f8f5;
+  --light-background-deep: #e9e8e2;
+  --light-background-low: #d9d8d1;
+  --dark-background: #101211;
+  --dark-background-deep: #191a16;
+  --dark-background-low: #070807;
+  --surface: var(--light-background);
+  --surface-deep: var(--light-background-deep);
+  --surface-low: var(--light-background-low);
   --ink: #161616;
   --muted: rgba(22, 22, 22, 0.62);
   --line: rgba(22, 22, 22, 0.2);
@@ -69,9 +75,9 @@ body {
 
 body.theme-dark {
   color-scheme: dark;
-  --surface: #101211;
-  --surface-deep: #191a16;
-  --surface-low: #070807;
+  --surface: var(--dark-background);
+  --surface-deep: var(--dark-background-deep);
+  --surface-low: var(--dark-background-low);
   --ink: #f4f1ea;
   --muted: rgba(244, 241, 234, 0.64);
   --line: rgba(244, 241, 234, 0.18);

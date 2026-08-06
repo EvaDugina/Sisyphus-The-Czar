@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 22;
+const SETTINGS_SCHEMA_VERSION = 23;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -1201,6 +1201,7 @@ export function createSettingsController(options) {
       horizontalInertia: params.horizontalInertia.toFixed(2),
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
+      rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,

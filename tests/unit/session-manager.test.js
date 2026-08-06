@@ -589,6 +589,8 @@ test("общие визуальные настройки комнаты норм
       sceneHeightScreens: 200,
       handWidthVw: 120,
       handForceDeficitEasing: "not-a-curve",
+      handAudioEnabled: false,
+      drizzleEnabled: false,
       trailUnlimited: true,
       lineWidth: 99,
       rainDropColor: "bad",
@@ -604,6 +606,8 @@ test("общие визуальные настройки комнаты норм
 
   assert.equal(session.roomSettings.sceneHeightScreens, 100);
   assert.equal(session.roomSettings.handWidthVw, 90);
+  assert.equal(session.roomSettings.handAudioEnabled, false);
+  assert.equal(session.roomSettings.drizzleEnabled, false);
   assert.equal(
     session.roomSettings.handForceDeficitEasing,
     RoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing
@@ -691,6 +695,63 @@ test("roomSettings.update синхронизирует размер руки и 
   );
 });
 
+test("trail writer сохраняет визуальную историю длиннее 1000 точек", () => {
+  const { manager } = setup();
+  const hub = manager.ensureDefaultSession({
+    roomSettings: { trailUnlimited: true },
+  });
+  const session = manager.createSession({
+    roomSettings: { trailUnlimited: true },
+  });
+  const writer = connect(manager, session, "trail-writer-client-01");
+  const observer = connect(manager, session, "trail-observer-client-01");
+
+  manager.acquireControl(session, writer.client, { x: 500, y: 1000 });
+  assert.equal(session.trailWriterId, writer.client.id);
+  assert.equal(
+    writer.socket.messages.findLast(
+      (message) => message.type === "session.snapshot",
+    ).payload.trailWriterId,
+    writer.client.id,
+  );
+
+  const points = Array.from({ length: 1005 }, (_, index) => [
+    index % (Physics.WORLD_WIDTH + 1),
+    (index * 2) % (Physics.WORLD_HEIGHT + 1),
+    2,
+  ]);
+  let sequence = 1;
+  for (let offset = 0; offset < points.length; offset += 64) {
+    manager.handleMessage(session, writer.client, {
+      v: 1,
+      type: "trail.append",
+      seq: sequence++,
+      payload: { points: points.slice(offset, offset + 64) },
+    });
+  }
+
+  assert.equal(session.trail.length, 1005);
+  assert.equal(hub.trail.length, 1005);
+  assert.deepEqual(session.trail[0], [0, 0, 2]);
+  assert.equal(session.trail.at(-1)[2], 2);
+
+  manager.handleMessage(session, observer.client, {
+    v: 1,
+    type: "trail.append",
+    seq: 1,
+    payload: { points: [[999, 1999, 2]] },
+  });
+  assert.equal(session.trail.length, 1005);
+
+  manager.recordTrailPoint(session, 1000);
+  assert.equal(session.trail.length, 1005);
+
+  writer.socket.close();
+  manager.recordTrailPoint(session, 2000);
+  assert.equal(session.trail.length, 1006);
+  assert.equal(session.trail.at(-1).length, 2);
+});
+
 test("любой участник изменяет общие параметры комнаты", () => {
   const { manager } = setup();
   const session = manager.createSession();
@@ -707,10 +768,17 @@ test("любой участник изменяет общие параметры
     v: 1,
     type: "physics.update",
     seq: 2,
-    payload: { gravity: 99 },
+    payload: { gravity: 99, inertia: 5, horizontalInertia: 5 },
   });
   assert.equal(session.roomSettings.lineWidth, 9);
   assert.equal(session.physics.gravity, 99);
+  assert.equal(session.physics.inertia, 5);
+  assert.equal(session.physics.horizontalInertia, 5);
+  const syncedPhysics = first.socket.messages.findLast(
+    (message) => message.type === "session.snapshot"
+  ).payload.physics;
+  assert.equal(syncedPhysics.inertia, 5);
+  assert.equal(syncedPhysics.horizontalInertia, 5);
   assert.equal(first.client.role, "master");
   assert.equal(second.client.role, "master");
 });

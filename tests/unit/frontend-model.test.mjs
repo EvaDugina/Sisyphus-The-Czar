@@ -28,6 +28,9 @@ import {
   DEFAULT_ROCK_MIN_WIDTH_VW,
   DEFAULT_ROCK_SCALE_EASING,
   parseCubicBezier,
+  rockActivationScaleFactor,
+  rockHorizontalWallCompensation,
+  rockLocalXForVisualGrab,
   rockScaleForY,
 } from "../../src/lib/rockScale.mjs";
 import {
@@ -35,6 +38,12 @@ import {
   positionScrollState,
 } from "../../src/lib/positionScroll.mjs";
 import { trailAnchorPoint } from "../../src/lib/trailAnchor.mjs";
+import {
+  canonicalVisualTrailPointToLocal,
+  localVisualTrailPointToCanonical,
+  normalizeStoredTrailPoint,
+  VISUAL_TRAIL_POINT_VERSION,
+} from "../../src/lib/trailPersistence.mjs";
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
 import { formatSummitElapsedMs } from "../../src/lib/summitTimer.mjs";
@@ -69,6 +78,35 @@ import {
 } from "../../src/config/settings.mjs";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
+
+test("визуальная точка следа сохраняет позицию после canonical round-trip", () => {
+  const geometry = {
+    viewportWidth: 1280,
+    sceneHeight: 72_000,
+    worldWidth: 1000,
+    worldHeight: 2000,
+  };
+  const source = { x: 837.25, y: 45_678.75 };
+  const canonical = localVisualTrailPointToCanonical(source, geometry);
+  const restored = canonicalVisualTrailPointToLocal(canonical, geometry);
+
+  assert.equal(canonical[2], VISUAL_TRAIL_POINT_VERSION);
+  assert.ok(Math.abs(restored.x - source.x) < 1);
+  assert.ok(Math.abs(restored.y - source.y) < 1);
+});
+
+test("нормализация различает legacy и визуальные точки следа", () => {
+  const geometry = { worldWidth: 1000, worldHeight: 2000 };
+
+  assert.deepEqual(normalizeStoredTrailPoint([100.4, 300.6], geometry), [
+    100.4,
+    300.6,
+  ]);
+  assert.deepEqual(
+    normalizeStoredTrailPoint([-5, 2500, VISUAL_TRAIL_POINT_VERSION], geometry),
+    [0, 2000, VISUAL_TRAIL_POINT_VERSION],
+  );
+});
 
 test("client ID использует randomUUID в secure context", () => {
   const expected = "12345678-1234-4234-8234-123456789abc";
@@ -309,7 +347,7 @@ test("повторный hide не перезапускает таймер ис�
   );
 });
 
-test("настройки инерции отображают шкалу 0–1", () => {
+test("настройки инерции отображают шкалу 0–5", () => {
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const inertia = controls.find(
     (control) => control.name === "inertia"
@@ -318,7 +356,7 @@ test("настройки инерции отображают шкалу 0–1", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v22");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v23");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -330,7 +368,7 @@ test("настройки инерции отображают шкалу 0–1", 
       step: inertia.step,
       defaultValue: inertia.defaultValue,
     },
-    { min: 0, max: 1, step: 0.01, defaultValue: 0.9 }
+    { min: 0, max: 5, step: 0.01, defaultValue: 0.9 }
   );
   assert.deepEqual(
     {
@@ -339,7 +377,7 @@ test("настройки инерции отображают шкалу 0–1", 
       step: horizontalInertia.step,
       defaultValue: horizontalInertia.defaultValue,
     },
-    { min: 0, max: 1, step: 0.01, defaultValue: 0.02 }
+    { min: 0, max: 5, step: 0.01, defaultValue: 0.02 }
   );
 });
 
@@ -365,7 +403,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 22);
+  assert.equal(productionSettingsSchemaVersion, 23);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -669,6 +707,9 @@ test("настройки размера камня есть в UI и получ�
   const rockScaleEasing = controls.find(
     (control) => control.name === "rockScaleEasing",
   );
+  const rockActivatedWidthVw = controls.find(
+    (control) => control.name === "rockActivatedWidthVw",
+  );
   const rockMinWidthVw = controls.find(
     (control) => control.name === "rockMinWidthVw",
   );
@@ -708,6 +749,7 @@ test("настройки размера камня есть в UI и получ�
       "rockJumpInertiaSpreadPercent",
       "mass",
       "rockScaleEasing",
+      "rockActivatedWidthVw",
       "rockMinWidthVw",
       "rockMaxWidthVw",
     ],
@@ -715,6 +757,12 @@ test("настройки размера камня есть в UI и получ�
   assert.equal(rockScaleEasing.type, "cubic-bezier");
   assert.equal(rockScaleEasing.label, "Кривая размера");
   assert.equal(rockScaleEasing.defaultValue, DEFAULT_ROCK_SCALE_EASING);
+  assert.equal(rockActivatedWidthVw.type, "number");
+  assert.equal(
+    rockActivatedWidthVw.label,
+    "Размер после запуска физики, %",
+  );
+  assert.equal(rockActivatedWidthVw.defaultValue, 10);
   assert.equal(rockMinWidthVw.type, "number");
   assert.equal(rockMinWidthVw.label, "Начальный размер, %");
   assert.equal(rockMinWidthVw.defaultValue, DEFAULT_ROCK_MIN_WIDTH_VW);
@@ -776,6 +824,65 @@ test("настройки размера камня есть в UI и получ�
       defaultValue: 25,
       enabledWhen: "rockJumpEnabled",
     },
+  );
+});
+
+test("коэффициент активации приводит камень к целевой ширине vw", () => {
+  const factor = rockActivationScaleFactor(0.5, {
+    targetWidthVw: 10,
+    baseWidthPx: 400,
+    viewportWidthPx: 1000,
+  });
+  assert.equal(factor, 0.5);
+  assert.equal(400 * 0.5 * factor, 100);
+  assert.equal(
+    rockActivationScaleFactor(0, {
+      targetWidthVw: 10,
+      baseWidthPx: 400,
+      viewportWidthPx: 1000,
+    }),
+    1,
+  );
+});
+
+test("масштабированный камень касается обеих боковых границ", () => {
+  const baseWidth = 200;
+  const maxX = 800;
+
+  [0.5, 1, 2].forEach((scale) => {
+    const visualOffset = (baseWidth * (1 - scale)) / 2;
+    const leftCompensation = rockHorizontalWallCompensation(
+      0,
+      maxX,
+      baseWidth,
+      scale,
+    );
+    const rightCompensation = rockHorizontalWallCompensation(
+      maxX,
+      maxX,
+      baseWidth,
+      scale,
+    );
+
+    assert.equal(leftCompensation + visualOffset, 0);
+    assert.equal(
+      maxX + rightCompensation + baseWidth - visualOffset,
+      maxX + baseWidth,
+    );
+    assert.equal(
+      rockHorizontalWallCompensation(maxX / 2, maxX, baseWidth, scale),
+      0,
+    );
+  });
+
+  assert.equal(rockLocalXForVisualGrab(0, 0, maxX, baseWidth, 0.5), 0);
+  assert.equal(
+    rockLocalXForVisualGrab(1000, baseWidth, maxX, baseWidth, 0.5),
+    maxX,
+  );
+  assert.equal(
+    rockLocalXForVisualGrab(500, baseWidth / 2, maxX, baseWidth, 0.5),
+    maxX / 2,
   );
 });
 
@@ -986,11 +1093,21 @@ test("UI содержит настройки автоматики, scroll, overf
   assert.deepEqual(
     drizzleGroup.controls.map((control) => control.name),
     [
+      "drizzleEnabled",
       "drizzleStartVolume",
       "drizzleEndVolume",
       "drizzleVolumeEasing",
     ],
   );
+  assert.equal(byName("drizzleEnabled").type, "checkbox");
+  assert.equal(byName("drizzleEnabled").defaultChecked, true);
+  [
+    "drizzleStartVolume",
+    "drizzleEndVolume",
+    "drizzleVolumeEasing",
+  ].forEach((name) => {
+    assert.equal(byName(name).enabledWhen, "drizzleEnabled");
+  });
   assert.deepEqual(
     [
       byName("drizzleStartVolume").min,
@@ -1008,7 +1125,7 @@ test("UI содержит настройки автоматики, scroll, overf
       byName("positionScrollZonePercent").step,
       byName("positionScrollZonePercent").defaultValue,
     ],
-    [0, 20, 0.1, 20],
+    [0, 50, 0.1, 20],
   );
   assert.deepEqual(
     [
@@ -1092,8 +1209,32 @@ test("общие визуальные настройки комнаты есть
   );
   assert.deepEqual(
     viewGroup.controls.map((control) => control.name),
-    ["themeMode", "sceneHeightScreens"],
+    [
+      "themeMode",
+      "lightBackgroundColor",
+      "lightBackgroundDeepColor",
+      "lightBackgroundLowColor",
+      "darkBackgroundColor",
+      "darkBackgroundDeepColor",
+      "darkBackgroundLowColor",
+      "sceneHeightScreens",
+    ],
   );
+  [
+    "lightBackgroundColor",
+    "lightBackgroundDeepColor",
+    "lightBackgroundLowColor",
+    "darkBackgroundColor",
+    "darkBackgroundDeepColor",
+    "darkBackgroundLowColor",
+  ].forEach((name) => {
+    const control = viewGroup.controls.find((item) => item.name === name);
+    assert.equal(control.type, "color");
+    assert.equal(
+      control.defaultValue,
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS[name],
+    );
+  });
   assert.deepEqual(
     physicsGroup.controls.map((control) => control.name),
     [
@@ -1129,6 +1270,7 @@ test("параметры единственной руки вынесены в �
   assert.deepEqual(
     handSizeGroup.controls.map((control) => control.name),
     [
+      "handAudioEnabled",
       "handForce",
       "handForceDeficitEasing",
       "pointerInfluence",
@@ -1136,6 +1278,11 @@ test("параметры единственной руки вынесены в �
       "handWidthVw",
     ],
   );
+  const handAudioEnabled = controls.find(
+    (control) => control.name === "handAudioEnabled",
+  );
+  assert.equal(handAudioEnabled.type, "checkbox");
+  assert.equal(handAudioEnabled.defaultChecked, true);
   assert.equal(heightGates.type, "height-gates");
   assert.equal(heightGates.defaultValue, "[]");
   assert.deepEqual(
@@ -1258,6 +1405,15 @@ test("настройки препятствия Окна нормализуют 
       windowObstacleMaxWidthPx: 640,
       windowObstacleMinHeightPx: 160,
       windowObstacleMaxHeightPx: 480,
+      lightBackgroundColor: "#f8f8f5",
+      lightBackgroundDeepColor: "#e9e8e2",
+      lightBackgroundLowColor: "#d9d8d1",
+      darkBackgroundColor: "#101211",
+      darkBackgroundDeepColor: "#191a16",
+      darkBackgroundLowColor: "#070807",
+      rockActivatedWidthVw: 10,
+      handAudioEnabled: true,
+      drizzleEnabled: true,
     },
   );
 });
@@ -1332,7 +1488,11 @@ test("настройка трения земли заменяет скольже
     { min: 0, max: 1, step: 0.05, defaultValue: 0.35 }
   );
   assert.ok(
-    groundFriction.formulas.some((formula) => formula.includes("k_{scene}"))
+    groundFriction.formulas.some((formula) => formula.includes("e^{-k_f"))
+  );
+  assert.equal(
+    groundFriction.formulas.some((formula) => formula.includes("k_{scene}")),
+    false,
   );
 });
 
@@ -1396,7 +1556,50 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 17);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 19);
+  const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
+    lightBackgroundColor: "#ABC",
+    darkBackgroundLowColor: "invalid",
+    rockActivatedWidthVw: 999,
+  });
+  assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
+  assert.equal(
+    visualSettings.darkBackgroundLowColor,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundLowColor,
+  );
+  assert.equal(visualSettings.rockActivatedWidthVw, 150);
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({}, 17),
+    {
+      lightBackgroundColor: "#f8f8f5",
+      lightBackgroundDeepColor: "#e9e8e2",
+      lightBackgroundLowColor: "#d9d8d1",
+      darkBackgroundColor: "#101211",
+      darkBackgroundDeepColor: "#191a16",
+      darkBackgroundLowColor: "#070807",
+      rockActivatedWidthVw: 10,
+      handAudioEnabled: true,
+      drizzleEnabled: true,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({}, 18),
+    {
+      handAudioEnabled: true,
+      drizzleEnabled: true,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRoomSettings({
+      handAudioEnabled: "false",
+      drizzleEnabled: false,
+    }),
+    {
+      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
+      handAudioEnabled: false,
+      drizzleEnabled: false,
+    },
+  );
   assert.equal(
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockJumpAngleSpreadDegrees,
     90,

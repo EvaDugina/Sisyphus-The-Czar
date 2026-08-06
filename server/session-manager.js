@@ -11,6 +11,9 @@ const DISCONNECTED_CLIENT_TTL_MS = 60_000;
 const DEFAULT_EMPTY_SESSION_GRACE_MS = 10_000;
 const POINTER_VELOCITY_MAX_AGE_MS = 150;
 const MAX_TRAIL_POINTS = 1000;
+const MAX_TRAIL_EVENTS = 1000;
+const MAX_TRAIL_BATCH_POINTS = 64;
+const VISUAL_TRAIL_POINT_VERSION = 2;
 const TRAIL_SYNC_INTERVAL_MS = 30_000;
 const MAX_ROCK_POINTER_OFFSET = 4;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
@@ -92,12 +95,32 @@ function normalizeClientId(value) {
   return CLIENT_ID_PATTERN.test(clientId) ? clientId : null;
 }
 
-function sanitizeTrail(input) {
+function trailPointLimit(roomSettings) {
+  if (roomSettings?.trailUnlimited) {
+    return Infinity;
+  }
+  const configured = Number(roomSettings?.trailMaxPoints);
+  return Number.isSafeInteger(configured) && configured > 0
+    ? configured
+    : MAX_TRAIL_POINTS;
+}
+
+function trimTrailToRoomSettings(trail, roomSettings) {
+  const limit = trailPointLimit(roomSettings);
+  const overflow = Number.isFinite(limit) ? trail.length - limit : 0;
+  if (overflow > 0) {
+    trail.splice(0, overflow);
+  }
+}
+
+function sanitizeTrail(input, roomSettings) {
   if (!Array.isArray(input)) {
     return [];
   }
 
-  return input.slice(-MAX_TRAIL_POINTS).flatMap((point) => {
+  const limit = trailPointLimit(roomSettings);
+  const source = Number.isFinite(limit) ? input.slice(-limit) : input;
+  return source.flatMap((point) => {
     if (!Array.isArray(point) || point.length < 2) {
       return [];
     }
@@ -106,12 +129,14 @@ function sanitizeTrail(input) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       return [];
     }
-    return [
-      [
-        Math.round(Physics.clamp(x, 0, Physics.WORLD_WIDTH)),
-        Math.round(Physics.clamp(y, 0, Physics.WORLD_HEIGHT)),
-      ],
-    ];
+    const visual = Number(point[2]) === VISUAL_TRAIL_POINT_VERSION;
+    const cleanX = Physics.clamp(x, 0, Physics.WORLD_WIDTH);
+    const cleanY = Physics.clamp(y, 0, Physics.WORLD_HEIGHT);
+    return [[
+      visual ? roundNetworkNumber(cleanX) : Math.round(cleanX),
+      visual ? roundNetworkNumber(cleanY) : Math.round(cleanY),
+      ...(visual ? [VISUAL_TRAIL_POINT_VERSION] : []),
+    ]];
   });
 }
 
@@ -224,7 +249,8 @@ class SessionManager {
       state,
       physics,
       roomSettings,
-      trail: sanitizeTrail(payload.trail),
+      trail: sanitizeTrail(payload.trail, roomSettings),
+      trailWriterId: null,
       imprint,
       persistent,
       singleClient,
@@ -293,8 +319,9 @@ class SessionManager {
       return;
     }
     this.sharedTrailHub = session;
-    this.sharedTrailRevision = 0;
-    this.sharedTrailEvents = session.trail.map((point) => ({
+    const recentPoints = session.trail.slice(-MAX_TRAIL_EVENTS);
+    this.sharedTrailRevision = session.trail.length - recentPoints.length;
+    this.sharedTrailEvents = recentPoints.map((point) => ({
       id: ++this.sharedTrailRevision,
       sourceSessionId: null,
       point: [...point],
@@ -327,12 +354,13 @@ class SessionManager {
     }
     if (roomSettings) {
       session.roomSettings = roomSettings;
+      trimTrailToRoomSettings(session.trail, session.roomSettings);
     }
     if (imprint) {
       session.imprint = imprint;
     }
     if (Object.hasOwn(payload, "trail")) {
-      session.trail = sanitizeTrail(payload.trail);
+      session.trail = sanitizeTrail(payload.trail, session.roomSettings);
     }
     if (state || imprint) {
       const now = this.now();
@@ -377,6 +405,7 @@ class SessionManager {
         nextRoomSettings
       );
       session.roomSettings = nextRoomSettings;
+      trimTrailToRoomSettings(session.trail, session.roomSettings);
       this.syncHolderBehaviorTimers(session, previousRoomSettings);
       this.reconcileHeightGateProgress(session);
     }
@@ -400,6 +429,7 @@ class SessionManager {
       roomSettingsVersion: RoomSettings.ROOM_SETTINGS_VERSION,
       settingsRevision: session.settingsRevision,
       trail: session.trail.map((point) => [...point]),
+      trailWriterId: session.trailWriterId,
       imprint: session.imprint ? { ...session.imprint } : null,
       persistent: Boolean(session.persistent),
       singleClient: Boolean(session.singleClient),
@@ -551,7 +581,8 @@ class SessionManager {
         state,
         physics,
         roomSettings,
-        trail: sanitizeTrail(record.trail),
+        trail: sanitizeTrail(record.trail, roomSettings),
+        trailWriterId: normalizeClientId(record.trailWriterId),
         imprint,
         persistent,
         singleClient: record.singleClient === true,
@@ -1256,6 +1287,9 @@ class SessionManager {
       case "audio.play":
         this.playSessionAudio(session, client);
         break;
+      case "trail.append":
+        this.appendClientTrail(session, client, payload);
+        break;
       case "trail.ack":
         this.acknowledgeSharedTrail(client, payload);
         break;
@@ -1328,6 +1362,7 @@ class SessionManager {
         { ...session.roomSettings, ...payload.roomSettings },
         session.roomSettings
       );
+      trimTrailToRoomSettings(session.trail, session.roomSettings);
     }
     session.firstFallAt = null;
     this.clearStationaryHold(session);
@@ -1369,11 +1404,13 @@ class SessionManager {
         : null,
     };
     session.firstFallAt = null;
+    session.trailWriterId = client.id;
     this.syncDrag(session, now);
     this.markChanged(session);
 
     this.sendTo(client, "control.granted", {
       holderId: client.id,
+      trailWriterId: session.trailWriterId,
     });
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
@@ -1725,6 +1762,7 @@ class SessionManager {
         nextRoomSettings,
       );
       session.roomSettings = nextRoomSettings;
+      trimTrailToRoomSettings(session.trail, session.roomSettings);
       this.syncHolderBehaviorTimers(session, previousRoomSettings);
       this.reconcileHeightGateProgress(session);
     }
@@ -1782,6 +1820,7 @@ class SessionManager {
     );
     rescaleSceneVerticalMotion(session, previousRoomSettings, nextRoomSettings);
     session.roomSettings = nextRoomSettings;
+    trimTrailToRoomSettings(session.trail, session.roomSettings);
     this.syncHolderBehaviorTimers(session, previousRoomSettings);
     this.reconcileHeightGateProgress(session);
     session.settingsRevision += 1;
@@ -1889,7 +1928,35 @@ class SessionManager {
     session.dirty = true;
   }
 
+  activeTrailWriter(session) {
+    const writer = session.clients.get(session.trailWriterId);
+    return socketIsOpen(writer?.socket) ? writer : null;
+  }
+
+  appendClientTrail(session, client, payload = {}) {
+    if (session.trailWriterId !== client.id) {
+      return false;
+    }
+    const source = Array.isArray(payload.points)
+      ? payload.points.slice(0, MAX_TRAIL_BATCH_POINTS)
+      : [];
+    const points = sanitizeTrail(source, { trailUnlimited: true }).filter(
+      (point) => point[2] === VISUAL_TRAIL_POINT_VERSION,
+    );
+    if (points.length === 0) {
+      return false;
+    }
+    session.trail.push(...points);
+    trimTrailToRoomSettings(session.trail, session.roomSettings);
+    points.forEach((point) => this.publishSharedTrailPoint(session, point));
+    this.markChanged(session);
+    return true;
+  }
+
   recordTrailPoint(session, now) {
+    if (this.activeTrailWriter(session)) {
+      return;
+    }
     if (now - session.lastTrailAt < SNAPSHOT_INTERVAL_MS) {
       return;
     }
@@ -1899,9 +1966,7 @@ class SessionManager {
       Math.round(session.state.y),
     ];
     session.trail.push(point);
-    if (session.trail.length > MAX_TRAIL_POINTS) {
-      session.trail.splice(0, session.trail.length - MAX_TRAIL_POINTS);
-    }
+    trimTrailToRoomSettings(session.trail, session.roomSettings);
     this.publishSharedTrailPoint(session, point);
   }
 
@@ -1915,23 +1980,20 @@ class SessionManager {
       return;
     }
 
-    const clean = sanitizeTrail([point])[0];
+    const clean = sanitizeTrail([point], { trailUnlimited: true })[0];
     if (!clean) {
       return;
     }
     hub.trail.push(clean);
-    if (hub.trail.length > MAX_TRAIL_POINTS) {
-      hub.trail.splice(0, hub.trail.length - MAX_TRAIL_POINTS);
-    }
     this.sharedTrailEvents.push({
       id: ++this.sharedTrailRevision,
       sourceSessionId: session.id,
       point: clean,
     });
-    if (this.sharedTrailEvents.length > MAX_TRAIL_POINTS) {
+    if (this.sharedTrailEvents.length > MAX_TRAIL_EVENTS) {
       this.sharedTrailEvents.splice(
         0,
-        this.sharedTrailEvents.length - MAX_TRAIL_POINTS
+        this.sharedTrailEvents.length - MAX_TRAIL_EVENTS
       );
     }
     this.markChanged(hub);
@@ -2179,6 +2241,7 @@ class SessionManager {
       suspended: Boolean(session.state.suspended),
       turbTime: roundNetworkNumber(session.state.turbTime),
       holderId: this.holderId(session),
+      trailWriterId: session.trailWriterId,
       groundTouchSeq: session.groundTouchSeq,
       summitElapsedMs: this.summitElapsedAt(session, serverTime),
       summitTimerRunning: session.summitRunningSince !== null,

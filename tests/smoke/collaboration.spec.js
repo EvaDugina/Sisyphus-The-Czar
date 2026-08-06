@@ -267,6 +267,10 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await expect(page.locator('[name="positionScrollZonePercent"]')).toHaveValue(
     "20",
   );
+  await expect(page.locator('[name="positionScrollZonePercent"]')).toHaveAttribute(
+    "max",
+    "50",
+  );
   await expect(page.locator('[name="positionScrollStartSpeedVh"]')).toHaveValue(
     "0.2",
   );
@@ -277,6 +281,11 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
     "100",
   );
   await expect(page.locator('[name="bounce"]')).toHaveAttribute("step", "0.01");
+  await expect(page.locator('[name="inertia"]')).toHaveAttribute("max", "5");
+  await expect(page.locator('[name="horizontalInertia"]')).toHaveAttribute(
+    "max",
+    "5",
+  );
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("35");
   await expect(page.locator('[name^="returnScroll"]')).toHaveCount(0);
@@ -451,7 +460,7 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -506,6 +515,11 @@ test("Капель, финальное падение и звук касания
   await openControlGroup(page, "Финальное падение");
   await openControlGroup(page, "Капель");
 
+  await expect(page.locator('[name="drizzleEnabled"]')).toBeChecked();
+  await expect(page.locator('[name="drizzleStartVolume"]')).toBeEnabled();
+  await expect(page.locator('[name="drizzleEndVolume"]')).toBeEnabled();
+  await expect(page.locator('[name="drizzleVolumeEasing"]')).toBeEnabled();
+
   await setCheckbox(page, "finalFallEnabled", true);
   await setRange(page, "finalFallDelaySeconds", 3.5);
   await setRange(page, "drizzleStartVolume", 0.2);
@@ -539,6 +553,51 @@ test("Капель, финальное падение и звук касания
       ),
     )
     .toBe(1);
+
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Капель");
+  await setCheckbox(page, "drizzleEnabled", false);
+  await expect(page.locator('[name="drizzleStartVolume"]')).toBeDisabled();
+  await expect(page.locator('[name="drizzleEndVolume"]')).toBeDisabled();
+  await expect(page.locator('[name="drizzleVolumeEasing"]')).toBeDisabled();
+  await expect
+    .poll(() => page.evaluate(() => getDrizzleAudioState()))
+    .toMatchObject({
+      fadeActive: true,
+      fadeDurationMs: 250,
+      fadeTargetVolume: 0,
+      playing: true,
+    });
+  await expect
+    .poll(() => page.evaluate(() => getDrizzleAudioState()))
+    .toMatchObject({
+      activeSourceCount: 0,
+      fadeActive: false,
+      playing: false,
+      running: false,
+      schedulerActive: false,
+      startCount: 1,
+      volume: 0,
+    });
+  await closeSettingsPanel(page);
+  await grabVisibleRock(page);
+  await page.mouse.up();
+  await expect
+    .poll(() => page.evaluate(() => getDrizzleAudioState().startCount))
+    .toBe(1);
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Капель");
+  await setCheckbox(page, "drizzleEnabled", true);
+  await expect(page.locator('[name="drizzleStartVolume"]')).toBeEnabled();
+  await expect
+    .poll(() => page.evaluate(() => getDrizzleAudioState()))
+    .toMatchObject({
+      playing: true,
+      running: true,
+      schedulerActive: true,
+      startCount: 2,
+    });
+  await closeSettingsPanel(page);
 
   const audioState = await page.evaluate(() => {
     collab.enabled = false;
@@ -629,6 +688,72 @@ test("Капель, финальное падение и звук касания
       ),
     )
     .toBe(true);
+});
+
+test("UI выключает hover и grab звуки руки", async ({ page }) => {
+  await watchAudioPlayCalls(page, "Кандалы");
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+  await expectReadyAtBottom(page);
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Рука");
+  await expect(page.locator('[name="handAudioEnabled"]')).toBeChecked();
+  await closeSettingsPanel(page);
+
+  await scrollToRock(page);
+  const enabledPoint = await visibleRockPoint(page);
+  await page.mouse.move(1, 1);
+  await page.mouse.move(enabledPoint.x, enabledPoint.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0),
+    )
+    .toBeGreaterThan(0);
+
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Рука");
+  await setCheckbox(page, "handAudioEnabled", false);
+  await expect
+    .poll(() => page.evaluate(() => getRoleAudioState()))
+    .toMatchObject({
+      fadeDurationMs: 250,
+      fadeTargetVolume: 0,
+      role: "master",
+    });
+  await expect
+    .poll(() => page.evaluate(() => getRoleAudioState().fadeActive))
+    .toBe(false);
+  const mutedCount = await page.evaluate(
+    () => window.__watchedAudioPlayCounts["Кандалы"] || 0,
+  );
+  await closeSettingsPanel(page);
+  await scrollToRock(page);
+  const mutedPoint = await visibleRockPoint(page);
+  await page.mouse.move(1, 1);
+  await page.mouse.move(mutedPoint.x, mutedPoint.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await page.waitForTimeout(350);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0),
+    )
+    .toBe(mutedCount);
+
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Рука");
+  await setCheckbox(page, "handAudioEnabled", true);
+  await closeSettingsPanel(page);
+  await scrollToRock(page);
+  const restoredPoint = await visibleRockPoint(page);
+  await page.mouse.move(1, 1);
+  await page.mouse.move(restoredPoint.x, restoredPoint.y);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0),
+    )
+    .toBeGreaterThan(mutedCount);
 });
 
 test("dev-каталог шаблонов общий для личных сессий браузеров", async ({
@@ -1075,7 +1200,7 @@ test("dev при запуске переносит последний локал
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}",
         );
         return stored.gravity;
       }),
@@ -1083,11 +1208,11 @@ test("dev при запуске переносит последний локал
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v22 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v23 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v22");
+    localStorage.removeItem("sisyphus-czar-settings-v23");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1109,7 +1234,7 @@ test("локальные настройки v20 мигрируют в v22 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -1626,13 +1751,19 @@ test("вход на корень открывает рабочую личную 
   const scaleSamples = await page.evaluate(() => {
     const rock = document.querySelector(".rock");
     const sample = (y) => {
+      setPosition(0, y);
+      const leftRect = rock.getBoundingClientRect();
+      setPosition(bounds.maxX, y);
+      const rightRect = rock.getBoundingClientRect();
       setPosition(bounds.maxX / 2, y);
-      const rect = rock.getBoundingClientRect();
+      const centerRect = rock.getBoundingClientRect();
       return {
         scale: Number.parseFloat(
           getComputedStyle(rock).getPropertyValue("--rock-scale")
         ),
-        width: rect.width,
+        leftGap: leftRect.left,
+        rightGap: window.innerWidth - rightRect.right,
+        width: centerRect.width,
       };
     };
     const viewportWidth = window.innerWidth;
@@ -1658,6 +1789,12 @@ test("вход на корень открывает рабочую личную 
   expect(
     Math.abs(scaleSamples.bottom.width - scaleSamples.viewportWidth * 0.1)
   ).toBeLessThan(1);
+  [scaleSamples.bottom, scaleSamples.middle, scaleSamples.top].forEach(
+    (sample) => {
+      expect(Math.abs(sample.leftGap)).toBeLessThan(1);
+      expect(Math.abs(sample.rightGap)).toBeLessThan(1);
+    }
+  );
   await expect
     .poll(() => page.evaluate(() => motion.firstFallTriggered))
     .toBe(false);
@@ -1808,6 +1945,7 @@ test("вход на корень открывает рабочую личную 
       role: "master",
       volume: 1,
     });
+
   await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("вы держите");
   await page.mouse.up();
@@ -2184,7 +2322,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -2223,7 +2361,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2359,7 +2497,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2394,7 +2532,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2411,7 +2549,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v22") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v23") || "{}"
         );
         return stored.rainEnabled;
       })
