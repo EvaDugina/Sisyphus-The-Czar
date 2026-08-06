@@ -98,6 +98,10 @@
   --rock-x: 0px;
   --rock-y: 0px;
   --rock-scale: 1;
+  --rock-parallax-x: 0px;
+  --rock-parallax-y: 0px;
+  --rock-parallax-rotate-x: 0deg;
+  --rock-parallax-rotate-y: 0deg;
 
   position: absolute;
   left: 0;
@@ -116,6 +120,19 @@
     filter 160ms ease,
     opacity 240ms ease;
   will-change: transform;
+}
+
+.rock.is-preclick-parallax {
+  transform:
+    perspective(900px)
+    translate3d(
+      calc(var(--rock-x) + var(--rock-parallax-x)),
+      calc(var(--rock-y) + var(--rock-parallax-y)),
+      0
+    )
+    rotateX(var(--rock-parallax-rotate-x))
+    rotateY(var(--rock-parallax-rotate-y))
+    scale(var(--rock-scale));
 }
 
 .rock-imprint {
@@ -390,6 +407,11 @@ body.state-fallingToBottom .hand-cursor {
 }
 
 @media (pointer: fine) {
+  body.experiment-preclick-rock-guidance,
+  body.experiment-preclick-rock-guidance * {
+    cursor: none !important;
+  }
+
   .rock {
     cursor: none;
   }
@@ -430,6 +452,10 @@ body.state-fallingToBottom .hand-cursor {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .rock.is-preclick-parallax {
+    transform: translate3d(var(--rock-x), var(--rock-y), 0) scale(var(--rock-scale));
+  }
+
   .weather-rain,
   .weather-rain__canvas {
     transition-delay: 0s !important;

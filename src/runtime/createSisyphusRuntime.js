@@ -53,6 +53,10 @@ import {
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
+const PRECLICK_ROCK_GUIDANCE_ENABLED =
+  import.meta.env.EXPERIMENT_PRECLICK_ROCK_GUIDANCE === true;
+const PRECLICK_PARALLAX_MAX_TRANSLATE_PX = 12;
+const PRECLICK_PARALLAX_MAX_ROTATE_DEG = 4;
 
 const chainAudioLoaders = import.meta.glob(
   "../../assets/audio/Кандалы_*.mp3",
@@ -376,6 +380,18 @@ export function createSisyphusRuntime(elements = {}) {
     imprint: null,
     wasAtReturnPlace: false,
   };
+  const preclickRockGuidance = {
+    enabled: PRECLICK_ROCK_GUIDANCE_ENABLED,
+    completed: false,
+  };
+  body.classList.toggle(
+    "experiment-preclick-rock-guidance",
+    preclickRockGuidance.enabled,
+  );
+  rock.classList.toggle(
+    "is-preclick-parallax",
+    preclickRockGuidance.enabled,
+  );
   const finalFallGate = {
     enteredAt: null,
     ready: false,
@@ -2234,6 +2250,72 @@ export function createSisyphusRuntime(elements = {}) {
   function setHandToGrab() {
     motion.alternateHand = false;
     handCursor.classList.remove("is-alternate", "is-grabbing");
+  }
+
+  function resetPreclickRockParallax() {
+    rock.style.setProperty("--rock-parallax-x", "0px");
+    rock.style.setProperty("--rock-parallax-y", "0px");
+    rock.style.setProperty("--rock-parallax-rotate-x", "0deg");
+    rock.style.setProperty("--rock-parallax-rotate-y", "0deg");
+  }
+
+  function updatePreclickRockParallax(event) {
+    if (
+      !preclickRockGuidance.enabled ||
+      preclickRockGuidance.completed ||
+      reducedMotion.matches ||
+      !finePointer.matches ||
+      (event.pointerType && event.pointerType !== "mouse")
+    ) {
+      return;
+    }
+
+    const normalizedX = clamp(
+      (event.clientX / Math.max(window.innerWidth, 1)) * 2 - 1,
+      -1,
+      1,
+    );
+    const normalizedY = clamp(
+      (event.clientY / Math.max(window.innerHeight, 1)) * 2 - 1,
+      -1,
+      1,
+    );
+    rock.style.setProperty(
+      "--rock-parallax-x",
+      `${normalizedX * PRECLICK_PARALLAX_MAX_TRANSLATE_PX}px`,
+    );
+    rock.style.setProperty(
+      "--rock-parallax-y",
+      `${normalizedY * PRECLICK_PARALLAX_MAX_TRANSLATE_PX}px`,
+    );
+    rock.style.setProperty(
+      "--rock-parallax-rotate-x",
+      `${normalizedY * -PRECLICK_PARALLAX_MAX_ROTATE_DEG}deg`,
+    );
+    rock.style.setProperty(
+      "--rock-parallax-rotate-y",
+      `${normalizedX * PRECLICK_PARALLAX_MAX_ROTATE_DEG}deg`,
+    );
+  }
+
+  function updatePreclickRockGuidance(event) {
+    if (!preclickRockGuidance.enabled) {
+      return;
+    }
+    showHandCursor(event);
+    updatePreclickRockParallax(event);
+  }
+
+  function completePreclickRockGuidance() {
+    if (
+      !preclickRockGuidance.enabled ||
+      preclickRockGuidance.completed
+    ) {
+      return;
+    }
+    preclickRockGuidance.completed = true;
+    rock.classList.remove("is-preclick-parallax");
+    resetPreclickRockParallax();
   }
 
   function updateBounds() {
@@ -4969,6 +5051,8 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    completePreclickRockGuidance();
+
     if (motion.phase !== PHASES.PLAY) {
       return;
     }
@@ -5074,9 +5158,16 @@ export function createSisyphusRuntime(elements = {}) {
 
   function leaveRock(event) {
     if (!motion.dragging) {
-      hideHandCursor();
+      if (!preclickRockGuidance.enabled) {
+        hideHandCursor();
+      }
       if (collab.enabled) {
-        sendSharedPointer(event, "grab", false, true);
+        sendSharedPointer(
+          event,
+          "grab",
+          preclickRockGuidance.enabled,
+          true,
+        );
       }
     }
   }
@@ -5104,6 +5195,7 @@ export function createSisyphusRuntime(elements = {}) {
   });
 
   // Открытием панели управляет React-хук useSettings.
+  listen(window, "pointermove", updatePreclickRockGuidance, { passive: true });
   listen(rock, "pointerenter", enterRock);
   listen(rock, "pointerleave", leaveRock);
   listen(rock, "pointerdown", startDrag);
@@ -5156,6 +5248,13 @@ export function createSisyphusRuntime(elements = {}) {
     setTheme(resolveTheme("dark"));
     hideReturnRain({ immediate: true });
     motion.sceneReady = true;
+    if (preclickRockGuidance.enabled && finePointer.matches) {
+      showHandCursor({
+        clientX: window.innerWidth / 2,
+        clientY: window.innerHeight / 2,
+        pointerType: "mouse",
+      });
+    }
     resizeTrailCanvas();
     scrollToSceneBottom();
     updateSessionStatus();
@@ -5311,7 +5410,12 @@ export function createSisyphusRuntime(elements = {}) {
       document.documentElement.classList.remove(
         "is-manual-scroll-disabled",
       );
-      body.classList.remove("is-manual-scroll-disabled");
+      body.classList.remove(
+        "is-manual-scroll-disabled",
+        "experiment-preclick-rock-guidance",
+      );
+      rock.classList.remove("is-preclick-parallax");
+      resetPreclickRockParallax();
       stopRainRenderers();
       resetHeightGateState();
       clearFirstFallTimer();

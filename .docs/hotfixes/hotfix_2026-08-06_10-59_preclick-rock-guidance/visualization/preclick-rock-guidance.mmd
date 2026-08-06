@@ -1,0 +1,22 @@
+flowchart LR
+  u(["Пользователь двигает указатель"])
+  c["Текущее: рука только над камнем<br/>камень без parallax"]
+  m["Runtime сцены<br/>и стили камня"]
+  f{"EXPERIMENT_PRECLICK_ROCK_GUIDANCE"}
+  p["До первого primary-click:<br/>лёгкий parallax + рука по всей сцене"]
+  k(["Первый клик по камню"])
+  s["Parallax сброшен<br/>рука остаётся видимой"]
+  e["Evidence: Playwright-сценарий<br/>и скриншоты"]
+  b["Flag off"]
+  r["Исходное поведение"]
+
+  u --> c --> m --> f
+  f -->|on| p --> k --> s --> e
+  f -->|off| b --> r
+
+  classDef card fill:#ffffff,stroke:#555555,color:#000000,rx:10,ry:10;
+  classDef accent fill:#eef6ff,stroke:#2f6feb,color:#000000,rx:10,ry:10;
+  classDef evidence fill:#effaf1,stroke:#2e7d32,color:#000000,rx:10,ry:10;
+  class u,c,m,k,s,b,r card;
+  class f,p accent;
+  class e evidence;

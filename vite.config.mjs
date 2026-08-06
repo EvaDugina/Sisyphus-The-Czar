@@ -79,9 +79,16 @@ export default defineConfig(({ command }) => {
   const isProductionBuild = command === "build";
   const debugUiEnabled =
     !isProductionBuild || process.env.VITE_DEBUG_UI === "true";
+  const preclickRockGuidanceEnabled =
+    process.env.EXPERIMENT_PRECLICK_ROCK_GUIDANCE === "true";
 
   return {
     base: "./",
+    define: {
+      "import.meta.env.EXPERIMENT_PRECLICK_ROCK_GUIDANCE": JSON.stringify(
+        preclickRockGuidanceEnabled,
+      ),
+    },
     plugins: [react(), reloadSharedPhysics(), serveMainFromDraftPath()],
     resolve: {
       alias: isProductionBuild && !debugUiEnabled
