@@ -31,6 +31,14 @@ async function setSettingValue(page, name, value) {
   }, value);
 }
 
+function rockParallaxX(page) {
+  return page.locator("#root > .world > .rock").evaluate((rock) =>
+    Number.parseFloat(
+      getComputedStyle(rock).getPropertyValue("--rock-parallax-x"),
+    ) || 0,
+  );
+}
+
 test("основной и drafts маршруты используют одну Fold-сцену и одно меню", async ({
   page,
 }) => {
@@ -134,11 +142,11 @@ test("постоянная рука показывает нативный кур
   await expect(hand).not.toHaveClass(/is-visible/);
 });
 
-test("настройки parallax меняют отклонение, радиус и плавность возврата", async ({
+test("настройки parallax меняют задержку, радиусы и плавность возврата", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v29");
+    localStorage.removeItem("sisyphus-czar-settings-v30");
     localStorage.setItem(
       "sisyphus-czar-settings-v26",
       JSON.stringify({ preclickParallaxActivationRadiusPx: 1000 }),
@@ -159,10 +167,19 @@ test("настройки parallax меняют отклонение, радиу�
   await cameraGroup.evaluate((element) => {
     element.open = true;
   });
+  const handGroup = page.locator(".control-group").filter({
+    has: page.locator("summary", { hasText: /^Рука$/ }),
+  });
+  await handGroup.evaluate((element) => {
+    element.open = true;
+  });
 
   const maxOffset = page.locator('[name="preclickParallaxMaxOffsetVw"]');
   const activationRadius = page.locator(
     '[name="preclickParallaxActivationRadiusVw"]',
+  );
+  const startDelay = page.locator(
+    '[name="preclickParallaxStartDelayMs"]',
   );
   const returnDuration = page.locator(
     '[name="preclickParallaxReturnDurationMs"]',
@@ -172,6 +189,7 @@ test("настройки parallax меняют отклонение, радиу�
   );
   const inverted = page.locator('[name="preclickParallaxInverted"]');
   const cameraFollowLerp = page.locator('[name="cameraFollowLerp"]');
+  const rockGrabRadius = page.locator('[name="rockGrabRadiusVh"]');
   const inversionButton = page.locator(
     '[data-setting-control]:has([name="preclickParallaxInverted"]) [data-setting-toggle-button]',
   );
@@ -182,6 +200,10 @@ test("настройки parallax меняют отклонение, радиу�
   await expect(activationRadius).toHaveValue("50");
   await expect(activationRadius).toHaveAttribute("min", "0");
   await expect(activationRadius).toHaveAttribute("max", "200");
+  await expect(startDelay).toHaveValue("0");
+  await expect(startDelay).toHaveAttribute("min", "0");
+  await expect(startDelay).toHaveAttribute("max", "1000");
+  await expect(startDelay).toHaveAttribute("step", "10");
   await expect(returnDuration).toHaveValue("400");
   await expect(returnDuration).toHaveAttribute("min", "0");
   await expect(returnDuration).toHaveAttribute("max", "2000");
@@ -194,6 +216,10 @@ test("настройки parallax меняют отклонение, радиу�
   await expect(cameraFollowLerp).toHaveValue("0.1");
   await expect(cameraFollowLerp).toHaveAttribute("min", "0.01");
   await expect(cameraFollowLerp).toHaveAttribute("max", "1");
+  await expect(rockGrabRadius).toHaveValue("0");
+  await expect(rockGrabRadius).toHaveAttribute("min", "0");
+  await expect(rockGrabRadius).toHaveAttribute("max", "10");
+  await expect(rockGrabRadius).toHaveAttribute("step", "0.1");
   await expect(
     page.locator(
       '[data-cubic-bezier-control]:has([name="preclickParallaxReturnEasing"]) .bezier-graph',
@@ -202,6 +228,7 @@ test("настройки parallax меняют отклонение, радиу�
 
   await setSettingValue(page, "preclickParallaxMaxOffsetVw", 3.6);
   await setSettingValue(page, "preclickParallaxActivationRadiusVw", 70);
+  await setSettingValue(page, "preclickParallaxStartDelayMs", 320);
   await setSettingValue(page, "preclickParallaxReturnDurationMs", 650);
   await setSettingValue(
     page,
@@ -209,6 +236,7 @@ test("настройки parallax меняют отклонение, радиу�
     "cubic-bezier(0.25, 0.1, 0.25, 1)",
   );
   await setSettingValue(page, "cameraFollowLerp", 0.25);
+  await setSettingValue(page, "rockGrabRadiusVh", 4.5);
   await inversionButton.click();
   await expect(inverted).toBeChecked();
   await expect(inversionButton).toHaveAttribute("aria-pressed", "true");
@@ -221,6 +249,8 @@ test("настройки parallax меняют отклонение, радиу�
         activationRadius:
           window.__sisyphusTestApi.params
             .preclickParallaxActivationRadiusVw,
+        startDelay:
+          window.__sisyphusTestApi.params.preclickParallaxStartDelayMs,
         returnDuration:
           window.__sisyphusTestApi.params.preclickParallaxReturnDurationMs,
         returnEasing:
@@ -229,27 +259,44 @@ test("настройки parallax меняют отклонение, радиу�
           window.__sisyphusTestApi.params.preclickParallaxInverted,
         cameraFollowLerp:
           window.__sisyphusTestApi.params.cameraFollowLerp,
+        rockGrabRadius:
+          window.__sisyphusTestApi.params.rockGrabRadiusVh,
       })),
     )
     .toEqual({
       maxOffset: 3.6,
       activationRadius: 70,
+      startDelay: 320,
       returnDuration: 650,
       returnEasing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
       inverted: true,
       cameraFollowLerp: 0.25,
+      rockGrabRadius: 4.5,
     });
   await expect
     .poll(() =>
       page.evaluate(() =>
         Boolean(
           JSON.parse(
-            localStorage.getItem("sisyphus-czar-settings-v29") || "{}",
+            localStorage.getItem("sisyphus-czar-settings-v30") || "{}",
           ).preclickParallaxInverted,
         ),
       ),
     )
     .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v30") || "{}",
+        );
+        return {
+          startDelay: stored.preclickParallaxStartDelayMs,
+          rockGrabRadius: stored.rockGrabRadiusVh,
+        };
+      }),
+    )
+    .toEqual({ startDelay: 320, rockGrabRadius: 4.5 });
   await expect(
     page.locator('[data-output="preclickParallaxMaxOffsetVw"]'),
   ).toHaveText("3.6vw");
@@ -257,8 +304,266 @@ test("настройки parallax меняют отклонение, радиу�
     page.locator('[data-output="preclickParallaxActivationRadiusVw"]'),
   ).toHaveText("70vw");
   await expect(
+    page.locator('[data-output="preclickParallaxStartDelayMs"]'),
+  ).toHaveText("320мс");
+  await expect(
     page.locator('[data-output="preclickParallaxReturnDurationMs"]'),
   ).toHaveText("650мс");
+  await expect(
+    page.locator('[data-output="rockGrabRadiusVh"]'),
+  ).toHaveText("4.5vh");
+});
+
+test("задержка parallax отменяется при выходе и применяет последнюю позицию", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "sisyphus-czar-settings-v30",
+      JSON.stringify({
+        handAlwaysVisible: false,
+        preclickParallaxActivationRadiusVw: 50,
+        preclickParallaxMaxOffsetVw: 3,
+        preclickParallaxStartDelayMs: 250,
+        preclickParallaxReturnDurationMs: 0,
+      }),
+    );
+  });
+  await page.goto("/");
+  await waitForFoldReady(page);
+
+  const rock = page.locator("#root > .world > .rock");
+  const hand = page.locator(
+    "#root > .world > .hand-cursor:not(.is-remote)",
+  );
+  const target = await rock.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const style = getComputedStyle(element);
+    const offsetX =
+      Number.parseFloat(style.getPropertyValue("--rock-parallax-x")) || 0;
+    const offsetY =
+      Number.parseFloat(style.getPropertyValue("--rock-parallax-y")) || 0;
+    const centerX = rect.left + rect.width / 2 - offsetX;
+    const centerY = rect.top + rect.height / 2 - offsetY;
+    const halfRadius = innerWidth * 0.25;
+    return {
+      x:
+        centerX + halfRadius < innerWidth - 8
+          ? centerX + halfRadius
+          : centerX - halfRadius,
+      y: centerY,
+    };
+  });
+
+  await page.mouse.move(0, 0);
+  await expect.poll(() => rockParallaxX(page)).toBe(0);
+  await page.mouse.move(target.x, target.y);
+  await page.waitForTimeout(100);
+  expect(await rockParallaxX(page)).toBe(0);
+  await expect(hand).not.toHaveClass(/is-visible/);
+
+  await page.mouse.move(0, 0);
+  await page.waitForTimeout(250);
+  expect(await rockParallaxX(page)).toBe(0);
+
+  await page.mouse.move(target.x, target.y);
+  await page.waitForTimeout(100);
+  expect(await rockParallaxX(page)).toBe(0);
+  await expect
+    .poll(async () => Math.abs(await rockParallaxX(page)), { timeout: 1000 })
+    .toBeGreaterThan(1);
+});
+
+test("Начать сначала повторно включает parallax без сброса настроек", async ({
+  page,
+}) => {
+  const expectedSettings = {
+    cameraFollowLerp: 0.25,
+    handAlwaysVisible: false,
+    preclickParallaxActivationRadiusVw: 50,
+    preclickParallaxInverted: true,
+    preclickParallaxMaxOffsetVw: 3,
+    preclickParallaxStartDelayMs: 180,
+    rockGrabRadiusVh: 4,
+  };
+  await page.addInitScript((settings) => {
+    localStorage.setItem(
+      "sisyphus-czar-settings-v30",
+      JSON.stringify(settings),
+    );
+  }, expectedSettings);
+  await page.goto("/");
+  await waitForFoldReady(page);
+
+  const rock = page.locator("#root > .world > .rock");
+  const body = page.locator("body");
+  const html = page.locator("html");
+  const panel = page.locator(".settings-panel");
+  const toggle = page.locator(".settings-toggle");
+  const restartButton = page.getByTestId("restart-session");
+
+  const grabRock = async () => {
+    const point = await rock.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      return {
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+      };
+    });
+    await page.mouse.move(point.x, point.y);
+    await page.mouse.down();
+    await expect(rock).not.toHaveClass(/is-preclick-parallax/);
+    await page.mouse.up();
+  };
+
+  const restartFromSettings = async () => {
+    if (!(await panel.evaluate((element) => element.classList.contains("is-open")))) {
+      await toggle.click();
+    }
+    await restartButton.click();
+    await expect(body).toHaveClass(/preclick-rock-guidance/);
+    await expect(body).toHaveClass(/is-manual-scroll-disabled/);
+    await expect(html).toHaveClass(/is-manual-scroll-disabled/);
+    await expect(rock).toHaveClass(/is-preclick-parallax/);
+    await expect
+      .poll(() =>
+        page.evaluate(() => {
+          const { motion, params } = window.__sisyphusTestApi;
+          return {
+            settings: {
+              cameraFollowLerp: params.cameraFollowLerp,
+              handAlwaysVisible: params.handAlwaysVisible,
+              preclickParallaxActivationRadiusVw:
+                params.preclickParallaxActivationRadiusVw,
+              preclickParallaxInverted: params.preclickParallaxInverted,
+              preclickParallaxMaxOffsetVw:
+                params.preclickParallaxMaxOffsetVw,
+              preclickParallaxStartDelayMs:
+                params.preclickParallaxStartDelayMs,
+              rockGrabRadiusVh: params.rockGrabRadiusVh,
+            },
+            state: {
+              dragging: motion.dragging,
+              physicsActivated: motion.physicsActivated,
+              suspended: motion.suspended,
+            },
+          };
+        }),
+      )
+      .toEqual({
+        settings: expectedSettings,
+        state: {
+          dragging: false,
+          physicsActivated: false,
+          suspended: true,
+        },
+      });
+    if (await panel.evaluate((element) => element.classList.contains("is-open"))) {
+      await toggle.click();
+    }
+  };
+
+  const expectParallaxAfterDelay = async () => {
+    await page.mouse.move(0, 0);
+    await expect.poll(() => rockParallaxX(page)).toBe(0);
+    const target = await rock.evaluate((element) => {
+      const rect = element.getBoundingClientRect();
+      const style = getComputedStyle(element);
+      const offsetX =
+        Number.parseFloat(style.getPropertyValue("--rock-parallax-x")) || 0;
+      const centerX = rect.left + rect.width / 2 - offsetX;
+      const centerY = rect.top + rect.height / 2;
+      const halfRadius = innerWidth * 0.25;
+      return {
+        x:
+          centerX + halfRadius < innerWidth - 8
+            ? centerX + halfRadius
+            : centerX - halfRadius,
+        y: centerY,
+      };
+    });
+    await page.mouse.move(target.x, target.y);
+    await page.waitForTimeout(80);
+    expect(await rockParallaxX(page)).toBe(0);
+    await expect
+      .poll(async () => Math.abs(await rockParallaxX(page)), { timeout: 1000 })
+      .toBeGreaterThan(1);
+  };
+
+  await grabRock();
+  await restartFromSettings();
+  const scrollBeforeWheel = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, -600);
+  await page.waitForTimeout(50);
+  expect(await page.evaluate(() => scrollY)).toBe(scrollBeforeWheel);
+  await expectParallaxAfterDelay();
+
+  await grabRock();
+  await restartFromSettings();
+  await expectParallaxAfterDelay();
+});
+
+test("mouse захватывает камень внутри расширенного vh-радиуса", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "sisyphus-czar-settings-v30",
+      JSON.stringify({
+        handAlwaysVisible: false,
+        preclickParallaxMaxOffsetVw: 0,
+        rockGrabRadiusVh: 4,
+      }),
+    );
+  });
+  await page.goto("/");
+  await waitForFoldReady(page);
+
+  const rock = page.locator("#root > .world > .rock");
+  const points = await rock.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const radius = innerHeight * 0.04;
+    const useLeft = rect.left - radius - 12 >= 0;
+    const edge = useLeft ? rect.left : rect.right;
+    const direction = useLeft ? -1 : 1;
+    return {
+      far: {
+        x: edge + direction * (radius + 8),
+        y: rect.top + rect.height / 2,
+      },
+      near: {
+        x: edge + direction * (radius / 2),
+        y: rect.top + rect.height / 2,
+      },
+    };
+  });
+
+  expect(
+    await page.evaluate(({ x, y }) => {
+      const rockElement = document.querySelector("#root > .world > .rock");
+      const target = document.elementFromPoint(x, y);
+      return target === rockElement || rockElement.contains(target);
+    }, points.near),
+  ).toBe(false);
+
+  await page.mouse.move(points.far.x, points.far.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(rock).toHaveClass(/is-preclick-parallax/);
+
+  await page.mouse.move(points.near.x, points.near.y);
+  await page.mouse.down();
+  await expect(rock).not.toHaveClass(/is-preclick-parallax/);
+  await expect(rock).toHaveClass(/is-dragging/);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        dragging: window.__sisyphusTestApi.motion.dragging,
+        suspended: window.__sisyphusTestApi.motion.suspended,
+      })),
+    )
+    .toEqual({ dragging: true, suspended: false });
+  await page.mouse.up();
 });
 
 test("препятствие Окна имеет одинаковый UI и сообщает о popup-блокировке", async ({
@@ -679,7 +984,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v29") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v30") || "{}",
         );
         return [
           stored.glowOptimizationMode,

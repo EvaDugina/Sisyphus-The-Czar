@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 25;
+  const ROOM_SETTINGS_VERSION = 26;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
@@ -72,7 +72,9 @@
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     preclickParallaxMaxOffsetVw: [0, 150],
     preclickParallaxActivationRadiusVw: [0, 200],
+    preclickParallaxStartDelayMs: [0, 1000],
     preclickParallaxReturnDurationMs: [0, 2000],
+    rockGrabRadiusVh: [0, 10],
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
     rockJumpInertiaSpreadPercent: [0, 100],
@@ -126,10 +128,12 @@
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickParallaxMaxOffsetVw: 0.6,
     preclickParallaxActivationRadiusVw: 50,
+    preclickParallaxStartDelayMs: 0,
     preclickParallaxInverted: false,
     preclickParallaxReturnDurationMs: 400,
     preclickParallaxReturnEasing: DEFAULT_PRECLICK_PARALLAX_RETURN_EASING,
     handAlwaysVisible: true,
+    rockGrabRadiusVh: 0,
     handWidthVw: 14.375,
     heightGates: Object.freeze([]),
     handForceDeficitEasing: DEFAULT_HAND_FORCE_DEFICIT_EASING,
@@ -411,11 +415,15 @@
       ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetVw;
     const [parallaxRadiusMin, parallaxRadiusMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusVw;
+    const [parallaxStartDelayMin, parallaxStartDelayMax] =
+      ROOM_SETTINGS_LIMITS.preclickParallaxStartDelayMs;
     const [parallaxReturnDurationMin, parallaxReturnDurationMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxReturnDurationMs;
     const [drizzleVolumeMin, drizzleVolumeMax] =
       ROOM_SETTINGS_LIMITS.drizzleVolume;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
+    const [rockGrabRadiusMin, rockGrabRadiusMax] =
+      ROOM_SETTINGS_LIMITS.rockGrabRadiusVh;
     const windowObstacleHeightRange = normalizeNumericRange(
       source,
       fallbackSource,
@@ -644,6 +652,13 @@
         parallaxRadiusMin,
         parallaxRadiusMax
       ),
+      preclickParallaxStartDelayMs: finiteSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxStartDelayMs",
+        parallaxStartDelayMin,
+        parallaxStartDelayMax
+      ),
       preclickParallaxInverted: boolSetting(
         source,
         fallbackSource,
@@ -665,6 +680,13 @@
         source,
         fallbackSource,
         "handAlwaysVisible"
+      ),
+      rockGrabRadiusVh: finiteSetting(
+        source,
+        fallbackSource,
+        "rockGrabRadiusVh",
+        rockGrabRadiusMin,
+        rockGrabRadiusMax
       ),
       ...rockWidths,
       handWidthVw: finiteSetting(
@@ -1024,6 +1046,15 @@
       delete source.positionScrollEndSpeedVh;
       delete source.positionScrollEasing;
       delete source.manualVerticalScrollEnabled;
+    }
+    if (finiteNumber(version, 1) < 26) {
+      if (!Object.hasOwn(source, "preclickParallaxStartDelayMs")) {
+        source.preclickParallaxStartDelayMs =
+          DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs;
+      }
+      if (!Object.hasOwn(source, "rockGrabRadiusVh")) {
+        source.rockGrabRadiusVh = DEFAULT_ROOM_SETTINGS.rockGrabRadiusVh;
+      }
     }
     return source;
   }

@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v29";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v30";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v29",
   "sisyphus-czar-settings-v28",
   "sisyphus-czar-settings-v27",
   "sisyphus-czar-settings-v26",
@@ -738,6 +739,19 @@ export const SETTINGS_GROUPS = [
         hint: "Радиус круглой активной зоны вокруг исходного центра камня в процентах ширины viewport. При приближении к центру смещение растёт; за пределами зоны камень плавно возвращается в исходную позицию.",
       },
       {
+        name: "preclickParallaxStartDelayMs",
+        label: "Задержка запуска parallax, мс",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxStartDelayMs[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxStartDelayMs[1],
+        step: 10,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs}мс`,
+        hint: "Задержка после каждого входа курсора в активный радиус parallax. Выход до окончания ожидания отменяет запуск, а повторный вход начинает отсчёт заново.",
+      },
+      {
         name: "preclickParallaxInverted",
         label: "Направление parallax",
         type: "toggle-button",
@@ -804,6 +818,17 @@ export const SETTINGS_GROUPS = [
         type: "checkbox",
         defaultChecked: DEFAULT_ROOM_SETTINGS.handAlwaysVisible,
         hint: "Если выключено, фото-рука видна только при наведении на камень и во время его захвата.",
+      },
+      {
+        name: "rockGrabRadiusVh",
+        label: "Радиус захвата камня, vh",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockGrabRadiusVh[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockGrabRadiusVh[1],
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockGrabRadiusVh,
+        output: `${DEFAULT_ROOM_SETTINGS.rockGrabRadiusVh.toFixed(1)}vh`,
+        hint: "Расширяет mouse-захват вокруг визуальных границ камня. Ноль сохраняет захват только непосредственно по камню; touch не расширяется.",
       },
       {
         name: "handAudioEnabled",

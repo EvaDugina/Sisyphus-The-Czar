@@ -126,10 +126,23 @@ test("штатный runtime включает parallax до первого кл�
   await expect(rock).toHaveClass(/is-preclick-parallax/);
 
   await scrollToRock(page);
+  const centerBeforeReload = await rockCenter(page);
+  await page.mouse.move(centerBeforeReload.x + 600, centerBeforeReload.y);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 3);
+
+  await page.reload();
+  await expect(page.locator("body")).toHaveClass(/state-play/);
+  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  await expect(rock).toHaveClass(/is-preclick-parallax/);
+  await expect.poll(() => parallaxX(page)).toBe(0);
+
+  await scrollToRock(page);
   const center = await rockCenter(page);
   const halfRadius = 600;
+  await page.emulateMedia({ reducedMotion: "reduce" });
   await page.mouse.move(center.x - halfRadius, center.y);
   await expect.poll(() => parallaxX(page)).toBeCloseTo(-7.2, 3);
+  await page.emulateMedia({ reducedMotion: "no-preference" });
   const sizeAtLeft = await rockSize(page);
 
   await page.mouse.move(center.x + halfRadius, center.y);

@@ -30,6 +30,7 @@ import {
 } from "../lib/rainProfile.mjs";
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import { calculatePreclickParallaxOffset } from "../lib/preclickParallax.mjs";
+import { cursorCircleIntersectsRect } from "../lib/rockGrab.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import { formatSummitElapsedMs } from "../lib/summitTimer.mjs";
 import {
@@ -430,16 +431,14 @@ export function createSisyphusRuntime(elements = {}) {
     pointerY: null,
     directionX: null,
     directionY: null,
+    delayTimerId: null,
+    delayReady: false,
+    insideRadius: false,
     returnAnimationId: null,
     outsideRadius: false,
   };
-  body.classList.add(
-    "preclick-rock-guidance",
-    "is-manual-scroll-disabled",
-  );
-  document.documentElement.classList.add("is-manual-scroll-disabled");
   body.classList.toggle("hand-always-visible", params.handAlwaysVisible);
-  rock.classList.add("is-preclick-parallax");
+  resetPreclickRockGuidance();
   const finalFallGate = {
     enteredAt: null,
     ready: false,
@@ -2229,25 +2228,13 @@ export function createSisyphusRuntime(elements = {}) {
       shouldHandleChange(
         "preclickParallaxMaxOffsetVw",
         "preclickParallaxActivationRadiusVw",
+        "preclickParallaxStartDelayMs",
         "preclickParallaxInverted",
         "preclickParallaxReturnDurationMs",
         "preclickParallaxReturnEasing",
       )
     ) {
-      cancelPreclickGuidanceReturn();
-      preclickRockGuidance.outsideRadius = false;
-      if (
-        Number.isFinite(preclickRockGuidance.pointerX) &&
-        Number.isFinite(preclickRockGuidance.pointerY)
-      ) {
-        updatePreclickRockParallax({
-          clientX: preclickRockGuidance.pointerX,
-          clientY: preclickRockGuidance.pointerY,
-          pointerType: "mouse",
-        });
-      } else {
-        resetPreclickRockParallax();
-      }
+      restartPreclickRockParallaxFromLastPointer();
     }
     if (shouldHandleChange(...RAIN_SETTING_KEYS)) {
       applyRainSettings({
@@ -2511,6 +2498,18 @@ export function createSisyphusRuntime(elements = {}) {
     handCursor.classList.add("is-visible");
   }
 
+  function showInitialHandCursor() {
+    if (finePointer.matches && params.handAlwaysVisible) {
+      showHandCursor({
+        clientX: window.innerWidth / 2,
+        clientY: window.innerHeight / 2,
+        pointerType: "mouse",
+      });
+      return;
+    }
+    hideHandCursor();
+  }
+
   function syncHandCursorForPointer(event) {
     if (!canShowPhotoCursor(event)) {
       return;
@@ -2609,6 +2608,62 @@ export function createSisyphusRuntime(elements = {}) {
     setPreclickRockParallaxOffset(0, 0);
   }
 
+  function cancelPreclickGuidanceDelay({ resetReady = true } = {}) {
+    if (preclickRockGuidance.delayTimerId !== null) {
+      window.clearTimeout(preclickRockGuidance.delayTimerId);
+      preclickRockGuidance.delayTimerId = null;
+    }
+    if (resetReady) {
+      preclickRockGuidance.delayReady = false;
+    }
+  }
+
+  function resetPreclickRockGuidance() {
+    cancelPreclickGuidanceDelay();
+    resetPreclickRockParallax();
+    Object.assign(preclickRockGuidance, {
+      completed: false,
+      pointerX: null,
+      pointerY: null,
+      directionX: null,
+      directionY: null,
+      delayTimerId: null,
+      delayReady: false,
+      insideRadius: false,
+      returnAnimationId: null,
+      outsideRadius: false,
+    });
+    body.classList.add(
+      "preclick-rock-guidance",
+      "is-manual-scroll-disabled",
+    );
+    document.documentElement.classList.add("is-manual-scroll-disabled");
+    rock.classList.add("is-preclick-parallax");
+  }
+
+  function beginPreclickGuidanceDelay() {
+    const delay = Math.max(0, params.preclickParallaxStartDelayMs);
+    if (delay <= 0) {
+      preclickRockGuidance.delayReady = true;
+      return true;
+    }
+
+    preclickRockGuidance.delayReady = false;
+    preclickRockGuidance.delayTimerId = window.setTimeout(() => {
+      preclickRockGuidance.delayTimerId = null;
+      if (
+        disposed ||
+        preclickRockGuidance.completed ||
+        !preclickRockGuidance.insideRadius
+      ) {
+        return;
+      }
+      preclickRockGuidance.delayReady = true;
+      refreshPreclickRockParallax();
+    }, delay);
+    return false;
+  }
+
   function returnPreclickRockParallaxToCenter() {
     if (preclickRockGuidance.returnAnimationId !== null) {
       return;
@@ -2651,22 +2706,23 @@ export function createSisyphusRuntime(elements = {}) {
       window.requestAnimationFrame(renderReturn);
   }
 
-  function updatePreclickRockParallax(event) {
+  function refreshPreclickRockParallax() {
     if (
       preclickRockGuidance.completed ||
       !finePointer.matches ||
-      (event.pointerType && event.pointerType !== "mouse")
+      !Number.isFinite(preclickRockGuidance.pointerX) ||
+      !Number.isFinite(preclickRockGuidance.pointerY)
     ) {
       return;
     }
-    preclickRockGuidance.pointerX = Number(event.clientX);
-    preclickRockGuidance.pointerY = Number(event.clientY);
-    syncHandCursorForPointer(event);
     const activationRadius =
       (params.preclickParallaxActivationRadiusVw / 100) * window.innerWidth;
     const maxOffset =
       (params.preclickParallaxMaxOffsetVw / 100) * window.innerWidth;
     if (activationRadius <= 0 || maxOffset <= 0) {
+      preclickRockGuidance.insideRadius = false;
+      preclickRockGuidance.outsideRadius = false;
+      cancelPreclickGuidanceDelay();
       resetPreclickRockParallax();
       return;
     }
@@ -2687,6 +2743,8 @@ export function createSisyphusRuntime(elements = {}) {
       lastDirectionY: preclickRockGuidance.directionY,
     });
     if (!parallax.insideRadius) {
+      preclickRockGuidance.insideRadius = false;
+      cancelPreclickGuidanceDelay();
       if (!preclickRockGuidance.outsideRadius) {
         preclickRockGuidance.outsideRadius = true;
         returnPreclickRockParallaxToCenter();
@@ -2694,16 +2752,50 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    const enteredRadius = !preclickRockGuidance.insideRadius;
+    preclickRockGuidance.insideRadius = true;
     preclickRockGuidance.outsideRadius = false;
     cancelPreclickGuidanceReturn();
-    if (reducedMotion.matches) {
-      resetPreclickRockParallax();
+    if (enteredRadius) {
+      cancelPreclickGuidanceDelay();
+      setPreclickRockParallaxOffset(0, 0);
+      if (!beginPreclickGuidanceDelay()) {
+        return;
+      }
+    } else if (!preclickRockGuidance.delayReady) {
       return;
     }
 
     preclickRockGuidance.directionX = parallax.directionX;
     preclickRockGuidance.directionY = parallax.directionY;
     setPreclickRockParallaxOffset(parallax.x, parallax.y);
+  }
+
+  function updatePreclickRockParallax(event) {
+    if (
+      preclickRockGuidance.completed ||
+      !finePointer.matches ||
+      (event.pointerType && event.pointerType !== "mouse")
+    ) {
+      return;
+    }
+    const pointerX = Number(event.clientX);
+    const pointerY = Number(event.clientY);
+    if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY)) {
+      return;
+    }
+    preclickRockGuidance.pointerX = pointerX;
+    preclickRockGuidance.pointerY = pointerY;
+    syncHandCursorForPointer(event);
+    refreshPreclickRockParallax();
+  }
+
+  function restartPreclickRockParallaxFromLastPointer() {
+    cancelPreclickGuidanceDelay();
+    preclickRockGuidance.insideRadius = false;
+    preclickRockGuidance.outsideRadius = false;
+    resetPreclickRockParallax();
+    refreshPreclickRockParallax();
   }
 
   function updatePreclickRockGuidance(event) {
@@ -2719,6 +2811,8 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     preclickRockGuidance.completed = true;
+    preclickRockGuidance.insideRadius = false;
+    cancelPreclickGuidanceDelay();
     rock.classList.remove("is-preclick-parallax");
     resetPreclickRockParallax();
   }
@@ -3670,7 +3764,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 29,
+      settingsSchemaVersion: 30,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -3914,8 +4008,10 @@ export function createSisyphusRuntime(elements = {}) {
     setGrabbingCursor(false);
     setHandToGrab();
     hideHandCursor();
+    resetPreclickRockGuidance();
     updateLocalSharedPointer(null, "grab", false);
     setPhase(PHASES.PLAY);
+    showInitialHandCursor();
     setTheme(resolveTheme("dark"));
     hideReturnRain({ immediate: true });
     resetTrail();
@@ -5637,6 +5733,47 @@ export function createSisyphusRuntime(elements = {}) {
     startLoop();
   }
 
+  function pointerTargetIsInteractive(event) {
+    const target = event.target;
+    if (!(target instanceof Element)) {
+      return false;
+    }
+    return Boolean(
+      settingsToggle.contains(target) ||
+        settingsPanel.contains(target) ||
+        target.closest(
+          'a, button, input, select, textarea, [contenteditable="true"], [role="button"]',
+        ),
+    );
+  }
+
+  function startExpandedRockDrag(event) {
+    if (
+      event.pointerType !== "mouse" ||
+      event.button !== 0 ||
+      event.isPrimary === false ||
+      params.rockGrabRadiusVh <= 0 ||
+      event.composedPath().includes(rock) ||
+      pointerTargetIsInteractive(event)
+    ) {
+      return;
+    }
+
+    const radius = (params.rockGrabRadiusVh / 100) * window.innerHeight;
+    if (
+      !cursorCircleIntersectsRect({
+        x: event.clientX,
+        y: event.clientY,
+        radius,
+        rect: rock.getBoundingClientRect(),
+      })
+    ) {
+      return;
+    }
+
+    startDrag(event);
+  }
+
   function moveDrag(event) {
     if (collab.enabled) {
       moveSharedDrag(event);
@@ -5742,6 +5879,7 @@ export function createSisyphusRuntime(elements = {}) {
   // Открытием панели управляет React-хук useSettings.
   listen(window, "pointermove", updatePreclickRockGuidance, { passive: true });
   listen(window, "pointerdown", pressAlwaysVisibleHand);
+  listen(window, "pointerdown", startExpandedRockDrag);
   listen(settingsToggle, "pointerenter", showNativeSettingsCursor);
   listen(settingsToggle, "pointerleave", hideNativeSettingsCursor);
   listen(settingsPanel, "pointerenter", showNativeSettingsCursor);
@@ -5787,6 +5925,7 @@ export function createSisyphusRuntime(elements = {}) {
       setPosition(motion.x, motion.y);
     }
     renderImprint();
+    refreshPreclickRockParallax();
   });
 
   function initScene() {
@@ -5801,13 +5940,7 @@ export function createSisyphusRuntime(elements = {}) {
     setTheme(resolveTheme("dark"));
     hideReturnRain({ immediate: true });
     motion.sceneReady = true;
-    if (finePointer.matches && params.handAlwaysVisible) {
-      showHandCursor({
-        clientX: window.innerWidth / 2,
-        clientY: window.innerHeight / 2,
-        pointerType: "mouse",
-      });
-    }
+    showInitialHandCursor();
     resizeTrailCanvas();
     scrollToSceneBottom();
     updateSessionStatus();
@@ -5973,6 +6106,8 @@ export function createSisyphusRuntime(elements = {}) {
         "is-settings-pointer-active",
       );
       rock.classList.remove("is-preclick-parallax");
+      preclickRockGuidance.insideRadius = false;
+      cancelPreclickGuidanceDelay();
       resetPreclickRockParallax();
       stopRainRenderers();
       resetHeightGateState();

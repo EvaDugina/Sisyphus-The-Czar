@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 29;
+const SETTINGS_SCHEMA_VERSION = 30;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -1267,6 +1267,8 @@ export function createSettingsController(options) {
         `${params.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
       preclickParallaxActivationRadiusVw:
         `${params.preclickParallaxActivationRadiusVw.toFixed(0)}vw`,
+      preclickParallaxStartDelayMs:
+        `${params.preclickParallaxStartDelayMs.toFixed(0)}мс`,
       preclickParallaxReturnDurationMs:
         `${params.preclickParallaxReturnDurationMs.toFixed(0)}мс`,
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
@@ -1284,6 +1286,7 @@ export function createSettingsController(options) {
       rockJumpInertiaSpreadPercent:
         `${params.rockJumpInertiaSpreadPercent.toFixed(0)}%`,
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
+      rockGrabRadiusVh: `${params.rockGrabRadiusVh.toFixed(1)}vh`,
       windowObstacleMinHeightVh:
         `${params.windowObstacleMinHeightVh.toFixed(0)}vh`,
       windowObstacleMaxHeightVh:

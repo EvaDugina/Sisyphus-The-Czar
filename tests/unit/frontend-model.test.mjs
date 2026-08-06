@@ -38,6 +38,7 @@ import {
   rockScaleForY,
 } from "../../src/lib/rockScale.mjs";
 import { calculatePreclickParallaxOffset } from "../../src/lib/preclickParallax.mjs";
+import { cursorCircleIntersectsRect } from "../../src/lib/rockGrab.mjs";
 import { trailAnchorPoint } from "../../src/lib/trailAnchor.mjs";
 import {
   canonicalVisualTrailPointToLocal,
@@ -357,7 +358,7 @@ test("настройки инерции отображают шкалу 0–5", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v29");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v30");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -404,7 +405,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 29);
+  assert.equal(productionSettingsSchemaVersion, 30);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -738,6 +739,39 @@ test("preclick parallax растёт к центру и меняет радиа�
   assert.equal(Math.hypot(exactCenter.x, exactCenter.y), 20);
 });
 
+test("радиус курсора пересекает визуальные границы камня", () => {
+  const rect = { left: 100, right: 200, top: 200, bottom: 300 };
+
+  assert.equal(
+    cursorCircleIntersectsRect({ x: 150, y: 250, radius: 0, rect }),
+    true,
+  );
+  assert.equal(
+    cursorCircleIntersectsRect({ x: 95, y: 250, radius: 0, rect }),
+    false,
+  );
+  assert.equal(
+    cursorCircleIntersectsRect({ x: 95, y: 250, radius: 5, rect }),
+    true,
+  );
+  assert.equal(
+    cursorCircleIntersectsRect({ x: 96, y: 196, radius: 5, rect }),
+    false,
+  );
+  assert.equal(
+    cursorCircleIntersectsRect({ x: 96.5, y: 196.5, radius: 5, rect }),
+    true,
+  );
+  assert.equal(
+    cursorCircleIntersectsRect({ x: 150, y: 250, radius: -1, rect }),
+    true,
+  );
+  assert.equal(
+    cursorCircleIntersectsRect({ x: Number.NaN, y: 250, radius: 5, rect }),
+    false,
+  );
+});
+
 test("настройки размера камня есть в UI и получают fallback", () => {
   const rockSizeGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Камень",
@@ -754,6 +788,9 @@ test("настройки размера камня есть в UI и получ�
   );
   const preclickParallaxActivationRadiusVw = controls.find(
     (control) => control.name === "preclickParallaxActivationRadiusVw",
+  );
+  const preclickParallaxStartDelayMs = controls.find(
+    (control) => control.name === "preclickParallaxStartDelayMs",
   );
   const preclickParallaxInverted = controls.find(
     (control) => control.name === "preclickParallaxInverted",
@@ -806,6 +843,7 @@ test("настройки размера камня есть в UI и получ�
       "rockActivatedWidthVw",
       "preclickParallaxMaxOffsetVw",
       "preclickParallaxActivationRadiusVw",
+      "preclickParallaxStartDelayMs",
       "preclickParallaxInverted",
       "preclickParallaxReturnDurationMs",
       "preclickParallaxReturnEasing",
@@ -888,6 +926,24 @@ test("настройки размера камня есть в UI и получ�
       max: 200,
       step: 1,
       defaultValue: 50,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickParallaxStartDelayMs.label,
+      type: preclickParallaxStartDelayMs.type,
+      min: preclickParallaxStartDelayMs.min,
+      max: preclickParallaxStartDelayMs.max,
+      step: preclickParallaxStartDelayMs.step,
+      defaultValue: preclickParallaxStartDelayMs.defaultValue,
+    },
+    {
+      label: "Задержка запуска parallax, мс",
+      type: "range",
+      min: 0,
+      max: 1000,
+      step: 10,
+      defaultValue: 0,
     },
   );
   assert.deepEqual(
@@ -1218,6 +1274,15 @@ test("UI содержит настройки камеры, физики, overflo
   );
   assert.equal(byName("handAlwaysVisible").defaultChecked, true);
   assert.deepEqual(
+    [
+      byName("rockGrabRadiusVh").min,
+      byName("rockGrabRadiusVh").max,
+      byName("rockGrabRadiusVh").step,
+      byName("rockGrabRadiusVh").defaultValue,
+    ],
+    [0, 10, 0.1, 0],
+  );
+  assert.deepEqual(
     finalFallGroup.controls.map((control) => control.name),
     ["finalFallEnabled", "finalFallDelaySeconds"],
   );
@@ -1387,6 +1452,7 @@ test("параметры единственной руки вынесены в �
     handSizeGroup.controls.map((control) => control.name),
     [
       "handAlwaysVisible",
+      "rockGrabRadiusVh",
       "handAudioEnabled",
       "handForce",
       "handForceDeficitEasing",
@@ -1538,6 +1604,8 @@ test("настройки препятствия Окна нормализуют 
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
 });
@@ -1680,16 +1748,18 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 25);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 26);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
     rockActivatedWidthVw: 999,
     preclickParallaxMaxOffsetPx: 9999,
     preclickParallaxActivationRadiusVw: -1,
+    preclickParallaxStartDelayMs: 9999,
     preclickParallaxInverted: "true",
     preclickParallaxReturnDurationMs: 9999,
     preclickParallaxReturnEasing: "invalid",
+    rockGrabRadiusVh: 999,
   });
   assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
   assert.equal(
@@ -1699,8 +1769,10 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockActivatedWidthVw, 150);
   assert.equal(visualSettings.preclickParallaxMaxOffsetVw, 150);
   assert.equal(visualSettings.preclickParallaxActivationRadiusVw, 0);
+  assert.equal(visualSettings.preclickParallaxStartDelayMs, 1000);
   assert.equal(visualSettings.preclickParallaxInverted, true);
   assert.equal(visualSettings.preclickParallaxReturnDurationMs, 2000);
+  assert.equal(visualSettings.rockGrabRadiusVh, 10);
   assert.equal(
     visualSettings.preclickParallaxReturnEasing,
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxReturnEasing,
@@ -1724,6 +1796,8 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
   assert.deepEqual(
@@ -1738,6 +1812,8 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
   assert.deepEqual(
@@ -1750,6 +1826,8 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
   assert.deepEqual(
@@ -1762,6 +1840,8 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
   assert.deepEqual(
@@ -1775,6 +1855,8 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickParallaxInverted: false,
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
   assert.deepEqual(
@@ -1788,6 +1870,8 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickParallaxInverted: false,
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
   assert.deepEqual(
@@ -1797,6 +1881,8 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickParallaxMaxOffsetVw: 0.6,
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
   assert.deepEqual(
@@ -1805,8 +1891,18 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickParallaxMaxOffsetVw: 0.6,
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
     },
   );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({}, 25),
+    {
+      preclickParallaxStartDelayMs: 0,
+      rockGrabRadiusVh: 0,
+    },
+  );
+  assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 26), {});
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings({
       handAudioEnabled: "false",
