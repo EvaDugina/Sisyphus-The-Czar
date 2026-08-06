@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v23";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v24";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v23",
   "sisyphus-czar-settings-v22",
   "sisyphus-czar-settings-v21",
   "sisyphus-czar-settings-v20",
@@ -749,6 +750,34 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
         output: `${DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw}%`,
         hint: "Целевая ширина камня в vw при первом свободном движении вниз после захвата. Переход длится 300 мс.",
+      },
+      {
+        name: "preclickParallaxMaxOffsetPx",
+        label: "Максимум parallax, px",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxMaxOffsetPx[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxMaxOffsetPx[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetPx,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetPx}px`,
+        hint: "Максимальное радиальное смещение камня вслед за указателем до первого клика. Ноль отключает движение parallax.",
+      },
+      {
+        name: "preclickParallaxActivationRadiusPx",
+        label: "Радиус parallax, px",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxActivationRadiusPx[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxActivationRadiusPx[1],
+        step: 10,
+        defaultValue:
+          DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusPx,
+        output:
+          `${DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusPx}px`,
+        hint: "Радиус круглой активной зоны вокруг визуального центра камня. За пределами зоны parallax сбрасывается; ноль отключает движение.",
       },
       {
         name: "rockMinWidthVw",

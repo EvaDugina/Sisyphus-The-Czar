@@ -112,8 +112,6 @@
   --rock-scale: 1;
   --rock-parallax-x: 0px;
   --rock-parallax-y: 0px;
-  --rock-parallax-rotate-x: 0deg;
-  --rock-parallax-rotate-y: 0deg;
   --rock-wall-compensation: 0px;
 
   position: absolute;
@@ -145,7 +143,6 @@
 
 .rock.is-preclick-parallax {
   transform:
-    perspective(900px)
     translate3d(
       calc(
         var(--rock-x) + var(--rock-wall-compensation) +
@@ -154,8 +151,6 @@
       calc(var(--rock-y) + var(--rock-parallax-y)),
       0
     )
-    rotateX(var(--rock-parallax-rotate-x))
-    rotateY(var(--rock-parallax-rotate-y))
     scale(var(--rock-scale));
 }
 

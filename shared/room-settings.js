@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 19;
+  const ROOM_SETTINGS_VERSION = 20;
   const MAX_HEIGHT_GATES = 10;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
@@ -69,6 +69,8 @@
     windowObstacleWidthPx: [100, 1920],
     windowObstacleHeightPx: [100, 1080],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
+    preclickParallaxMaxOffsetPx: [0, 100],
+    preclickParallaxActivationRadiusPx: [0, 2000],
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
     rockJumpInertiaSpreadPercent: [0, 100],
@@ -125,6 +127,8 @@
     rockActivatedWidthVw: DEFAULT_ROCK_ACTIVATED_WIDTH_VW,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
+    preclickParallaxMaxOffsetPx: 12,
+    preclickParallaxActivationRadiusPx: 480,
     handWidthVw: 14.375,
     heightGates: Object.freeze([]),
     handForceDeficitEasing: DEFAULT_HAND_FORCE_DEFICIT_EASING,
@@ -404,6 +408,10 @@
       ROOM_SETTINGS_LIMITS.rockJumpAngleSpreadDegrees;
     const [rockJumpSpreadMin, rockJumpSpreadMax] =
       ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent;
+    const [parallaxOffsetMin, parallaxOffsetMax] =
+      ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetPx;
+    const [parallaxRadiusMin, parallaxRadiusMax] =
+      ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusPx;
     const [drizzleVolumeMin, drizzleVolumeMax] =
       ROOM_SETTINGS_LIMITS.drizzleVolume;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
@@ -633,6 +641,20 @@
         "rockActivatedWidthVw",
         ROOM_SETTINGS_LIMITS.rockWidthVw[0],
         ROOM_SETTINGS_LIMITS.rockWidthVw[1]
+      ),
+      preclickParallaxMaxOffsetPx: finiteSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxMaxOffsetPx",
+        parallaxOffsetMin,
+        parallaxOffsetMax
+      ),
+      preclickParallaxActivationRadiusPx: finiteSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxActivationRadiusPx",
+        parallaxRadiusMin,
+        parallaxRadiusMax
       ),
       ...rockWidths,
       handWidthVw: finiteSetting(
@@ -913,6 +935,16 @@
     }
     if (finiteNumber(version, 1) < 19) {
       ["handAudioEnabled", "drizzleEnabled"].forEach((key) => {
+        if (!Object.hasOwn(source, key)) {
+          source[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
+    if (finiteNumber(version, 1) < 20) {
+      [
+        "preclickParallaxMaxOffsetPx",
+        "preclickParallaxActivationRadiusPx",
+      ].forEach((key) => {
         if (!Object.hasOwn(source, key)) {
           source[key] = DEFAULT_ROOM_SETTINGS[key];
         }

@@ -70,6 +70,45 @@ test("основной и drafts маршруты используют одну 
   }
 });
 
+test("настройки parallax меняют максимум отклонения и радиус активации", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await page.locator(".settings-toggle").click();
+
+  const maxOffset = page.locator('[name="preclickParallaxMaxOffsetPx"]');
+  const activationRadius = page.locator(
+    '[name="preclickParallaxActivationRadiusPx"]',
+  );
+  await expect(maxOffset).toHaveValue("12");
+  await expect(maxOffset).toHaveAttribute("min", "0");
+  await expect(maxOffset).toHaveAttribute("max", "100");
+  await expect(activationRadius).toHaveValue("480");
+  await expect(activationRadius).toHaveAttribute("min", "0");
+  await expect(activationRadius).toHaveAttribute("max", "2000");
+
+  await setSettingValue(page, "preclickParallaxMaxOffsetPx", 36);
+  await setSettingValue(page, "preclickParallaxActivationRadiusPx", 720);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        maxOffset:
+          window.__sisyphusTestApi.params.preclickParallaxMaxOffsetPx,
+        activationRadius:
+          window.__sisyphusTestApi.params
+            .preclickParallaxActivationRadiusPx,
+      })),
+    )
+    .toEqual({ maxOffset: 36, activationRadius: 720 });
+  await expect(
+    page.locator('[data-output="preclickParallaxMaxOffsetPx"]'),
+  ).toHaveText("36px");
+  await expect(
+    page.locator('[data-output="preclickParallaxActivationRadiusPx"]'),
+  ).toHaveText("720px");
+});
+
 test("препятствие Окна имеет одинаковый UI и сообщает о popup-блокировке", async ({
   page,
 }) => {
@@ -491,7 +530,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v23") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v24") || "{}",
         );
         return [
           stored.glowOptimizationMode,
