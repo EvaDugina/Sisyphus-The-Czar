@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v30";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v31";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v30",
   "sisyphus-czar-settings-v29",
   "sisyphus-czar-settings-v28",
   "sisyphus-czar-settings-v27",
@@ -712,7 +713,7 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "preclickParallaxMaxOffsetVw",
-        label: "Максимум parallax, vw",
+        label: "Начальный максимум parallax, vw",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
           .preclickParallaxMaxOffsetVw[0],
@@ -721,7 +722,21 @@ export const SETTINGS_GROUPS = [
         step: 0.1,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
         output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
-        hint: "Максимальное радиальное смещение камня рядом с исходным центром до первого клика. У границы радиуса смещение равно нулю; ноль отключает движение parallax.",
+        hint: "Максимальное радиальное смещение в начале нового входа руки в радиус. У границы радиуса смещение равно нулю; ноль отключает движение parallax.",
+      },
+      {
+        name: "preclickParallaxEndMaxOffsetVw",
+        label: "Конечный максимум parallax, vw",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxEndMaxOffsetVw[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxEndMaxOffsetVw[1],
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxEndMaxOffsetVw,
+        output:
+          `${DEFAULT_ROOM_SETTINGS.preclickParallaxEndMaxOffsetVw.toFixed(1)}vw`,
+        hint: "Максимальное радиальное смещение после накопления всей продолжительности активного движения. Значение не может превышать начальный максимум.",
       },
       {
         name: "preclickParallaxActivationRadiusVw",
@@ -740,7 +755,7 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "preclickParallaxStartDelayMs",
-        label: "Задержка запуска parallax, мс",
+        label: "Начальная задержка parallax, мс",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
           .preclickParallaxStartDelayMs[0],
@@ -749,7 +764,73 @@ export const SETTINGS_GROUPS = [
         step: 10,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs,
         output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs}мс`,
-        hint: "Задержка после каждого входа курсора в активный радиус parallax. Выход до окончания ожидания отменяет запуск, а повторный вход начинает отсчёт заново.",
+        hint: "Задержка запуска parallax в начале каждого нового входа руки в радиус.",
+      },
+      {
+        name: "preclickParallaxEndDelayMs",
+        label: "Конечная задержка parallax, мс",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxEndDelayMs[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxEndDelayMs[1],
+        step: 10,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxEndDelayMs,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxEndDelayMs}мс`,
+        hint: "Задержка после накопления всей продолжительности активного движения. Значение не может быть меньше начальной задержки.",
+      },
+      {
+        name: "preclickParallaxTransitionDurationSeconds",
+        label: "Время изменения parallax, с",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxTransitionDurationSeconds[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickParallaxTransitionDurationSeconds[1],
+        step: 1,
+        defaultValue:
+          DEFAULT_ROOM_SETTINGS.preclickParallaxTransitionDurationSeconds,
+        output:
+          `${DEFAULT_ROOM_SETTINGS.preclickParallaxTransitionDurationSeconds} s`,
+        hint: "Сколько секунд активного движения внутри радиуса нужно для достижения обоих конечных значений. Статичное время не учитывается.",
+      },
+      {
+        name: "preclickParallaxMaxOffsetEasing",
+        label: "Кривая уменьшения максимума parallax",
+        type: "cubic-bezier",
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetEasing,
+        spellCheck: false,
+        graph: {
+          startSetting: "preclickParallaxMaxOffsetVw",
+          endSetting: "preclickParallaxEndMaxOffsetVw",
+          durationSetting: "preclickParallaxTransitionDurationSeconds",
+          startDefault: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
+          endDefault: DEFAULT_ROOM_SETTINGS.preclickParallaxEndMaxOffsetVw,
+          durationDefault:
+            DEFAULT_ROOM_SETTINGS.preclickParallaxTransitionDurationSeconds,
+          unit: "vw",
+          precision: 1,
+        },
+        hint: "cubic-bezier-кривая уменьшения максимального смещения по активному времени внутри радиуса.",
+      },
+      {
+        name: "preclickParallaxDelayEasing",
+        label: "Кривая роста задержки parallax",
+        type: "cubic-bezier",
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxDelayEasing,
+        spellCheck: false,
+        graph: {
+          startSetting: "preclickParallaxStartDelayMs",
+          endSetting: "preclickParallaxEndDelayMs",
+          durationSetting: "preclickParallaxTransitionDurationSeconds",
+          startDefault: DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs,
+          endDefault: DEFAULT_ROOM_SETTINGS.preclickParallaxEndDelayMs,
+          durationDefault:
+            DEFAULT_ROOM_SETTINGS.preclickParallaxTransitionDurationSeconds,
+          unit: "ms",
+          precision: 0,
+        },
+        hint: "cubic-bezier-кривая роста задержки запуска по активному времени внутри радиуса.",
       },
       {
         name: "preclickParallaxInverted",

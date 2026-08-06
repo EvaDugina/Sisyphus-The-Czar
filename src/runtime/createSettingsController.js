@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 30;
+const SETTINGS_SCHEMA_VERSION = 31;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -1265,10 +1265,16 @@ export function createSettingsController(options) {
       rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
       preclickParallaxMaxOffsetVw:
         `${params.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
+      preclickParallaxEndMaxOffsetVw:
+        `${params.preclickParallaxEndMaxOffsetVw.toFixed(1)}vw`,
       preclickParallaxActivationRadiusVw:
         `${params.preclickParallaxActivationRadiusVw.toFixed(0)}vw`,
       preclickParallaxStartDelayMs:
         `${params.preclickParallaxStartDelayMs.toFixed(0)}мс`,
+      preclickParallaxEndDelayMs:
+        `${params.preclickParallaxEndDelayMs.toFixed(0)}мс`,
+      preclickParallaxTransitionDurationSeconds:
+        secondsOutput(params.preclickParallaxTransitionDurationSeconds),
       preclickParallaxReturnDurationMs:
         `${params.preclickParallaxReturnDurationMs.toFixed(0)}мс`,
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,

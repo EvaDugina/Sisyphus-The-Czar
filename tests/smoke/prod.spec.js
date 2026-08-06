@@ -49,6 +49,27 @@ async function visibleRockPoint(page) {
   });
 }
 
+async function moveToVisibleRock(page) {
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const point = await visibleRockPoint(page);
+    await page.mouse.move(point.x, point.y);
+    const hitsRock = await page.locator(SOURCE_ROCK).evaluate(
+      (rock, target) =>
+        new Promise((resolve) => {
+          requestAnimationFrame(() => {
+            const hit = document.elementFromPoint(target.x, target.y);
+            resolve(hit === rock || rock.contains(hit));
+          });
+        }),
+      point,
+    );
+    if (hitsRock) {
+      return point;
+    }
+  }
+  throw new Error("Камень смещается быстрее, чем стабилизируется точка захвата");
+}
+
 async function scrollToRock(page) {
   await page.locator(SOURCE_ROCK).evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
@@ -100,7 +121,17 @@ test("production build creates one personal session per user, keeps a clean URL 
   const secondContext = await browser.newContext();
   const second = await secondContext.newPage();
   const secondSockets = [];
-  second.on("websocket", (socket) => secondSockets.push(socket.url()));
+  const secondSocketMessages = [];
+  second.on("websocket", (socket) => {
+    secondSockets.push(socket.url());
+    socket.on("framereceived", ({ payload }) => {
+      try {
+        secondSocketMessages.push(JSON.parse(String(payload)));
+      } catch {
+        // Двоичные и служебные кадры не участвуют в проверке handshake.
+      }
+    });
+  });
 
   try {
     await second.goto("/");
@@ -117,10 +148,9 @@ test("production build creates one personal session per user, keeps a clean URL 
     const firstTopBefore = await page.locator(SOURCE_ROCK).evaluate(
       (rock) => rock.getBoundingClientRect().top
     );
-    const secondPoint = await visibleRockPoint(second);
     const secondHand = second.locator(SOURCE_HAND);
 
-    await second.mouse.move(secondPoint.x, secondPoint.y);
+    const secondPoint = await moveToVisibleRock(second);
     await expect(secondHand).toHaveClass(/is-visible/);
     await expect(secondHand).not.toHaveClass(/is-grabbing/);
     expect(
@@ -133,6 +163,12 @@ test("production build creates one personal session per user, keeps a clean URL 
 
     await second.mouse.down();
     await expect(secondHand).toHaveClass(/is-grabbing/);
+    await expect
+      .poll(() =>
+        secondSocketMessages.some(({ type }) => type === "control.granted"),
+      )
+      .toBe(true);
+    await expect(second.locator(SOURCE_ROCK)).toHaveClass(/is-dragging/);
     expect(
       decodeURIComponent(
         await secondHand.evaluate(
@@ -143,7 +179,6 @@ test("production build creates one personal session per user, keeps a clean URL 
     await second.mouse.move(secondPoint.x, Math.max(24, secondPoint.y - 140), {
       steps: 12,
     });
-    await expect(second.locator(SOURCE_ROCK)).toHaveClass(/is-dragging/);
     await expect(
       page.locator("#root > .world .hand-cursor.is-remote.is-visible"),
     ).toHaveCount(0);

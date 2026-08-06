@@ -2,7 +2,7 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: "./tests/smoke",
-  testMatch: /prod-debug\.spec\.js/,
+  testMatch: /(prod-debug|preclick-rock-guidance)\.spec\.js/,
   timeout: 35_000,
   expect: { timeout: 10_000 },
   workers: 1,

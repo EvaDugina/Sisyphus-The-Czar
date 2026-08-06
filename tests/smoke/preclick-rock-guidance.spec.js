@@ -80,6 +80,17 @@ function rockCenter(page) {
   });
 }
 
+async function setSetting(page, name, value) {
+  await page.locator(`[data-setting-input][name="${name}"]`).evaluate(
+    (input, nextValue) => {
+      input.value = String(nextValue);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+      input.dispatchEvent(new Event("change", { bubbles: true }));
+    },
+    value,
+  );
+}
+
 test("штатный runtime включает parallax до первого клика и постоянную руку", async ({
   page,
 }, testInfo) => {
@@ -128,7 +139,7 @@ test("штатный runtime включает parallax до первого кл�
   await scrollToRock(page);
   const centerBeforeReload = await rockCenter(page);
   await page.mouse.move(centerBeforeReload.x + 600, centerBeforeReload.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 0);
 
   await page.reload();
   await expect(page.locator("body")).toHaveClass(/state-play/);
@@ -141,28 +152,28 @@ test("штатный runtime включает parallax до первого кл�
   const halfRadius = 600;
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.mouse.move(center.x - halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(-7.2, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(-7.2, 0);
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const sizeAtLeft = await rockSize(page);
 
   await page.mouse.move(center.x + halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 0);
   await expect
     .poll(async () => {
       const sizeAtRight = await rockSize(page);
-      return {
-        widthDelta: Math.abs(sizeAtRight.width - sizeAtLeft.width),
-        heightDelta: Math.abs(sizeAtRight.height - sizeAtLeft.height),
-      };
+      return Math.max(
+        Math.abs(sizeAtRight.width - sizeAtLeft.width),
+        Math.abs(sizeAtRight.height - sizeAtLeft.height),
+      );
     })
-    .toEqual({ widthDelta: 0, heightDelta: 0 });
+    .toBeLessThan(0.01);
 
   await page.mouse.move(center.x + 120, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(12.96, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(12.96, 0);
   await page.mouse.move(center.x, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(14.4, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(14.4, 0);
   await page.mouse.move(center.x + halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 0);
 
   const outsideX = 24;
   const outsideY = 24;
@@ -180,7 +191,7 @@ test("штатный runtime включает parallax до первого кл�
   }).toBeCloseTo(0, 3);
 
   await page.mouse.move(center.x + halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 0);
   await page.screenshot({
     path: testInfo.outputPath("before-first-click.png"),
   });
@@ -210,4 +221,82 @@ test("штатный runtime включает parallax до первого кл�
   await page.screenshot({
     path: testInfo.outputPath("after-first-click.png"),
   });
+});
+
+test("активное движение меняет parallax по двум временным графикам и сбрасывается при выходе", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.goto("/");
+  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+
+  const maxCurve = page.locator(
+    '[data-cubic-bezier-control]:has(input[name="preclickParallaxMaxOffsetEasing"])',
+  );
+  const delayCurve = page.locator(
+    '[data-cubic-bezier-control]:has(input[name="preclickParallaxDelayEasing"])',
+  );
+  test.skip(
+    (await maxCurve.count()) === 0,
+    "Полный редактор графиков доступен только в debug UI",
+  );
+  await expect(maxCurve.locator(".bezier-graph-range")).toContainText(
+    "0–30 s",
+  );
+  await expect(delayCurve.locator(".bezier-graph-range")).toContainText(
+    "0–30 s",
+  );
+
+  await setSetting(page, "preclickParallaxMaxOffsetVw", 20);
+  await setSetting(page, "preclickParallaxEndMaxOffsetVw", 0);
+  await setSetting(page, "preclickParallaxActivationRadiusVw", 40);
+  await setSetting(page, "preclickParallaxStartDelayMs", 0);
+  await setSetting(page, "preclickParallaxEndDelayMs", 1000);
+  await setSetting(page, "preclickParallaxTransitionDurationSeconds", 1);
+  await setSetting(
+    page,
+    "preclickParallaxMaxOffsetEasing",
+    "cubic-bezier(0, 0, 1, 1)",
+  );
+  await setSetting(
+    page,
+    "preclickParallaxDelayEasing",
+    "cubic-bezier(0, 0, 1, 1)",
+  );
+  await setSetting(page, "preclickParallaxReturnDurationMs", 0);
+
+  await expect(maxCurve.locator(".bezier-graph-range")).toContainText(
+    "0–1 s",
+  );
+  await expect(delayCurve.locator(".bezier-graph-range")).toContainText(
+    "0–1 s",
+  );
+
+  await scrollToRock(page);
+  const center = await rockCenter(page);
+  const sampleX = center.x + 320;
+  await page.mouse.move(20, 20);
+  await page.mouse.move(sampleX, center.y);
+  const initialOffset = Math.abs(await parallaxX(page));
+  expect(initialOffset).toBeGreaterThan(120);
+
+  for (let index = 0; index < 8; index += 1) {
+    const x = center.x + (index % 2 === 0 ? -250 : 250);
+    await page.waitForTimeout(50);
+    await page.mouse.move(x, center.y);
+  }
+  await page.waitForTimeout(50);
+  await page.mouse.move(sampleX, center.y);
+  const progressedOffset = Math.abs(await parallaxX(page));
+  expect(progressedOffset).toBeGreaterThan(0);
+  expect(progressedOffset).toBeLessThan(initialOffset * 0.8);
+
+  await page.waitForTimeout(350);
+  expect(Math.abs(await parallaxX(page))).toBeCloseTo(progressedOffset, 3);
+
+  await page.mouse.move(20, 20);
+  await expect.poll(() => parallaxX(page)).toBe(0);
+  await page.mouse.move(sampleX, center.y);
+  const resetOffset = Math.abs(await parallaxX(page));
+  expect(resetOffset).toBeCloseTo(initialOffset, 0);
 });

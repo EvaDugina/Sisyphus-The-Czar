@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 26;
+  const ROOM_SETTINGS_VERSION = 27;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
@@ -26,6 +26,8 @@
   const DEFAULT_RETURN_SCROLL_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const DEFAULT_PRECLICK_PARALLAX_RETURN_EASING =
     "cubic-bezier(0.22, 1, 0.36, 1)";
+  const DEFAULT_PRECLICK_PARALLAX_TRANSITION_EASING =
+    "cubic-bezier(0, 0, 1, 1)";
   const DEFAULT_DRAFT_FOLD_BLEND_CURVE =
     "cubic-bezier(0.333, 0, 0.667, 1)";
   const DEFAULT_DRIZZLE_VOLUME_EASING =
@@ -71,8 +73,11 @@
     windowObstacleHeightPx: [100, 1080],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     preclickParallaxMaxOffsetVw: [0, 150],
+    preclickParallaxEndMaxOffsetVw: [0, 50],
     preclickParallaxActivationRadiusVw: [0, 200],
     preclickParallaxStartDelayMs: [0, 1000],
+    preclickParallaxEndDelayMs: [0, 1000],
+    preclickParallaxTransitionDurationSeconds: [1, 30],
     preclickParallaxReturnDurationMs: [0, 2000],
     rockGrabRadiusVh: [0, 10],
     rockJumpIntervalSeconds: [1, 10],
@@ -127,8 +132,15 @@
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickParallaxMaxOffsetVw: 0.6,
+    preclickParallaxEndMaxOffsetVw: 0,
+    preclickParallaxMaxOffsetEasing:
+      DEFAULT_PRECLICK_PARALLAX_TRANSITION_EASING,
     preclickParallaxActivationRadiusVw: 50,
     preclickParallaxStartDelayMs: 0,
+    preclickParallaxEndDelayMs: 1000,
+    preclickParallaxDelayEasing:
+      DEFAULT_PRECLICK_PARALLAX_TRANSITION_EASING,
+    preclickParallaxTransitionDurationSeconds: 30,
     preclickParallaxInverted: false,
     preclickParallaxReturnDurationMs: 400,
     preclickParallaxReturnEasing: DEFAULT_PRECLICK_PARALLAX_RETURN_EASING,
@@ -413,10 +425,16 @@
       ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent;
     const [parallaxOffsetMin, parallaxOffsetMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetVw;
+    const [parallaxEndOffsetMin, parallaxEndOffsetMax] =
+      ROOM_SETTINGS_LIMITS.preclickParallaxEndMaxOffsetVw;
     const [parallaxRadiusMin, parallaxRadiusMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusVw;
     const [parallaxStartDelayMin, parallaxStartDelayMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxStartDelayMs;
+    const [parallaxEndDelayMin, parallaxEndDelayMax] =
+      ROOM_SETTINGS_LIMITS.preclickParallaxEndDelayMs;
+    const [parallaxTransitionDurationMin, parallaxTransitionDurationMax] =
+      ROOM_SETTINGS_LIMITS.preclickParallaxTransitionDurationSeconds;
     const [parallaxReturnDurationMin, parallaxReturnDurationMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxReturnDurationMs;
     const [drizzleVolumeMin, drizzleVolumeMax] =
@@ -479,6 +497,50 @@
     const [dashGapMin, dashGapMax] = ROOM_SETTINGS_LIMITS.dashGap;
     const [glowMin, glowMax] = ROOM_SETTINGS_LIMITS.glow;
     const rockWidths = normalizeRockWidthRange(source, fallbackSource);
+    const parallaxOffsetSource =
+      !Object.hasOwn(source, "preclickParallaxMaxOffsetVw") &&
+      Number.isFinite(Number(source.preclickParallaxMaxOffsetPx))
+        ? {
+            ...source,
+            preclickParallaxMaxOffsetVw:
+              Number(source.preclickParallaxMaxOffsetPx) /
+              PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
+          }
+        : source;
+    const preclickParallaxMaxOffsetVw = finiteSetting(
+      parallaxOffsetSource,
+      fallbackSource,
+      "preclickParallaxMaxOffsetVw",
+      parallaxOffsetMin,
+      parallaxOffsetMax
+    );
+    const preclickParallaxEndMaxOffsetVw = Math.min(
+      preclickParallaxMaxOffsetVw,
+      finiteSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxEndMaxOffsetVw",
+        parallaxEndOffsetMin,
+        parallaxEndOffsetMax
+      )
+    );
+    const preclickParallaxStartDelayMs = finiteSetting(
+      source,
+      fallbackSource,
+      "preclickParallaxStartDelayMs",
+      parallaxStartDelayMin,
+      parallaxStartDelayMax
+    );
+    const preclickParallaxEndDelayMs = Math.max(
+      preclickParallaxStartDelayMs,
+      finiteSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxEndDelayMs",
+        parallaxEndDelayMin,
+        parallaxEndDelayMax
+      )
+    );
 
     return {
       themeMode: enumSetting(source, fallbackSource, "themeMode", THEME_MODES),
@@ -622,20 +684,12 @@
         ROOM_SETTINGS_LIMITS.rockWidthVw[0],
         ROOM_SETTINGS_LIMITS.rockWidthVw[1]
       ),
-      preclickParallaxMaxOffsetVw: finiteSetting(
-        !Object.hasOwn(source, "preclickParallaxMaxOffsetVw") &&
-          Number.isFinite(Number(source.preclickParallaxMaxOffsetPx))
-          ? {
-              ...source,
-              preclickParallaxMaxOffsetVw:
-                Number(source.preclickParallaxMaxOffsetPx) /
-                PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
-            }
-          : source,
+      preclickParallaxMaxOffsetVw,
+      preclickParallaxEndMaxOffsetVw,
+      preclickParallaxMaxOffsetEasing: cubicBezierSetting(
+        source,
         fallbackSource,
-        "preclickParallaxMaxOffsetVw",
-        parallaxOffsetMin,
-        parallaxOffsetMax
+        "preclickParallaxMaxOffsetEasing"
       ),
       preclickParallaxActivationRadiusVw: finiteSetting(
         !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
@@ -652,12 +706,19 @@
         parallaxRadiusMin,
         parallaxRadiusMax
       ),
-      preclickParallaxStartDelayMs: finiteSetting(
+      preclickParallaxStartDelayMs,
+      preclickParallaxEndDelayMs,
+      preclickParallaxDelayEasing: cubicBezierSetting(
         source,
         fallbackSource,
-        "preclickParallaxStartDelayMs",
-        parallaxStartDelayMin,
-        parallaxStartDelayMax
+        "preclickParallaxDelayEasing"
+      ),
+      preclickParallaxTransitionDurationSeconds: finiteSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxTransitionDurationSeconds",
+        parallaxTransitionDurationMin,
+        parallaxTransitionDurationMax
       ),
       preclickParallaxInverted: boolSetting(
         source,
@@ -1055,6 +1116,19 @@
       if (!Object.hasOwn(source, "rockGrabRadiusVh")) {
         source.rockGrabRadiusVh = DEFAULT_ROOM_SETTINGS.rockGrabRadiusVh;
       }
+    }
+    if (finiteNumber(version, 1) < 27) {
+      [
+        "preclickParallaxEndMaxOffsetVw",
+        "preclickParallaxMaxOffsetEasing",
+        "preclickParallaxEndDelayMs",
+        "preclickParallaxDelayEasing",
+        "preclickParallaxTransitionDurationSeconds",
+      ].forEach((key) => {
+        if (!Object.hasOwn(source, key)) {
+          source[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
     }
     return source;
   }

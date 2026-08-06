@@ -23,11 +23,19 @@ function formatCurve(points) {
   return `cubic-bezier(${points.map(formatCoordinate).join(", ")})`;
 }
 
-function graphPoint(index, points) {
+function graphPoint(index, points, descending = false) {
   return {
     x: points[index * 2] * 100,
-    y: 100 - points[index * 2 + 1] * 100,
+    y: descending
+      ? points[index * 2 + 1] * 100
+      : 100 - points[index * 2 + 1] * 100,
   };
+}
+
+function formatGraphValue(value, precision, unit) {
+  const number = Number(value);
+  const normalized = Number.isFinite(number) ? number : 0;
+  return `${normalized.toFixed(precision)} ${unit}`;
 }
 
 function CurvePreview({ curve, previewKey }) {
@@ -63,6 +71,7 @@ export function CubicBezierControl({ control }) {
     defaultValue,
     enabledWhen,
     formulas,
+    graph,
     hint,
     label,
     name,
@@ -75,6 +84,11 @@ export function CubicBezierControl({ control }) {
     formatCurve(initialPoints),
   );
   const [previewKey, setPreviewKey] = useState(0);
+  const [graphValues, setGraphValues] = useState({
+    start: graph?.startDefault ?? 0,
+    end: graph?.endDefault ?? 1,
+    duration: graph?.durationDefault ?? 1,
+  });
   const inputRef = useRef(null);
   const graphRef = useRef(null);
   const activeHandleRef = useRef(null);
@@ -82,9 +96,12 @@ export function CubicBezierControl({ control }) {
     Array.isArray(formulas) && formulas.length > 0
       ? JSON.stringify(formulas)
       : undefined;
-  const firstPoint = graphPoint(0, points);
-  const secondPoint = graphPoint(1, points);
-  const curvePath = `M 0 100 C ${firstPoint.x} ${firstPoint.y}, ${secondPoint.x} ${secondPoint.y}, 100 0`;
+  const descending = Boolean(graph && graphValues.end < graphValues.start);
+  const firstPoint = graphPoint(0, points, descending);
+  const secondPoint = graphPoint(1, points, descending);
+  const graphStartY = descending ? 0 : 100;
+  const graphEndY = descending ? 100 : 0;
+  const curvePath = `M 0 ${graphStartY} C ${firstPoint.x} ${firstPoint.y}, ${secondPoint.x} ${secondPoint.y}, 100 ${graphEndY}`;
   const validCurve = formatCurve(points);
 
   useEffect(() => {
@@ -109,6 +126,49 @@ export function CubicBezierControl({ control }) {
       );
     };
   }, []);
+
+  useEffect(() => {
+    if (!graph) {
+      return undefined;
+    }
+    const names = [
+      graph.startSetting,
+      graph.endSetting,
+      graph.durationSetting,
+    ];
+    const elements = names.map((settingName) =>
+      document.querySelector(
+        `[data-setting-input][name="${settingName}"]`,
+      ),
+    );
+    const syncGraphValues = () => {
+      const [startInput, endInput, durationInput] = elements;
+      const start = Number(startInput?.value);
+      const end = Number(endInput?.value);
+      const duration = Number(durationInput?.value);
+      setGraphValues({
+        start: Number.isFinite(start) ? start : graph.startDefault,
+        end: Number.isFinite(end) ? end : graph.endDefault,
+        duration: Number.isFinite(duration)
+          ? duration
+          : graph.durationDefault,
+      });
+    };
+    const events = ["input", "change", "settings-control-sync"];
+    elements.forEach((element) => {
+      events.forEach((eventName) => {
+        element?.addEventListener(eventName, syncGraphValues);
+      });
+    });
+    syncGraphValues();
+    return () => {
+      elements.forEach((element) => {
+        events.forEach((eventName) => {
+          element?.removeEventListener(eventName, syncGraphValues);
+        });
+      });
+    };
+  }, [graph]);
 
   function publishPoints(nextPoints) {
     const normalized = nextPoints.map((value, index) => {
@@ -164,11 +224,14 @@ export function CubicBezierControl({ control }) {
       0,
       1,
     );
-    nextPoints[handleIndex * 2 + 1] = clamp(
-      1 - (event.clientY - rect.top) / rect.height,
+    const pointerProgress = clamp(
+      (event.clientY - rect.top) / rect.height,
       0,
       1,
     );
+    nextPoints[handleIndex * 2 + 1] = descending
+      ? pointerProgress
+      : 1 - pointerProgress;
     publishPoints(nextPoints);
   }
 
@@ -205,7 +268,11 @@ export function CubicBezierControl({ control }) {
           ref={graphRef}
           viewBox="0 0 100 100"
           role="img"
-          aria-label={`График ${label}`}
+          aria-label={
+            graph
+              ? `График ${label}: ${formatGraphValue(graphValues.start, graph.precision, graph.unit)} → ${formatGraphValue(graphValues.end, graph.precision, graph.unit)} за ${graphValues.duration} с`
+              : `График ${label}`
+          }
         >
           <path className="bezier-grid-line" d="M 0 75 H 100" />
           <path className="bezier-grid-line" d="M 0 50 H 100" />
@@ -213,11 +280,11 @@ export function CubicBezierControl({ control }) {
           <path className="bezier-diagonal" d="M 0 100 L 100 0" />
           <path
             className="bezier-handle-line"
-            d={`M 0 100 L ${firstPoint.x} ${firstPoint.y}`}
+            d={`M 0 ${graphStartY} L ${firstPoint.x} ${firstPoint.y}`}
           />
           <path
             className="bezier-handle-line"
-            d={`M 100 0 L ${secondPoint.x} ${secondPoint.y}`}
+            d={`M 100 ${graphEndY} L ${secondPoint.x} ${secondPoint.y}`}
           />
           <path className="bezier-curve" d={curvePath} />
           {[firstPoint, secondPoint].map((point, index) => (
@@ -244,9 +311,29 @@ export function CubicBezierControl({ control }) {
             y="50"
             transform="rotate(-90 4 50)"
           >
-            прогресс
+            {graph ? graph.unit : "прогресс"}
           </text>
         </svg>
+
+        {graph && (
+          <div className="bezier-graph-range" aria-hidden="true">
+            <span>
+              {formatGraphValue(
+                graphValues.start,
+                graph.precision,
+                graph.unit,
+              )}
+            </span>
+            <span>0–{graphValues.duration} s</span>
+            <span>
+              {formatGraphValue(
+                graphValues.end,
+                graph.precision,
+                graph.unit,
+              )}
+            </span>
+          </div>
+        )}
 
         <div className="bezier-coordinate-grid">
           {COORDINATE_LABELS.map((coordinate, index) => (

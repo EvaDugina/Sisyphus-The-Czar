@@ -464,6 +464,24 @@ input[type="range"] {
   text-transform: uppercase;
 }
 
+.bezier-graph-range {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  gap: 0.4rem;
+  margin-top: -0.25rem;
+  color: var(--muted);
+  font-size: 0.68rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.bezier-graph-range span:nth-child(2) {
+  text-align: center;
+}
+
+.bezier-graph-range span:last-child {
+  text-align: right;
+}
+
 .bezier-coordinate-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

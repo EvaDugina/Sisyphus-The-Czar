@@ -146,7 +146,7 @@ test("настройки parallax меняют задержку, радиусы 
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v30");
+    localStorage.removeItem("sisyphus-czar-settings-v31");
     localStorage.setItem(
       "sisyphus-czar-settings-v26",
       JSON.stringify({ preclickParallaxActivationRadiusPx: 1000 }),
@@ -278,7 +278,7 @@ test("настройки parallax меняют задержку, радиусы 
       page.evaluate(() =>
         Boolean(
           JSON.parse(
-            localStorage.getItem("sisyphus-czar-settings-v30") || "{}",
+            localStorage.getItem("sisyphus-czar-settings-v31") || "{}",
           ).preclickParallaxInverted,
         ),
       ),
@@ -288,7 +288,7 @@ test("настройки parallax меняют задержку, радиусы 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v30") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v31") || "{}",
         );
         return {
           startDelay: stored.preclickParallaxStartDelayMs,
@@ -319,7 +319,7 @@ test("задержка parallax отменяется при выходе и пр
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v30",
+      "sisyphus-czar-settings-v31",
       JSON.stringify({
         handAlwaysVisible: false,
         preclickParallaxActivationRadiusVw: 50,
@@ -388,7 +388,7 @@ test("Начать сначала повторно включает parallax б�
   };
   await page.addInitScript((settings) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v30",
+      "sisyphus-czar-settings-v31",
       JSON.stringify(settings),
     );
   }, expectedSettings);
@@ -508,7 +508,7 @@ test("mouse захватывает камень внутри расширенн�
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v30",
+      "sisyphus-czar-settings-v31",
       JSON.stringify({
         handAlwaysVisible: false,
         preclickParallaxMaxOffsetVw: 0,
@@ -984,7 +984,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v30") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v31") || "{}",
         );
         return [
           stored.glowOptimizationMode,

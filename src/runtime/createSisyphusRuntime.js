@@ -29,7 +29,11 @@ import {
   MAX_RAIN_FX_OPACITY,
 } from "../lib/rainProfile.mjs";
 import { shouldStartRainExit } from "../lib/rainState.mjs";
-import { calculatePreclickParallaxOffset } from "../lib/preclickParallax.mjs";
+import {
+  activePreclickMovementDeltaMs,
+  calculatePreclickParallaxOffset,
+  calculatePreclickParallaxTransition,
+} from "../lib/preclickParallax.mjs";
 import { cursorCircleIntersectsRect } from "../lib/rockGrab.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import { formatSummitElapsedMs } from "../lib/summitTimer.mjs";
@@ -296,9 +300,22 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
     preclickParallaxMaxOffsetVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
+    preclickParallaxEndMaxOffsetVw:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxEndMaxOffsetVw,
+    preclickParallaxMaxOffsetEasing:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetEasing,
     preclickParallaxActivationRadiusVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS
         .preclickParallaxActivationRadiusVw,
+    preclickParallaxStartDelayMs:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs,
+    preclickParallaxEndDelayMs:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxEndDelayMs,
+    preclickParallaxDelayEasing:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxDelayEasing,
+    preclickParallaxTransitionDurationSeconds:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+        .preclickParallaxTransitionDurationSeconds,
     preclickParallaxInverted:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxInverted,
     preclickParallaxReturnDurationMs:
@@ -426,9 +443,14 @@ export function createSisyphusRuntime(elements = {}) {
     wasAtReturnPlace: false,
   };
   const preclickRockGuidance = {
+    activeMovementTimeMs: 0,
     completed: false,
+    delayStartedAtMs: null,
     pointerX: null,
     pointerY: null,
+    movementSampleAtMs: null,
+    movementSampleX: null,
+    movementSampleY: null,
     directionX: null,
     directionY: null,
     delayTimerId: null,
@@ -2227,8 +2249,13 @@ export function createSisyphusRuntime(elements = {}) {
     if (
       shouldHandleChange(
         "preclickParallaxMaxOffsetVw",
+        "preclickParallaxEndMaxOffsetVw",
+        "preclickParallaxMaxOffsetEasing",
         "preclickParallaxActivationRadiusVw",
         "preclickParallaxStartDelayMs",
+        "preclickParallaxEndDelayMs",
+        "preclickParallaxDelayEasing",
+        "preclickParallaxTransitionDurationSeconds",
         "preclickParallaxInverted",
         "preclickParallaxReturnDurationMs",
         "preclickParallaxReturnEasing",
@@ -2616,6 +2643,59 @@ export function createSisyphusRuntime(elements = {}) {
     if (resetReady) {
       preclickRockGuidance.delayReady = false;
     }
+    preclickRockGuidance.delayStartedAtMs = null;
+  }
+
+  function resetPreclickParallaxTransition({
+    pointerX = null,
+    pointerY = null,
+    atMs = null,
+  } = {}) {
+    preclickRockGuidance.activeMovementTimeMs = 0;
+    preclickRockGuidance.movementSampleX = Number.isFinite(pointerX)
+      ? pointerX
+      : null;
+    preclickRockGuidance.movementSampleY = Number.isFinite(pointerY)
+      ? pointerY
+      : null;
+    preclickRockGuidance.movementSampleAtMs = Number.isFinite(atMs)
+      ? atMs
+      : null;
+  }
+
+  function currentPreclickParallaxTransition() {
+    return calculatePreclickParallaxTransition({
+      activeMovementTimeMs: preclickRockGuidance.activeMovementTimeMs,
+      durationSeconds: params.preclickParallaxTransitionDurationSeconds,
+      startDelayMs: params.preclickParallaxStartDelayMs,
+      endDelayMs: params.preclickParallaxEndDelayMs,
+      delayEasing: params.preclickParallaxDelayEasing,
+      startMaxOffset: params.preclickParallaxMaxOffsetVw,
+      endMaxOffset: params.preclickParallaxEndMaxOffsetVw,
+      maxOffsetEasing: params.preclickParallaxMaxOffsetEasing,
+    });
+  }
+
+  function advancePreclickParallaxTransition(pointerX, pointerY, atMs) {
+    const activeDeltaMs = activePreclickMovementDeltaMs({
+      previousX: preclickRockGuidance.movementSampleX,
+      previousY: preclickRockGuidance.movementSampleY,
+      previousAtMs: preclickRockGuidance.movementSampleAtMs,
+      x: pointerX,
+      y: pointerY,
+      atMs,
+    });
+    const durationMs = Math.max(
+      0,
+      Number(params.preclickParallaxTransitionDurationSeconds) * 1000,
+    );
+    preclickRockGuidance.activeMovementTimeMs = Math.min(
+      preclickRockGuidance.activeMovementTimeMs + activeDeltaMs,
+      durationMs,
+    );
+    preclickRockGuidance.movementSampleX = pointerX;
+    preclickRockGuidance.movementSampleY = pointerY;
+    preclickRockGuidance.movementSampleAtMs = atMs;
   }
 
   function resetPreclickRockGuidance() {
@@ -2623,8 +2703,13 @@ export function createSisyphusRuntime(elements = {}) {
     resetPreclickRockParallax();
     Object.assign(preclickRockGuidance, {
       completed: false,
+      activeMovementTimeMs: 0,
+      delayStartedAtMs: null,
       pointerX: null,
       pointerY: null,
+      movementSampleAtMs: null,
+      movementSampleX: null,
+      movementSampleY: null,
       directionX: null,
       directionY: null,
       delayTimerId: null,
@@ -2641,9 +2726,11 @@ export function createSisyphusRuntime(elements = {}) {
     rock.classList.add("is-preclick-parallax");
   }
 
-  function beginPreclickGuidanceDelay() {
-    const delay = Math.max(0, params.preclickParallaxStartDelayMs);
-    if (delay <= 0) {
+  function beginPreclickGuidanceDelay(delay, now = performance.now()) {
+    const normalizedDelay = Math.max(0, Number(delay) || 0);
+    const currentNow = Number.isFinite(now) ? now : performance.now();
+    preclickRockGuidance.delayStartedAtMs = currentNow;
+    if (normalizedDelay <= 0) {
       preclickRockGuidance.delayReady = true;
       return true;
     }
@@ -2660,7 +2747,41 @@ export function createSisyphusRuntime(elements = {}) {
       }
       preclickRockGuidance.delayReady = true;
       refreshPreclickRockParallax();
-    }, delay);
+    }, normalizedDelay);
+    return false;
+  }
+
+  function syncPreclickGuidanceDelay(delay, now = performance.now()) {
+    if (preclickRockGuidance.delayReady) {
+      return true;
+    }
+    const normalizedDelay = Math.max(0, Number(delay) || 0);
+    const currentNow = Number.isFinite(now) ? now : performance.now();
+    const startedAt = Number(preclickRockGuidance.delayStartedAtMs);
+    const elapsed = Number.isFinite(startedAt)
+      ? Math.max(0, currentNow - startedAt)
+      : 0;
+    const remaining = Math.max(0, normalizedDelay - elapsed);
+    if (preclickRockGuidance.delayTimerId !== null) {
+      window.clearTimeout(preclickRockGuidance.delayTimerId);
+      preclickRockGuidance.delayTimerId = null;
+    }
+    if (remaining <= 0) {
+      preclickRockGuidance.delayReady = true;
+      return true;
+    }
+    preclickRockGuidance.delayTimerId = window.setTimeout(() => {
+      preclickRockGuidance.delayTimerId = null;
+      if (
+        disposed ||
+        preclickRockGuidance.completed ||
+        !preclickRockGuidance.insideRadius
+      ) {
+        return;
+      }
+      preclickRockGuidance.delayReady = true;
+      refreshPreclickRockParallax();
+    }, remaining);
     return false;
   }
 
@@ -2706,7 +2827,10 @@ export function createSisyphusRuntime(elements = {}) {
       window.requestAnimationFrame(renderReturn);
   }
 
-  function refreshPreclickRockParallax() {
+  function refreshPreclickRockParallax({
+    movementAtMs = null,
+    trackMovement = false,
+  } = {}) {
     if (
       preclickRockGuidance.completed ||
       !finePointer.matches ||
@@ -2717,12 +2841,11 @@ export function createSisyphusRuntime(elements = {}) {
     }
     const activationRadius =
       (params.preclickParallaxActivationRadiusVw / 100) * window.innerWidth;
-    const maxOffset =
-      (params.preclickParallaxMaxOffsetVw / 100) * window.innerWidth;
-    if (activationRadius <= 0 || maxOffset <= 0) {
+    if (activationRadius <= 0 || params.preclickParallaxMaxOffsetVw <= 0) {
       preclickRockGuidance.insideRadius = false;
       preclickRockGuidance.outsideRadius = false;
       cancelPreclickGuidanceDelay();
+      resetPreclickParallaxTransition();
       resetPreclickRockParallax();
       return;
     }
@@ -2733,18 +2856,13 @@ export function createSisyphusRuntime(elements = {}) {
     const centerY = center.y;
     const deltaX = preclickRockGuidance.pointerX - centerX;
     const deltaY = preclickRockGuidance.pointerY - centerY;
-    const parallax = calculatePreclickParallaxOffset({
-      deltaX,
-      deltaY,
-      activationRadius,
-      maxOffset,
-      inverted: params.preclickParallaxInverted,
-      lastDirectionX: preclickRockGuidance.directionX,
-      lastDirectionY: preclickRockGuidance.directionY,
-    });
-    if (!parallax.insideRadius) {
+    if (Math.hypot(deltaX, deltaY) > activationRadius) {
+      const exitedRadius = preclickRockGuidance.insideRadius;
       preclickRockGuidance.insideRadius = false;
       cancelPreclickGuidanceDelay();
+      if (exitedRadius) {
+        resetPreclickParallaxTransition();
+      }
       if (!preclickRockGuidance.outsideRadius) {
         preclickRockGuidance.outsideRadius = true;
         returnPreclickRockParallaxToCenter();
@@ -2758,11 +2876,38 @@ export function createSisyphusRuntime(elements = {}) {
     cancelPreclickGuidanceReturn();
     if (enteredRadius) {
       cancelPreclickGuidanceDelay();
+      resetPreclickParallaxTransition({
+        pointerX: preclickRockGuidance.pointerX,
+        pointerY: preclickRockGuidance.pointerY,
+        atMs: movementAtMs,
+      });
       setPreclickRockParallaxOffset(0, 0);
-      if (!beginPreclickGuidanceDelay()) {
+    } else if (trackMovement && Number.isFinite(movementAtMs)) {
+      advancePreclickParallaxTransition(
+        preclickRockGuidance.pointerX,
+        preclickRockGuidance.pointerY,
+        movementAtMs,
+      );
+    }
+
+    const transition = currentPreclickParallaxTransition();
+    const maxOffset = (transition.maxOffset / 100) * window.innerWidth;
+    const parallax = calculatePreclickParallaxOffset({
+      deltaX,
+      deltaY,
+      activationRadius,
+      maxOffset,
+      inverted: params.preclickParallaxInverted,
+      lastDirectionX: preclickRockGuidance.directionX,
+      lastDirectionY: preclickRockGuidance.directionY,
+    });
+    if (enteredRadius) {
+      if (!beginPreclickGuidanceDelay(transition.delayMs, movementAtMs)) {
         return;
       }
-    } else if (!preclickRockGuidance.delayReady) {
+    } else if (
+      !syncPreclickGuidanceDelay(transition.delayMs, movementAtMs)
+    ) {
       return;
     }
 
@@ -2787,13 +2932,17 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.pointerX = pointerX;
     preclickRockGuidance.pointerY = pointerY;
     syncHandCursorForPointer(event);
-    refreshPreclickRockParallax();
+    refreshPreclickRockParallax({
+      movementAtMs: performance.now(),
+      trackMovement: true,
+    });
   }
 
   function restartPreclickRockParallaxFromLastPointer() {
     cancelPreclickGuidanceDelay();
     preclickRockGuidance.insideRadius = false;
     preclickRockGuidance.outsideRadius = false;
+    resetPreclickParallaxTransition();
     resetPreclickRockParallax();
     refreshPreclickRockParallax();
   }
@@ -3764,7 +3913,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 30,
+      settingsSchemaVersion: 31,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -4410,12 +4559,10 @@ export function createSisyphusRuntime(elements = {}) {
       if (sharedDragActive()) {
         clearSharedReleaseHandoff();
       }
-    } else if (
-      collab.hasControl ||
-      collab.pendingControl
-    ) {
+    } else if (collab.hasControl) {
+      // Snapshot, поставленный в очередь до control.granted, не должен
+      // отменять ожидающий серверного ответа локальный захват.
       collab.hasControl = false;
-      collab.pendingControl = false;
       cancelSharedLocalDrag();
     }
 
