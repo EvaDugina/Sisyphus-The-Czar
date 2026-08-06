@@ -137,6 +137,10 @@ export function createSisyphusRuntime(elements = {}) {
   const rock = elements.rock || document.querySelector(".rock");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
   const handCursor = elements.handCursor || document.querySelector(".hand-cursor");
+  const settingsToggle =
+    elements.settingsToggle || document.querySelector(".settings-toggle");
+  const settingsPanel =
+    elements.settingsPanel || document.querySelector(".settings-panel");
   const heightGateStatus =
     elements.heightGateStatus || document.querySelector(".height-gate-status");
   const remoteCursorLayer = elements.remoteCursorLayer || document.querySelector(".remote-cursors");
@@ -2548,6 +2552,16 @@ export function createSisyphusRuntime(elements = {}) {
     setGrabbingCursor(false);
   }
 
+  function showNativeSettingsCursor() {
+    if (preclickRockGuidance.enabled) {
+      body.classList.add("is-settings-pointer-active");
+    }
+  }
+
+  function hideNativeSettingsCursor() {
+    body.classList.remove("is-settings-pointer-active");
+  }
+
   function toggleHandVariant() {
     motion.alternateHand = !motion.alternateHand;
     handCursor.classList.toggle("is-alternate", motion.alternateHand);
@@ -3671,7 +3685,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 25,
+      settingsSchemaVersion: 26,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -5746,6 +5760,10 @@ export function createSisyphusRuntime(elements = {}) {
   // Открытием панели управляет React-хук useSettings.
   listen(window, "pointermove", updatePreclickRockGuidance, { passive: true });
   listen(window, "pointerdown", pressAlwaysVisibleHand);
+  listen(settingsToggle, "pointerenter", showNativeSettingsCursor);
+  listen(settingsToggle, "pointerleave", hideNativeSettingsCursor);
+  listen(settingsPanel, "pointerenter", showNativeSettingsCursor);
+  listen(settingsPanel, "pointerleave", hideNativeSettingsCursor);
   listen(rock, "pointerenter", enterRock);
   listen(rock, "pointerleave", leaveRock);
   listen(rock, "pointerdown", startDrag);
@@ -5969,6 +5987,7 @@ export function createSisyphusRuntime(elements = {}) {
       body.classList.remove(
         "is-manual-scroll-disabled",
         "experiment-preclick-rock-guidance",
+        "is-settings-pointer-active",
       );
       rock.classList.remove("is-preclick-parallax");
       resetPreclickRockParallax();

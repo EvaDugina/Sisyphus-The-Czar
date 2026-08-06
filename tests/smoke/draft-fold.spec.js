@@ -88,9 +88,48 @@ test("основной и drafts маршруты используют одну 
   }
 });
 
+test("эксперимент показывает нативный курсор над настройками", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+  const experimentEnabled = await page.locator("body").evaluate((body) =>
+    body.classList.contains("experiment-preclick-rock-guidance"),
+  );
+  test.skip(!experimentEnabled, "Требуется включённый preclick experiment");
+
+  const body = page.locator("body");
+  const hand = page.locator(
+    "#root > .world > .hand-cursor:not(.is-remote)",
+  );
+  const toggle = page.locator(".settings-toggle");
+  await toggle.hover();
+  await expect(toggle).toHaveCSS("cursor", "pointer");
+  await expect(body).toHaveClass(/is-settings-pointer-active/);
+  await expect(hand).toHaveCSS("opacity", "0");
+
+  await toggle.click();
+  const panel = page.locator(".settings-panel.is-open");
+  await expect(panel).toBeVisible();
+  await panel.hover({ position: { x: 24, y: 24 } });
+  await expect(panel).toHaveCSS("cursor", "auto");
+  await expect(body).toHaveClass(/is-settings-pointer-active/);
+  await expect(hand).toHaveCSS("opacity", "0");
+
+  await page.mouse.move(8, 8);
+  await expect(body).not.toHaveClass(/is-settings-pointer-active/);
+});
+
 test("настройки parallax меняют отклонение, радиус и плавность возврата", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem("sisyphus-czar-settings-v26");
+    localStorage.setItem(
+      "sisyphus-czar-settings-v25",
+      JSON.stringify({ preclickParallaxActivationRadiusPx: 480 }),
+    );
+  });
   await page.goto("/");
   await waitForFoldReady(page);
   await page.locator(".settings-toggle").click();
@@ -108,7 +147,7 @@ test("настройки parallax меняют отклонение, радиу�
   await expect(maxOffset).toHaveValue("12");
   await expect(maxOffset).toHaveAttribute("min", "0");
   await expect(maxOffset).toHaveAttribute("max", "100");
-  await expect(activationRadius).toHaveValue("480");
+  await expect(activationRadius).toHaveValue("1000");
   await expect(activationRadius).toHaveAttribute("min", "0");
   await expect(activationRadius).toHaveAttribute("max", "2000");
   await expect(returnDuration).toHaveValue("400");
@@ -124,7 +163,7 @@ test("настройки parallax меняют отклонение, радиу�
   ).toHaveCount(1);
 
   await setSettingValue(page, "preclickParallaxMaxOffsetPx", 36);
-  await setSettingValue(page, "preclickParallaxActivationRadiusPx", 720);
+  await setSettingValue(page, "preclickParallaxActivationRadiusPx", 1400);
   await setSettingValue(page, "preclickParallaxReturnDurationMs", 650);
   await setSettingValue(
     page,
@@ -147,7 +186,7 @@ test("настройки parallax меняют отклонение, радиу�
     )
     .toEqual({
       maxOffset: 36,
-      activationRadius: 720,
+      activationRadius: 1400,
       returnDuration: 650,
       returnEasing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
     });
@@ -156,7 +195,7 @@ test("настройки parallax меняют отклонение, радиу�
   ).toHaveText("36px");
   await expect(
     page.locator('[data-output="preclickParallaxActivationRadiusPx"]'),
-  ).toHaveText("720px");
+  ).toHaveText("1400px");
   await expect(
     page.locator('[data-output="preclickParallaxReturnDurationMs"]'),
   ).toHaveText("650мс");
@@ -583,7 +622,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v25") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v26") || "{}",
         );
         return [
           stored.glowOptimizationMode,

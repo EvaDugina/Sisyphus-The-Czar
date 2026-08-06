@@ -83,6 +83,7 @@ function rockCenter(page) {
 test("flag включает parallax до первого клика и постоянную руку", async ({
   page,
 }, testInfo) => {
+  await page.setViewportSize({ width: 2400, height: 1400 });
   await page.goto("/");
   await expect(page.locator("body")).toHaveClass(/state-play/);
   await expect(page.locator("body")).toHaveClass(
@@ -122,7 +123,7 @@ test("flag включает parallax до первого клика и пост�
 
   await scrollToRock(page);
   const center = await rockCenter(page);
-  const halfRadius = 240;
+  const halfRadius = 500;
   await page.mouse.move(center.x - halfRadius, center.y);
   await expect.poll(() => parallaxX(page)).toBeCloseTo(-6, 3);
   const sizeAtLeft = await rockSize(page);
@@ -139,9 +140,9 @@ test("flag включает parallax до первого клика и пост�
     })
     .toEqual({ widthDelta: 0, heightDelta: 0 });
 
-  const outsideX = center.x + 500 < viewport.width
-    ? center.x + 500
-    : center.x - 500;
+  const outsideX = center.x + 1100 < viewport.width
+    ? center.x + 1100
+    : center.x - 1100;
   await page.mouse.move(outsideX, center.y);
   expect(Math.abs(await parallaxX(page))).toBeGreaterThan(0);
   await page.waitForTimeout(50);

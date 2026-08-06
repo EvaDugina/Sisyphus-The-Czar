@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 25;
+const SETTINGS_SCHEMA_VERSION = 26;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -438,6 +438,14 @@ export function createSettingsController(options) {
     }
     if (migratedLegacySettings) {
       stored = { ...stored };
+      if (
+        legacyKeyVersion < 26 &&
+        Number(stored.preclickParallaxActivationRadiusPx) === 480
+      ) {
+        stored.preclickParallaxActivationRadiusPx =
+          SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+            .preclickParallaxActivationRadiusPx;
+      }
       if (legacyKeyVersion < 20) {
         delete stored.trailEnabled;
       }

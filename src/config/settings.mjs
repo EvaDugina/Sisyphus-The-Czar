@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v25";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v26";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v25",
   "sisyphus-czar-settings-v24",
   "sisyphus-czar-settings-v23",
   "sisyphus-czar-settings-v22",

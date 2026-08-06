@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 21;
+  const ROOM_SETTINGS_VERSION = 22;
   const MAX_HEIGHT_GATES = 10;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
@@ -131,7 +131,7 @@
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickParallaxMaxOffsetPx: 12,
-    preclickParallaxActivationRadiusPx: 480,
+    preclickParallaxActivationRadiusPx: 1000,
     preclickParallaxReturnDurationMs: 400,
     preclickParallaxReturnEasing: DEFAULT_PRECLICK_PARALLAX_RETURN_EASING,
     handWidthVw: 14.375,
@@ -978,6 +978,16 @@
           source[key] = DEFAULT_ROOM_SETTINGS[key];
         }
       });
+    }
+    if (finiteNumber(version, 1) < 22) {
+      const previousRadius = Number(source.preclickParallaxActivationRadiusPx);
+      if (
+        !Object.hasOwn(source, "preclickParallaxActivationRadiusPx") ||
+        previousRadius === 480
+      ) {
+        source.preclickParallaxActivationRadiusPx =
+          DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusPx;
+      }
     }
     return source;
   }

@@ -439,6 +439,20 @@ body.state-fallingToBottom .hand-cursor {
     cursor: none !important;
   }
 
+  body.experiment-preclick-rock-guidance .settings-toggle {
+    cursor: pointer !important;
+  }
+
+  body.experiment-preclick-rock-guidance .settings-panel.is-open,
+  body.experiment-preclick-rock-guidance .settings-panel.is-open * {
+    cursor: auto !important;
+  }
+
+  body.experiment-preclick-rock-guidance.is-settings-pointer-active
+    .hand-cursor:not(.is-remote) {
+    opacity: 0;
+  }
+
   .rock {
     cursor: none;
   }
