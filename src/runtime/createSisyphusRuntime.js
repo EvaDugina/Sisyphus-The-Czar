@@ -6,6 +6,10 @@ import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import { createClientId } from "../lib/clientId.mjs";
+import {
+  cameraFollowScrollY,
+  cameraTargetScrollY,
+} from "../lib/cameraFollow.mjs";
 import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
 import { drizzleVolumeForY } from "../lib/drizzleVolume.mjs";
 import {
@@ -25,6 +29,7 @@ import {
   MAX_RAIN_FX_OPACITY,
 } from "../lib/rainProfile.mjs";
 import { shouldStartRainExit } from "../lib/rainState.mjs";
+import { calculatePreclickParallaxOffset } from "../lib/preclickParallax.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import { formatSummitElapsedMs } from "../lib/summitTimer.mjs";
 import {
@@ -40,10 +45,6 @@ import {
   rockLocalXForVisualGrab,
   rockScaleForY,
 } from "../lib/rockScale.mjs";
-import {
-  positionScrollDistancePx,
-  positionScrollState,
-} from "../lib/positionScroll.mjs";
 import { trailAnchorPoint } from "../lib/trailAnchor.mjs";
 import {
   canonicalVisualTrailPointToLocal,
@@ -65,8 +66,6 @@ const ROLE_AUDIO_VOLUME = 1;
 const AUDIO_TOGGLE_FADE_OUT_MS = 250;
 const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
-const PRECLICK_ROCK_GUIDANCE_ENABLED =
-  import.meta.env.EXPERIMENT_PRECLICK_ROCK_GUIDANCE === true;
 const THEME_BACKGROUND_SETTING_KEYS = [
   "lightBackgroundColor",
   "lightBackgroundDeepColor",
@@ -256,16 +255,8 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundLowColor,
     returnScrollDurationSeconds: DEFAULT_RETURN_SCROLL_DURATION_SECONDS,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
-    positionScrollEnabled:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEnabled,
-    positionScrollZonePercent:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollZonePercent,
-    positionScrollStartSpeedVh:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollStartSpeedVh,
-    positionScrollEndSpeedVh:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEndSpeedVh,
-    positionScrollEasing:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.positionScrollEasing,
+    cameraFollowLerp:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.cameraFollowLerp,
     draftFoldAngle:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.draftFoldAngle,
     draftFoldZoneSize:
@@ -274,8 +265,6 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.draftFoldBlendEnabled,
     draftFoldBlendCurve:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.draftFoldBlendCurve,
-    manualVerticalScrollEnabled:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.manualVerticalScrollEnabled,
     finalFallEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.finalFallEnabled,
     finalFallDelaySeconds:
@@ -304,16 +293,20 @@ export function createSisyphusRuntime(elements = {}) {
     rockScaleEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockScaleEasing,
     rockActivatedWidthVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
-    preclickParallaxMaxOffsetPx:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetPx,
+    preclickParallaxMaxOffsetVw:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
     preclickParallaxActivationRadiusVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS
         .preclickParallaxActivationRadiusVw,
+    preclickParallaxInverted:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxInverted,
     preclickParallaxReturnDurationMs:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS
         .preclickParallaxReturnDurationMs,
     preclickParallaxReturnEasing:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxReturnEasing,
+    handAlwaysVisible:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handAlwaysVisible,
     rockMinWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
     rockMaxWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMaxWidthVw,
     sceneHeightScreens:
@@ -432,21 +425,21 @@ export function createSisyphusRuntime(elements = {}) {
     wasAtReturnPlace: false,
   };
   const preclickRockGuidance = {
-    enabled: PRECLICK_ROCK_GUIDANCE_ENABLED,
     completed: false,
     pointerX: null,
     pointerY: null,
+    directionX: null,
+    directionY: null,
     returnAnimationId: null,
     outsideRadius: false,
   };
-  body.classList.toggle(
-    "experiment-preclick-rock-guidance",
-    preclickRockGuidance.enabled,
+  body.classList.add(
+    "preclick-rock-guidance",
+    "is-manual-scroll-disabled",
   );
-  rock.classList.toggle(
-    "is-preclick-parallax",
-    preclickRockGuidance.enabled,
-  );
+  document.documentElement.classList.add("is-manual-scroll-disabled");
+  body.classList.toggle("hand-always-visible", params.handAlwaysVisible);
+  rock.classList.add("is-preclick-parallax");
   const finalFallGate = {
     enteredAt: null,
     ready: false,
@@ -2089,13 +2082,11 @@ export function createSisyphusRuntime(elements = {}) {
     ].forEach(([name, value]) => body.style.setProperty(name, value));
   }
 
-  function applyManualVerticalScrollSetting() {
-    const disabled = !params.manualVerticalScrollEnabled;
-    document.documentElement.classList.toggle(
-      "is-manual-scroll-disabled",
-      disabled,
-    );
-    body.classList.toggle("is-manual-scroll-disabled", disabled);
+  function applyHandVisibilitySetting() {
+    body.classList.toggle("hand-always-visible", params.handAlwaysVisible);
+    if (!params.handAlwaysVisible && !motion.dragging) {
+      hideHandCursor();
+    }
   }
 
   function resolveTheme(autoTheme) {
@@ -2236,8 +2227,9 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (
       shouldHandleChange(
-        "preclickParallaxMaxOffsetPx",
+        "preclickParallaxMaxOffsetVw",
         "preclickParallaxActivationRadiusVw",
+        "preclickParallaxInverted",
         "preclickParallaxReturnDurationMs",
         "preclickParallaxReturnEasing",
       )
@@ -2285,8 +2277,8 @@ export function createSisyphusRuntime(elements = {}) {
     if (shouldHandleChange("themeMode", "blendMode", "lineOpacity")) {
       applyTrailBlendMode();
     }
-    if (shouldHandleChange("manualVerticalScrollEnabled")) {
-      applyManualVerticalScrollSetting();
+    if (shouldHandleChange("handAlwaysVisible")) {
+      applyHandVisibilitySetting();
     }
     if (shouldHandleChange("handAudioEnabled") && !params.handAudioEnabled) {
       stopHandInteractionSounds();
@@ -2519,6 +2511,17 @@ export function createSisyphusRuntime(elements = {}) {
     handCursor.classList.add("is-visible");
   }
 
+  function syncHandCursorForPointer(event) {
+    if (!canShowPhotoCursor(event)) {
+      return;
+    }
+    moveHandCursor(event);
+    handCursor.classList.toggle(
+      "is-visible",
+      params.handAlwaysVisible || motion.dragging || pointerIsOverRock(event),
+    );
+  }
+
   function hideHandCursor() {
     handCursor.classList.remove("is-visible", "is-grabbing");
   }
@@ -2528,21 +2531,20 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function pressAlwaysVisibleHand(event) {
-    if (
-      !preclickRockGuidance.enabled ||
-      !canShowPhotoCursor(event) ||
-      event.button !== 0
-    ) {
+    if (!canShowPhotoCursor(event) || event.button !== 0) {
       return;
     }
 
-    showHandCursor(event);
+    moveHandCursor(event);
+    if (!params.handAlwaysVisible && !pointerIsOverRock(event)) {
+      return;
+    }
+    handCursor.classList.add("is-visible");
     setGrabbingCursor(true);
   }
 
   function releaseAlwaysVisibleHand(event) {
     if (
-      !preclickRockGuidance.enabled ||
       (event.pointerType && event.pointerType !== "mouse") ||
       motion.dragging
     ) {
@@ -2550,12 +2552,13 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     setGrabbingCursor(false);
+    if (!params.handAlwaysVisible && !pointerIsOverRock(event)) {
+      hideHandCursor();
+    }
   }
 
   function showNativeSettingsCursor() {
-    if (preclickRockGuidance.enabled) {
-      body.classList.add("is-settings-pointer-active");
-    }
+    body.classList.add("is-settings-pointer-active");
   }
 
   function hideNativeSettingsCursor() {
@@ -2650,7 +2653,6 @@ export function createSisyphusRuntime(elements = {}) {
 
   function updatePreclickRockParallax(event) {
     if (
-      !preclickRockGuidance.enabled ||
       preclickRockGuidance.completed ||
       !finePointer.matches ||
       (event.pointerType && event.pointerType !== "mouse")
@@ -2659,10 +2661,11 @@ export function createSisyphusRuntime(elements = {}) {
     }
     preclickRockGuidance.pointerX = Number(event.clientX);
     preclickRockGuidance.pointerY = Number(event.clientY);
-    showHandCursor(event);
+    syncHandCursorForPointer(event);
     const activationRadius =
       (params.preclickParallaxActivationRadiusVw / 100) * window.innerWidth;
-    const maxOffset = params.preclickParallaxMaxOffsetPx;
+    const maxOffset =
+      (params.preclickParallaxMaxOffsetVw / 100) * window.innerWidth;
     if (activationRadius <= 0 || maxOffset <= 0) {
       resetPreclickRockParallax();
       return;
@@ -2674,8 +2677,16 @@ export function createSisyphusRuntime(elements = {}) {
     const centerY = center.y;
     const deltaX = preclickRockGuidance.pointerX - centerX;
     const deltaY = preclickRockGuidance.pointerY - centerY;
-    const distance = Math.hypot(deltaX, deltaY);
-    if (distance > activationRadius) {
+    const parallax = calculatePreclickParallaxOffset({
+      deltaX,
+      deltaY,
+      activationRadius,
+      maxOffset,
+      inverted: params.preclickParallaxInverted,
+      lastDirectionX: preclickRockGuidance.directionX,
+      lastDirectionY: preclickRockGuidance.directionY,
+    });
+    if (!parallax.insideRadius) {
       if (!preclickRockGuidance.outsideRadius) {
         preclickRockGuidance.outsideRadius = true;
         returnPreclickRockParallaxToCenter();
@@ -2690,29 +2701,21 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const offsetScale = -maxOffset / activationRadius;
-    setPreclickRockParallaxOffset(
-      deltaX * offsetScale,
-      deltaY * offsetScale,
-    );
+    preclickRockGuidance.directionX = parallax.directionX;
+    preclickRockGuidance.directionY = parallax.directionY;
+    setPreclickRockParallaxOffset(parallax.x, parallax.y);
   }
 
   function updatePreclickRockGuidance(event) {
-    if (!preclickRockGuidance.enabled) {
-      return;
-    }
     if (preclickRockGuidance.completed) {
-      showHandCursor(event);
+      syncHandCursorForPointer(event);
       return;
     }
     updatePreclickRockParallax(event);
   }
 
   function completePreclickRockGuidance() {
-    if (
-      !preclickRockGuidance.enabled ||
-      preclickRockGuidance.completed
-    ) {
+    if (preclickRockGuidance.completed) {
       return;
     }
     preclickRockGuidance.completed = true;
@@ -2999,44 +3002,25 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
-  function updatePositionScroll(deltaSeconds) {
-    if (motion.phase === PHASES.INTRO) {
+  function updateCameraFollow() {
+    if (
+      !preclickRockGuidance.completed ||
+      motion.phase === PHASES.INTRO
+    ) {
       return;
     }
 
     const rect = rock.getBoundingClientRect();
-    const state = positionScrollState(
-      rect.top + rect.height / 2,
-      window.innerHeight,
-      {
-        enabled: params.positionScrollEnabled,
-        zonePercent: params.positionScrollZonePercent,
-        startSpeedVh: params.positionScrollStartSpeedVh,
-        endSpeedVh: params.positionScrollEndSpeedVh,
-        easing: params.positionScrollEasing,
-      },
-    );
-    if (!state.active || state.speedVh <= 0) {
-      return;
-    }
-
-    const distance = positionScrollDistancePx(
-      state.speedVh,
-      window.innerHeight,
-      deltaSeconds,
-    );
-    if (distance <= 0) {
-      return;
-    }
-
-    const maxScrollY = Math.max(
-      0,
-      document.documentElement.scrollHeight - window.innerHeight,
-    );
-    const nextScrollY = clamp(
-      window.scrollY + state.direction * distance,
-      0,
-      maxScrollY,
+    const targetScrollY = cameraTargetScrollY({
+      rockCenterDocumentY:
+        window.scrollY + rect.top + rect.height / 2,
+      viewportHeight: window.innerHeight,
+      documentHeight: document.documentElement.scrollHeight,
+    });
+    const nextScrollY = cameraFollowScrollY(
+      window.scrollY,
+      targetScrollY,
+      params.cameraFollowLerp,
     );
     if (nextScrollY === window.scrollY) {
       return;
@@ -3686,7 +3670,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 27,
+      settingsSchemaVersion: 29,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -4505,7 +4489,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (shouldRecordTrailPoint()) {
       recordTrailPoint(deltaSeconds);
     }
-    updatePositionScroll(deltaSeconds);
+    updateCameraFollow();
     drawTrail();
     renderRemotePointers();
     renderSummitTimer();
@@ -4653,9 +4637,6 @@ export function createSisyphusRuntime(elements = {}) {
     collab.hasControl = false;
     cancelSharedLocalDrag();
     syncReturnTheme();
-    if (!pointerVisible && !preclickRockGuidance.enabled) {
-      hideHandCursor();
-    }
     updateSessionStatus();
   }
 
@@ -5512,7 +5493,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
     }
 
-    updatePositionScroll(deltaSeconds);
+    updateCameraFollow();
     drawTrail();
 
     if (motion.phase !== PHASES.WON) {
@@ -5614,8 +5595,6 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    completePreclickRockGuidance();
-
     if (motion.phase !== PHASES.PLAY) {
       return;
     }
@@ -5624,6 +5603,8 @@ export function createSisyphusRuntime(elements = {}) {
       event.preventDefault();
       return;
     }
+
+    completePreclickRockGuidance();
 
     playDrizzleLoopSound();
     playRockPointerDownSound();
@@ -5722,14 +5703,14 @@ export function createSisyphusRuntime(elements = {}) {
 
   function leaveRock(event) {
     if (!motion.dragging) {
-      if (!preclickRockGuidance.enabled) {
+      if (!params.handAlwaysVisible) {
         hideHandCursor();
       }
       if (collab.enabled) {
         sendSharedPointer(
           event,
           "grab",
-          preclickRockGuidance.enabled,
+          params.handAlwaysVisible,
           true,
         );
       }
@@ -5820,7 +5801,7 @@ export function createSisyphusRuntime(elements = {}) {
     setTheme(resolveTheme("dark"));
     hideReturnRain({ immediate: true });
     motion.sceneReady = true;
-    if (preclickRockGuidance.enabled && finePointer.matches) {
+    if (finePointer.matches && params.handAlwaysVisible) {
       showHandCursor({
         clientX: window.innerWidth / 2,
         clientY: window.innerHeight / 2,
@@ -5987,7 +5968,8 @@ export function createSisyphusRuntime(elements = {}) {
       );
       body.classList.remove(
         "is-manual-scroll-disabled",
-        "experiment-preclick-rock-guidance",
+        "preclick-rock-guidance",
+        "hand-always-visible",
         "is-settings-pointer-active",
       );
       rock.classList.remove("is-preclick-parallax");

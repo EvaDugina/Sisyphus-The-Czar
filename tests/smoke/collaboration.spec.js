@@ -242,7 +242,7 @@ test("dev UI мгновенно применяет последний парам
     .toBe(9.5);
 });
 
-test("scroll UI, cubic editor и новые настройки сохраняются вместе", async ({
+test("camera UI и новые настройки сохраняются вместе", async ({
   page,
 }) => {
   await page.goto("/");
@@ -250,33 +250,32 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await resetRootExperience(page);
   await openSettingsPanel(page);
   await openControlGroup(page, "Вид");
-  await openControlGroup(page, "Автоматика и скролл");
+  await openControlGroup(page, "Камера");
   await openControlGroup(page, "3D Fold");
   await openControlGroup(page, "Финальное падение");
   await openControlGroup(page, "Физика");
   await openControlGroup(page, "Камень");
-  await openControlGroup(page, "Руки");
+  await openControlGroup(page, "Рука");
   await openControlGroup(page, "Траектория");
   await openControlGroup(page, "Капель");
 
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(0);
   await expect(page.locator('[name="heightGates"]')).toHaveCount(1);
   await expect(page.getByTestId("height-gate-add")).toBeVisible();
-  await expect(page.locator('[name="positionScrollEnabled"]')).toBeChecked();
-  await expect(page.locator('[name="manualVerticalScrollEnabled"]')).toBeChecked();
-  await expect(page.locator('[name="positionScrollZonePercent"]')).toHaveValue(
-    "20",
+  await expect(page.locator('[name^="positionScroll"]')).toHaveCount(0);
+  await expect(page.locator('[name="manualVerticalScrollEnabled"]')).toHaveCount(
+    0,
   );
-  await expect(page.locator('[name="positionScrollZonePercent"]')).toHaveAttribute(
+  await expect(page.locator('[name="cameraFollowLerp"]')).toHaveValue("0.1");
+  await expect(page.locator('[name="cameraFollowLerp"]')).toHaveAttribute(
+    "min",
+    "0.01",
+  );
+  await expect(page.locator('[name="cameraFollowLerp"]')).toHaveAttribute(
     "max",
-    "50",
-  );
-  await expect(page.locator('[name="positionScrollStartSpeedVh"]')).toHaveValue(
-    "0.2",
-  );
-  await expect(page.locator('[name="positionScrollEndSpeedVh"]')).toHaveValue(
     "1",
   );
+  await expect(page.locator('[name="handAlwaysVisible"]')).toBeChecked();
   await expect(page.locator('[name="trailAnchorHeightPercent"]')).toHaveValue(
     "100",
   );
@@ -293,25 +292,8 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await expect(page.locator('[name="draftFoldAngle"]')).toHaveValue("30");
   await expect(page.locator('[name="draftFoldZoneSize"]')).toHaveValue("20");
 
-  const speedCurveControl = page
-    .locator("[data-cubic-bezier-control]")
-    .filter({ has: page.locator('[name="positionScrollEasing"]') });
-  const speedX1 = speedCurveControl.locator(
-    '[data-bezier-coordinate="x1"]',
-  );
-  await speedX1.fill("0.31");
-  await expect(page.locator('[name="positionScrollEasing"]')).toHaveValue(
-    "cubic-bezier(0.31, 0.67, 0.83, 0.67)",
-  );
-  await expect(speedCurveControl.locator(".bezier-curve")).toHaveAttribute(
-    "d",
-    /C 31 33, 83 33/,
-  );
-  await expect(speedCurveControl.locator(".bezier-preview-marker")).toHaveCount(
-    2,
-  );
-  await speedCurveControl.getByRole("button", { name: "Повторить" }).click();
-
+  await setRange(page, "cameraFollowLerp", 0.25);
+  await setCheckbox(page, "handAlwaysVisible", false);
   await setField(page, "rockMinWidthVw", 40);
   await setField(page, "rockMaxWidthVw", 10);
   await setCheckbox(page, "finalFallEnabled", true);
@@ -335,113 +317,32 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
     .toEqual({ start: 40, end: 10 });
 
   await setRange(page, "sceneHeightScreens", 10);
-  await setCheckbox(page, "manualVerticalScrollEnabled", false);
   await expect(page.locator("html")).toHaveClass(/is-manual-scroll-disabled/);
   await expect(page.locator("body")).toHaveClass(/is-manual-scroll-disabled/);
-  await page.evaluate(() => {
-    params.positionScrollEnabled = false;
-    window.scrollTo(0, 0);
-  });
+  await page.evaluate(() => window.scrollTo(0, 0));
   await page.mouse.move(400, 400);
   await page.mouse.wheel(0, 900);
   await page.waitForTimeout(120);
   expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
-  await page.evaluate(() => window.scrollTo(0, 500));
-  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(500);
-
-  const positionScrollStart = await page.evaluate(() => {
-    collab.enabled = false;
-    collab.snapshots.length = 0;
-    params.positionScrollEnabled = true;
-    params.positionScrollZonePercent = 20;
-    params.positionScrollStartSpeedVh = 1;
-    params.positionScrollEndSpeedVh = 1;
-    motion.phase = SharedPhysics.PHASES.PLAY;
-    motion.suspended = true;
-    motion.dragging = false;
-    updateBounds();
-    setPosition(bounds.maxX * 0.25, bounds.maxY * 0.45);
-    const rect = document.querySelector(".rock").getBoundingClientRect();
-    const desiredCenterY = window.innerHeight * 0.1;
-    const targetScroll = Math.min(
-      document.documentElement.scrollHeight - window.innerHeight,
-      Math.max(
-        1,
-        window.scrollY + rect.top + rect.height / 2 - desiredCenterY,
-      ),
-    );
-    window.scrollTo(0, targetScroll);
-    const positionedRect = document
-      .querySelector(".rock")
-      .getBoundingClientRect();
-    return {
-      centerY: positionedRect.top + positionedRect.height / 2,
-      scrollY: window.scrollY,
-      zoneBottom: window.innerHeight * 0.2,
-    };
-  });
-  expect(positionScrollStart.centerY).toBeLessThanOrEqual(
-    positionScrollStart.zoneBottom,
-  );
-  await expect
-    .poll(() => page.evaluate(() => window.scrollY))
-    .toBeLessThan(positionScrollStart.scrollY);
-
-  const fallingScrollStart = await page.evaluate(() => {
-    motion.phase = SharedPhysics.PHASES.FALLING;
-    updateBounds();
-    setPosition(bounds.maxX * 0.25, bounds.maxY * 0.55);
-    const rect = document.querySelector(".rock").getBoundingClientRect();
-    const desiredCenterY = window.innerHeight * 0.9;
-    const maxScrollY =
-      document.documentElement.scrollHeight - window.innerHeight;
-    const targetScroll = Math.min(
-      maxScrollY - 1,
-      Math.max(
-        0,
-        window.scrollY + rect.top + rect.height / 2 - desiredCenterY,
-      ),
-    );
-    window.scrollTo(0, targetScroll);
-    const positionedRect = document
-      .querySelector(".rock")
-      .getBoundingClientRect();
-    return {
-      centerY: positionedRect.top + positionedRect.height / 2,
-      scrollY: window.scrollY,
-      zoneTop: window.innerHeight * 0.8,
-    };
-  });
-  expect(fallingScrollStart.centerY).toBeGreaterThanOrEqual(
-    fallingScrollStart.zoneTop,
-  );
-  await expect
-    .poll(() => page.evaluate(() => window.scrollY))
-    .toBeGreaterThan(fallingScrollStart.scrollY);
-
-  await page.evaluate(() => {
-    collab.enabled = true;
-  });
-
   await page.locator(".settings-version-toggle").click();
   await page.locator('[data-settings-version-choice=""]').click();
-  await page.locator(".settings-version-name").fill("scroll-ui-smoke");
+  await page.locator(".settings-version-name").fill("camera-ui-smoke");
   await page.locator(".settings-version-save").click();
   await expect(page.locator("#settings-version-current")).toContainText(
-    "scroll-ui-smoke",
+    "camera-ui-smoke",
   );
 
   await page.reload();
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await openSettingsPanel(page);
-  await openControlGroup(page, "Автоматика и скролл");
+  await openControlGroup(page, "Камера");
   await openControlGroup(page, "Финальное падение");
   await openControlGroup(page, "Камень");
+  await openControlGroup(page, "Рука");
   await openControlGroup(page, "Капель");
-  await expect(page.locator('[name="positionScrollEasing"]')).toHaveValue(
-    "cubic-bezier(0.31, 0.67, 0.83, 0.67)",
-  );
+  await expect(page.locator('[name="cameraFollowLerp"]')).toHaveValue("0.25");
+  await expect(page.locator('[name="handAlwaysVisible"]')).not.toBeChecked();
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("40");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("10");
   await expect(page.locator('[name="finalFallEnabled"]')).toBeChecked();
@@ -453,14 +354,11 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
   await expect(page.locator('[name="drizzleVolumeEasing"]')).toHaveValue(
     "cubic-bezier(0, 0, 1, 1)",
   );
-  await expect(
-    page.locator('[name="manualVerticalScrollEnabled"]'),
-  ).not.toBeChecked();
   await expect
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -469,9 +367,9 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
             stored.drizzleEndVolume,
             stored.drizzleVolumeEasing,
           ],
-          easing: stored.positionScrollEasing,
+          cameraFollowLerp: stored.cameraFollowLerp,
           finalFallEnabled: stored.finalFallEnabled,
-          manualScroll: stored.manualVerticalScrollEnabled,
+          handAlwaysVisible: stored.handAlwaysVisible,
           size: [stored.rockMinWidthVw, stored.rockMaxWidthVw],
         };
       }),
@@ -479,9 +377,9 @@ test("scroll UI, cubic editor и новые настройки сохраняю�
     .toEqual({
       delay: 3.5,
       drizzle: [0.2, 0.8, "cubic-bezier(0, 0, 1, 1)"],
-      easing: "cubic-bezier(0.31, 0.67, 0.83, 0.67)",
+      cameraFollowLerp: 0.25,
       finalFallEnabled: true,
-      manualScroll: false,
+      handAlwaysVisible: false,
       size: [40, 10],
     });
   await setCheckbox(page, "finalFallEnabled", false);
@@ -1200,7 +1098,7 @@ test("dev при запуске переносит последний локал
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}",
         );
         return stored.gravity;
       }),
@@ -1208,11 +1106,11 @@ test("dev при запуске переносит последний локал
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v24 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v29 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v27");
+    localStorage.removeItem("sisyphus-czar-settings-v29");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1234,11 +1132,14 @@ test("локальные настройки v20 мигрируют в v24 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}",
         );
         return {
           gravity: stored.gravity,
           glowOptimizationMode: stored.glowOptimizationMode,
+          cameraFollowLerp: stored.cameraFollowLerp,
+          handAlwaysVisible: stored.handAlwaysVisible,
+          preclickParallaxMaxOffsetVw: stored.preclickParallaxMaxOffsetVw,
           themeMode: stored.themeMode,
           trailEnabled: stored.trailEnabled,
         };
@@ -1247,6 +1148,9 @@ test("локальные настройки v20 мигрируют в v24 без
     .toEqual({
       gravity: 7.5,
       glowOptimizationMode: "balanced",
+      cameraFollowLerp: 0.1,
+      handAlwaysVisible: true,
+      preclickParallaxMaxOffsetVw: 0.6,
       themeMode: "light",
       trailEnabled: false,
     });
@@ -1543,7 +1447,7 @@ test("кривая нехватки силы замедляет фактичес
   await resetRootExperience(page);
   await expectReadyAtBottom(page);
   await openSettingsPanel(page);
-  await openControlGroup(page, "Руки");
+  await openControlGroup(page, "Рука");
   const easingInput = page.locator('[name="handForceDeficitEasing"]');
   await expect(easingInput).toHaveValue("cubic-bezier(0.42, 0, 1, 1)");
 
@@ -2322,7 +2226,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -2361,7 +2265,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2497,7 +2401,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2532,7 +2436,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2549,7 +2453,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}"
         );
         return stored.rainEnabled;
       })

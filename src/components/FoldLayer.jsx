@@ -228,7 +228,6 @@ export function FoldLayer({ settingsRef, worldRef }) {
         clean.draftFoldZoneSize,
         clean.draftFoldBlendEnabled,
         clean.draftFoldBlendCurve,
-        clean.positionScrollEnabled,
       ].join(":");
       if (signature !== lastSettingsSignature) {
         applyFoldSettings(layer, clean);

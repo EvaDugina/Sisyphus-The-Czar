@@ -10,9 +10,11 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v27";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v29";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v28",
+  "sisyphus-czar-settings-v27",
   "sisyphus-czar-settings-v26",
   "sisyphus-czar-settings-v25",
   "sisyphus-czar-settings-v24",
@@ -456,65 +458,18 @@ export const SETTINGS_GROUPS = [
     ],
   },
   {
-    title: "Автоматика и скролл",
+    title: "Камера",
     controls: [
       {
-        name: "positionScrollEnabled",
-        label: "Следить скроллом за камнем",
-        type: "checkbox",
-        defaultChecked: DEFAULT_ROOM_SETTINGS.positionScrollEnabled,
-        hint: "Всегда сопровождает камень скроллом: прокручивает страницу вверх или вниз, когда центр камня входит в соответствующую краевую зону viewport.",
-      },
-      {
-        name: "positionScrollZonePercent",
-        label: "Верхняя зона, %",
+        name: "cameraFollowLerp",
+        label: "Lerp камеры",
         type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .positionScrollZonePercent[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .positionScrollZonePercent[1],
-        step: 0.1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.positionScrollZonePercent,
-        output: `${DEFAULT_ROOM_SETTINGS.positionScrollZonePercent.toFixed(
-          1,
-        )}%`,
-        hint: "Доля высоты viewport от верхнего края, внутри которой работает автоматический позиционный скролл.",
-      },
-      {
-        name: "positionScrollStartSpeedVh",
-        label: "Начальная скорость",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.positionScrollSpeedVh[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.positionScrollSpeedVh[1],
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.cameraFollowLerp[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.cameraFollowLerp[1],
         step: 0.01,
-        defaultValue: DEFAULT_ROOM_SETTINGS.positionScrollStartSpeedVh,
-        output: DEFAULT_ROOM_SETTINGS.positionScrollStartSpeedVh.toFixed(2),
-        hint: "Скорость в vh за эталонный шаг 60 FPS в момент входа центра камня в верхнюю зону.",
-      },
-      {
-        name: "positionScrollEndSpeedVh",
-        label: "Конечная скорость",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.positionScrollSpeedVh[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.positionScrollSpeedVh[1],
-        step: 0.01,
-        defaultValue: DEFAULT_ROOM_SETTINGS.positionScrollEndSpeedVh,
-        output: DEFAULT_ROOM_SETTINGS.positionScrollEndSpeedVh.toFixed(2),
-        hint: "Скорость в vh за эталонный шаг 60 FPS, когда центр камня достигает верхней границы viewport.",
-      },
-      {
-        name: "positionScrollEasing",
-        label: "Кривая скорости",
-        type: "cubic-bezier",
-        defaultValue: DEFAULT_ROOM_SETTINGS.positionScrollEasing,
-        hint: "Кривая изменения скорости от границы зоны к верхней границе viewport.",
-      },
-      {
-        name: "manualVerticalScrollEnabled",
-        label: "Ручной вертикальный скролл",
-        type: "checkbox",
-        defaultChecked: DEFAULT_ROOM_SETTINGS.manualVerticalScrollEnabled,
-        hint: "Разрешает колесо, touch-жесты и клавиатурную вертикальную прокрутку. Программный скролл остаётся доступен при выключении.",
+        defaultValue: DEFAULT_ROOM_SETTINGS.cameraFollowLerp,
+        output: DEFAULT_ROOM_SETTINGS.cameraFollowLerp.toFixed(2),
+        hint: "После первого клика камера удерживает центр камня на середине viewport. Единица перемещает камеру к цели сразу, меньшие значения делают следование плавнее.",
       },
     ],
   },
@@ -755,17 +710,17 @@ export const SETTINGS_GROUPS = [
         hint: "Целевая ширина камня в vw при первом свободном движении вниз после захвата. Переход длится 300 мс.",
       },
       {
-        name: "preclickParallaxMaxOffsetPx",
-        label: "Максимум parallax, px",
+        name: "preclickParallaxMaxOffsetVw",
+        label: "Максимум parallax, vw",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxMaxOffsetPx[0],
+          .preclickParallaxMaxOffsetVw[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxMaxOffsetPx[1],
-        step: 1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetPx,
-        output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetPx}px`,
-        hint: "Максимальное радиальное смещение камня против направления указателя до первого клика. Ноль отключает движение parallax.",
+          .preclickParallaxMaxOffsetVw[1],
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
+        hint: "Максимальное радиальное смещение камня рядом с исходным центром до первого клика. У границы радиуса смещение равно нулю; ноль отключает движение parallax.",
       },
       {
         name: "preclickParallaxActivationRadiusVw",
@@ -780,7 +735,16 @@ export const SETTINGS_GROUPS = [
           DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw,
         output:
           `${DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw}vw`,
-        hint: "Радиус круглой активной зоны вокруг визуального центра камня в процентах ширины viewport. За пределами зоны parallax плавно возвращает камень к исходной позиции; ноль отключает движение.",
+        hint: "Радиус круглой активной зоны вокруг исходного центра камня в процентах ширины viewport. При приближении к центру смещение растёт; за пределами зоны камень плавно возвращается в исходную позицию.",
+      },
+      {
+        name: "preclickParallaxInverted",
+        label: "Направление parallax",
+        type: "toggle-button",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.preclickParallaxInverted,
+        inactiveLabel: "Обычное направление",
+        activeLabel: "Инверсия включена",
+        hint: "В обычном режиме камень смещается в сторону курсора относительно исходного центра. Инверсия направляет его в противоположную сторону.",
       },
       {
         name: "preclickParallaxReturnDurationMs",
@@ -834,6 +798,13 @@ export const SETTINGS_GROUPS = [
   {
     title: "Рука",
     controls: [
+      {
+        name: "handAlwaysVisible",
+        label: "Показывать руку всегда",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.handAlwaysVisible,
+        hint: "Если выключено, фото-рука видна только при наведении на камень и во время его захвата.",
+      },
       {
         name: "handAudioEnabled",
         label: "Звуки руки",

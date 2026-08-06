@@ -88,15 +88,13 @@ test("основной и drafts маршруты используют одну 
   }
 });
 
-test("эксперимент показывает нативный курсор над настройками", async ({
+test("постоянная рука показывает нативный курсор над настройками", async ({
   page,
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
-  const experimentEnabled = await page.locator("body").evaluate((body) =>
-    body.classList.contains("experiment-preclick-rock-guidance"),
-  );
-  test.skip(!experimentEnabled, "Требуется включённый preclick experiment");
+  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  await expect(page.locator("body")).toHaveClass(/hand-always-visible/);
 
   const body = page.locator("body");
   const hand = page.locator(
@@ -118,13 +116,29 @@ test("эксперимент показывает нативный курсор 
 
   await page.mouse.move(8, 8);
   await expect(body).not.toHaveClass(/is-settings-pointer-active/);
+
+  const handGroup = page.locator(".control-group").filter({
+    has: page.locator("summary", { hasText: /^Рука$/ }),
+  });
+  await handGroup.evaluate((element) => {
+    element.open = true;
+  });
+  await setSettingValue(page, "handAlwaysVisible", false);
+  await expect(body).not.toHaveClass(/hand-always-visible/);
+  await page.locator(".settings-toggle").click();
+  await page.mouse.move(8, 8);
+  await expect(hand).not.toHaveClass(/is-visible/);
+  await page.locator("#root > .world > .rock").hover();
+  await expect(hand).toHaveClass(/is-visible/);
+  await page.mouse.move(8, 8);
+  await expect(hand).not.toHaveClass(/is-visible/);
 });
 
 test("настройки parallax меняют отклонение, радиус и плавность возврата", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v27");
+    localStorage.removeItem("sisyphus-czar-settings-v29");
     localStorage.setItem(
       "sisyphus-czar-settings-v26",
       JSON.stringify({ preclickParallaxActivationRadiusPx: 1000 }),
@@ -133,8 +147,20 @@ test("настройки parallax меняют отклонение, радиу�
   await page.goto("/");
   await waitForFoldReady(page);
   await page.locator(".settings-toggle").click();
+  const rockGroup = page.locator(".control-group").filter({
+    has: page.locator("summary", { hasText: /^Камень$/ }),
+  });
+  await rockGroup.evaluate((element) => {
+    element.open = true;
+  });
+  const cameraGroup = page.locator(".control-group").filter({
+    has: page.locator("summary", { hasText: /^Камера$/ }),
+  });
+  await cameraGroup.evaluate((element) => {
+    element.open = true;
+  });
 
-  const maxOffset = page.locator('[name="preclickParallaxMaxOffsetPx"]');
+  const maxOffset = page.locator('[name="preclickParallaxMaxOffsetVw"]');
   const activationRadius = page.locator(
     '[name="preclickParallaxActivationRadiusVw"]',
   );
@@ -144,9 +170,15 @@ test("настройки parallax меняют отклонение, радиу�
   const returnEasing = page.locator(
     '[name="preclickParallaxReturnEasing"]',
   );
-  await expect(maxOffset).toHaveValue("12");
+  const inverted = page.locator('[name="preclickParallaxInverted"]');
+  const cameraFollowLerp = page.locator('[name="cameraFollowLerp"]');
+  const inversionButton = page.locator(
+    '[data-setting-control]:has([name="preclickParallaxInverted"]) [data-setting-toggle-button]',
+  );
+  await expect(maxOffset).toHaveValue("0.6");
   await expect(maxOffset).toHaveAttribute("min", "0");
-  await expect(maxOffset).toHaveAttribute("max", "1000");
+  await expect(maxOffset).toHaveAttribute("max", "150");
+  await expect(maxOffset).toHaveAttribute("step", "0.1");
   await expect(activationRadius).toHaveValue("50");
   await expect(activationRadius).toHaveAttribute("min", "0");
   await expect(activationRadius).toHaveAttribute("max", "200");
@@ -156,13 +188,19 @@ test("настройки parallax меняют отклонение, радиу�
   await expect(returnEasing).toHaveValue(
     "cubic-bezier(0.22, 1, 0.36, 1)",
   );
+  await expect(inverted).not.toBeChecked();
+  await expect(inversionButton).toHaveAttribute("aria-pressed", "false");
+  await expect(inversionButton).toHaveText("Обычное направление");
+  await expect(cameraFollowLerp).toHaveValue("0.1");
+  await expect(cameraFollowLerp).toHaveAttribute("min", "0.01");
+  await expect(cameraFollowLerp).toHaveAttribute("max", "1");
   await expect(
     page.locator(
       '[data-cubic-bezier-control]:has([name="preclickParallaxReturnEasing"]) .bezier-graph',
     ),
   ).toHaveCount(1);
 
-  await setSettingValue(page, "preclickParallaxMaxOffsetPx", 36);
+  await setSettingValue(page, "preclickParallaxMaxOffsetVw", 3.6);
   await setSettingValue(page, "preclickParallaxActivationRadiusVw", 70);
   await setSettingValue(page, "preclickParallaxReturnDurationMs", 650);
   await setSettingValue(
@@ -170,11 +208,16 @@ test("настройки parallax меняют отклонение, радиу�
     "preclickParallaxReturnEasing",
     "cubic-bezier(0.25, 0.1, 0.25, 1)",
   );
+  await setSettingValue(page, "cameraFollowLerp", 0.25);
+  await inversionButton.click();
+  await expect(inverted).toBeChecked();
+  await expect(inversionButton).toHaveAttribute("aria-pressed", "true");
+  await expect(inversionButton).toHaveText("Инверсия включена");
   await expect
     .poll(() =>
       page.evaluate(() => ({
         maxOffset:
-          window.__sisyphusTestApi.params.preclickParallaxMaxOffsetPx,
+          window.__sisyphusTestApi.params.preclickParallaxMaxOffsetVw,
         activationRadius:
           window.__sisyphusTestApi.params
             .preclickParallaxActivationRadiusVw,
@@ -182,17 +225,34 @@ test("настройки parallax меняют отклонение, радиу�
           window.__sisyphusTestApi.params.preclickParallaxReturnDurationMs,
         returnEasing:
           window.__sisyphusTestApi.params.preclickParallaxReturnEasing,
+        inverted:
+          window.__sisyphusTestApi.params.preclickParallaxInverted,
+        cameraFollowLerp:
+          window.__sisyphusTestApi.params.cameraFollowLerp,
       })),
     )
     .toEqual({
-      maxOffset: 36,
+      maxOffset: 3.6,
       activationRadius: 70,
       returnDuration: 650,
       returnEasing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
+      inverted: true,
+      cameraFollowLerp: 0.25,
     });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        Boolean(
+          JSON.parse(
+            localStorage.getItem("sisyphus-czar-settings-v29") || "{}",
+          ).preclickParallaxInverted,
+        ),
+      ),
+    )
+    .toBe(true);
   await expect(
-    page.locator('[data-output="preclickParallaxMaxOffsetPx"]'),
-  ).toHaveText("36px");
+    page.locator('[data-output="preclickParallaxMaxOffsetVw"]'),
+  ).toHaveText("3.6vw");
   await expect(
     page.locator('[data-output="preclickParallaxActivationRadiusVw"]'),
   ).toHaveText("70vw");
@@ -317,9 +377,6 @@ test("Fold синхронизирует сцену и применяет общ�
   await expect(layer).toHaveAttribute("data-fold-enabled", "false");
   await setSettingValue(page, "draftFoldZoneSize", 10);
   await expect(layer).toHaveAttribute("data-fold-enabled", "true");
-  await setSettingValue(page, "positionScrollEnabled", false);
-  await expect(layer).toHaveAttribute("data-fold-enabled", "false");
-  await setSettingValue(page, "positionScrollEnabled", true);
 
   await page.goto("/drafts/");
   const draftLayer = await waitForFoldReady(page);
@@ -622,7 +679,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v27") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v29") || "{}",
         );
         return [
           stored.glowOptimizationMode,

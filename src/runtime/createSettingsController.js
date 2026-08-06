@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 27;
+const SETTINGS_SCHEMA_VERSION = 29;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -376,33 +376,50 @@ export function createSettingsController(options) {
     return migrated;
   }
 
-  function migrateStoredParallaxRadiusSettings(settings) {
-    if (
-      !settings ||
-      typeof settings !== "object" ||
-      Object.hasOwn(settings, "preclickParallaxActivationRadiusVw")
-    ) {
+  function migrateStoredSettingsSchema29(settings) {
+    if (!settings || typeof settings !== "object") {
       return settings;
     }
-    const radiusPx = Number(settings.preclickParallaxActivationRadiusPx);
-    if (!Number.isFinite(radiusPx)) {
-      return settings;
+    let migrated = { ...settings };
+    if (!Object.hasOwn(migrated, "preclickParallaxActivationRadiusVw")) {
+      const radiusPx = Number(migrated.preclickParallaxActivationRadiusPx);
+      if (Number.isFinite(radiusPx)) {
+        const [minRadiusVw, maxRadiusVw] =
+          SharedRoomSettings.ROOM_SETTINGS_LIMITS
+            .preclickParallaxActivationRadiusVw;
+        migrated.preclickParallaxActivationRadiusVw = Math.min(
+          maxRadiusVw,
+          Math.max(
+            minRadiusVw,
+            radiusPx /
+              SharedRoomSettings.PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
+          ),
+        );
+      }
     }
-    const [minRadiusVw, maxRadiusVw] =
-      SharedRoomSettings.ROOM_SETTINGS_LIMITS
-        .preclickParallaxActivationRadiusVw;
-    const migrated = {
-      ...settings,
-      preclickParallaxActivationRadiusVw: Math.min(
-        maxRadiusVw,
-        Math.max(
-          minRadiusVw,
-          radiusPx /
-            SharedRoomSettings.PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
-        ),
-      ),
-    };
+    if (!Object.hasOwn(migrated, "preclickParallaxMaxOffsetVw")) {
+      const offsetPx = Number(migrated.preclickParallaxMaxOffsetPx);
+      if (Number.isFinite(offsetPx)) {
+        const [minOffsetVw, maxOffsetVw] =
+          SharedRoomSettings.ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetVw;
+        migrated.preclickParallaxMaxOffsetVw = Math.min(
+          maxOffsetVw,
+          Math.max(
+            minOffsetVw,
+            offsetPx /
+              SharedRoomSettings.PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
+          ),
+        );
+      }
+    }
     delete migrated.preclickParallaxActivationRadiusPx;
+    delete migrated.preclickParallaxMaxOffsetPx;
+    delete migrated.positionScrollEnabled;
+    delete migrated.positionScrollZonePercent;
+    delete migrated.positionScrollStartSpeedVh;
+    delete migrated.positionScrollEndSpeedVh;
+    delete migrated.positionScrollEasing;
+    delete migrated.manualVerticalScrollEnabled;
     return migrated;
   }
 
@@ -426,7 +443,7 @@ export function createSettingsController(options) {
     if (!stored || typeof stored !== "object") {
       return false;
     }
-    stored = migrateStoredParallaxRadiusSettings(stored);
+    stored = migrateStoredSettingsSchema29(stored);
 
     const legacyKeyVersion = settingsStorageKeyVersion(legacyKey);
     const migratedPreV7Settings =
@@ -498,7 +515,7 @@ export function createSettingsController(options) {
     }
     const settings =
       entry.settings && typeof entry.settings === "object"
-        ? migrateStoredParallaxRadiusSettings(
+        ? migrateStoredSettingsSchema29(
             migrateStoredInertiaSettings(
               entry.settings,
               Number(entry.settingsSchemaVersion) || 0,
@@ -905,6 +922,17 @@ export function createSettingsController(options) {
     }
     if (input.type === "checkbox") {
       input.checked = Boolean(params[key]);
+      const toggleButton = input
+        .closest("[data-setting-control]")
+        ?.querySelector("[data-setting-toggle-button]");
+      if (toggleButton) {
+        const active = input.checked;
+        toggleButton.setAttribute("aria-pressed", String(active));
+        toggleButton.textContent = active
+          ? toggleButton.dataset.activeLabel
+          : toggleButton.dataset.inactiveLabel;
+      }
+      notifySettingControlSync(input);
     } else {
       input.value = settingValueToControlValue(key, params[key]);
       notifySettingControlSync(input);
@@ -1235,8 +1263,8 @@ export function createSettingsController(options) {
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
       rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
-      preclickParallaxMaxOffsetPx:
-        `${params.preclickParallaxMaxOffsetPx.toFixed(0)}px`,
+      preclickParallaxMaxOffsetVw:
+        `${params.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
       preclickParallaxActivationRadiusVw:
         `${params.preclickParallaxActivationRadiusVw.toFixed(0)}vw`,
       preclickParallaxReturnDurationMs:
@@ -1244,12 +1272,7 @@ export function createSettingsController(options) {
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
-      positionScrollZonePercent:
-        `${params.positionScrollZonePercent.toFixed(1)}%`,
-      positionScrollStartSpeedVh:
-        params.positionScrollStartSpeedVh.toFixed(2),
-      positionScrollEndSpeedVh:
-        params.positionScrollEndSpeedVh.toFixed(2),
+      cameraFollowLerp: params.cameraFollowLerp.toFixed(2),
       draftFoldAngle: `${params.draftFoldAngle.toFixed(0)}°`,
       draftFoldZoneSize: `${params.draftFoldZoneSize.toFixed(0)} vh`,
       finalFallDelaySeconds: secondsOutput(params.finalFallDelaySeconds),

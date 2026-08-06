@@ -5,7 +5,6 @@ export const DEFAULT_FOLD_SETTINGS = Object.freeze({
   draftFoldZoneSize: 20,
   draftFoldBlendEnabled: true,
   draftFoldBlendCurve: "cubic-bezier(0.333, 0, 0.667, 1)",
-  positionScrollEnabled: true,
 });
 
 const FOLD_MASK_SAMPLE_COUNT = 32;
@@ -52,10 +51,6 @@ export function normalizeFoldSettings(
         ? source.draftFoldBlendEnabled
         : Boolean(fallbackSource.draftFoldBlendEnabled),
     draftFoldBlendCurve: parseCubicBezier(curve) ? curve : fallbackCurve,
-    positionScrollEnabled:
-      typeof source.positionScrollEnabled === "boolean"
-        ? source.positionScrollEnabled
-        : Boolean(fallbackSource.positionScrollEnabled),
   };
 }
 
@@ -82,5 +77,5 @@ export function buildFoldBlendMask(curve) {
 
 export function foldEffectEnabled(settings) {
   const clean = normalizeFoldSettings(settings);
-  return clean.positionScrollEnabled && clean.draftFoldZoneSize > 0;
+  return clean.draftFoldZoneSize > 0;
 }

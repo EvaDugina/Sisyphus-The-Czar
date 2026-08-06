@@ -3,12 +3,12 @@
 ## Паспорт
 
 - **ID:** `hotfix_2026-08-06_10-59_preclick-rock-guidance`
-- **Статус:** ready-for-demo
+- **Статус:** promoted
 - **Стадия:** POC B
 - **Создано:** 2026-08-06 10:59 +03:00
-- **TTL:** до решения `promote` / `reject`, предварительно не позднее 2026-08-13
+- **TTL:** закрыт решением `promote` 2026-08-06
 - **Base commit:** `a861e32fd07f0e47958536887d76c07984804655`
-- **Feature flag:** `EXPERIMENT_PRECLICK_ROCK_GUIDANCE` (default off)
+- **Feature flag:** удалён при promotion; функция включена штатно
 
 ## Approved-карточка
 
@@ -34,19 +34,19 @@
 ## Impact analysis
 
 - **Минимальные файлы:** `vite.config.mjs`, `src/runtime/createSisyphusRuntime.js`, `src/styles/scene.css`, новый `tests/smoke/preclick-rock-guidance.spec.js`.
-- **Затронутые сценарии:** первое движение указателя, первый primary-click по камню, захват/отпускание, blur, baseline при flag off.
-- **Контракты и данные:** сервер, WebSocket, сессии, физика и persisted settings не меняются; flag встраивается Vite на этапе сборки.
-- **Скрытые зависимости / регрессии:** существующий `prod.spec.js` закрепляет baseline «рука только над камнем» и должен проходить при flag off; CSS transform камня уже содержит позицию и scale, поэтому parallax добавляется отдельными custom properties без перезаписи runtime-координат; пользовательские правки в runtime около obstacle height сохраняются.
-- **Риск-класс:** низкий — локальная UI-логика POC B; обязательны lint, build, существующие тесты, baseline production smoke, отдельный Playwright-сценарий с flag on, ручной smoke и проверка отключения.
+- **Затронутые сценарии:** первое движение указателя, первый primary-click по камню, захват/отпускание, blur и штатный production runtime.
+- **Контракты и данные:** сервер, WebSocket, сессии и физика не меняются; настройки parallax остаются versioned, build-time flag после promotion удалён.
+- **Скрытые зависимости / регрессии:** `prod.spec.js` закрепляет новый штатный контракт «рука видна сразу»; CSS transform камня содержит позицию и scale, поэтому parallax добавляется отдельными custom properties без перезаписи runtime-координат; пользовательские правки в runtime около obstacle height сохраняются.
+- **Риск-класс:** низкий — локальная UI-логика POC B; обязательны lint, build, существующие тесты, production smoke, постоянный preclick-guidance smoke и ручная проверка dev-сборки.
 
-## Реализация эксперимента
+## Реализация и promotion
 
 - **Изоляция:** текущий worktree, отдельная ветка не создаётся.
-- **Что временно:** build-time flag, экспериментальные DOM-классы и CSS custom properties, отдельный smoke-сценарий.
+- **Что стало постоянным:** runtime preclick guidance, DOM/CSS-класс `preclick-rock-guidance`, CSS custom properties и отдельный regression smoke; build-time flag и экспериментальное имя класса удалены.
 - **Guard ID:** `hotfix_2026-08-06_10-59_preclick-rock-guidance`
 - **Проверка после синхронизации:** после merge `origin/main@73afc26` повторно выполнены lint, build, полный набор тестов и browser smoke; удалённые изменения в общих runtime/CSS-файлах разрешены вручную, аварийное отключение эксперимента остаётся доступно через default-off flag или revert коммита `c192a7c`.
 - **Уточнение по обратной связи:** perspective и вращения удалены — parallax меняет только позицию и направлен противоположно указателю. Максимальное смещение (`0–1000 px`, default `12`), круговой радиус от визуального центра камня (`0–200 vw`, default `50`), duration возврата (`0–2000 мс`, default `400`) и его cubic-bezier-график вынесены в versioned UI-настройки. Старые px-значения радиуса мигрируют по соотношению `20 px = 1 vw`. После выхода указателя за радиус камень плавно возвращается к исходной позиции, а рука остаётся под указателем. Над settings-toggle и открытой settings-panel фото-рука скрывается и отображается нативный курсор. Любой primary `pointerdown` на fine pointer показывает захвативший спрайт руки до `pointerup`/`pointercancel`, включая клики вне камня.
-- **Rollback проверен:** да — `verify-all` подтверждает чистый вычисляемый rollback, а baseline smoke проходит при выключенном flag.
+- **Rollback:** revert promotion-patch; отдельного аварийного feature flag после принятого решения нет.
 
 ## Evidence
 
@@ -55,8 +55,11 @@
 | Guard snapshot / capture | `hotfix_guard.py snapshot`, `capture`, `status`, `verify-all` | PASS | Четыре целевых файла, `identity_matches=true`, rollback `clean`. |
 | Diff hygiene | `git diff --check` | PASS | Ошибок whitespace нет; сообщения CRLF являются предупреждениями Git для существующего Windows worktree. |
 | Lint, build, unit/integration | `docker run --rm -v "C:\Users\Benedict\Work\Sisyphus-The-Czar:/app" -v /app/node_modules -w /app node:24.18.0-alpine3.23 sh -c "npm ci && npm run lint && npm run build && npm test"` | PASS | Lint и production build зелёные; `166/166` тестов прошли. `npm ci` сообщает о 5 известных audit findings зависимостей, их исправление не входит в UI-гипотезу. |
-| Flag off / baseline | `docker run --rm --ipc=host -v "C:\Users\Benedict\Work\Sisyphus-The-Czar:/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "npm ci && npm run test:smoke"` | PASS | `2/2`; старый контракт «рука только над камнем» сохранён при default-off. |
-| Flag on / эксперимент | `docker run --rm --ipc=host -v "C:\Users\Benedict\Work\Sisyphus-The-Czar:/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "export EXPERIMENT_PRECLICK_ROCK_GUIDANCE=true; npm ci && npx playwright test tests/smoke/preclick-rock-guidance.spec.js"` | PASS | `1/1`; X parallax меняет знак против направления указателя, первый click удаляет parallax и обнуляет offset, рука остаётся visible вне камня. |
+| До promotion: flag off / baseline | `docker run --rm --ipc=host -v "C:\Users\Benedict\Work\Sisyphus-The-Czar:/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "npm ci && npm run test:smoke"` | PASS | Историческое evidence: `2/2`; старый контракт «рука только над камнем» был сохранён при default-off. |
+| До promotion: flag on / эксперимент | `docker run --rm --ipc=host -v "C:\Users\Benedict\Work\Sisyphus-The-Czar:/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "export EXPERIMENT_PRECLICK_ROCK_GUIDANCE=true; npm ci && npx playwright test tests/smoke/preclick-rock-guidance.spec.js"` | PASS | Историческое evidence: `1/1`; первый click удаляет parallax и обнуляет offset, рука остаётся visible вне камня. |
+| Promotion: программные проверки | Node `24.18.0`: `npm ci && npm run lint && npm run build && npm test` | PASS | Lint и production build зелёные; `179/179` unit/integration. Известные audit findings зависимостей: 1 moderate, 4 high; зависимости не менялись. |
+| Promotion: постоянные browser contracts | Playwright `1.61.1`: production smoke, draft smoke, `preclick-rock-guidance.spec.js`, всё без feature flag | PASS | Production `2/2`, draft `8/8`, preclick `1/1`; slim production закрепляет видимую сразу руку. |
+| Promotion: live dev после recreate | Chromium против нового `sisyphus-the-czar-dev` на `127.0.0.1:18082` | PASS | HTTP `200`; `state-play preclick-rock-guidance`; рука `is-visible`, `opacity: 1`, стартует в центре viewport; камень имеет `is-preclick-parallax`; `/healthz` возвращает `status=ok`. |
 | Совместимость после merge | Docker Node `24.18.0`: `npm ci && npm run lint && npm run build && npm test` | PASS | Merge с `origin/main@73afc26`: lint и production build зелёные; `178/178` тестов прошли. |
 | Browser regression после merge | Playwright `1.61.1`: production smoke, draft smoke и отдельный сценарий с flag on | PASS | Production `2/2`, draft `6/6`, эксперимент `1/1`. |
 | Исправление деформации | Live dev browser: сравнение `getBoundingClientRect()` слева и справа | PASS | После инверсии X offset `+11.55 → −11.55 px`; изменение ширины `0 px`, высоты `0 px`; transform не содержит perspective/rotation. |
@@ -64,28 +67,28 @@
 | Плавный возврат камня | Experiment smoke + live dev browser | PASS | Через `50 мс` после выхода offset ещё ненулевой, затем достигает `0`; координаты руки остаются координатами указателя. В UI визуально проверены range `400 мс` и график `cubic-bezier(0.22, 1, 0.36, 1)`. |
 | Курсор над настройками | Experiment draft smoke | PASS | `.settings-toggle` показывает `cursor: pointer`, `.settings-panel.is-open` — нативный `auto`; `is-settings-pointer-active` гасит локальную фото-руку до pointerleave. |
 | Глобальное состояние руки | Experiment smoke: primary click вне камня до и после первого захвата | PASS | На `pointerdown` локальная рука получает `is-grabbing` и `cursor-grabbing.png`, на `pointerup` возвращается к `cursor-grab.png`; parallax отключается только кликом по камню. |
-| Default-off regression после настройки | Production smoke | PASS | `2/2`; baseline без экспериментального flag сохранён после settings schema `27` / room schema `23`. |
+| До promotion: default-off regression после настройки | Production smoke | PASS | Историческое evidence: `2/2`; baseline без экспериментального flag был сохранён до решения `promote`. |
 | Полный collaboration smoke | `npm run test:smoke:dev` | WARN | `12/18` PASS, `2` skipped, `4` failure в старых сценариях: обращения к уже переименованной группе «Руки», отсутствующему UI-полю `stationaryAutoSlipEnabled` и нестабильной проверке отпечатка. Новые parallax-сценарии и затронутые контракты проходят. |
 | Визуальная проверка | `test-results/preclick-rock-guidance-fla-4dde1-ого-клика-и-постоянную-руку/*.png` | PASS | На обоих кадрах фото-рука видима отдельно от камня; после click камень отображается без экспериментального parallax-класса. |
 
 ### Ручная демонстрация
 
-- **Шаги:** включить `EXPERIMENT_PRECLICK_ROCK_GUIDANCE=true`; до клика прокрутить к камню, провести указатель внутри и снаружи настроенного радиуса, изменить maximum/radius/duration/cubic-bezier в группе «Камень»; нажать камень; затем собрать без flag и повторить baseline.
-- **Наблюдение:** при flag on рука следует за указателем по всей сцене; внутри радиуса камень до click получает только ограниченный позиционный offset против направления указателя, снаружи offset плавно возвращается к нулю по выбранной кривой, при этом рука остаётся под указателем; после первого primary `pointerdown` parallax сбрасывается, а рука остаётся видимой. При flag off рука по-прежнему появляется только над камнем.
-- **Метрика:** поведенческие assertions и визуальные артефакты PASS; продуктовая полезность не измерена и требует решения пользователя.
+- **Шаги:** запустить штатную сборку; до клика прокрутить к камню, провести указатель внутри и снаружи настроенного радиуса, изменить maximum/radius/duration/cubic-bezier и направление в группе «Камень»; нажать камень и продолжить двигать указатель.
+- **Наблюдение:** рука сразу видна и следует за указателем по всей сцене; внутри радиуса камень до click получает ограниченный позиционный offset в штатном или инвертированном направлении, снаружи offset плавно возвращается к нулю по выбранной кривой; после первого primary `pointerdown` по камню parallax сбрасывается, а рука остаётся видимой.
+- **Метрика:** поведенческие assertions и визуальные артефакты PASS; продуктовая гипотеза явно одобрена пользователем.
 
 ## Решение
 
-- **Гипотеза полезна:** недостаточно данных
-- **Экспериментальная реализация пригодна:** недостаточно данных
-- **Outcome:** ожидает решения
-- **Дата и основание:** 2026-08-06 11:07 +03:00; техническое evidence собрано, ожидаются два независимых ответа пользователя.
+- **Гипотеза полезна:** да
+- **Экспериментальная реализация пригодна:** да, после перевода в штатный runtime
+- **Outcome:** `promote`
+- **Дата и основание:** 2026-08-06; пользователь явно одобрил гипотезу и поручил встроить эксперимент в полноценную версию.
 
 ## Promotion и rollout
 
-- **Что переписать:** определить после проверки гипотезы.
-- **Постоянные тесты / контракты:** определить после решения `promote`.
-- **Совместимость / миграции:** миграции не ожидаются.
-- **Наблюдаемость:** browser smoke и визуальные артефакты.
-- **Условие rollout:** явное решение пользователя после демонстрации.
-- **Срок / условие удаления flag:** после подтверждённого rollout отдельным шагом либо немедленно при `reject`.
+- **Что переписано:** удалены Vite define и runtime guard, экспериментальный DOM/CSS-класс переименован в штатный, production baseline переведён на постоянную руку.
+- **Постоянные тесты / контракты:** production smoke, draft cursor smoke и `preclick-rock-guidance.spec.js` выполняются без feature flag.
+- **Совместимость / миграции:** новых миграций нет; schema настроек `28` и room schema `24` сохраняются.
+- **Наблюдаемость:** browser smoke, `/healthz` и визуальные артефакты.
+- **Условие rollout:** выполнено явным решением пользователя.
+- **Удаление flag:** выполнено в promotion-patch 2026-08-06.

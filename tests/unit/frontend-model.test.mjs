@@ -8,6 +8,10 @@ import {
 } from "../../src/lib/coordinates.mjs";
 import { createClientId } from "../../src/lib/clientId.mjs";
 import {
+  cameraFollowScrollY,
+  cameraTargetScrollY,
+} from "../../src/lib/cameraFollow.mjs";
+import {
   drizzleVolumeForY,
   physicalHeightProgress,
 } from "../../src/lib/drizzleVolume.mjs";
@@ -33,10 +37,7 @@ import {
   rockLocalXForVisualGrab,
   rockScaleForY,
 } from "../../src/lib/rockScale.mjs";
-import {
-  positionScrollDistancePx,
-  positionScrollState,
-} from "../../src/lib/positionScroll.mjs";
+import { calculatePreclickParallaxOffset } from "../../src/lib/preclickParallax.mjs";
 import { trailAnchorPoint } from "../../src/lib/trailAnchor.mjs";
 import {
   canonicalVisualTrailPointToLocal,
@@ -356,7 +357,7 @@ test("настройки инерции отображают шкалу 0–5", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v27");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v29");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -403,7 +404,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 27);
+  assert.equal(productionSettingsSchemaVersion, 29);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -604,53 +605,35 @@ test("масштаб камня считается по высоте и разм
   assert.equal(rockScaleForY(0, 900, shrinkingOptions), 0.5);
 });
 
-test("позиционный скролл следует за камнем в верхней и нижней viewport-зонах", () => {
-  const settings = {
-    enabled: true,
-    zonePercent: 20,
-    startSpeedVh: 0.2,
-    endSpeedVh: 1,
-    easing: "cubic-bezier(0, 0, 1, 1)",
-  };
-
-  assert.deepEqual(positionScrollState(201, 1000, settings), {
-    active: false,
-    direction: 0,
-    progress: 0,
-    speedVh: 0,
-    zoneHeight: 200,
-  });
-  assert.deepEqual(positionScrollState(200, 1000, settings), {
-    active: true,
-    direction: -1,
-    progress: 0,
-    speedVh: 0.2,
-    zoneHeight: 200,
-  });
-  assert.deepEqual(positionScrollState(800, 1000, settings), {
-    active: true,
-    direction: 1,
-    progress: 0,
-    speedVh: 0.2,
-    zoneHeight: 200,
-  });
-  assert.equal(positionScrollState(1000, 1000, settings).direction, 1);
-  assert.equal(positionScrollState(1000, 1000, settings).speedVh, 1);
-  assert.equal(positionScrollState(0, 1000, settings).speedVh, 1);
-  assert.ok(
-    Math.abs(positionScrollState(100, 1000, settings).speedVh - 0.6) <
-      1e-9,
+test("камера вычисляет ограниченную цель и приближается к ней через lerp", () => {
+  assert.equal(
+    cameraTargetScrollY({
+      rockCenterDocumentY: 5000,
+      viewportHeight: 1000,
+      documentHeight: 10000,
+    }),
+    4500,
   );
-  assert.equal(positionScrollState(0, 1000, {
-    ...settings,
-    enabled: false,
-  }).active, false);
-  assert.equal(positionScrollState(0, 1000, {
-    ...settings,
-    zonePercent: 0,
-  }).active, false);
-  assert.equal(positionScrollDistancePx(1, 1000, 1 / 60), 10);
-  assert.equal(positionScrollDistancePx(0.2, 500, 1 / 60), 1);
+  assert.equal(
+    cameraTargetScrollY({
+      rockCenterDocumentY: 100,
+      viewportHeight: 1000,
+      documentHeight: 10000,
+    }),
+    0,
+  );
+  assert.equal(
+    cameraTargetScrollY({
+      rockCenterDocumentY: 9900,
+      viewportHeight: 1000,
+      documentHeight: 10000,
+    }),
+    9000,
+  );
+  assert.equal(cameraFollowScrollY(1000, 2000, 0.1), 1100);
+  assert.equal(cameraFollowScrollY(1000, 2000, 1), 2000);
+  assert.equal(cameraFollowScrollY(1000, 1000.05, 0.1), 1000.05);
+  assert.equal(cameraFollowScrollY(1000, 2000, 0), 1010);
 });
 
 test("точка траектории задаётся по высоте масштабированного камня", () => {
@@ -699,6 +682,62 @@ test("громкость капели зависит от физической �
   );
 });
 
+test("preclick parallax растёт к центру и меняет радиальное направление", () => {
+  const atBoundary = calculatePreclickParallaxOffset({
+    deltaX: 100,
+    deltaY: 0,
+    activationRadius: 100,
+    maxOffset: 20,
+  });
+  const halfwayRight = calculatePreclickParallaxOffset({
+    deltaX: 50,
+    deltaY: 0,
+    activationRadius: 100,
+    maxOffset: 20,
+  });
+  const nearRight = calculatePreclickParallaxOffset({
+    deltaX: 10,
+    deltaY: 0,
+    activationRadius: 100,
+    maxOffset: 20,
+  });
+  const halfwayLeft = calculatePreclickParallaxOffset({
+    deltaX: -50,
+    deltaY: 0,
+    activationRadius: 100,
+    maxOffset: 20,
+  });
+  const inverted = calculatePreclickParallaxOffset({
+    deltaX: 50,
+    deltaY: 0,
+    activationRadius: 100,
+    maxOffset: 20,
+    inverted: true,
+  });
+  const exactCenter = calculatePreclickParallaxOffset({
+    deltaX: 0,
+    deltaY: 0,
+    activationRadius: 100,
+    maxOffset: 20,
+    lastDirectionX: -1,
+    lastDirectionY: 0,
+  });
+
+  assert.deepEqual(atBoundary, {
+    insideRadius: true,
+    x: 0,
+    y: 0,
+    directionX: 1,
+    directionY: 0,
+  });
+  assert.equal(halfwayRight.x, 10);
+  assert.equal(nearRight.x, 18);
+  assert.equal(halfwayLeft.x, -10);
+  assert.equal(inverted.x, -10);
+  assert.equal(exactCenter.x, -20);
+  assert.equal(Math.hypot(exactCenter.x, exactCenter.y), 20);
+});
+
 test("настройки размера камня есть в UI и получают fallback", () => {
   const rockSizeGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Камень",
@@ -710,11 +749,14 @@ test("настройки размера камня есть в UI и получ�
   const rockActivatedWidthVw = controls.find(
     (control) => control.name === "rockActivatedWidthVw",
   );
-  const preclickParallaxMaxOffsetPx = controls.find(
-    (control) => control.name === "preclickParallaxMaxOffsetPx",
+  const preclickParallaxMaxOffsetVw = controls.find(
+    (control) => control.name === "preclickParallaxMaxOffsetVw",
   );
   const preclickParallaxActivationRadiusVw = controls.find(
     (control) => control.name === "preclickParallaxActivationRadiusVw",
+  );
+  const preclickParallaxInverted = controls.find(
+    (control) => control.name === "preclickParallaxInverted",
   );
   const preclickParallaxReturnDurationMs = controls.find(
     (control) => control.name === "preclickParallaxReturnDurationMs",
@@ -762,8 +804,9 @@ test("настройки размера камня есть в UI и получ�
       "mass",
       "rockScaleEasing",
       "rockActivatedWidthVw",
-      "preclickParallaxMaxOffsetPx",
+      "preclickParallaxMaxOffsetVw",
       "preclickParallaxActivationRadiusVw",
+      "preclickParallaxInverted",
       "preclickParallaxReturnDurationMs",
       "preclickParallaxReturnEasing",
       "rockMinWidthVw",
@@ -781,20 +824,20 @@ test("настройки размера камня есть в UI и получ�
   assert.equal(rockActivatedWidthVw.defaultValue, 10);
   assert.deepEqual(
     {
-      label: preclickParallaxMaxOffsetPx.label,
-      type: preclickParallaxMaxOffsetPx.type,
-      min: preclickParallaxMaxOffsetPx.min,
-      max: preclickParallaxMaxOffsetPx.max,
-      step: preclickParallaxMaxOffsetPx.step,
-      defaultValue: preclickParallaxMaxOffsetPx.defaultValue,
+      label: preclickParallaxMaxOffsetVw.label,
+      type: preclickParallaxMaxOffsetVw.type,
+      min: preclickParallaxMaxOffsetVw.min,
+      max: preclickParallaxMaxOffsetVw.max,
+      step: preclickParallaxMaxOffsetVw.step,
+      defaultValue: preclickParallaxMaxOffsetVw.defaultValue,
     },
     {
-      label: "Максимум parallax, px",
+      label: "Максимум parallax, vw",
       type: "range",
       min: 0,
-      max: 1000,
-      step: 1,
-      defaultValue: 12,
+      max: 150,
+      step: 0.1,
+      defaultValue: 0.6,
     },
   );
   assert.deepEqual(
@@ -845,6 +888,22 @@ test("настройки размера камня есть в UI и получ�
       max: 200,
       step: 1,
       defaultValue: 50,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickParallaxInverted.label,
+      type: preclickParallaxInverted.type,
+      defaultChecked: preclickParallaxInverted.defaultChecked,
+      activeLabel: preclickParallaxInverted.activeLabel,
+      inactiveLabel: preclickParallaxInverted.inactiveLabel,
+    },
+    {
+      label: "Направление parallax",
+      type: "toggle-button",
+      defaultChecked: false,
+      activeLabel: "Инверсия включена",
+      inactiveLabel: "Обычное направление",
     },
   );
   assert.equal(rockMinWidthVw.type, "number");
@@ -1106,22 +1165,17 @@ test("3D Fold входит в общую схему настроек с утве
       draftFoldAngle: 200,
       draftFoldZoneSize: -10,
       draftFoldBlendCurve: "invalid",
-      positionScrollEnabled: false,
     }),
     {
       draftFoldAngle: 180,
       draftFoldZoneSize: 0,
       draftFoldBlendEnabled: true,
       draftFoldBlendCurve: "cubic-bezier(0.333, 0, 0.667, 1)",
-      positionScrollEnabled: false,
     },
   );
   assert.equal(foldEffectEnabled({ draftFoldZoneSize: 0 }), false);
   assert.equal(
-    foldEffectEnabled({
-      draftFoldZoneSize: 20,
-      positionScrollEnabled: true,
-    }),
+    foldEffectEnabled({ draftFoldZoneSize: 20 }),
     true,
   );
   assert.match(
@@ -1130,10 +1184,11 @@ test("3D Fold входит в общую схему настроек с утве
   );
 });
 
-test("UI содержит настройки автоматики, scroll, overflow и anchor", () => {
-  const automationGroup = SETTINGS_GROUPS.find(
-    (group) => group.title === "Автоматика и скролл",
+test("UI содержит настройки камеры, физики, overflow и anchor", () => {
+  const cameraGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Камера",
   );
+  const handGroup = SETTINGS_GROUPS.find((group) => group.title === "Рука");
   const finalFallGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Финальное падение",
   );
@@ -1144,22 +1199,24 @@ test("UI содержит настройки автоматики, scroll, overf
   const byName = (name) =>
     controls.find((control) => control.name === name);
 
-  assert.ok(automationGroup);
+  assert.ok(cameraGroup);
+  assert.ok(handGroup);
   assert.ok(finalFallGroup);
   assert.ok(drizzleGroup);
   assert.deepEqual(
-    automationGroup.controls.map((control) => control.name),
-    [
-      "positionScrollEnabled",
-      "positionScrollZonePercent",
-      "positionScrollStartSpeedVh",
-      "positionScrollEndSpeedVh",
-      "positionScrollEasing",
-      "manualVerticalScrollEnabled",
-    ],
+    cameraGroup.controls.map((control) => control.name),
+    ["cameraFollowLerp"],
   );
-  assert.equal(byName("positionScrollEnabled").defaultChecked, true);
-  assert.equal(byName("manualVerticalScrollEnabled").defaultChecked, true);
+  assert.deepEqual(
+    [
+      byName("cameraFollowLerp").min,
+      byName("cameraFollowLerp").max,
+      byName("cameraFollowLerp").step,
+      byName("cameraFollowLerp").defaultValue,
+    ],
+    [0.01, 1, 0.01, 0.1],
+  );
+  assert.equal(byName("handAlwaysVisible").defaultChecked, true);
   assert.deepEqual(
     finalFallGroup.controls.map((control) => control.name),
     ["finalFallEnabled", "finalFallDelaySeconds"],
@@ -1204,30 +1261,6 @@ test("UI содержит настройки автоматики, scroll, overf
   assert.equal(byName("drizzleEndVolume").defaultValue, 1);
   assert.deepEqual(
     [
-      byName("positionScrollZonePercent").min,
-      byName("positionScrollZonePercent").max,
-      byName("positionScrollZonePercent").step,
-      byName("positionScrollZonePercent").defaultValue,
-    ],
-    [0, 50, 0.1, 20],
-  );
-  assert.deepEqual(
-    [
-      byName("positionScrollStartSpeedVh").min,
-      byName("positionScrollStartSpeedVh").max,
-      byName("positionScrollStartSpeedVh").step,
-      byName("positionScrollStartSpeedVh").defaultValue,
-    ],
-    [0, 2, 0.01, 0.2],
-  );
-  assert.equal(byName("positionScrollEndSpeedVh").defaultValue, 1);
-  assert.equal(byName("positionScrollEasing").type, "cubic-bezier");
-  assert.equal(
-    byName("positionScrollEasing").defaultValue,
-    "cubic-bezier(0.17, 0.67, 0.83, 0.67)",
-  );
-  assert.deepEqual(
-    [
       byName("trailAnchorHeightPercent").min,
       byName("trailAnchorHeightPercent").max,
       byName("trailAnchorHeightPercent").step,
@@ -1240,7 +1273,6 @@ test("UI содержит настройки автоматики, scroll, overf
   [
     "rockScaleEasing",
     "handForceDeficitEasing",
-    "positionScrollEasing",
     "drizzleVolumeEasing",
     "rainEnterEasing",
     "rainExitEasing",
@@ -1354,6 +1386,7 @@ test("параметры единственной руки вынесены в �
   assert.deepEqual(
     handSizeGroup.controls.map((control) => control.name),
     [
+      "handAlwaysVisible",
       "handAudioEnabled",
       "handForce",
       "handForceDeficitEasing",
@@ -1498,10 +1531,13 @@ test("настройки препятствия Окна нормализуют 
       rockActivatedWidthVw: 10,
       handAudioEnabled: true,
       drizzleEnabled: true,
-      preclickParallaxMaxOffsetPx: 12,
+      preclickParallaxMaxOffsetVw: 0.6,
       preclickParallaxActivationRadiusVw: 50,
+      preclickParallaxInverted: false,
       preclickParallaxReturnDurationMs: 400,
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
     },
   );
 });
@@ -1644,13 +1680,14 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 23);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 25);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
     rockActivatedWidthVw: 999,
     preclickParallaxMaxOffsetPx: 9999,
     preclickParallaxActivationRadiusVw: -1,
+    preclickParallaxInverted: "true",
     preclickParallaxReturnDurationMs: 9999,
     preclickParallaxReturnEasing: "invalid",
   });
@@ -1660,8 +1697,9 @@ test("группа дождя содержит общий toggle и blur тём�
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundLowColor,
   );
   assert.equal(visualSettings.rockActivatedWidthVw, 150);
-  assert.equal(visualSettings.preclickParallaxMaxOffsetPx, 1000);
+  assert.equal(visualSettings.preclickParallaxMaxOffsetVw, 150);
   assert.equal(visualSettings.preclickParallaxActivationRadiusVw, 0);
+  assert.equal(visualSettings.preclickParallaxInverted, true);
   assert.equal(visualSettings.preclickParallaxReturnDurationMs, 2000);
   assert.equal(
     visualSettings.preclickParallaxReturnEasing,
@@ -1679,10 +1717,13 @@ test("группа дождя содержит общий toggle и blur тём�
       rockActivatedWidthVw: 10,
       handAudioEnabled: true,
       drizzleEnabled: true,
-      preclickParallaxMaxOffsetPx: 12,
+      preclickParallaxMaxOffsetVw: 0.6,
       preclickParallaxActivationRadiusVw: 50,
+      preclickParallaxInverted: false,
       preclickParallaxReturnDurationMs: 400,
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
     },
   );
   assert.deepEqual(
@@ -1690,27 +1731,37 @@ test("группа дождя содержит общий toggle и blur тём�
     {
       handAudioEnabled: true,
       drizzleEnabled: true,
-      preclickParallaxMaxOffsetPx: 12,
+      preclickParallaxMaxOffsetVw: 0.6,
       preclickParallaxActivationRadiusVw: 50,
+      preclickParallaxInverted: false,
       preclickParallaxReturnDurationMs: 400,
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
     },
   );
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({}, 19),
     {
-      preclickParallaxMaxOffsetPx: 12,
+      preclickParallaxMaxOffsetVw: 0.6,
       preclickParallaxActivationRadiusVw: 50,
+      preclickParallaxInverted: false,
       preclickParallaxReturnDurationMs: 400,
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
     },
   );
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({}, 20),
     {
+      preclickParallaxMaxOffsetVw: 0.6,
       preclickParallaxActivationRadiusVw: 50,
+      preclickParallaxInverted: false,
       preclickParallaxReturnDurationMs: 400,
       preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
     },
   );
   assert.deepEqual(
@@ -1718,14 +1769,43 @@ test("группа дождя содержит общий toggle и blur тём�
       { preclickParallaxActivationRadiusPx: 480 },
       21,
     ),
-    { preclickParallaxActivationRadiusVw: 24 },
+    {
+      preclickParallaxMaxOffsetVw: 0.6,
+      preclickParallaxActivationRadiusVw: 24,
+      preclickParallaxInverted: false,
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
+    },
   );
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings(
       { preclickParallaxActivationRadiusPx: 480 },
       22,
     ),
-    { preclickParallaxActivationRadiusVw: 24 },
+    {
+      preclickParallaxMaxOffsetVw: 0.6,
+      preclickParallaxActivationRadiusVw: 24,
+      preclickParallaxInverted: false,
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({}, 23),
+    {
+      preclickParallaxInverted: false,
+      preclickParallaxMaxOffsetVw: 0.6,
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({}, 24),
+    {
+      preclickParallaxMaxOffsetVw: 0.6,
+      handAlwaysVisible: true,
+      cameraFollowLerp: 0.1,
+    },
   );
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings({

@@ -434,21 +434,21 @@ body.state-fallingToBottom .hand-cursor {
 }
 
 @media (pointer: fine) {
-  body.experiment-preclick-rock-guidance,
-  body.experiment-preclick-rock-guidance * {
+  body.preclick-rock-guidance.hand-always-visible,
+  body.preclick-rock-guidance.hand-always-visible * {
     cursor: none !important;
   }
 
-  body.experiment-preclick-rock-guidance .settings-toggle {
+  body.preclick-rock-guidance.hand-always-visible .settings-toggle {
     cursor: pointer !important;
   }
 
-  body.experiment-preclick-rock-guidance .settings-panel.is-open,
-  body.experiment-preclick-rock-guidance .settings-panel.is-open * {
+  body.preclick-rock-guidance.hand-always-visible .settings-panel.is-open,
+  body.preclick-rock-guidance.hand-always-visible .settings-panel.is-open * {
     cursor: auto !important;
   }
 
-  body.experiment-preclick-rock-guidance.is-settings-pointer-active
+  body.preclick-rock-guidance.hand-always-visible.is-settings-pointer-active
     .hand-cursor:not(.is-remote) {
     opacity: 0;
   }

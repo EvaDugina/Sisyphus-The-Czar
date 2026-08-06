@@ -80,18 +80,23 @@ function rockCenter(page) {
   });
 }
 
-test("flag включает parallax до первого клика и постоянную руку", async ({
+test("штатный runtime включает parallax до первого клика и постоянную руку", async ({
   page,
 }, testInfo) => {
   await page.setViewportSize({ width: 2400, height: 1400 });
   await page.goto("/");
   await expect(page.locator("body")).toHaveClass(/state-play/);
   await expect(page.locator("body")).toHaveClass(
-    /experiment-preclick-rock-guidance/,
+    /preclick-rock-guidance/,
   );
 
   const rock = page.locator(SOURCE_ROCK);
   const hand = page.locator(SOURCE_HAND);
+  const initialScrollY = await page.evaluate(() => window.scrollY);
+  await expect(page.locator("html")).toHaveClass(/is-manual-scroll-disabled/);
+  await page.mouse.wheel(0, -600);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => window.scrollY)).toBe(initialScrollY);
   await expect(rock).toHaveClass(/is-preclick-parallax/);
   await expect(hand).toHaveClass(/is-visible/);
 
@@ -124,11 +129,11 @@ test("flag включает parallax до первого клика и пост�
   const center = await rockCenter(page);
   const halfRadius = 600;
   await page.mouse.move(center.x - halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(6, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(-7.2, 3);
   const sizeAtLeft = await rockSize(page);
 
   await page.mouse.move(center.x + halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(-6, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 3);
   await expect
     .poll(async () => {
       const sizeAtRight = await rockSize(page);
@@ -139,6 +144,13 @@ test("flag включает parallax до первого клика и пост�
     })
     .toEqual({ widthDelta: 0, heightDelta: 0 });
 
+  await page.mouse.move(center.x + 120, center.y);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(12.96, 3);
+  await page.mouse.move(center.x, center.y);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(14.4, 3);
+  await page.mouse.move(center.x + halfRadius, center.y);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 3);
+
   const outsideX = 24;
   const outsideY = 24;
   await page.mouse.move(outsideX, outsideY);
@@ -146,7 +158,7 @@ test("flag включает parallax до первого клика и пост�
   await page.waitForTimeout(50);
   const returningOffset = Math.abs(await parallaxX(page));
   expect(returningOffset).toBeGreaterThan(0);
-  expect(returningOffset).toBeLessThan(6);
+  expect(returningOffset).toBeLessThan(7.2);
   const handOutside = await handPosition(page);
   expect(handOutside.x).toBeCloseTo(outsideX, 3);
   expect(handOutside.y).toBeCloseTo(outsideY, 3);
@@ -155,7 +167,7 @@ test("flag включает parallax до первого клика и пост�
   }).toBeCloseTo(0, 3);
 
   await page.mouse.move(center.x + halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(-6, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(7.2, 3);
   await page.screenshot({
     path: testInfo.outputPath("before-first-click.png"),
   });
@@ -166,6 +178,11 @@ test("flag включает parallax до первого клика и пост�
   await expect(rock).not.toHaveClass(/is-preclick-parallax/);
   await expect(hand).toHaveClass(/is-grabbing/);
   await expect.poll(() => parallaxX(page)).toBe(0);
+  const scrollAtActivation = await page.evaluate(() => window.scrollY);
+  await page.mouse.move(point.x, Math.max(50, point.y - 350), { steps: 8 });
+  await expect
+    .poll(() => page.evaluate(() => window.scrollY))
+    .toBeLessThan(scrollAtActivation);
 
   await page.mouse.up();
   await page.mouse.move(24, 24);

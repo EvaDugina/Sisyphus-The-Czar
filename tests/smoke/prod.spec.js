@@ -72,7 +72,7 @@ function sessionIdFromWebSocket(url) {
   return new URL(url).searchParams.get("session");
 }
 
-test("production build creates one personal session per user, keeps a clean URL and shows the hand only on the rock", async ({
+test("production build creates one personal session per user, keeps a clean URL and keeps the hand visible", async ({
   browser,
   page,
 }) => {
@@ -93,8 +93,9 @@ test("production build creates one personal session per user, keeps a clean URL 
   await expect.poll(() => firstSockets.length).toBeGreaterThan(0);
 
   const hand = page.locator(SOURCE_HAND);
-  await expect(hand).not.toHaveClass(/is-visible/);
-  await expect(hand).toHaveCSS("opacity", "0");
+  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  await expect(hand).toHaveClass(/is-visible/);
+  await expect(hand).toHaveCSS("opacity", "1");
 
   const secondContext = await browser.newContext();
   const second = await secondContext.newPage();
@@ -156,7 +157,7 @@ test("production build creates one personal session per user, keeps a clean URL 
 
     await second.mouse.up();
     await second.mouse.move(8, 8);
-    await expect(secondHand).not.toHaveClass(/is-visible/);
+    await expect(secondHand).toHaveClass(/is-visible/);
   } finally {
     await second.mouse.up().catch(() => {});
     await secondContext.close();

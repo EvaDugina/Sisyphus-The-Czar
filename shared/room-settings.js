@@ -12,9 +12,10 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 23;
+  const ROOM_SETTINGS_VERSION = 25;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
+  const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -23,8 +24,6 @@
   const DEFAULT_HAND_FORCE_DEFICIT_EASING =
     "cubic-bezier(0.42, 0, 1, 1)";
   const DEFAULT_RETURN_SCROLL_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
-  const DEFAULT_POSITION_SCROLL_EASING =
-    "cubic-bezier(0.17, 0.67, 0.83, 0.67)";
   const DEFAULT_PRECLICK_PARALLAX_RETURN_EASING =
     "cubic-bezier(0.22, 1, 0.36, 1)";
   const DEFAULT_DRAFT_FOLD_BLEND_CURVE =
@@ -57,8 +56,7 @@
   const ROOM_SETTINGS_LIMITS = Object.freeze({
     sceneHeightScreens: [1, 100],
     returnScrollDurationSeconds: [0, 10],
-    positionScrollZonePercent: [0, 50],
-    positionScrollSpeedVh: [0, 2],
+    cameraFollowLerp: [0.01, 1],
     draftFoldAngle: [0, 180],
     draftFoldZoneSize: [0, 50],
     finalFallDelaySeconds: [0, 10],
@@ -72,7 +70,7 @@
     windowObstacleWidthPx: [100, 1920],
     windowObstacleHeightPx: [100, 1080],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
-    preclickParallaxMaxOffsetPx: [0, 1000],
+    preclickParallaxMaxOffsetVw: [0, 150],
     preclickParallaxActivationRadiusVw: [0, 200],
     preclickParallaxReturnDurationMs: [0, 2000],
     rockJumpIntervalSeconds: [1, 10],
@@ -110,16 +108,11 @@
     returnScrollDurationSeconds: 4,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     stationaryAutoSlipEnabled: true,
-    positionScrollEnabled: true,
-    positionScrollZonePercent: 20,
-    positionScrollStartSpeedVh: 0.2,
-    positionScrollEndSpeedVh: 1,
-    positionScrollEasing: DEFAULT_POSITION_SCROLL_EASING,
+    cameraFollowLerp: 0.1,
     draftFoldAngle: 30,
     draftFoldZoneSize: 20,
     draftFoldBlendEnabled: true,
     draftFoldBlendCurve: DEFAULT_DRAFT_FOLD_BLEND_CURVE,
-    manualVerticalScrollEnabled: true,
     finalFallEnabled: false,
     finalFallDelaySeconds: 2,
     randomDropEnabled: true,
@@ -131,10 +124,12 @@
     rockActivatedWidthVw: DEFAULT_ROCK_ACTIVATED_WIDTH_VW,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
-    preclickParallaxMaxOffsetPx: 12,
+    preclickParallaxMaxOffsetVw: 0.6,
     preclickParallaxActivationRadiusVw: 50,
+    preclickParallaxInverted: false,
     preclickParallaxReturnDurationMs: 400,
     preclickParallaxReturnEasing: DEFAULT_PRECLICK_PARALLAX_RETURN_EASING,
+    handAlwaysVisible: true,
     handWidthVw: 14.375,
     heightGates: Object.freeze([]),
     handForceDeficitEasing: DEFAULT_HAND_FORCE_DEFICIT_EASING,
@@ -398,10 +393,8 @@
     const [sceneMin, sceneMax] = ROOM_SETTINGS_LIMITS.sceneHeightScreens;
     const [returnScrollMin, returnScrollMax] =
       ROOM_SETTINGS_LIMITS.returnScrollDurationSeconds;
-    const [positionScrollZoneMin, positionScrollZoneMax] =
-      ROOM_SETTINGS_LIMITS.positionScrollZonePercent;
-    const [positionScrollSpeedMin, positionScrollSpeedMax] =
-      ROOM_SETTINGS_LIMITS.positionScrollSpeedVh;
+    const [cameraFollowLerpMin, cameraFollowLerpMax] =
+      ROOM_SETTINGS_LIMITS.cameraFollowLerp;
     const [draftFoldAngleMin, draftFoldAngleMax] =
       ROOM_SETTINGS_LIMITS.draftFoldAngle;
     const [draftFoldZoneMin, draftFoldZoneMax] =
@@ -415,7 +408,7 @@
     const [rockJumpSpreadMin, rockJumpSpreadMax] =
       ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent;
     const [parallaxOffsetMin, parallaxOffsetMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetPx;
+      ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetVw;
     const [parallaxRadiusMin, parallaxRadiusMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusVw;
     const [parallaxReturnDurationMin, parallaxReturnDurationMax] =
@@ -535,36 +528,12 @@
         fallbackSource,
         "stationaryAutoSlipEnabled"
       ),
-      positionScrollEnabled: boolSetting(
+      cameraFollowLerp: finiteSetting(
         source,
         fallbackSource,
-        "positionScrollEnabled"
-      ),
-      positionScrollZonePercent: finiteSetting(
-        source,
-        fallbackSource,
-        "positionScrollZonePercent",
-        positionScrollZoneMin,
-        positionScrollZoneMax
-      ),
-      positionScrollStartSpeedVh: finiteSetting(
-        source,
-        fallbackSource,
-        "positionScrollStartSpeedVh",
-        positionScrollSpeedMin,
-        positionScrollSpeedMax
-      ),
-      positionScrollEndSpeedVh: finiteSetting(
-        source,
-        fallbackSource,
-        "positionScrollEndSpeedVh",
-        positionScrollSpeedMin,
-        positionScrollSpeedMax
-      ),
-      positionScrollEasing: cubicBezierSetting(
-        source,
-        fallbackSource,
-        "positionScrollEasing"
+        "cameraFollowLerp",
+        cameraFollowLerpMin,
+        cameraFollowLerpMax
       ),
       draftFoldAngle: integerSetting(
         source,
@@ -589,11 +558,6 @@
         source,
         fallbackSource,
         "draftFoldBlendCurve"
-      ),
-      manualVerticalScrollEnabled: boolSetting(
-        source,
-        fallbackSource,
-        "manualVerticalScrollEnabled"
       ),
       finalFallEnabled: boolSetting(
         source,
@@ -650,10 +614,18 @@
         ROOM_SETTINGS_LIMITS.rockWidthVw[0],
         ROOM_SETTINGS_LIMITS.rockWidthVw[1]
       ),
-      preclickParallaxMaxOffsetPx: finiteSetting(
-        source,
+      preclickParallaxMaxOffsetVw: finiteSetting(
+        !Object.hasOwn(source, "preclickParallaxMaxOffsetVw") &&
+          Number.isFinite(Number(source.preclickParallaxMaxOffsetPx))
+          ? {
+              ...source,
+              preclickParallaxMaxOffsetVw:
+                Number(source.preclickParallaxMaxOffsetPx) /
+                PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
+            }
+          : source,
         fallbackSource,
-        "preclickParallaxMaxOffsetPx",
+        "preclickParallaxMaxOffsetVw",
         parallaxOffsetMin,
         parallaxOffsetMax
       ),
@@ -672,6 +644,11 @@
         parallaxRadiusMin,
         parallaxRadiusMax
       ),
+      preclickParallaxInverted: boolSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxInverted"
+      ),
       preclickParallaxReturnDurationMs: finiteSetting(
         source,
         fallbackSource,
@@ -683,6 +660,11 @@
         source,
         fallbackSource,
         "preclickParallaxReturnEasing"
+      ),
+      handAlwaysVisible: boolSetting(
+        source,
+        fallbackSource,
+        "handAlwaysVisible"
       ),
       ...rockWidths,
       handWidthVw: finiteSetting(
@@ -969,11 +951,14 @@
       });
     }
     if (finiteNumber(version, 1) < 20) {
-      ["preclickParallaxMaxOffsetPx"].forEach((key) => {
-        if (!Object.hasOwn(source, key)) {
-          source[key] = DEFAULT_ROOM_SETTINGS[key];
-        }
-      });
+      if (
+        !Object.hasOwn(source, "preclickParallaxMaxOffsetVw") &&
+        !Object.hasOwn(source, "preclickParallaxMaxOffsetPx")
+      ) {
+        source.preclickParallaxMaxOffsetPx =
+          DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw *
+          PRECLICK_PARALLAX_OFFSET_PX_PER_VW;
+      }
       if (
         !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
         !Object.hasOwn(source, "preclickParallaxActivationRadiusPx")
@@ -1013,6 +998,33 @@
       }
       delete source.preclickParallaxActivationRadiusPx;
     }
+    if (finiteNumber(version, 1) < 24) {
+      if (!Object.hasOwn(source, "preclickParallaxInverted")) {
+        source.preclickParallaxInverted =
+          DEFAULT_ROOM_SETTINGS.preclickParallaxInverted;
+      }
+    }
+    if (finiteNumber(version, 1) < 25) {
+      if (!Object.hasOwn(source, "preclickParallaxMaxOffsetVw")) {
+        const previousOffsetPx = Number(source.preclickParallaxMaxOffsetPx);
+        source.preclickParallaxMaxOffsetVw = Number.isFinite(previousOffsetPx)
+          ? previousOffsetPx / PRECLICK_PARALLAX_OFFSET_PX_PER_VW
+          : DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw;
+      }
+      if (!Object.hasOwn(source, "handAlwaysVisible")) {
+        source.handAlwaysVisible = DEFAULT_ROOM_SETTINGS.handAlwaysVisible;
+      }
+      if (!Object.hasOwn(source, "cameraFollowLerp")) {
+        source.cameraFollowLerp = DEFAULT_ROOM_SETTINGS.cameraFollowLerp;
+      }
+      delete source.preclickParallaxMaxOffsetPx;
+      delete source.positionScrollEnabled;
+      delete source.positionScrollZonePercent;
+      delete source.positionScrollStartSpeedVh;
+      delete source.positionScrollEndSpeedVh;
+      delete source.positionScrollEasing;
+      delete source.manualVerticalScrollEnabled;
+    }
     return source;
   }
 
@@ -1030,6 +1042,7 @@
     SCENE_MOTION_COMPENSATION_BOOST,
     MAX_HEIGHT_GATES,
     PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
+    PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,

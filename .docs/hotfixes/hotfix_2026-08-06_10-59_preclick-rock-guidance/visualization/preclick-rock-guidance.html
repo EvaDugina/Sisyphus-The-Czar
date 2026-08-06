@@ -26,56 +26,48 @@
   <main>
     <header>
       <h1>Гипотеза: подсказка до первого клика по камню</h1>
-      <p class="summary">Проверяем, делает ли лёгкий parallax до первого клика и постоянно видимая рука взаимодействие с камнем понятнее.</p>
+      <p class="summary">Гипотеза одобрена: parallax до первого клика и постоянно видимая рука встроены в штатную версию.</p>
     </header>
-    <ul class="legend"><li>Текущее: рука видна только над камнем</li><li>Эксперимент: parallax до первого клика и рука по всей сцене</li><li>Evidence: Playwright-сценарий и скриншоты</li></ul>
+    <ul class="legend"><li>Штатно: рука видна сразу на fine pointer</li><li>До первого клика: настраиваемый parallax</li><li>Evidence: постоянный Playwright regression smoke</li></ul>
     <section class="canvas" aria-label="Mermaid-визуализация гипотезы">
       <pre class="mermaid">flowchart LR
   u(["Пользователь двигает указатель"])
-  c["Текущее: рука только над камнем&lt;br/&gt;камень без parallax"]
+  c["Штатно: рука видна сразу&lt;br/&gt;на fine pointer"]
   m["Runtime сцены&lt;br/&gt;и стили камня"]
-  f{"EXPERIMENT_PRECLICK_ROCK_GUIDANCE"}
   p["До первого primary-click:&lt;br/&gt;лёгкий parallax + рука по всей сцене"]
   k(["Первый клик по камню"])
   s["Parallax сброшен&lt;br/&gt;рука остаётся видимой"]
   e["Evidence: Playwright-сценарий&lt;br/&gt;и скриншоты"]
-  b["Flag off"]
-  r["Исходное поведение"]
+  r["Production regression smoke"]
 
-  u --&gt; c --&gt; m --&gt; f
-  f --&gt;|on| p --&gt; k --&gt; s --&gt; e
-  f --&gt;|off| b --&gt; r
+  u --&gt; c --&gt; m --&gt; p --&gt; k --&gt; s --&gt; e --&gt; r
 
   classDef card fill:#ffffff,stroke:#555555,color:#000000,rx:10,ry:10;
   classDef accent fill:#eef6ff,stroke:#2f6feb,color:#000000,rx:10,ry:10;
   classDef evidence fill:#effaf1,stroke:#2e7d32,color:#000000,rx:10,ry:10;
-  class u,c,m,k,s,b,r card;
-  class f,p accent;
+  class u,c,m,k,s,r card;
+  class p accent;
   class e evidence;
 </pre>
       <section class="fallback" id="fallback" role="alert">
         <p class="error">Не удалось отрисовать Mermaid. Исходный код сохранён ниже.</p>
         <pre>flowchart LR
   u(["Пользователь двигает указатель"])
-  c["Текущее: рука только над камнем&lt;br/&gt;камень без parallax"]
+  c["Штатно: рука видна сразу&lt;br/&gt;на fine pointer"]
   m["Runtime сцены&lt;br/&gt;и стили камня"]
-  f{"EXPERIMENT_PRECLICK_ROCK_GUIDANCE"}
   p["До первого primary-click:&lt;br/&gt;лёгкий parallax + рука по всей сцене"]
   k(["Первый клик по камню"])
   s["Parallax сброшен&lt;br/&gt;рука остаётся видимой"]
   e["Evidence: Playwright-сценарий&lt;br/&gt;и скриншоты"]
-  b["Flag off"]
-  r["Исходное поведение"]
+  r["Production regression smoke"]
 
-  u --&gt; c --&gt; m --&gt; f
-  f --&gt;|on| p --&gt; k --&gt; s --&gt; e
-  f --&gt;|off| b --&gt; r
+  u --&gt; c --&gt; m --&gt; p --&gt; k --&gt; s --&gt; e --&gt; r
 
   classDef card fill:#ffffff,stroke:#555555,color:#000000,rx:10,ry:10;
   classDef accent fill:#eef6ff,stroke:#2f6feb,color:#000000,rx:10,ry:10;
   classDef evidence fill:#effaf1,stroke:#2e7d32,color:#000000,rx:10,ry:10;
-  class u,c,m,k,s,b,r card;
-  class f,p accent;
+  class u,c,m,k,s,r card;
+  class p accent;
   class e evidence;
 </pre>
       </section>
