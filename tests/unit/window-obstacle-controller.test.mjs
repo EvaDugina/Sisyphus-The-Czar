@@ -6,7 +6,7 @@ import {
   WINDOW_OBSTACLE_PERMISSION,
   createWindowObstacleController,
   randomStepBetween,
-  windowObstacleHeightVh,
+  windowObstacleHeightFromStartVh,
 } from "../../src/runtime/createWindowObstacleController.js";
 
 function createClock() {
@@ -158,9 +158,9 @@ function setup({ blocked = false } = {}) {
 }
 
 test("высота препятствия отсчитывается от нижней точки подъёма", () => {
-  assert.equal(windowObstacleHeightVh(2000, 100, 2000), 0);
-  assert.equal(windowObstacleHeightVh(1000, 100, 2000), 5000);
-  assert.equal(windowObstacleHeightVh(0, 100, 2000), 10000);
+  assert.equal(windowObstacleHeightFromStartVh(760, 760, 800), 0);
+  assert.equal(windowObstacleHeightFromStartVh(360, 760, 800), 50);
+  assert.equal(windowObstacleHeightFromStartVh(800, 760, 800), 0);
   assert.equal(randomStepBetween(101, 139, 10, () => 0), 110);
   assert.equal(randomStepBetween(101, 139, 10, () => 1), 130);
 });

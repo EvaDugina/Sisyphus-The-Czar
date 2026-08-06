@@ -114,6 +114,14 @@ test("препятствие Окна имеет одинаковый UI и со
     await expect(page.locator('[name="windowObstacleMinIntervalSeconds"]')).toHaveAttribute("step", "0.1");
     await expect(page.locator('[name="windowObstacleMinWidthPx"]')).toHaveAttribute("step", "10");
 
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.__sisyphusTestApi.getWindowObstacleState().heightVh,
+        ),
+      )
+      .toBe(0);
+
     const status = page.locator("[data-window-obstacle-popup-status]");
     await expect(status).toHaveAttribute("data-state", "unchecked");
     await page.locator("[data-window-obstacle-popup-test]").click();

@@ -47,7 +47,7 @@ import { createSettingsController } from "./createSettingsController.js";
 import {
   createWindowObstacleController,
   WINDOW_OBSTACLE_PERMISSION,
-  windowObstacleHeightVh,
+  windowObstacleHeightFromStartVh,
 } from "./createWindowObstacleController.js";
 
 const ROLE_AUDIO_FADE_IN_MS = 300;
@@ -763,11 +763,11 @@ export function createSisyphusRuntime(elements = {}) {
   });
   const windowObstacleController = createWindowObstacleController({
     getHeightVh: () => {
-      const canonical = localToCanonical(motion.x, motion.y);
-      return windowObstacleHeightVh(
-        canonical.y,
-        params.sceneHeightScreens,
-        SharedPhysics.WORLD_HEIGHT,
+      const start = initialLocalPosition();
+      return windowObstacleHeightFromStartVh(
+        motion.y + bounds.rockHeight / 2,
+        start.y + bounds.rockHeight / 2,
+        window.innerHeight,
       );
     },
     getSettings: () => SharedRoomSettings.sanitizeRoomSettings(params),

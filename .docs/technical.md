@@ -3,7 +3,7 @@
 ## Паспорт
 
 - **Стадия:** POC B
-- **Последнее обновление:** 2026-08-04
+- **Последнее обновление:** 2026-08-05
 - **Runtime:** Node.js 24, Express 5, WebSocket `ws`, React 19, Vite 8
 - **Развёртывание:** один Docker-контейнер приложения; nginx/HTTPS находятся на хосте
 
@@ -93,13 +93,13 @@ vy = -V · cos(theta)
 
 ## Препятствие «Окна»
 
-`src/runtime/createWindowObstacleController.js` не участвует в серверной физике и открывает только реальные пустые browser windows через `window.open("", "_blank", features)`. Высота считается из канонической координаты центра камня:
+`src/runtime/createWindowObstacleController.js` не участвует в серверной физике и открывает только реальные пустые browser windows через `window.open("", "_blank", features)`. Высота считается по смещению центра камня относительно его фактической стартовой позиции:
 
 ```text
-heightVh = (1 - canonicalY / WORLD_HEIGHT) · sceneHeightScreens · 100
+heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 ```
 
-При `canonicalY = WORLD_HEIGHT` получается `0vh`. Диапазон включителен по обеим границам.
+В стартовой позиции получается ровно `0vh`; движение ниже старта также ограничивается нулём. Диапазон включителен по обеим границам.
 
 - `refresh()` сравнивает signature девяти obstacle-настроек и состояние входа в диапазон. На изменение, выход или dispose текущий schedule timeout отменяется.
 - В диапазоне существует не более одного timeout следующего показа. После успешного открытия следующий интервал выбирается заново; неуспешный `window.open()` переводит permission в `blocked` и не создаёт новый schedule.

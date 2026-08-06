@@ -45,18 +45,15 @@ export function randomStepBetween(min, max, step = 1, random = Math.random) {
   return index * cleanStep;
 }
 
-export function windowObstacleHeightVh(
-  canonicalY,
-  sceneHeightScreens,
-  worldHeight,
+export function windowObstacleHeightFromStartVh(
+  currentCenterY,
+  startCenterY,
+  viewportHeight,
 ) {
-  const cleanWorldHeight = Math.max(1, finite(worldHeight, 1));
-  const cleanY = clamp(finite(canonicalY, cleanWorldHeight), 0, cleanWorldHeight);
-  return (
-    (1 - cleanY / cleanWorldHeight) *
-    Math.max(0, finite(sceneHeightScreens, 0)) *
-    100
-  );
+  const cleanViewportHeight = Math.max(1, finite(viewportHeight, 1));
+  const start = finite(startCenterY, 0);
+  const current = finite(currentCenterY, start);
+  return Math.max(0, ((start - current) / cleanViewportHeight) * 100);
 }
 
 function relevantSettingsSignature(settings) {
@@ -403,13 +400,17 @@ export function createWindowObstacleController(options = {}) {
 
   return Object.freeze({
     dispose,
-    getState: () => ({
-      activeWindowCount: activeObstacleCount(),
-      permission,
-      schedulePending: scheduleTimerId !== null,
-      trackedWindowCount: trackedWindows.size,
-      wasInsideRange,
-    }),
+    getState: () => {
+      const currentRange = rangeState();
+      return {
+        activeWindowCount: activeObstacleCount(),
+        heightVh: currentRange.heightVh,
+        permission,
+        schedulePending: scheduleTimerId !== null,
+        trackedWindowCount: trackedWindows.size,
+        wasInsideRange,
+      };
+    },
     isControlBlocked: () => activeObstacleCount() > 0,
     refresh,
     testPopupPermission,
