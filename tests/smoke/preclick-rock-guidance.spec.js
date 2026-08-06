@@ -46,6 +46,16 @@ function parallaxX(page) {
   );
 }
 
+function handPosition(page) {
+  return page.locator(SOURCE_HAND).evaluate((hand) => {
+    const style = getComputedStyle(hand);
+    return {
+      x: Number.parseFloat(style.getPropertyValue("--cursor-x")),
+      y: Number.parseFloat(style.getPropertyValue("--cursor-y")),
+    };
+  });
+}
+
 function rockSize(page) {
   return page.locator(SOURCE_ROCK).evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
@@ -133,7 +143,17 @@ test("flag включает parallax до первого клика и пост�
     ? center.x + 500
     : center.x - 500;
   await page.mouse.move(outsideX, center.y);
-  await expect.poll(() => parallaxX(page)).toBe(0);
+  expect(Math.abs(await parallaxX(page))).toBeGreaterThan(0);
+  await page.waitForTimeout(50);
+  const returningOffset = Math.abs(await parallaxX(page));
+  expect(returningOffset).toBeGreaterThan(0);
+  expect(returningOffset).toBeLessThan(6);
+  const handOutside = await handPosition(page);
+  expect(handOutside.x).toBeCloseTo(outsideX, 3);
+  expect(handOutside.y).toBeCloseTo(center.y, 3);
+  await expect.poll(async () => Math.abs(await parallaxX(page)), {
+    timeout: 1000,
+  }).toBeCloseTo(0, 3);
 
   await page.mouse.move(center.x + halfRadius, center.y);
   await expect.poll(() => parallaxX(page)).toBeCloseTo(6, 3);

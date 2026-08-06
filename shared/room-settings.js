@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 20;
+  const ROOM_SETTINGS_VERSION = 21;
   const MAX_HEIGHT_GATES = 10;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
@@ -24,6 +24,8 @@
   const DEFAULT_RETURN_SCROLL_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
   const DEFAULT_POSITION_SCROLL_EASING =
     "cubic-bezier(0.17, 0.67, 0.83, 0.67)";
+  const DEFAULT_PRECLICK_PARALLAX_RETURN_EASING =
+    "cubic-bezier(0.22, 1, 0.36, 1)";
   const DEFAULT_DRAFT_FOLD_BLEND_CURVE =
     "cubic-bezier(0.333, 0, 0.667, 1)";
   const DEFAULT_DRIZZLE_VOLUME_EASING =
@@ -71,6 +73,7 @@
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     preclickParallaxMaxOffsetPx: [0, 100],
     preclickParallaxActivationRadiusPx: [0, 2000],
+    preclickParallaxReturnDurationMs: [0, 2000],
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
     rockJumpInertiaSpreadPercent: [0, 100],
@@ -129,6 +132,8 @@
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickParallaxMaxOffsetPx: 12,
     preclickParallaxActivationRadiusPx: 480,
+    preclickParallaxReturnDurationMs: 400,
+    preclickParallaxReturnEasing: DEFAULT_PRECLICK_PARALLAX_RETURN_EASING,
     handWidthVw: 14.375,
     heightGates: Object.freeze([]),
     handForceDeficitEasing: DEFAULT_HAND_FORCE_DEFICIT_EASING,
@@ -412,6 +417,8 @@
       ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetPx;
     const [parallaxRadiusMin, parallaxRadiusMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusPx;
+    const [parallaxReturnDurationMin, parallaxReturnDurationMax] =
+      ROOM_SETTINGS_LIMITS.preclickParallaxReturnDurationMs;
     const [drizzleVolumeMin, drizzleVolumeMax] =
       ROOM_SETTINGS_LIMITS.drizzleVolume;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
@@ -655,6 +662,18 @@
         "preclickParallaxActivationRadiusPx",
         parallaxRadiusMin,
         parallaxRadiusMax
+      ),
+      preclickParallaxReturnDurationMs: finiteSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxReturnDurationMs",
+        parallaxReturnDurationMin,
+        parallaxReturnDurationMax
+      ),
+      preclickParallaxReturnEasing: cubicBezierSetting(
+        source,
+        fallbackSource,
+        "preclickParallaxReturnEasing"
       ),
       ...rockWidths,
       handWidthVw: finiteSetting(
@@ -944,6 +963,16 @@
       [
         "preclickParallaxMaxOffsetPx",
         "preclickParallaxActivationRadiusPx",
+      ].forEach((key) => {
+        if (!Object.hasOwn(source, key)) {
+          source[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
+    if (finiteNumber(version, 1) < 21) {
+      [
+        "preclickParallaxReturnDurationMs",
+        "preclickParallaxReturnEasing",
       ].forEach((key) => {
         if (!Object.hasOwn(source, key)) {
           source[key] = DEFAULT_ROOM_SETTINGS[key];

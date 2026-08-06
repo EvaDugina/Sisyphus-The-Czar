@@ -4,7 +4,7 @@
 
   position: fixed;
   inset: 0;
-  z-index: 25;
+  z-index: 18;
   overflow: hidden;
   pointer-events: none;
   user-select: none;
@@ -90,4 +90,8 @@
 
 .fold-track :is(.trail, .trail-glow, .weather-rain, .hand-cursor) {
   translate: 0 var(--fold-scroll-offset);
+}
+
+.fold-track .hand-cursor {
+  display: none !important;
 }

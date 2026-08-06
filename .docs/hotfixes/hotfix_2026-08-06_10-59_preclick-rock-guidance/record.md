@@ -45,7 +45,7 @@
 - **Что временно:** build-time flag, экспериментальные DOM-классы и CSS custom properties, отдельный smoke-сценарий.
 - **Guard ID:** `hotfix_2026-08-06_10-59_preclick-rock-guidance`
 - **Проверка после синхронизации:** после merge `origin/main@73afc26` повторно выполнены lint, build, полный набор тестов и browser smoke; удалённые изменения в общих runtime/CSS-файлах разрешены вручную, аварийное отключение эксперимента остаётся доступно через default-off flag или revert коммита `c192a7c`.
-- **Уточнение по обратной связи:** perspective и вращения удалены — parallax меняет только позицию. Максимальное смещение (`0–100 px`, default `12`) и круговой радиус от визуального центра камня (`0–2000 px`, default `480`) вынесены в versioned UI-настройки. Любой primary `pointerdown` на fine pointer теперь показывает захвативший спрайт руки до `pointerup`/`pointercancel`, включая клики вне камня.
+- **Уточнение по обратной связи:** perspective и вращения удалены — parallax меняет только позицию. Максимальное смещение (`0–100 px`, default `12`), круговой радиус от визуального центра камня (`0–2000 px`, default `480`), duration возврата (`0–2000 мс`, default `400`) и его cubic-bezier-график вынесены в versioned UI-настройки. После выхода указателя за радиус камень плавно возвращается к исходной позиции, а рука остаётся под указателем. Любой primary `pointerdown` на fine pointer показывает захвативший спрайт руки до `pointerup`/`pointercancel`, включая клики вне камня.
 - **Rollback проверен:** да — `verify-all` подтверждает чистый вычисляемый rollback, а baseline smoke проходит при выключенном flag.
 
 ## Evidence
@@ -60,16 +60,17 @@
 | Совместимость после merge | Docker Node `24.18.0`: `npm ci && npm run lint && npm run build && npm test` | PASS | Merge с `origin/main@73afc26`: lint и production build зелёные; `178/178` тестов прошли. |
 | Browser regression после merge | Playwright `1.61.1`: production smoke, draft smoke и отдельный сценарий с flag on | PASS | Production `2/2`, draft `6/6`, эксперимент `1/1`. |
 | Исправление деформации | Live dev browser: сравнение `getBoundingClientRect()` слева и справа | PASS | X offset `−11.55 → +11.55 px`; изменение ширины `0 px`, высоты `0 px`; transform не содержит perspective/rotation. |
-| Настраиваемые radius/max | Unit/integration + Playwright draft и experiment | PASS | `178/178`; draft `7/7`, включая UI `12→36 px` и `480→720 px`; experiment `1/1` проверяет half-radius, выход за радиус, неизменность размеров и первый click. |
+| Настраиваемые radius/max/return | Unit/integration + Playwright draft и experiment | PASS | `178/178`; targeted draft `2/2`, включая UI `12→36 px`, `480→720 px`, duration `400→650 мс` и cubic-bezier-график; experiment `1/1` проверяет half-radius, плавный выход за радиус, руку под указателем, неизменность размеров и первый click. |
+| Плавный возврат камня | Experiment smoke + live dev browser | PASS | Через `50 мс` после выхода offset ещё ненулевой, затем достигает `0`; координаты руки остаются координатами указателя. В UI визуально проверены range `400 мс` и график `cubic-bezier(0.22, 1, 0.36, 1)`. |
 | Глобальное состояние руки | Experiment smoke: primary click вне камня до и после первого захвата | PASS | На `pointerdown` локальная рука получает `is-grabbing` и `cursor-grabbing.png`, на `pointerup` возвращается к `cursor-grab.png`; parallax отключается только кликом по камню. |
-| Default-off regression после настройки | Production smoke | PASS | `2/2`; baseline без экспериментального flag сохранён. |
+| Default-off regression после настройки | Production smoke | PASS | `2/2`; baseline без экспериментального flag сохранён после settings schema `25` / room schema `21`. |
 | Полный collaboration smoke | `npm run test:smoke:dev` | WARN | `12/18` PASS, `2` skipped, `4` failure в старых сценариях: обращения к уже переименованной группе «Руки», отсутствующему UI-полю `stationaryAutoSlipEnabled` и нестабильной проверке отпечатка. Новые parallax-сценарии и затронутые контракты проходят. |
 | Визуальная проверка | `test-results/preclick-rock-guidance-fla-4dde1-ого-клика-и-постоянную-руку/*.png` | PASS | На обоих кадрах фото-рука видима отдельно от камня; после click камень отображается без экспериментального parallax-класса. |
 
 ### Ручная демонстрация
 
-- **Шаги:** включить `EXPERIMENT_PRECLICK_ROCK_GUIDANCE=true`; до клика прокрутить к камню, провести указатель внутри и снаружи настроенного радиуса, изменить maximum/radius в группе «Камень»; нажать камень; затем собрать без flag и повторить baseline.
-- **Наблюдение:** при flag on рука следует за указателем по всей сцене; внутри радиуса камень до click получает только ограниченный позиционный offset, снаружи offset равен нулю; после первого primary `pointerdown` parallax сбрасывается, а рука остаётся видимой. При flag off рука по-прежнему появляется только над камнем.
+- **Шаги:** включить `EXPERIMENT_PRECLICK_ROCK_GUIDANCE=true`; до клика прокрутить к камню, провести указатель внутри и снаружи настроенного радиуса, изменить maximum/radius/duration/cubic-bezier в группе «Камень»; нажать камень; затем собрать без flag и повторить baseline.
+- **Наблюдение:** при flag on рука следует за указателем по всей сцене; внутри радиуса камень до click получает только ограниченный позиционный offset, снаружи offset плавно возвращается к нулю по выбранной кривой, при этом рука остаётся под указателем; после первого primary `pointerdown` parallax сбрасывается, а рука остаётся видимой. При flag off рука по-прежнему появляется только над камнем.
 - **Метрика:** поведенческие assertions и визуальные артефакты PASS; продуктовая полезность не измерена и требует решения пользователя.
 
 ## Решение

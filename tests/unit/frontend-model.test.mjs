@@ -356,7 +356,7 @@ test("настройки инерции отображают шкалу 0–5", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v24");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v25");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -403,7 +403,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 24);
+  assert.equal(productionSettingsSchemaVersion, 25);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -716,6 +716,12 @@ test("настройки размера камня есть в UI и получ�
   const preclickParallaxActivationRadiusPx = controls.find(
     (control) => control.name === "preclickParallaxActivationRadiusPx",
   );
+  const preclickParallaxReturnDurationMs = controls.find(
+    (control) => control.name === "preclickParallaxReturnDurationMs",
+  );
+  const preclickParallaxReturnEasing = controls.find(
+    (control) => control.name === "preclickParallaxReturnEasing",
+  );
   const rockMinWidthVw = controls.find(
     (control) => control.name === "rockMinWidthVw",
   );
@@ -758,6 +764,8 @@ test("настройки размера камня есть в UI и получ�
       "rockActivatedWidthVw",
       "preclickParallaxMaxOffsetPx",
       "preclickParallaxActivationRadiusPx",
+      "preclickParallaxReturnDurationMs",
+      "preclickParallaxReturnEasing",
       "rockMinWidthVw",
       "rockMaxWidthVw",
     ],
@@ -787,6 +795,38 @@ test("настройки размера камня есть в UI и получ�
       max: 100,
       step: 1,
       defaultValue: 12,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickParallaxReturnDurationMs.label,
+      type: preclickParallaxReturnDurationMs.type,
+      min: preclickParallaxReturnDurationMs.min,
+      max: preclickParallaxReturnDurationMs.max,
+      step: preclickParallaxReturnDurationMs.step,
+      defaultValue: preclickParallaxReturnDurationMs.defaultValue,
+    },
+    {
+      label: "Возврат камня, мс",
+      type: "range",
+      min: 0,
+      max: 2000,
+      step: 10,
+      defaultValue: 400,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickParallaxReturnEasing.label,
+      type: preclickParallaxReturnEasing.type,
+      defaultValue: preclickParallaxReturnEasing.defaultValue,
+      spellCheck: preclickParallaxReturnEasing.spellCheck,
+    },
+    {
+      label: "Кривая возврата камня",
+      type: "cubic-bezier",
+      defaultValue: "cubic-bezier(0.22, 1, 0.36, 1)",
+      spellCheck: false,
     },
   );
   assert.deepEqual(
@@ -1460,6 +1500,8 @@ test("настройки препятствия Окна нормализуют 
       drizzleEnabled: true,
       preclickParallaxMaxOffsetPx: 12,
       preclickParallaxActivationRadiusPx: 480,
+      preclickParallaxReturnDurationMs: 400,
+      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     },
   );
 });
@@ -1602,13 +1644,15 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 20);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 21);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
     rockActivatedWidthVw: 999,
     preclickParallaxMaxOffsetPx: 999,
     preclickParallaxActivationRadiusPx: -1,
+    preclickParallaxReturnDurationMs: 9999,
+    preclickParallaxReturnEasing: "invalid",
   });
   assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
   assert.equal(
@@ -1618,6 +1662,11 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockActivatedWidthVw, 150);
   assert.equal(visualSettings.preclickParallaxMaxOffsetPx, 100);
   assert.equal(visualSettings.preclickParallaxActivationRadiusPx, 0);
+  assert.equal(visualSettings.preclickParallaxReturnDurationMs, 2000);
+  assert.equal(
+    visualSettings.preclickParallaxReturnEasing,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxReturnEasing,
+  );
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({}, 17),
     {
@@ -1632,6 +1681,8 @@ test("группа дождя содержит общий toggle и blur тём�
       drizzleEnabled: true,
       preclickParallaxMaxOffsetPx: 12,
       preclickParallaxActivationRadiusPx: 480,
+      preclickParallaxReturnDurationMs: 400,
+      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     },
   );
   assert.deepEqual(
@@ -1641,6 +1692,8 @@ test("группа дождя содержит общий toggle и blur тём�
       drizzleEnabled: true,
       preclickParallaxMaxOffsetPx: 12,
       preclickParallaxActivationRadiusPx: 480,
+      preclickParallaxReturnDurationMs: 400,
+      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     },
   );
   assert.deepEqual(
@@ -1648,6 +1701,15 @@ test("группа дождя содержит общий toggle и blur тём�
     {
       preclickParallaxMaxOffsetPx: 12,
       preclickParallaxActivationRadiusPx: 480,
+      preclickParallaxReturnDurationMs: 400,
+      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({}, 20),
+    {
+      preclickParallaxReturnDurationMs: 400,
+      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     },
   );
   assert.deepEqual(

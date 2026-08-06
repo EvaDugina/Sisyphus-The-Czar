@@ -111,15 +111,16 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 
 ## UI и схемы
 
-- Серверная settings schema — `24`; localStorage key — `sisyphus-czar-settings-v24`, `v23` и более ранние ключи мигрируются как legacy.
-- Shared room settings schema — `20`. Она добавляет `preclickParallaxMaxOffsetPx` (`0–100`) и `preclickParallaxActivationRadiusPx` (`0–2000`) с defaults `12` и `480`; старые payload получают безопасные defaults.
+- Серверная settings schema — `25`; localStorage key — `sisyphus-czar-settings-v25`, `v24` и более ранние ключи мигрируются как legacy.
+- Shared room settings schema — `21`. Она добавляет `preclickParallaxReturnDurationMs` (`0–2000`, default `400`) и `preclickParallaxReturnEasing` (default `cubic-bezier(0.22, 1, 0.36, 1)`) к существующим `preclickParallaxMaxOffsetPx` (`0–100`, default `12`) и `preclickParallaxActivationRadiusPx` (`0–2000`, default `480`); старые payload получают безопасные defaults.
 - Категория единственной руки называется «Рука». «Препятствия → Окна» содержит девять versioned controls и `WindowObstaclePermissionControl` со статусом и test action.
-- В группе «Камень» находятся два checkbox, три range-контрола автоматического прыжка и два range-контрола parallax: максимум отклонения и радиус активации.
+- В группе «Камень» находятся два checkbox, три range-контрола автоматического прыжка и четыре parallax-контрола: максимум отклонения, радиус активации, длительность возврата и cubic-bezier-редактор с графиком.
 - Контролы используют декларативный `enabledWhen`: строка означает checkbox-зависимость, объект `{name, values}` — допустимые значения select. Controller синхронизирует native `disabled`, `.is-disabled`, `aria-disabled` и пояснение после input/change, загрузки и remote settings.
-- `glowOptimizationMode`, `glowTargetFps`, `glowBufferScalePercent`, `glowUpdateFps`, `glowMaxPoints` и `glowDecimation` имеют `scope: "local"`: сохраняются в v24, но фильтруются из version snapshots, server templates и broadcast.
-- Preclick parallax вычисляет базовый визуальный центр без уже применённого offset. Внутри круговой зоны вектор смещения равен `(pointer - center) · maxOffset / radius`, поэтому его длина не превышает максимум; снаружи зоны, при нулевой настройке и при reduced motion offset сбрасывается. CSS-композиция содержит только `translate3d + scale`, без perspective и rotation. Глобальные primary `pointerdown`/`pointerup` на fine pointer переключают постоянно видимую локальную руку между `grab` и `grabbing`, не меняя серверный статус удержания камня.
+- `glowOptimizationMode`, `glowTargetFps`, `glowBufferScalePercent`, `glowUpdateFps`, `glowMaxPoints` и `glowDecimation` имеют `scope: "local"`: сохраняются в v25, но фильтруются из version snapshots, server templates и broadcast.
+- Preclick parallax вычисляет базовый визуальный центр без уже применённого offset. Внутри круговой зоны вектор смещения равен `(pointer - center) · maxOffset / radius`, поэтому его длина не превышает максимум; при выходе указателя за радиус текущий offset через `requestAnimationFrame` интерполируется к нулю по выбранным duration и cubic-bezier. Повторный вход отменяет return-animation и сразу возвращает прямое управление parallax; reduced motion и нулевая duration обнуляют offset без анимации. Рука во всех случаях напрямую следует за указателем. CSS-композиция содержит только `translate3d + scale`, без perspective и rotation. Глобальные primary `pointerdown`/`pointerup` на fine pointer переключают постоянно видимую локальную руку между `grab` и `grabbing`, не меняя серверный статус удержания камня.
 - Частые range/color/cubic-bezier input объединяются через `requestAnimationFrame`; запись localStorage и сетевой update выполняются на `change` или после debounce `180 ms`.
 - `FoldLayer` входит в основной `<App />`, читает живой `params` runtime через ref и синхронизирует неинтерактивную копию сцены, canvas-следа и дождя. Для trail-canvas копирование выполняется только при изменении `data-canvas-revision`; rain-canvas сохраняют покадровую синхронизацию.
+- Fold-layer использует `z-index: 18`, ниже удалённых (`19`) и локального (`20`) курсоров. Курсоры внутри Fold-зеркала скрыты, поэтому 3D surface не создаёт деформированную копию руки.
 - Группа `3D Fold` хранит `draftFoldAngle`, `draftFoldZoneSize`, `draftFoldBlendEnabled`, `draftFoldBlendCurve` в общем `roomSettings`; диапазоны санитизируются сервером и клиентом.
 - Vite переписывает `/drafts[/]` на `/index.html`; Express отдаёт тот же production index и зеркальный путь `/drafts/assets` для относительных Vite-ассетов.
 - Production без debug UI не включает settings controller; preset всё равно задаёт baseline новой сессии.
@@ -132,7 +133,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - `control.granted` возвращает единственный `holderId`.
 - Второй `control.acquire` получает `control.denied {reason:"already_controlled"}`.
 - `control.slipped` использует причины `slipped`, `jumped` или `stationary`; для `jumped` добавляются `angleDegrees`, `inertiaFactor`, `speed`.
-- `settings.update` использует schema `24` и optimistic `settingsRevision`.
+- `settings.update` использует schema `25` и optimistic `settingsRevision`.
 
 ## HTTP
 
@@ -176,7 +177,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - `npm test` — unit и integration.
 - Production smoke проверяет разные session ID двух браузеров и отсутствие взаимного управления.
 - Draft smoke проверяет идентичность основной Fold-сцены и настроек на `/` и `/drafts/`, parallax-контролы, obstacle defaults, popup-blocked UI, сохранение glow-профиля, select-зависимости и безопасную структуру зеркала.
-- Dev smoke проверяет миграцию legacy-настроек в v24, лимит glow-точек, отсутствие проходов при `glow=0` и копирование Fold только при новой canvas revision.
+- Dev smoke проверяет миграцию legacy-настроек в v25, лимит glow-точек, отсутствие проходов при `glow=0` и копирование Fold только при новой canvas revision.
 - Отдельный experiment smoke проверяет постоянную руку, её глобальное состояние `grabbing` на основном нажатии, круговой радиус, максимальное смещение, неизменность размеров камня и отключение parallax после первого клика по камню.
 - Unit-тест контроллера использует виртуальные timeout/interval и fake popup: проверяет отсутствие дублирующего schedule, одновременные окна, независимый click/2s close, выход/возврат в диапазон и паузу при блокировке.
 

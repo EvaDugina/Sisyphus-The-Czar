@@ -33,6 +33,8 @@ import {
   normalizeThemeMode,
 } from "../lib/settingsModel.mjs";
 import {
+  cubicBezierYForX,
+  parseCubicBezier,
   rockActivationScaleFactor,
   rockHorizontalWallCompensation,
   rockLocalXForVisualGrab,
@@ -303,6 +305,11 @@ export function createSisyphusRuntime(elements = {}) {
     preclickParallaxActivationRadiusPx:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS
         .preclickParallaxActivationRadiusPx,
+    preclickParallaxReturnDurationMs:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+        .preclickParallaxReturnDurationMs,
+    preclickParallaxReturnEasing:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxReturnEasing,
     rockMinWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
     rockMaxWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMaxWidthVw,
     sceneHeightScreens:
@@ -425,6 +432,8 @@ export function createSisyphusRuntime(elements = {}) {
     completed: false,
     pointerX: null,
     pointerY: null,
+    returnAnimationId: null,
+    outsideRadius: false,
   };
   body.classList.toggle(
     "experiment-preclick-rock-guidance",
@@ -2225,8 +2234,12 @@ export function createSisyphusRuntime(elements = {}) {
       shouldHandleChange(
         "preclickParallaxMaxOffsetPx",
         "preclickParallaxActivationRadiusPx",
+        "preclickParallaxReturnDurationMs",
+        "preclickParallaxReturnEasing",
       )
     ) {
+      cancelPreclickGuidanceReturn();
+      preclickRockGuidance.outsideRadius = false;
       if (
         Number.isFinite(preclickRockGuidance.pointerX) &&
         Number.isFinite(preclickRockGuidance.pointerY)
@@ -2545,9 +2558,80 @@ export function createSisyphusRuntime(elements = {}) {
     handCursor.classList.remove("is-alternate", "is-grabbing");
   }
 
+  function setPreclickRockParallaxOffset(x, y) {
+    rock.style.setProperty("--rock-parallax-x", `${x}px`);
+    rock.style.setProperty("--rock-parallax-y", `${y}px`);
+  }
+
+  function preclickRockParallaxOffset() {
+    const style = window.getComputedStyle(rock);
+    return {
+      x: Number.parseFloat(style.getPropertyValue("--rock-parallax-x")) || 0,
+      y: Number.parseFloat(style.getPropertyValue("--rock-parallax-y")) || 0,
+    };
+  }
+
+  function preclickRockBaseCenter(offset = preclickRockParallaxOffset()) {
+    const rect = rock.getBoundingClientRect();
+    return {
+      x: rect.left + rect.width / 2 - offset.x,
+      y: rect.top + rect.height / 2 - offset.y,
+    };
+  }
+
+  function cancelPreclickGuidanceReturn() {
+    if (preclickRockGuidance.returnAnimationId === null) {
+      return;
+    }
+    window.cancelAnimationFrame(preclickRockGuidance.returnAnimationId);
+    preclickRockGuidance.returnAnimationId = null;
+  }
+
   function resetPreclickRockParallax() {
-    rock.style.setProperty("--rock-parallax-x", "0px");
-    rock.style.setProperty("--rock-parallax-y", "0px");
+    cancelPreclickGuidanceReturn();
+    setPreclickRockParallaxOffset(0, 0);
+  }
+
+  function returnPreclickRockParallaxToCenter() {
+    if (preclickRockGuidance.returnAnimationId !== null) {
+      return;
+    }
+
+    const startOffset = preclickRockParallaxOffset();
+    const duration = params.preclickParallaxReturnDurationMs;
+    const curve = parseCubicBezier(params.preclickParallaxReturnEasing);
+    const finishImmediately =
+      reducedMotion.matches ||
+      duration <= 0 ||
+      !curve;
+
+    if (finishImmediately) {
+      setPreclickRockParallaxOffset(0, 0);
+      return;
+    }
+
+    const startedAt = performance.now();
+    const renderReturn = (now) => {
+      const progress = Math.min(Math.max((now - startedAt) / duration, 0), 1);
+      const easedProgress = cubicBezierYForX(progress, curve);
+
+      setPreclickRockParallaxOffset(
+        startOffset.x * (1 - easedProgress),
+        startOffset.y * (1 - easedProgress),
+      );
+
+      if (progress < 1) {
+        preclickRockGuidance.returnAnimationId =
+          window.requestAnimationFrame(renderReturn);
+        return;
+      }
+
+      setPreclickRockParallaxOffset(0, 0);
+      preclickRockGuidance.returnAnimationId = null;
+    };
+
+    preclickRockGuidance.returnAnimationId =
+      window.requestAnimationFrame(renderReturn);
   }
 
   function updatePreclickRockParallax(event) {
@@ -2561,11 +2645,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     preclickRockGuidance.pointerX = Number(event.clientX);
     preclickRockGuidance.pointerY = Number(event.clientY);
-    if (reducedMotion.matches) {
-      resetPreclickRockParallax();
-      return;
-    }
-
+    showHandCursor(event);
     const activationRadius = params.preclickParallaxActivationRadiusPx;
     const maxOffset = params.preclickParallaxMaxOffsetPx;
     if (activationRadius <= 0 || maxOffset <= 0) {
@@ -2573,32 +2653,32 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const style = window.getComputedStyle(rock);
-    const currentOffsetX = Number.parseFloat(
-      style.getPropertyValue("--rock-parallax-x"),
-    ) || 0;
-    const currentOffsetY = Number.parseFloat(
-      style.getPropertyValue("--rock-parallax-y"),
-    ) || 0;
-    const rect = rock.getBoundingClientRect();
-    const centerX = rect.left + rect.width / 2 - currentOffsetX;
-    const centerY = rect.top + rect.height / 2 - currentOffsetY;
+    const currentOffset = preclickRockParallaxOffset();
+    const center = preclickRockBaseCenter(currentOffset);
+    const centerX = center.x;
+    const centerY = center.y;
     const deltaX = preclickRockGuidance.pointerX - centerX;
     const deltaY = preclickRockGuidance.pointerY - centerY;
     const distance = Math.hypot(deltaX, deltaY);
     if (distance > activationRadius) {
+      if (!preclickRockGuidance.outsideRadius) {
+        preclickRockGuidance.outsideRadius = true;
+        returnPreclickRockParallaxToCenter();
+      }
+      return;
+    }
+
+    preclickRockGuidance.outsideRadius = false;
+    cancelPreclickGuidanceReturn();
+    if (reducedMotion.matches) {
       resetPreclickRockParallax();
       return;
     }
 
     const offsetScale = maxOffset / activationRadius;
-    rock.style.setProperty(
-      "--rock-parallax-x",
-      `${deltaX * offsetScale}px`,
-    );
-    rock.style.setProperty(
-      "--rock-parallax-y",
-      `${deltaY * offsetScale}px`,
+    setPreclickRockParallaxOffset(
+      deltaX * offsetScale,
+      deltaY * offsetScale,
     );
   }
 
@@ -2606,7 +2686,10 @@ export function createSisyphusRuntime(elements = {}) {
     if (!preclickRockGuidance.enabled) {
       return;
     }
-    showHandCursor(event);
+    if (preclickRockGuidance.completed) {
+      showHandCursor(event);
+      return;
+    }
     updatePreclickRockParallax(event);
   }
 
@@ -3588,7 +3671,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 24,
+      settingsSchemaVersion: 25,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;

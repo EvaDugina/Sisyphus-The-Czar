@@ -40,6 +40,24 @@ test("основной и drafts маршруты используют одну 
 
     await expect(page.locator('[data-fold-zone="top"]')).toHaveCount(1);
     await expect(page.locator('[data-fold-zone="bottom"]')).toHaveCount(0);
+    const layerOrder = await page.evaluate(() => ({
+      fold: Number.parseInt(
+        getComputedStyle(document.querySelector("[data-fold-layer]")).zIndex,
+        10,
+      ),
+      hand: Number.parseInt(
+        getComputedStyle(
+          document.querySelector(
+            "#root > .world > .hand-cursor:not(.is-remote)",
+          ),
+        ).zIndex,
+        10,
+      ),
+    }));
+    expect(layerOrder.fold).toBeLessThan(layerOrder.hand);
+    await expect(
+      page.locator('[data-fold-zone="top"] .hand-cursor:not(.is-remote)'),
+    ).toHaveCSS("display", "none");
     await expect(page.locator("#root > .world")).toHaveCount(1);
     await expect(page.locator("[data-fold-zone] main")).toHaveCount(1);
     await expect(page.locator("[data-draft-fold-controls]")).toHaveCount(0);
@@ -70,7 +88,7 @@ test("основной и drafts маршруты используют одну 
   }
 });
 
-test("настройки parallax меняют максимум отклонения и радиус активации", async ({
+test("настройки parallax меняют отклонение, радиус и плавность возврата", async ({
   page,
 }) => {
   await page.goto("/");
@@ -81,15 +99,38 @@ test("настройки parallax меняют максимум отклонен
   const activationRadius = page.locator(
     '[name="preclickParallaxActivationRadiusPx"]',
   );
+  const returnDuration = page.locator(
+    '[name="preclickParallaxReturnDurationMs"]',
+  );
+  const returnEasing = page.locator(
+    '[name="preclickParallaxReturnEasing"]',
+  );
   await expect(maxOffset).toHaveValue("12");
   await expect(maxOffset).toHaveAttribute("min", "0");
   await expect(maxOffset).toHaveAttribute("max", "100");
   await expect(activationRadius).toHaveValue("480");
   await expect(activationRadius).toHaveAttribute("min", "0");
   await expect(activationRadius).toHaveAttribute("max", "2000");
+  await expect(returnDuration).toHaveValue("400");
+  await expect(returnDuration).toHaveAttribute("min", "0");
+  await expect(returnDuration).toHaveAttribute("max", "2000");
+  await expect(returnEasing).toHaveValue(
+    "cubic-bezier(0.22, 1, 0.36, 1)",
+  );
+  await expect(
+    page.locator(
+      '[data-cubic-bezier-control]:has([name="preclickParallaxReturnEasing"]) .bezier-graph',
+    ),
+  ).toHaveCount(1);
 
   await setSettingValue(page, "preclickParallaxMaxOffsetPx", 36);
   await setSettingValue(page, "preclickParallaxActivationRadiusPx", 720);
+  await setSettingValue(page, "preclickParallaxReturnDurationMs", 650);
+  await setSettingValue(
+    page,
+    "preclickParallaxReturnEasing",
+    "cubic-bezier(0.25, 0.1, 0.25, 1)",
+  );
   await expect
     .poll(() =>
       page.evaluate(() => ({
@@ -98,15 +139,27 @@ test("настройки parallax меняют максимум отклонен
         activationRadius:
           window.__sisyphusTestApi.params
             .preclickParallaxActivationRadiusPx,
+        returnDuration:
+          window.__sisyphusTestApi.params.preclickParallaxReturnDurationMs,
+        returnEasing:
+          window.__sisyphusTestApi.params.preclickParallaxReturnEasing,
       })),
     )
-    .toEqual({ maxOffset: 36, activationRadius: 720 });
+    .toEqual({
+      maxOffset: 36,
+      activationRadius: 720,
+      returnDuration: 650,
+      returnEasing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
+    });
   await expect(
     page.locator('[data-output="preclickParallaxMaxOffsetPx"]'),
   ).toHaveText("36px");
   await expect(
     page.locator('[data-output="preclickParallaxActivationRadiusPx"]'),
   ).toHaveText("720px");
+  await expect(
+    page.locator('[data-output="preclickParallaxReturnDurationMs"]'),
+  ).toHaveText("650мс");
 });
 
 test("препятствие Окна имеет одинаковый UI и сообщает о popup-блокировке", async ({
@@ -530,7 +583,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v24") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v25") || "{}",
         );
         return [
           stored.glowOptimizationMode,
