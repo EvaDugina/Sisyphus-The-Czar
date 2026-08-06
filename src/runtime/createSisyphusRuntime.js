@@ -306,9 +306,9 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
     preclickParallaxMaxOffsetPx:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetPx,
-    preclickParallaxActivationRadiusPx:
+    preclickParallaxActivationRadiusVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS
-        .preclickParallaxActivationRadiusPx,
+        .preclickParallaxActivationRadiusVw,
     preclickParallaxReturnDurationMs:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS
         .preclickParallaxReturnDurationMs,
@@ -2237,7 +2237,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (
       shouldHandleChange(
         "preclickParallaxMaxOffsetPx",
-        "preclickParallaxActivationRadiusPx",
+        "preclickParallaxActivationRadiusVw",
         "preclickParallaxReturnDurationMs",
         "preclickParallaxReturnEasing",
       )
@@ -2660,7 +2660,8 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.pointerX = Number(event.clientX);
     preclickRockGuidance.pointerY = Number(event.clientY);
     showHandCursor(event);
-    const activationRadius = params.preclickParallaxActivationRadiusPx;
+    const activationRadius =
+      (params.preclickParallaxActivationRadiusVw / 100) * window.innerWidth;
     const maxOffset = params.preclickParallaxMaxOffsetPx;
     if (activationRadius <= 0 || maxOffset <= 0) {
       resetPreclickRockParallax();
@@ -3685,7 +3686,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 26,
+      settingsSchemaVersion: 27,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;

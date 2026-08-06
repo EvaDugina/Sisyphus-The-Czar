@@ -12,8 +12,9 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 22;
+  const ROOM_SETTINGS_VERSION = 23;
   const MAX_HEIGHT_GATES = 10;
+  const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -71,8 +72,8 @@
     windowObstacleWidthPx: [100, 1920],
     windowObstacleHeightPx: [100, 1080],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
-    preclickParallaxMaxOffsetPx: [0, 100],
-    preclickParallaxActivationRadiusPx: [0, 2000],
+    preclickParallaxMaxOffsetPx: [0, 1000],
+    preclickParallaxActivationRadiusVw: [0, 200],
     preclickParallaxReturnDurationMs: [0, 2000],
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
@@ -131,7 +132,7 @@
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickParallaxMaxOffsetPx: 12,
-    preclickParallaxActivationRadiusPx: 1000,
+    preclickParallaxActivationRadiusVw: 50,
     preclickParallaxReturnDurationMs: 400,
     preclickParallaxReturnEasing: DEFAULT_PRECLICK_PARALLAX_RETURN_EASING,
     handWidthVw: 14.375,
@@ -416,7 +417,7 @@
     const [parallaxOffsetMin, parallaxOffsetMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetPx;
     const [parallaxRadiusMin, parallaxRadiusMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusPx;
+      ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusVw;
     const [parallaxReturnDurationMin, parallaxReturnDurationMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxReturnDurationMs;
     const [drizzleVolumeMin, drizzleVolumeMax] =
@@ -656,10 +657,18 @@
         parallaxOffsetMin,
         parallaxOffsetMax
       ),
-      preclickParallaxActivationRadiusPx: finiteSetting(
-        source,
+      preclickParallaxActivationRadiusVw: finiteSetting(
+        !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
+          Number.isFinite(Number(source.preclickParallaxActivationRadiusPx))
+          ? {
+              ...source,
+              preclickParallaxActivationRadiusVw:
+                Number(source.preclickParallaxActivationRadiusPx) /
+                PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
+            }
+          : source,
         fallbackSource,
-        "preclickParallaxActivationRadiusPx",
+        "preclickParallaxActivationRadiusVw",
         parallaxRadiusMin,
         parallaxRadiusMax
       ),
@@ -960,14 +969,18 @@
       });
     }
     if (finiteNumber(version, 1) < 20) {
-      [
-        "preclickParallaxMaxOffsetPx",
-        "preclickParallaxActivationRadiusPx",
-      ].forEach((key) => {
+      ["preclickParallaxMaxOffsetPx"].forEach((key) => {
         if (!Object.hasOwn(source, key)) {
           source[key] = DEFAULT_ROOM_SETTINGS[key];
         }
       });
+      if (
+        !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
+        !Object.hasOwn(source, "preclickParallaxActivationRadiusPx")
+      ) {
+        source.preclickParallaxActivationRadiusVw =
+          DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw;
+      }
     }
     if (finiteNumber(version, 1) < 21) {
       [
@@ -980,14 +993,25 @@
       });
     }
     if (finiteNumber(version, 1) < 22) {
-      const previousRadius = Number(source.preclickParallaxActivationRadiusPx);
       if (
-        !Object.hasOwn(source, "preclickParallaxActivationRadiusPx") ||
-        previousRadius === 480
+        !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
+        !Object.hasOwn(source, "preclickParallaxActivationRadiusPx")
       ) {
-        source.preclickParallaxActivationRadiusPx =
-          DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusPx;
+        source.preclickParallaxActivationRadiusPx = 1000;
       }
+    }
+    if (finiteNumber(version, 1) < 23) {
+      if (!Object.hasOwn(source, "preclickParallaxActivationRadiusVw")) {
+        const previousRadiusPx = Number(
+          source.preclickParallaxActivationRadiusPx
+        );
+        source.preclickParallaxActivationRadiusVw = Number.isFinite(
+          previousRadiusPx
+        )
+          ? previousRadiusPx / PRECLICK_PARALLAX_RADIUS_PX_PER_VW
+          : DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw;
+      }
+      delete source.preclickParallaxActivationRadiusPx;
     }
     return source;
   }
@@ -1005,6 +1029,7 @@
     SCENE_MOTION_REFERENCE_SCREENS,
     SCENE_MOTION_COMPENSATION_BOOST,
     MAX_HEIGHT_GATES,
+    PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,

@@ -95,7 +95,6 @@ test("flag включает parallax до первого клика и пост�
   await expect(rock).toHaveClass(/is-preclick-parallax/);
   await expect(hand).toHaveClass(/is-visible/);
 
-  const viewport = page.viewportSize();
   await page.mouse.move(24, 24);
   await expect.poll(() => parallaxX(page)).toBe(0);
   await expect(hand).toHaveClass(/is-visible/);
@@ -123,7 +122,7 @@ test("flag включает parallax до первого клика и пост�
 
   await scrollToRock(page);
   const center = await rockCenter(page);
-  const halfRadius = 500;
+  const halfRadius = 600;
   await page.mouse.move(center.x - halfRadius, center.y);
   await expect.poll(() => parallaxX(page)).toBeCloseTo(-6, 3);
   const sizeAtLeft = await rockSize(page);
@@ -140,10 +139,9 @@ test("flag включает parallax до первого клика и пост�
     })
     .toEqual({ widthDelta: 0, heightDelta: 0 });
 
-  const outsideX = center.x + 1100 < viewport.width
-    ? center.x + 1100
-    : center.x - 1100;
-  await page.mouse.move(outsideX, center.y);
+  const outsideX = 24;
+  const outsideY = 24;
+  await page.mouse.move(outsideX, outsideY);
   expect(Math.abs(await parallaxX(page))).toBeGreaterThan(0);
   await page.waitForTimeout(50);
   const returningOffset = Math.abs(await parallaxX(page));
@@ -151,7 +149,7 @@ test("flag включает parallax до первого клика и пост�
   expect(returningOffset).toBeLessThan(6);
   const handOutside = await handPosition(page);
   expect(handOutside.x).toBeCloseTo(outsideX, 3);
-  expect(handOutside.y).toBeCloseTo(center.y, 3);
+  expect(handOutside.y).toBeCloseTo(outsideY, 3);
   await expect.poll(async () => Math.abs(await parallaxX(page)), {
     timeout: 1000,
   }).toBeCloseTo(0, 3);

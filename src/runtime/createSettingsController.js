@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 26;
+const SETTINGS_SCHEMA_VERSION = 27;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -376,6 +376,36 @@ export function createSettingsController(options) {
     return migrated;
   }
 
+  function migrateStoredParallaxRadiusSettings(settings) {
+    if (
+      !settings ||
+      typeof settings !== "object" ||
+      Object.hasOwn(settings, "preclickParallaxActivationRadiusVw")
+    ) {
+      return settings;
+    }
+    const radiusPx = Number(settings.preclickParallaxActivationRadiusPx);
+    if (!Number.isFinite(radiusPx)) {
+      return settings;
+    }
+    const [minRadiusVw, maxRadiusVw] =
+      SharedRoomSettings.ROOM_SETTINGS_LIMITS
+        .preclickParallaxActivationRadiusVw;
+    const migrated = {
+      ...settings,
+      preclickParallaxActivationRadiusVw: Math.min(
+        maxRadiusVw,
+        Math.max(
+          minRadiusVw,
+          radiusPx /
+            SharedRoomSettings.PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
+        ),
+      ),
+    };
+    delete migrated.preclickParallaxActivationRadiusPx;
+    return migrated;
+  }
+
   function loadSettings() {
     let stored = null;
     let migratedLegacySettings = false;
@@ -396,6 +426,7 @@ export function createSettingsController(options) {
     if (!stored || typeof stored !== "object") {
       return false;
     }
+    stored = migrateStoredParallaxRadiusSettings(stored);
 
     const legacyKeyVersion = settingsStorageKeyVersion(legacyKey);
     const migratedPreV7Settings =
@@ -438,14 +469,6 @@ export function createSettingsController(options) {
     }
     if (migratedLegacySettings) {
       stored = { ...stored };
-      if (
-        legacyKeyVersion < 26 &&
-        Number(stored.preclickParallaxActivationRadiusPx) === 480
-      ) {
-        stored.preclickParallaxActivationRadiusPx =
-          SharedRoomSettings.DEFAULT_ROOM_SETTINGS
-            .preclickParallaxActivationRadiusPx;
-      }
       if (legacyKeyVersion < 20) {
         delete stored.trailEnabled;
       }
@@ -475,9 +498,11 @@ export function createSettingsController(options) {
     }
     const settings =
       entry.settings && typeof entry.settings === "object"
-        ? migrateStoredInertiaSettings(
-            entry.settings,
-            Number(entry.settingsSchemaVersion) || 0,
+        ? migrateStoredParallaxRadiusSettings(
+            migrateStoredInertiaSettings(
+              entry.settings,
+              Number(entry.settingsSchemaVersion) || 0,
+            ),
           )
         : null;
     if (!settings) {
@@ -1212,8 +1237,8 @@ export function createSettingsController(options) {
       rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
       preclickParallaxMaxOffsetPx:
         `${params.preclickParallaxMaxOffsetPx.toFixed(0)}px`,
-      preclickParallaxActivationRadiusPx:
-        `${params.preclickParallaxActivationRadiusPx.toFixed(0)}px`,
+      preclickParallaxActivationRadiusVw:
+        `${params.preclickParallaxActivationRadiusVw.toFixed(0)}vw`,
       preclickParallaxReturnDurationMs:
         `${params.preclickParallaxReturnDurationMs.toFixed(0)}мс`,
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,

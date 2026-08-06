@@ -124,10 +124,10 @@ test("настройки parallax меняют отклонение, радиу�
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v26");
+    localStorage.removeItem("sisyphus-czar-settings-v27");
     localStorage.setItem(
-      "sisyphus-czar-settings-v25",
-      JSON.stringify({ preclickParallaxActivationRadiusPx: 480 }),
+      "sisyphus-czar-settings-v26",
+      JSON.stringify({ preclickParallaxActivationRadiusPx: 1000 }),
     );
   });
   await page.goto("/");
@@ -136,7 +136,7 @@ test("настройки parallax меняют отклонение, радиу�
 
   const maxOffset = page.locator('[name="preclickParallaxMaxOffsetPx"]');
   const activationRadius = page.locator(
-    '[name="preclickParallaxActivationRadiusPx"]',
+    '[name="preclickParallaxActivationRadiusVw"]',
   );
   const returnDuration = page.locator(
     '[name="preclickParallaxReturnDurationMs"]',
@@ -146,10 +146,10 @@ test("настройки parallax меняют отклонение, радиу�
   );
   await expect(maxOffset).toHaveValue("12");
   await expect(maxOffset).toHaveAttribute("min", "0");
-  await expect(maxOffset).toHaveAttribute("max", "100");
-  await expect(activationRadius).toHaveValue("1000");
+  await expect(maxOffset).toHaveAttribute("max", "1000");
+  await expect(activationRadius).toHaveValue("50");
   await expect(activationRadius).toHaveAttribute("min", "0");
-  await expect(activationRadius).toHaveAttribute("max", "2000");
+  await expect(activationRadius).toHaveAttribute("max", "200");
   await expect(returnDuration).toHaveValue("400");
   await expect(returnDuration).toHaveAttribute("min", "0");
   await expect(returnDuration).toHaveAttribute("max", "2000");
@@ -163,7 +163,7 @@ test("настройки parallax меняют отклонение, радиу�
   ).toHaveCount(1);
 
   await setSettingValue(page, "preclickParallaxMaxOffsetPx", 36);
-  await setSettingValue(page, "preclickParallaxActivationRadiusPx", 1400);
+  await setSettingValue(page, "preclickParallaxActivationRadiusVw", 70);
   await setSettingValue(page, "preclickParallaxReturnDurationMs", 650);
   await setSettingValue(
     page,
@@ -177,7 +177,7 @@ test("настройки parallax меняют отклонение, радиу�
           window.__sisyphusTestApi.params.preclickParallaxMaxOffsetPx,
         activationRadius:
           window.__sisyphusTestApi.params
-            .preclickParallaxActivationRadiusPx,
+            .preclickParallaxActivationRadiusVw,
         returnDuration:
           window.__sisyphusTestApi.params.preclickParallaxReturnDurationMs,
         returnEasing:
@@ -186,7 +186,7 @@ test("настройки parallax меняют отклонение, радиу�
     )
     .toEqual({
       maxOffset: 36,
-      activationRadius: 1400,
+      activationRadius: 70,
       returnDuration: 650,
       returnEasing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
     });
@@ -194,8 +194,8 @@ test("настройки parallax меняют отклонение, радиу�
     page.locator('[data-output="preclickParallaxMaxOffsetPx"]'),
   ).toHaveText("36px");
   await expect(
-    page.locator('[data-output="preclickParallaxActivationRadiusPx"]'),
-  ).toHaveText("1400px");
+    page.locator('[data-output="preclickParallaxActivationRadiusVw"]'),
+  ).toHaveText("70vw");
   await expect(
     page.locator('[data-output="preclickParallaxReturnDurationMs"]'),
   ).toHaveText("650мс");
@@ -622,7 +622,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v26") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v27") || "{}",
         );
         return [
           stored.glowOptimizationMode,

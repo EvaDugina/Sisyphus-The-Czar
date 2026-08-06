@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v26";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v27";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v26",
   "sisyphus-czar-settings-v25",
   "sisyphus-czar-settings-v24",
   "sisyphus-czar-settings-v23",
@@ -767,19 +768,19 @@ export const SETTINGS_GROUPS = [
         hint: "Максимальное радиальное смещение камня вслед за указателем до первого клика. Ноль отключает движение parallax.",
       },
       {
-        name: "preclickParallaxActivationRadiusPx",
-        label: "Радиус parallax, px",
+        name: "preclickParallaxActivationRadiusVw",
+        label: "Радиус parallax, vw",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxActivationRadiusPx[0],
+          .preclickParallaxActivationRadiusVw[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxActivationRadiusPx[1],
-        step: 10,
+          .preclickParallaxActivationRadiusVw[1],
+        step: 1,
         defaultValue:
-          DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusPx,
+          DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw,
         output:
-          `${DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusPx}px`,
-        hint: "Радиус круглой активной зоны вокруг визуального центра камня. За пределами зоны parallax плавно возвращает камень к исходной позиции; ноль отключает движение.",
+          `${DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw}vw`,
+        hint: "Радиус круглой активной зоны вокруг визуального центра камня в процентах ширины viewport. За пределами зоны parallax плавно возвращает камень к исходной позиции; ноль отключает движение.",
       },
       {
         name: "preclickParallaxReturnDurationMs",
