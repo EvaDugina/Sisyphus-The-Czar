@@ -765,7 +765,7 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetPx,
         output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetPx}px`,
-        hint: "Максимальное радиальное смещение камня вслед за указателем до первого клика. Ноль отключает движение parallax.",
+        hint: "Максимальное радиальное смещение камня против направления указателя до первого клика. Ноль отключает движение parallax.",
       },
       {
         name: "preclickParallaxActivationRadiusVw",

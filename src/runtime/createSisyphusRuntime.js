@@ -2690,7 +2690,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const offsetScale = maxOffset / activationRadius;
+    const offsetScale = -maxOffset / activationRadius;
     setPreclickRockParallaxOffset(
       deltaX * offsetScale,
       deltaY * offsetScale,

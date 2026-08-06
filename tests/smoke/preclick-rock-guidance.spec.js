@@ -124,11 +124,11 @@ test("flag включает parallax до первого клика и пост�
   const center = await rockCenter(page);
   const halfRadius = 600;
   await page.mouse.move(center.x - halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(-6, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(6, 3);
   const sizeAtLeft = await rockSize(page);
 
   await page.mouse.move(center.x + halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(6, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(-6, 3);
   await expect
     .poll(async () => {
       const sizeAtRight = await rockSize(page);
@@ -155,7 +155,7 @@ test("flag включает parallax до первого клика и пост�
   }).toBeCloseTo(0, 3);
 
   await page.mouse.move(center.x + halfRadius, center.y);
-  await expect.poll(() => parallaxX(page)).toBeCloseTo(6, 3);
+  await expect.poll(() => parallaxX(page)).toBeCloseTo(-6, 3);
   await page.screenshot({
     path: testInfo.outputPath("before-first-click.png"),
   });
