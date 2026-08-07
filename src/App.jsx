@@ -14,7 +14,6 @@ export function App() {
     <>
       <Toolbar
         settingsLinkRef={settings.settingsLinkRef}
-        sessionRestartButtonRef={realtime.sessionRestartButtonRef}
         sessionStatusRef={realtime.sessionStatusRef}
         settingsUiEnabled={settingsUiEnabled}
         settingsAvailable={settingsAvailable}

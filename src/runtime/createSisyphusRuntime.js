@@ -85,6 +85,16 @@ const THEME_BACKGROUND_SETTING_KEYS = [
   "darkBackgroundLowColor",
 ];
 
+function isReloadNavigation() {
+  const navigationEntry = window.performance
+    ?.getEntriesByType?.("navigation")
+    ?.at(0);
+  if (navigationEntry) {
+    return navigationEntry.type === "reload";
+  }
+  return window.performance?.navigation?.type === 1;
+}
+
 const chainAudioLoaders = import.meta.glob(
   "../../assets/audio/Кандалы_*.mp3",
   {
@@ -182,6 +192,7 @@ export function createSisyphusRuntime(elements = {}) {
   const listenerDisposers = [];
   let disposed = false;
   const productionRuntime = import.meta.env.PROD;
+  let restartOnInitialConnection = isReloadNavigation();
 
   function listen(target, type, listener, options) {
     if (!target || typeof target.addEventListener !== "function") {
@@ -845,9 +856,7 @@ export function createSisyphusRuntime(elements = {}) {
     params,
     readControls,
     resetTrail,
-    restartExperience,
     secondsOutput,
-    sessionRestartButton: elements.sessionRestartButton,
     settingValueToControlValue,
     settingsPanel: elements.settingsPanel,
     stageControlChange,
@@ -4409,6 +4418,10 @@ export function createSisyphusRuntime(elements = {}) {
       }
       collab.connected = true;
       collab.reconnectAttempt = 0;
+      if (restartOnInitialConnection) {
+        restartOnInitialConnection = false;
+        restartExperience();
+      }
       collab.pingTimerId = window.setInterval(() => {
         sendShared("ping", { clientTime: Date.now() });
       }, 20_000);
@@ -4753,46 +4766,6 @@ export function createSisyphusRuntime(elements = {}) {
 
     startSharedRenderLoop();
     updateSessionStatus();
-  }
-
-  function leaveSharedSession(event) {
-    if (
-      event?.persisted ||
-      collab.leaving ||
-      !collab.enabled ||
-      !collab.sessionId ||
-      !collab.leaveToken ||
-      window.location.protocol === "file:"
-    ) {
-      return;
-    }
-
-    collab.leaving = true;
-    clearSharedConnectionTimers();
-    const endpoint = appUrl(
-      `api/sessions/${encodeURIComponent(collab.sessionId)}/leave`
-    );
-    const body = JSON.stringify({
-      clientId: collab.clientId,
-      leaveToken: collab.leaveToken,
-    });
-    let queued;
-    try {
-      queued = navigator.sendBeacon(
-        endpoint,
-        new Blob([body], { type: "application/json" })
-      );
-    } catch {
-      queued = false;
-    }
-    if (!queued) {
-      fetch(endpoint, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body,
-        keepalive: true,
-      }).catch(() => {});
-    }
   }
 
   function applySharedFrame(snapshot) {
@@ -6218,7 +6191,6 @@ export function createSisyphusRuntime(elements = {}) {
   listen(window, "pointerup", releaseAlwaysVisibleHand);
   listen(window, "pointercancel", releaseAlwaysVisibleHand);
   listen(window, "blur", cancelDragAndCursor);
-  listen(window, "pagehide", leaveSharedSession);
   listen(
     window,
     "scroll",

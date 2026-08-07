@@ -7,7 +7,6 @@ import { WindowObstaclePermissionControl } from "./WindowObstaclePermissionContr
 
 export function SettingsPanel({
   panelRef,
-  restartButtonRef,
   sessionStatusRef,
   isOpen,
   settingsAvailable,
@@ -98,15 +97,6 @@ export function SettingsPanel({
         >
           Локальная сессия
         </div>
-        <button
-          ref={restartButtonRef}
-          className="session-restart"
-          type="button"
-          data-testid="restart-session"
-          data-hint="Возвращает камень, отпечаток и траекторию в начало текущей комнаты."
-        >
-          Начать сначала
-        </button>
       </section>
 
       {SETTINGS_GROUPS.map((group) => (

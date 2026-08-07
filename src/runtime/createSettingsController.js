@@ -52,7 +52,6 @@ export function createSettingsController(options) {
     params,
     readControls,
     resetTrail,
-    restartExperience,
     secondsOutput,
     settingValueToControlValue,
     stageControlChange = () => {},
@@ -81,8 +80,6 @@ export function createSettingsController(options) {
   const productionPresetStatus =
     options.productionPresetStatus ||
     document.querySelector(".settings-production-status");
-  const sessionRestartButton =
-    options.sessionRestartButton || document.querySelector(".session-restart");
   const sharedRoomSettingKeys = SharedRoomSettings.ROOM_SETTINGS_KEYS;
   const settingsVersions = {
     entries: [],
@@ -1655,7 +1652,6 @@ export function createSettingsController(options) {
       event.returnValue = "";
     });
     listen(settingsPanel?.querySelector(".trail-clear"), "click", resetTrail);
-    listen(sessionRestartButton, "click", restartExperience);
     listen(settingsPanel, "pointerover", (event) => {
       const target = event.target.closest("[data-hint]");
       if (target) {

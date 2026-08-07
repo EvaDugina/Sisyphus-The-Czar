@@ -1242,15 +1242,22 @@ test("явный выход последнего участника удаляе
   assert.equal(manager.sessions.has(session.id), false);
 });
 
-test("reconnect в grace-период сохраняет состояние и отменяет удаление", () => {
+test("single-client reconnect в grace-период сохраняет состояние и настройки", () => {
   const { clock, manager } = setup({ emptyGraceMs: 1000 });
-  const session = manager.createSession({
-    state: { phase: Physics.PHASES.PLAY, x: 420, y: 800, vx: 25, vy: -30 },
-    physics: { gravity: 7 },
-    imprint: { x: 400, y: 700 },
-  });
+  const session = manager.createSession(
+    {
+      state: { phase: Physics.PHASES.PLAY, x: 420, y: 800, vx: 25, vy: -30 },
+      physics: { gravity: 7 },
+      roomSettings: { cameraFollowLerp: 0.25 },
+      imprint: { x: 400, y: 700 },
+    },
+    { singleClient: true },
+  );
   const first = connect(manager, session, "client-reload-001");
-  manager.leaveClient(session, first.client.id, first.client.leaveToken);
+  manager.disconnectClient(session, first.client.id, first.socket);
+
+  assert.equal(manager.sessions.has(session.id), true);
+  assert.equal(session.emptyDeleteAt, 1000);
 
   clock.value = 500;
   const reconnected = connect(manager, session, "client-reload-001");
@@ -1259,6 +1266,7 @@ test("reconnect в grace-период сохраняет состояние и �
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.x, 420);
   assert.equal(session.physics.gravity, 7);
+  assert.equal(session.roomSettings.cameraFollowLerp, 0.25);
   assert.deepEqual(session.imprint, Physics.createSummitImprint({ y: 700 }));
   assert.equal(reconnected.client.id, "client-reload-001");
 

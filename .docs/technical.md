@@ -151,7 +151,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - Session store: `/app/data/sessions.json`, atomic temporary file + rename.
 - Debug templates: `config/settings-templates.json` → `/app/repository-config/settings-templates.json`, максимум 50 записей.
 - Production preset: `config/production-preset.json` → `/app/repository-config/production-preset.json`; файл создаётся при явном выборе сохранённой версии и синхронизируется через Git.
-- Личная single-client-сессия удаляется при окончательном disconnect/leave; persistent root trail hub сохраняется.
+- После disconnect последнего клиента личная single-client-сессия сохраняется на grace-период и удаляется, только если клиент не переподключился; явный `leave` завершает её сразу. Persistent root trail hub сохраняется.
 
 ## Безопасность и производительность
 
@@ -178,7 +178,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - `npm run build` — production Vite bundle.
 - `npm test` — unit и integration.
 - Production smoke проверяет разные session ID двух браузеров, отсутствие взаимного управления и default-видимость руки.
-- Draft smoke проверяет идентичность основной Fold-сцены и настроек на `/` и `/drafts/`, диапазон максимума parallax в `vw`, режим постоянной/hover-руки, повторное включение parallax через UI restart без сброса настроек, camera lerp, obstacle defaults, popup-blocked UI, сохранение glow-профиля, select-зависимости и безопасную структуру зеркала.
+- Draft smoke проверяет идентичность основной Fold-сцены и настроек на `/` и `/drafts/`, диапазон максимума parallax в `vw`, режим постоянной/hover-руки, повторное включение parallax двумя последовательными reload без сброса настроек, отсутствие пользовательской кнопки restart, camera lerp, obstacle defaults, popup-blocked UI, сохранение glow-профиля, select-зависимости и безопасную структуру зеркала.
 - Dev smoke проверяет миграцию legacy-настроек в v31, включая перевод parallax-радиуса и максимума из px в vw, defaults динамического перехода, default-off для инверсии, default-on для постоянной руки, лимит glow-точек, отсутствие проходов при `glow=0` и копирование Fold только при новой canvas revision.
 - Отдельный preclick-guidance smoke является постоянным regression-тестом и проверяет статичную камеру до активации, руку сразу после загрузки, рост смещения при приближении к центру, обычное радиальное направление, неизменность размеров камня, две временные bezier-оси, уменьшение max только при активном движении, статичную паузу, сброс при выходе, отключение parallax первым кликом и движение камеры вслед за drag камня.
 - Unit-тест контроллера использует виртуальные timeout/interval и fake popup: проверяет отсутствие дублирующего schedule, одновременные окна, независимый click/2s close, выход/возврат в диапазон и паузу при блокировке.

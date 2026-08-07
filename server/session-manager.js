@@ -1159,12 +1159,7 @@ class SessionManager {
     this.removeHolder(session, clientId, { notify: false, reason: "disconnect" });
     this.touch(session);
     if (this.connectedCount(session) === 0) {
-      if (!session.singleClient || this.isPersistentSession(session)) {
-        this.scheduleEmptyCleanup(session);
-      } else {
-        this.destroySession(session, 1000, "session_disconnected");
-        return;
-      }
+      this.scheduleEmptyCleanup(session);
     }
     this.broadcastPresence(session);
     this.logger("client_disconnected", {

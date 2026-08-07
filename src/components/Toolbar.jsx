@@ -1,6 +1,5 @@
 export function Toolbar({
   settingsLinkRef,
-  sessionRestartButtonRef,
   sessionStatusRef,
   settingsUiEnabled = true,
   settingsAvailable,
@@ -33,14 +32,6 @@ export function Toolbar({
         >
           Локальная сессия
         </div>
-        <button
-          ref={sessionRestartButtonRef}
-          className="session-restart"
-          type="button"
-          data-testid="restart-session"
-        >
-          Начать сначала
-        </button>
       </section>
     </>
   );

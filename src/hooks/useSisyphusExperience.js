@@ -6,7 +6,6 @@ export function useSisyphusExperience() {
   const settings = useSettings();
   const realtime = {
     sessionStatusRef: useRef(null),
-    sessionRestartButtonRef: useRef(null),
   };
   const scene = {
     worldRef: useRef(null),
@@ -32,10 +31,7 @@ export function useSisyphusExperience() {
   const { settingsRef: foldSettingsRef } = fold;
 
   const { settingsLinkRef } = settings;
-  const {
-    sessionRestartButtonRef,
-    sessionStatusRef,
-  } = realtime;
+  const { sessionStatusRef } = realtime;
   const {
     handCursorRef,
     heightGateStatusRef,
@@ -69,7 +65,6 @@ export function useSisyphusExperience() {
       rainFallbackCanvas: rainFallbackCanvasRef.current,
       hint: hintRef.current,
       sessionStatus: sessionStatusRef.current,
-      sessionRestartButton: sessionRestartButtonRef.current,
       foldSettingsRef,
     });
 
@@ -85,7 +80,6 @@ export function useSisyphusExperience() {
     remoteCursorLayerRef,
     rockImprintRef,
     rockRef,
-    sessionRestartButtonRef,
     sessionStatusRef,
     settingsLinkRef,
     trailCanvasRef,

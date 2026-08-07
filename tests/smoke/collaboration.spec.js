@@ -1858,9 +1858,8 @@ test("вход на корень открывает рабочую личную 
   await page.reload();
   await expect(page).toHaveURL(urlBeforeReload);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
-  await expect(page.locator("body")).not.toHaveClass(/state-intro/);
-  await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
-  await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
+  await expectReadyAtBottom(page);
+  await expect(page.getByTestId("restart-session")).toHaveCount(0);
 
   await context.close();
 });
@@ -2956,8 +2955,9 @@ test.skip("legacy: два браузера больше не объединяю�
   await expect(firstRain).not.toHaveClass(/is-rain-visible/, { timeout: 2000 });
   await expect(secondRain).not.toHaveClass(/is-rain-visible/, { timeout: 2000 });
 
-  await first.locator(".settings-toggle").click();
-  await first.getByTestId("restart-session").click();
+  await first.reload();
+  await expect(first.getByTestId("session-status")).toContainText("В сессии");
+  await expect(first.getByTestId("restart-session")).toHaveCount(0);
   await expect
     .poll(() =>
       first.evaluate(

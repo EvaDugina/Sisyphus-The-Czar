@@ -374,7 +374,7 @@ test("задержка parallax отменяется при выходе и пр
     .toBeGreaterThan(1);
 });
 
-test("Начать сначала повторно включает parallax без сброса настроек", async ({
+test("reload повторно включает parallax без сброса настроек", async ({
   page,
 }) => {
   const expectedSettings = {
@@ -386,21 +386,45 @@ test("Начать сначала повторно включает parallax б�
     preclickParallaxStartDelayMs: 180,
     rockGrabRadiusVh: 4,
   };
-  await page.addInitScript((settings) => {
-    localStorage.setItem(
-      "sisyphus-czar-settings-v31",
-      JSON.stringify(settings),
-    );
-  }, expectedSettings);
   await page.goto("/");
   await waitForFoldReady(page);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await page.locator(".settings-toggle").click();
+  await expect(page).toHaveURL(/\/settings\//);
+  await expect(page.getByTestId("session-status")).toContainText(
+    "настройки комнаты общие",
+  );
+  await expect(page.getByTestId("restart-session")).toHaveCount(0);
+  for (const [name, value] of Object.entries(expectedSettings)) {
+    await setSettingValue(page, name, value);
+  }
+  await page.locator(".settings-room-save").click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Сохранено для всех участников",
+  );
+  await page.locator(".settings-page__back").click();
+  await waitForFoldReady(page);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
 
   const rock = page.locator("#root > .world > .rock");
   const body = page.locator("body");
   const html = page.locator("html");
-  const panel = page.locator(".settings-panel");
-  const toggle = page.locator(".settings-toggle");
-  const restartButton = page.getByTestId("restart-session");
+  await expect(page.getByTestId("restart-session")).toHaveCount(0);
+  const readCurrentSettings = () =>
+    page.evaluate(() => {
+      const { params } = window.__sisyphusTestApi;
+      return {
+        cameraFollowLerp: params.cameraFollowLerp,
+        handAlwaysVisible: params.handAlwaysVisible,
+        preclickParallaxActivationRadiusVw:
+          params.preclickParallaxActivationRadiusVw,
+        preclickParallaxInverted: params.preclickParallaxInverted,
+        preclickParallaxMaxOffsetVw: params.preclickParallaxMaxOffsetVw,
+        preclickParallaxStartDelayMs: params.preclickParallaxStartDelayMs,
+        rockGrabRadiusVh: params.rockGrabRadiusVh,
+      };
+    });
+  await expect.poll(readCurrentSettings).toEqual(expectedSettings);
 
   const grabRock = async () => {
     const point = await rock.evaluate((element) => {
@@ -416,11 +440,9 @@ test("Начать сначала повторно включает parallax б�
     await page.mouse.up();
   };
 
-  const restartFromSettings = async () => {
-    if (!(await panel.evaluate((element) => element.classList.contains("is-open")))) {
-      await toggle.click();
-    }
-    await restartButton.click();
+  const restartWithReload = async () => {
+    await page.reload();
+    await waitForFoldReady(page);
     await expect(body).toHaveClass(/preclick-rock-guidance/);
     await expect(body).toHaveClass(/is-manual-scroll-disabled/);
     await expect(html).toHaveClass(/is-manual-scroll-disabled/);
@@ -458,9 +480,6 @@ test("Начать сначала повторно включает parallax б�
           suspended: true,
         },
       });
-    if (await panel.evaluate((element) => element.classList.contains("is-open"))) {
-      await toggle.click();
-    }
   };
 
   const expectParallaxAfterDelay = async () => {
@@ -491,7 +510,7 @@ test("Начать сначала повторно включает parallax б�
   };
 
   await grabRock();
-  await restartFromSettings();
+  await restartWithReload();
   const scrollBeforeWheel = await page.evaluate(() => scrollY);
   await page.mouse.wheel(0, -600);
   await page.waitForTimeout(50);
@@ -499,7 +518,7 @@ test("Начать сначала повторно включает parallax б�
   await expectParallaxAfterDelay();
 
   await grabRock();
-  await restartFromSettings();
+  await restartWithReload();
   await expectParallaxAfterDelay();
 });
 

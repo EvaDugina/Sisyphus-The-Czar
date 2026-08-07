@@ -5,14 +5,12 @@ import { createSettingsPageRuntime } from "./runtime/createSettingsPageRuntime.j
 export function SettingsPage() {
   const panelRef = useRef(null);
   const sessionStatusRef = useRef(null);
-  const restartButtonRef = useRef(null);
   const hintRef = useRef(null);
 
   useEffect(() => {
     document.body.classList.add("settings-page", "theme-dark");
     const runtime = createSettingsPageRuntime({
       hint: hintRef.current,
-      sessionRestartButton: restartButtonRef.current,
       sessionStatus: sessionStatusRef.current,
       settingsPanel: panelRef.current,
     });
@@ -40,7 +38,6 @@ export function SettingsPage() {
         </p>
         <SettingsPanel
           panelRef={panelRef}
-          restartButtonRef={restartButtonRef}
           sessionStatusRef={sessionStatusRef}
           isOpen
           settingsAvailable

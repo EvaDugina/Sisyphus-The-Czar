@@ -125,7 +125,7 @@ async function startService(context, options = {}) {
   };
 }
 
-test("legacy API сохраняет уникальные single-client комнаты", async (context) => {
+test("single-client комната переживает disconnect для reload", async (context) => {
   const { service, base, wsBase } = await startService(context);
   const firstCreated = await createSession(base, "integration-client-a001");
   const secondCreated = await createSession(base, "integration-client-b001");
@@ -165,15 +165,27 @@ test("legacy API сохраняет уникальные single-client комн�
 
   first.socket.close();
   await first.closed;
-  await assert.doesNotReject(async () => {
-    for (let attempt = 0; attempt < 20; attempt += 1) {
-      if (!service.manager.sessions.has(firstCreated.sessionId)) {
-        return;
-      }
-      await new Promise((resolve) => setTimeout(resolve, 5));
-    }
-    assert.fail("single-client session was not removed after disconnect");
+  await waitUntil(() => {
+    const session = service.manager.sessions.get(firstCreated.sessionId);
+    return Boolean(
+      session &&
+        service.manager.connectedCount(session) === 0 &&
+        session.emptyDeleteAt !== null,
+    );
   });
+
+  const reconnected = connect(
+    `${wsBase}?session=${firstCreated.sessionId}&client=integration-client-a001`,
+  );
+  await reconnected.opened;
+  const snapshot = await reconnected.waitFor("session.snapshot");
+  assert.equal(snapshot.payload.phase, "play");
+  assert.equal(
+    service.manager.getSession(firstCreated.sessionId).emptyDeleteAt,
+    null,
+  );
+  reconnected.socket.close();
+  await reconnected.closed;
 });
 
 test("root API подключает несколько равноправных master-участников", async (context) => {
