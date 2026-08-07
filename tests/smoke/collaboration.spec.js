@@ -489,6 +489,7 @@ test("Капель, gachi по клику и звук удара работаю�
     )
     .toMatchObject({
       active: true,
+      activeCount: 1,
       playCount: gachiBeforeClick.playCount + 1,
     });
   const selectedGachiFilename = await page.evaluate(
@@ -501,6 +502,18 @@ test("Капель, gachi по клику и звук удара работаю�
       selectedGachiFilename,
     ),
   ).toBe(true);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.playGachiClickSound();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
+    )
+    .toMatchObject({
+      active: true,
+      activeCount: 2,
+      playCount: gachiBeforeClick.playCount + 2,
+    });
   await page.mouse.up();
   await expect
     .poll(() =>
@@ -508,6 +521,7 @@ test("Капель, gachi по клику и звук удара работаю�
     )
     .toMatchObject({
       active: false,
+      activeCount: 0,
       stopCount: gachiBeforeClick.stopCount + 1,
     });
   await expect
@@ -1950,6 +1964,83 @@ test("вход на корень открывает рабочую личную 
   await expect(page.getByTestId("restart-session")).toHaveCount(0);
 
   await context.close();
+});
+
+test("reload восстанавливает активную сессию и возвращает камень в viewport", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+
+  const target = await page.evaluate(() => {
+    const state = {
+      phase: SharedPhysics.PHASES.PLAY,
+      suspended: false,
+      x: SharedPhysics.WORLD_WIDTH * 0.3,
+      y: SharedPhysics.WORLD_HEIGHT * 0.2,
+    };
+    sendShared("physics.update", {
+      bounce: 0,
+      gravity: 0.1,
+      turbulence: 0,
+    });
+    sendShared("session.restart", state);
+    return {
+      ...state,
+      sessionId: collab.sessionId,
+    };
+  });
+  await expect
+    .poll(() =>
+      page.evaluate((expected) => {
+        const state = currentSharedState();
+        return (
+          collab.sessionId === expected.sessionId &&
+          state.phase === expected.phase &&
+          !state.suspended &&
+          Math.abs(state.x - expected.x) < 25 &&
+          state.y < SharedPhysics.WORLD_HEIGHT * 0.5
+        );
+      }, target),
+    )
+    .toBe(true);
+
+  await page.reload();
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect
+    .poll(() =>
+      page.evaluate((expected) => {
+        const state = currentSharedState();
+        const rock = document.querySelector("#root > .world > .rock");
+        const rect = rock?.getBoundingClientRect();
+        return {
+          activeStateRestored:
+            state.phase === expected.phase &&
+            !state.suspended &&
+            Math.abs(state.x - expected.x) < 25 &&
+            state.y < SharedPhysics.WORLD_HEIGHT * 0.65,
+          rockInViewport: Boolean(
+            rect &&
+              rect.width > 0 &&
+              rect.height > 0 &&
+              rect.bottom > 0 &&
+              rect.top < innerHeight,
+          ),
+          sameSession:
+            collab.sessionId === expected.sessionId &&
+            sessionStorage.getItem("sisyphus-room-session-id") ===
+              expected.sessionId,
+          stateClassRestored: document.body.classList.contains("state-play"),
+        };
+      }, target),
+    )
+    .toEqual({
+      activeStateRestored: true,
+      rockInViewport: true,
+      sameSession: true,
+      stateClassRestored: true,
+    });
 });
 
 test.skip("legacy: общий pointerdown-звук не применяется к личным сессиям", async ({ browser }) => {

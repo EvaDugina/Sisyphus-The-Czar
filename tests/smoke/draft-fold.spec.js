@@ -374,7 +374,7 @@ test("задержка parallax отменяется при выходе и пр
     .toBeGreaterThan(1);
 });
 
-test("reload повторно включает parallax без сброса настроек", async ({
+test("reload сохраняет preclick и настройки до первого захвата", async ({
   page,
 }) => {
   const expectedSettings = {
@@ -426,23 +426,10 @@ test("reload повторно включает parallax без сброса на
     });
   await expect.poll(readCurrentSettings).toEqual(expectedSettings);
 
-  const grabRock = async () => {
-    const point = await rock.evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      return {
-        x: rect.left + rect.width / 2,
-        y: rect.top + rect.height / 2,
-      };
-    });
-    await page.mouse.move(point.x, point.y);
-    await page.mouse.down();
-    await expect(rock).not.toHaveClass(/is-preclick-parallax/);
-    await page.mouse.up();
-  };
-
-  const restartWithReload = async () => {
+  const expectPreclickAfterReload = async () => {
     await page.reload();
     await waitForFoldReady(page);
+    await expect(page.getByTestId("session-status")).toContainText("В сессии");
     await expect(body).toHaveClass(/preclick-rock-guidance/);
     await expect(body).toHaveClass(/is-manual-scroll-disabled/);
     await expect(html).toHaveClass(/is-manual-scroll-disabled/);
@@ -509,16 +496,14 @@ test("reload повторно включает parallax без сброса на
       .toBeGreaterThan(1);
   };
 
-  await grabRock();
-  await restartWithReload();
+  await expectPreclickAfterReload();
   const scrollBeforeWheel = await page.evaluate(() => scrollY);
   await page.mouse.wheel(0, -600);
   await page.waitForTimeout(50);
   expect(await page.evaluate(() => scrollY)).toBe(scrollBeforeWheel);
   await expectParallaxAfterDelay();
 
-  await grabRock();
-  await restartWithReload();
+  await expectPreclickAfterReload();
   await expectParallaxAfterDelay();
 });
 

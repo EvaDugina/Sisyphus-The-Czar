@@ -86,16 +86,6 @@ const THEME_BACKGROUND_SETTING_KEYS = [
   "darkBackgroundLowColor",
 ];
 
-function isReloadNavigation() {
-  const navigationEntry = window.performance
-    ?.getEntriesByType?.("navigation")
-    ?.at(0);
-  if (navigationEntry) {
-    return navigationEntry.type === "reload";
-  }
-  return window.performance?.navigation?.type === 1;
-}
-
 const chainAudioLoaders = import.meta.glob(
   "../../assets/audio/Кандалы_*.mp3",
   {
@@ -193,7 +183,6 @@ export function createSisyphusRuntime(elements = {}) {
   const listenerDisposers = [];
   let disposed = false;
   const productionRuntime = import.meta.env.PROD;
-  let restartOnInitialConnection = isReloadNavigation();
 
   function listen(target, type, listener, options) {
     if (!target || typeof target.addEventListener !== "function") {
@@ -764,8 +753,7 @@ export function createSisyphusRuntime(elements = {}) {
     latest: null,
   };
   const gachiClickAudio = {
-    active: null,
-    elements: new Map(),
+    elements: new Set(),
     lastFilename: null,
     playCount: 0,
     playToken: 0,
@@ -1271,11 +1259,11 @@ export function createSisyphusRuntime(elements = {}) {
 
   function stopGachiClickSound() {
     gachiClickAudio.playToken += 1;
-    if (gachiClickAudio.active) {
+    if (gachiClickAudio.elements.size > 0) {
       gachiClickAudio.stopCount += 1;
     }
     gachiClickAudio.elements.forEach(pauseAndResetAudio);
-    gachiClickAudio.active = null;
+    gachiClickAudio.elements.clear();
   }
 
   function playGachiClickSound() {
@@ -1286,7 +1274,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (filenames.length === 0) {
       return;
     }
-    stopGachiClickSound();
     const playToken = gachiClickAudio.playToken;
     const filename =
       filenames[Math.floor(Math.random() * filenames.length)];
@@ -1295,35 +1282,24 @@ export function createSisyphusRuntime(elements = {}) {
         if (disposed || playToken !== gachiClickAudio.playToken || !url) {
           return;
         }
-        let audio = gachiClickAudio.elements.get(filename);
-        if (!audio) {
-          audio = new Audio(url);
-          audio.preload = "auto";
-          audio.addEventListener("ended", () => {
-            if (gachiClickAudio.active === audio) {
-              gachiClickAudio.active = null;
-            }
-          });
-          gachiClickAudio.elements.set(filename, audio);
-        }
+        const audio = new Audio(url);
+        audio.preload = "auto";
+        const releaseAudio = () => {
+          gachiClickAudio.elements.delete(audio);
+        };
+        audio.addEventListener("ended", releaseAudio);
+        gachiClickAudio.elements.add(audio);
         try {
           audio.currentTime = 0;
           audio.volume = 1;
-          gachiClickAudio.active = audio;
           const promise = audio.play();
           if (promise && typeof promise.catch === "function") {
-            promise.catch(() => {
-              if (gachiClickAudio.active === audio) {
-                gachiClickAudio.active = null;
-              }
-            });
+            promise.catch(releaseAudio);
           }
           gachiClickAudio.lastFilename = filename;
           gachiClickAudio.playCount += 1;
         } catch {
-          if (gachiClickAudio.active === audio) {
-            gachiClickAudio.active = null;
-          }
+          releaseAudio();
         }
       },
     );
@@ -3195,7 +3171,7 @@ export function createSisyphusRuntime(elements = {}) {
     return activateRockPhysicsScale();
   }
 
-  function activateRockPhysicsScale() {
+  function activateRockPhysicsScale({ immediate = false } = {}) {
     if (motion.physicsActivated) {
       return false;
     }
@@ -3207,14 +3183,14 @@ export function createSisyphusRuntime(elements = {}) {
       viewportWidthPx: bounds.worldWidth,
     });
     clearRockActivationScaleTransition();
-    if (!reducedMotion.matches) {
+    if (!reducedMotion.matches && !immediate) {
       rock.classList.add("is-activation-scaling");
       void rock.offsetWidth;
     }
     motion.physicsActivated = true;
     motion.rockActivationScaleFactor = factor;
     applyRockScale();
-    if (!reducedMotion.matches) {
+    if (!reducedMotion.matches && !immediate) {
       motion.rockActivationScaleTimerId = window.setTimeout(() => {
         motion.rockActivationScaleTimerId = null;
         rock.classList.remove("is-activation-scaling");
@@ -3404,7 +3380,7 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
-  function updateCameraFollow() {
+  function updateCameraFollow({ immediate = false } = {}) {
     if (
       !preclickRockGuidance.completed ||
       motion.phase === PHASES.INTRO
@@ -3419,11 +3395,13 @@ export function createSisyphusRuntime(elements = {}) {
       viewportHeight: window.innerHeight,
       documentHeight: document.documentElement.scrollHeight,
     });
-    const nextScrollY = cameraFollowScrollY(
-      window.scrollY,
-      targetScrollY,
-      params.cameraFollowLerp,
-    );
+    const nextScrollY = immediate
+      ? targetScrollY
+      : cameraFollowScrollY(
+          window.scrollY,
+          targetScrollY,
+          params.cameraFollowLerp,
+        );
     if (nextScrollY === window.scrollY) {
       return;
     }
@@ -4485,10 +4463,6 @@ export function createSisyphusRuntime(elements = {}) {
       }
       collab.connected = true;
       collab.reconnectAttempt = 0;
-      if (restartOnInitialConnection) {
-        restartOnInitialConnection = false;
-        restartExperience();
-      }
       collab.pingTimerId = window.setInterval(() => {
         sendShared("ping", { clientTime: Date.now() });
       }, 20_000);
@@ -4754,6 +4728,10 @@ export function createSisyphusRuntime(elements = {}) {
       revision,
       serverTime: Number(payload.serverTime) || Date.now(),
     };
+    const restoringActiveSession = initialSnapshot && !snapshot.suspended;
+    if (restoringActiveSession) {
+      completePreclickRockGuidance();
+    }
     const ownsHold = holderId === collab.clientId;
     if (
       collab.releasePending &&
@@ -4836,6 +4814,11 @@ export function createSisyphusRuntime(elements = {}) {
       applySharedFrame(snapshot, { previousPhase });
     } else if (collab.snapshots.length === 1 && !motion.dragging) {
       applySharedFrame(snapshot, { previousPhase });
+    }
+    if (restoringActiveSession) {
+      armRockActivationScale();
+      activateRockPhysicsScale({ immediate: true });
+      updateCameraFollow({ immediate: true });
     }
 
     startSharedRenderLoop();
@@ -6371,11 +6354,14 @@ export function createSisyphusRuntime(elements = {}) {
       getSessionAudioState: () =>
         sessionRoleAudio.latest ? { ...sessionRoleAudio.latest } : null,
       getGachiClickAudioState: () => ({
-        active: gachiClickAudio.active !== null,
+        active: gachiClickAudio.elements.size > 0,
+        activeCount: gachiClickAudio.elements.size,
         lastFilename: gachiClickAudio.lastFilename,
         playCount: gachiClickAudio.playCount,
         stopCount: gachiClickAudio.stopCount,
       }),
+      playGachiClickSound,
+      stopGachiClickSound,
       getGroundImpactAudioState: () => ({
         lastFilename: groundImpactAudio.lastFilename,
         playCount: groundImpactAudio.playCount,
