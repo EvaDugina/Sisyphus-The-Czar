@@ -185,6 +185,12 @@ export function rockActivationScaleFactor(currentScale, options = {}) {
   return targetWidthPx / currentWidthPx;
 }
 
+export function rockPressScaleFactor(percent) {
+  const value = Number(percent);
+  const safePercent = Number.isFinite(value) ? clamp(value, 0, 100) : 0;
+  return 1 - safePercent / 100;
+}
+
 export function rockHorizontalWallCompensation(
   localX,
   maxX,

@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 27;
+  const ROOM_SETTINGS_VERSION = 28;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
@@ -80,6 +80,7 @@
     preclickParallaxTransitionDurationSeconds: [1, 30],
     preclickParallaxReturnDurationMs: [0, 2000],
     rockGrabRadiusVh: [0, 10],
+    rockPressShrinkPercent: [0, 50],
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
     rockJumpInertiaSpreadPercent: [0, 100],
@@ -129,6 +130,7 @@
     rockJumpInertiaSpreadPercent: 25,
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockActivatedWidthVw: DEFAULT_ROCK_ACTIVATED_WIDTH_VW,
+    rockPressShrinkPercent: 5,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickParallaxMaxOffsetVw: 0.6,
@@ -442,6 +444,8 @@
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
     const [rockGrabRadiusMin, rockGrabRadiusMax] =
       ROOM_SETTINGS_LIMITS.rockGrabRadiusVh;
+    const [rockPressShrinkMin, rockPressShrinkMax] =
+      ROOM_SETTINGS_LIMITS.rockPressShrinkPercent;
     const windowObstacleHeightRange = normalizeNumericRange(
       source,
       fallbackSource,
@@ -683,6 +687,13 @@
         "rockActivatedWidthVw",
         ROOM_SETTINGS_LIMITS.rockWidthVw[0],
         ROOM_SETTINGS_LIMITS.rockWidthVw[1]
+      ),
+      rockPressShrinkPercent: integerSetting(
+        source,
+        fallbackSource,
+        "rockPressShrinkPercent",
+        rockPressShrinkMin,
+        rockPressShrinkMax
       ),
       preclickParallaxMaxOffsetVw,
       preclickParallaxEndMaxOffsetVw,

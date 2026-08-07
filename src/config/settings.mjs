@@ -712,6 +712,19 @@ export const SETTINGS_GROUPS = [
         hint: "Целевая ширина камня в vw при первом свободном движении вниз после захвата. Переход длится 300 мс.",
       },
       {
+        name: "rockPressShrinkPercent",
+        label: "Уменьшение при нажатии, %",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockPressShrinkPercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockPressShrinkPercent[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockPressShrinkPercent,
+        output: `${DEFAULT_ROOM_SETTINGS.rockPressShrinkPercent}%`,
+        hint: "Временно уменьшает текущий размер камня на заданный процент при pointerdown. Ноль отключает эффект.",
+      },
+      {
         name: "preclickParallaxMaxOffsetVw",
         label: "Начальный максимум parallax, vw",
         type: "range",

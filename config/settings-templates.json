@@ -35,6 +35,7 @@
         "rockJumpInertiaSpreadPercent": 25,
         "rockScaleEasing": "cubic-bezier(0.4, 0, 0.2, 1)",
         "rockActivatedWidthVw": 5,
+        "rockPressShrinkPercent": 5,
         "preclickParallaxMaxOffsetVw": 50,
         "preclickParallaxEndMaxOffsetVw": 0,
         "preclickParallaxMaxOffsetEasing": "cubic-bezier(0, 0, 1, 1)",

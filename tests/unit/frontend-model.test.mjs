@@ -35,6 +35,7 @@ import {
   rockActivationScaleFactor,
   rockHorizontalWallCompensation,
   rockLocalXForVisualGrab,
+  rockPressScaleFactor,
   rockScaleForY,
 } from "../../src/lib/rockScale.mjs";
 import {
@@ -623,6 +624,14 @@ test("масштаб камня считается по высоте и разм
   assert.equal(rockScaleForY(0, 900, shrinkingOptions), 0.5);
 });
 
+test("нажатие уменьшает текущий масштаб камня на заданный процент", () => {
+  assert.equal(rockPressScaleFactor(0), 1);
+  assert.equal(rockPressScaleFactor(10), 0.9);
+  assert.equal(rockPressScaleFactor(100), 0);
+  assert.equal(rockPressScaleFactor(999), 0);
+  assert.equal(rockPressScaleFactor("invalid"), 1);
+});
+
 test("камера вычисляет ограниченную цель и приближается к ней через lerp", () => {
   assert.equal(
     cameraTargetScrollY({
@@ -869,6 +878,9 @@ test("настройки размера камня есть в UI и получ�
   const rockActivatedWidthVw = controls.find(
     (control) => control.name === "rockActivatedWidthVw",
   );
+  const rockPressShrinkPercent = controls.find(
+    (control) => control.name === "rockPressShrinkPercent",
+  );
   const preclickParallaxMaxOffsetVw = controls.find(
     (control) => control.name === "preclickParallaxMaxOffsetVw",
   );
@@ -943,6 +955,7 @@ test("настройки размера камня есть в UI и получ�
       "mass",
       "rockScaleEasing",
       "rockActivatedWidthVw",
+      "rockPressShrinkPercent",
       "preclickParallaxMaxOffsetVw",
       "preclickParallaxEndMaxOffsetVw",
       "preclickParallaxActivationRadiusVw",
@@ -967,6 +980,24 @@ test("настройки размера камня есть в UI и получ�
     "Размер после запуска физики, %",
   );
   assert.equal(rockActivatedWidthVw.defaultValue, 10);
+  assert.deepEqual(
+    {
+      label: rockPressShrinkPercent.label,
+      type: rockPressShrinkPercent.type,
+      min: rockPressShrinkPercent.min,
+      max: rockPressShrinkPercent.max,
+      step: rockPressShrinkPercent.step,
+      defaultValue: rockPressShrinkPercent.defaultValue,
+    },
+    {
+      label: "Уменьшение при нажатии, %",
+      type: "range",
+      min: 0,
+      max: 50,
+      step: 1,
+      defaultValue: 5,
+    },
+  );
   assert.deepEqual(
     {
       label: preclickParallaxMaxOffsetVw.label,
@@ -1906,11 +1937,12 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 27);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 28);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
     rockActivatedWidthVw: 999,
+    rockPressShrinkPercent: 999,
     preclickParallaxMaxOffsetPx: 9999,
     preclickParallaxActivationRadiusVw: -1,
     preclickParallaxStartDelayMs: 9999,
@@ -1928,6 +1960,7 @@ test("группа дождя содержит общий toggle и blur тём�
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundLowColor,
   );
   assert.equal(visualSettings.rockActivatedWidthVw, 150);
+  assert.equal(visualSettings.rockPressShrinkPercent, 50);
   assert.equal(visualSettings.preclickParallaxMaxOffsetVw, 150);
   assert.equal(visualSettings.preclickParallaxActivationRadiusVw, 0);
   assert.equal(visualSettings.preclickParallaxStartDelayMs, 1000);

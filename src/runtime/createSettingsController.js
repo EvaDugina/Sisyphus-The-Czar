@@ -1263,6 +1263,7 @@ export function createSettingsController(options) {
       groundFriction: params.groundFriction.toFixed(2),
       turbulence: params.turbulence.toFixed(2),
       rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
+      rockPressShrinkPercent: `${params.rockPressShrinkPercent.toFixed(0)}%`,
       preclickParallaxMaxOffsetVw:
         `${params.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
       preclickParallaxEndMaxOffsetVw:

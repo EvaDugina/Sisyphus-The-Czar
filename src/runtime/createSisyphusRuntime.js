@@ -48,6 +48,7 @@ import {
   rockActivationScaleFactor,
   rockHorizontalWallCompensation,
   rockLocalXForVisualGrab,
+  rockPressScaleFactor,
   rockScaleForY,
 } from "../lib/rockScale.mjs";
 import { trailAnchorPoint } from "../lib/trailAnchor.mjs";
@@ -298,6 +299,8 @@ export function createSisyphusRuntime(elements = {}) {
     rockScaleEasing: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockScaleEasing,
     rockActivatedWidthVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
+    rockPressShrinkPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPressShrinkPercent,
     preclickParallaxMaxOffsetVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
     preclickParallaxEndMaxOffsetVw:
@@ -426,6 +429,7 @@ export function createSisyphusRuntime(elements = {}) {
     introFallTimerId: null,
     sceneReady: false,
     rockScale: 1,
+    rockPressActive: false,
     rockActivationArmed: false,
     physicsActivated: false,
     rockActivationScaleFactor: 1,
@@ -2361,6 +2365,7 @@ export function createSisyphusRuntime(elements = {}) {
         "rockMinWidthVw",
         "rockMaxWidthVw",
         "rockScaleEasing",
+        "rockPressShrinkPercent",
       )
     ) {
       applyRockScale();
@@ -3003,6 +3008,29 @@ export function createSisyphusRuntime(elements = {}) {
     return baseScaleForLocalY(y) * motion.rockActivationScaleFactor;
   }
 
+  function visualScaleForLocalY(y) {
+    const scale = scaleForLocalY(y);
+    return motion.rockPressActive
+      ? scale * rockPressScaleFactor(params.rockPressShrinkPercent)
+      : scale;
+  }
+
+  function activateRockPress() {
+    if (motion.rockPressActive) {
+      return;
+    }
+    motion.rockPressActive = true;
+    applyRockScale();
+  }
+
+  function releaseRockPress() {
+    if (!motion.rockPressActive) {
+      return;
+    }
+    motion.rockPressActive = false;
+    applyRockScale();
+  }
+
   function clearRockActivationScaleTransition() {
     if (motion.rockActivationScaleTimerId !== null) {
       window.clearTimeout(motion.rockActivationScaleTimerId);
@@ -3067,7 +3095,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function applyRockScale() {
     updateBounds();
-    const scale = scaleForLocalY(motion.y);
+    const baseScale = scaleForLocalY(motion.y);
+    const scale = motion.rockPressActive
+      ? baseScale * rockPressScaleFactor(params.rockPressShrinkPercent)
+      : baseScale;
     const roundedScale = Math.round(scale * 10000) / 10000;
     const wallCompensation = rockHorizontalWallCompensation(
       motion.x,
@@ -3075,7 +3106,7 @@ export function createSisyphusRuntime(elements = {}) {
       bounds.rockWidth,
       scale
     );
-    motion.rockScale = scale;
+    motion.rockScale = baseScale;
     rock.style.setProperty("--rock-scale", `${roundedScale}`);
     rock.style.setProperty(
       "--rock-wall-compensation",
@@ -3179,7 +3210,7 @@ export function createSisyphusRuntime(elements = {}) {
     let targetY = motion.dragTargetY;
 
     for (let index = 0; index < 5; index += 1) {
-      const scale = scaleForLocalY(targetY);
+      const scale = visualScaleForLocalY(targetY);
       const scaledOffsetY = (bounds.rockHeight * (1 - scale)) / 2;
       targetY = clamp(
         targetPointY - scaledOffsetY - motion.grabY * scale,
@@ -3188,7 +3219,7 @@ export function createSisyphusRuntime(elements = {}) {
       );
     }
 
-    const scale = scaleForLocalY(targetY);
+    const scale = visualScaleForLocalY(targetY);
     motion.dragTargetX = rockLocalXForVisualGrab(
       targetPointX,
       motion.grabX,
@@ -4131,6 +4162,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function resetLocalExperience() {
     const pointerId = motion.activePointerId;
+    releaseRockPress();
     resetHeightGateState();
     stopLoop();
     motion.dragging = false;
@@ -4748,6 +4780,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function cancelSharedLocalDrag(releaseCapture = true) {
     const pointerId = motion.activePointerId;
+    releaseRockPress();
     motion.dragging = false;
     motion.activePointerId = null;
     rock.classList.remove("is-dragging");
@@ -4777,6 +4810,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     event.preventDefault();
+    activateRockPress();
     clearSharedReleaseHandoff();
     collab.releasePending = false;
     toggleHandVariant();
@@ -4853,8 +4887,10 @@ export function createSisyphusRuntime(elements = {}) {
 
   function releaseSharedDrag(event) {
     if (!motion.dragging) {
+      releaseRockPress();
       return;
     }
+    releaseRockPress();
     const canReleaseWithImpulse = sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
@@ -4885,6 +4921,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function forceReleaseSharedDrag(hidePointer = false, neutral = false) {
     if (!motion.dragging) {
+      releaseRockPress();
       return;
     }
     const canReleaseWithImpulse = !neutral && sharedDragActive();
@@ -5801,6 +5838,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    releaseRockPress();
     if (!motion.dragging) {
       return;
     }
@@ -5858,6 +5896,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     event.preventDefault();
+    activateRockPress();
     toggleHandVariant();
     updateBounds();
     armRockActivationScale();
@@ -5945,6 +5984,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    releaseRockPress();
     if (!motion.dragging) {
       return;
     }
@@ -6002,6 +6042,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function cancelDragAndCursor() {
+    releaseRockPress();
     if (collab.enabled && motion.dragging) {
       forceReleaseSharedDrag(true);
       return;
@@ -6040,6 +6081,8 @@ export function createSisyphusRuntime(elements = {}) {
   listen(rock, "lostpointercapture", () => {
     if (motion.dragging) {
       forceReleaseRock();
+    } else {
+      releaseRockPress();
     }
   });
   listen(rock, "dragstart", (event) => event.preventDefault());
