@@ -3,6 +3,7 @@ import "../../shared/room-settings.js";
 import "../../shared/gachi-sounds.js";
 import "../../shared/chain-sounds.js";
 import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
+import groundImpactAudioUrl from "../../assets/audio/СимуляцияОргазма.mov?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import { createClientId } from "../lib/clientId.mjs";
@@ -762,8 +763,16 @@ export function createSisyphusRuntime(elements = {}) {
     entries: new Map(),
     latest: null,
   };
-  const groundTouchAudio = {
+  const gachiClickAudio = {
+    active: null,
     elements: new Map(),
+    lastFilename: null,
+    playCount: 0,
+    playToken: 0,
+    stopCount: 0,
+  };
+  const groundImpactAudio = {
+    element: null,
     lastFilename: null,
     playCount: 0,
   };
@@ -1242,47 +1251,105 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
-  function availableGroundTouchSounds() {
+  function availableGachiClickSounds() {
     return SharedGachiSounds.GACHI_SOUND_FILENAMES.filter((filename) =>
       GACHI_AUDIO_LOADERS_BY_FILENAME.has(filename),
     );
   }
 
-  function playGroundTouchSound() {
+  function pauseAndResetAudio(audio) {
+    if (!audio) {
+      return;
+    }
+    try {
+      audio.pause();
+      audio.currentTime = 0;
+    } catch {
+      // Media element может стать недоступен во время закрытия страницы.
+    }
+  }
+
+  function stopGachiClickSound() {
+    gachiClickAudio.playToken += 1;
+    if (gachiClickAudio.active) {
+      gachiClickAudio.stopCount += 1;
+    }
+    gachiClickAudio.elements.forEach(pauseAndResetAudio);
+    gachiClickAudio.active = null;
+  }
+
+  function playGachiClickSound() {
     if (typeof Audio !== "function") {
       return;
     }
-    const filenames = availableGroundTouchSounds();
+    const filenames = availableGachiClickSounds();
     if (filenames.length === 0) {
       return;
     }
+    stopGachiClickSound();
+    const playToken = gachiClickAudio.playToken;
     const filename =
       filenames[Math.floor(Math.random() * filenames.length)];
     loadAudioUrl("gachi", GACHI_AUDIO_LOADERS_BY_FILENAME, filename).then(
       (url) => {
-        if (disposed || !url) {
+        if (disposed || playToken !== gachiClickAudio.playToken || !url) {
           return;
         }
-        let audio = groundTouchAudio.elements.get(filename);
+        let audio = gachiClickAudio.elements.get(filename);
         if (!audio) {
           audio = new Audio(url);
           audio.preload = "auto";
-          groundTouchAudio.elements.set(filename, audio);
+          audio.addEventListener("ended", () => {
+            if (gachiClickAudio.active === audio) {
+              gachiClickAudio.active = null;
+            }
+          });
+          gachiClickAudio.elements.set(filename, audio);
         }
         try {
           audio.currentTime = 0;
           audio.volume = 1;
+          gachiClickAudio.active = audio;
           const promise = audio.play();
           if (promise && typeof promise.catch === "function") {
-            promise.catch(() => {});
+            promise.catch(() => {
+              if (gachiClickAudio.active === audio) {
+                gachiClickAudio.active = null;
+              }
+            });
           }
-          groundTouchAudio.lastFilename = filename;
-          groundTouchAudio.playCount += 1;
+          gachiClickAudio.lastFilename = filename;
+          gachiClickAudio.playCount += 1;
         } catch {
-          // Ошибка отдельного звука не должна останавливать физический цикл.
+          if (gachiClickAudio.active === audio) {
+            gachiClickAudio.active = null;
+          }
         }
       },
     );
+  }
+
+  function playGroundImpactSound() {
+    if (typeof Audio !== "function") {
+      return;
+    }
+    if (!groundImpactAudio.element) {
+      groundImpactAudio.element = new Audio(groundImpactAudioUrl);
+      groundImpactAudio.element.preload = "auto";
+    }
+    const audio = groundImpactAudio.element;
+    try {
+      audio.currentTime = 0;
+      audio.volume = 1;
+      const promise = audio.play();
+      if (promise && typeof promise.catch === "function") {
+        promise.catch(() => {});
+      }
+      groundImpactAudio.lastFilename = "СимуляцияОргазма.mov";
+      groundImpactAudio.playCount += 1;
+    } catch {
+      // Ошибка отдельного звука не должна останавливать физический цикл.
+    }
   }
 
   function setDrizzleLoopVolume(value) {
@@ -4706,6 +4773,7 @@ export function createSisyphusRuntime(elements = {}) {
       snapshot.phase !== PHASES.INTRO &&
       snapshot.phase !== PHASES.WON;
     if (localControlWasEnding) {
+      stopGachiClickSound();
       startSharedReleaseHandoff();
       collab.snapshots = [];
     }
@@ -4733,6 +4801,12 @@ export function createSisyphusRuntime(elements = {}) {
 
     const snapshotAtReturnPlace = sharedSnapshotAtReturnPlace(snapshot);
     setPhase(snapshot.phase);
+    if (
+      snapshot.phase === PHASES.FALLING &&
+      previousPhase !== PHASES.FALLING
+    ) {
+      stopGachiClickSound();
+    }
     setTheme(sharedSnapshotTheme(snapshot), {
       durationMs: returnThemeTransitionDuration(snapshotAtReturnPlace, {
         immediate: snapshot.phase === PHASES.INTRO,
@@ -4983,6 +5057,7 @@ export function createSisyphusRuntime(elements = {}) {
       releaseRockPress();
       return;
     }
+    stopGachiClickSound();
     releaseRockPress();
     const canReleaseWithImpulse = sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
@@ -5017,6 +5092,7 @@ export function createSisyphusRuntime(elements = {}) {
       releaseRockPress();
       return;
     }
+    stopGachiClickSound();
     const canReleaseWithImpulse = !neutral && sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
@@ -5195,7 +5271,7 @@ export function createSisyphusRuntime(elements = {}) {
     const touchedGround = previous !== null && next > previous;
     if (touchedGround) {
       hideReturnRain();
-      playGroundTouchSound();
+      playGroundImpactSound();
     }
     return resetTrailOnGroundTouch(touchedGround);
   }
@@ -5763,6 +5839,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (!SharedPhysics.beginFinalFall(state)) {
       return false;
     }
+    stopGachiClickSound();
     resetFinalFallGate();
     setPhase(state.phase);
     applyCanonicalMotion(state);
@@ -5821,6 +5898,12 @@ export function createSisyphusRuntime(elements = {}) {
       deltaSeconds,
       sceneMotionOptions()
     );
+    if (
+      previousPhase !== PHASES.FALLING &&
+      state.phase === PHASES.FALLING
+    ) {
+      stopGachiClickSound();
+    }
     maybeActivateRockPhysicsScale(state);
     const touchedGroundCanonical =
       wasAboveGround && state.y >= SharedPhysics.WORLD_HEIGHT - 0.01;
@@ -5830,7 +5913,7 @@ export function createSisyphusRuntime(elements = {}) {
       (previousY < bounds.maxY - 0.75 && motion.y >= bounds.maxY - 0.75);
     if (touchedGround) {
       hideReturnRain();
-      playGroundTouchSound();
+      playGroundImpactSound();
     }
     resetTrailOnGroundTouch(touchedGround);
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
@@ -5935,6 +6018,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
+    stopGachiClickSound();
 
     const pointerId = motion.activePointerId;
     const phaseAtRelease = motion.phase;
@@ -5968,6 +6052,12 @@ export function createSisyphusRuntime(elements = {}) {
     if (event.pointerType === "mouse" && event.button !== 0) {
       return;
     }
+
+    if (motion.phase === PHASES.FALLING) {
+      stopGachiClickSound();
+      return;
+    }
+    playGachiClickSound();
 
     if (motion.phase !== PHASES.PLAY) {
       return;
@@ -6081,6 +6171,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
+    stopGachiClickSound();
 
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
@@ -6279,9 +6370,15 @@ export function createSisyphusRuntime(elements = {}) {
       },
       getSessionAudioState: () =>
         sessionRoleAudio.latest ? { ...sessionRoleAudio.latest } : null,
-      getGroundTouchAudioState: () => ({
-        lastFilename: groundTouchAudio.lastFilename,
-        playCount: groundTouchAudio.playCount,
+      getGachiClickAudioState: () => ({
+        active: gachiClickAudio.active !== null,
+        lastFilename: gachiClickAudio.lastFilename,
+        playCount: gachiClickAudio.playCount,
+        stopCount: gachiClickAudio.stopCount,
+      }),
+      getGroundImpactAudioState: () => ({
+        lastFilename: groundImpactAudio.lastFilename,
+        playCount: groundImpactAudio.playCount,
       }),
       getDrizzleAudioState: () => {
         const loopState = drizzleLoopController.getState();
@@ -6412,7 +6509,8 @@ export function createSisyphusRuntime(elements = {}) {
       drizzleLoopController.dispose();
       resetFinalFallGate();
       stopHandInteractionSounds({ immediate: true });
-      groundTouchAudio.elements.forEach((audio) => audio.pause());
+      stopGachiClickSound();
+      pauseAndResetAudio(groundImpactAudio.element);
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {

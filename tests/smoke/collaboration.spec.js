@@ -50,6 +50,13 @@ async function setCheckbox(page, name, checked) {
   }, checked);
 }
 
+async function saveRoomSettings(page) {
+  await page.locator(".settings-room-save").click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Сохранено для всех участников",
+  );
+}
+
 async function clearHeightGates(page) {
   const removeButtons = page.getByTestId("height-gate-remove");
   while ((await removeButtons.count()) > 0) {
@@ -136,7 +143,23 @@ async function openControlGroup(page, summaryText) {
 }
 
 async function openSettingsPanel(page) {
+  if (/\/settings\/?$/.test(new URL(page.url()).pathname)) {
+    await expect(page.locator("#settings-panel")).toHaveAttribute(
+      "aria-hidden",
+      "false",
+    );
+    return;
+  }
   const toggle = page.locator(".settings-toggle");
+  if ((await toggle.getAttribute("href")) !== null) {
+    await toggle.click();
+    await expect(page).toHaveURL(/\/settings\//);
+    await expect(page.locator("#settings-panel")).toHaveAttribute(
+      "aria-hidden",
+      "false",
+    );
+    return;
+  }
   if ((await toggle.getAttribute("aria-expanded")) !== "true") {
     await toggle.click();
   }
@@ -148,6 +171,17 @@ async function openSettingsPanel(page) {
 }
 
 async function closeSettingsPanel(page) {
+  if (/\/settings\/?$/.test(new URL(page.url()).pathname)) {
+    await page.locator(".settings-page__back").click();
+    await expect(page).not.toHaveURL(/\/settings\//);
+    await expect(page.getByTestId("session-status")).toContainText("В сессии");
+    await expect
+      .poll(() =>
+        page.evaluate(() => Boolean(window.__sisyphusTestApi)),
+      )
+      .toBe(true);
+    return;
+  }
   const toggle = page.locator(".settings-toggle");
   if ((await toggle.getAttribute("aria-expanded")) === "true") {
     await toggle.click();
@@ -403,9 +437,10 @@ test("camera UI и новые настройки сохраняются вмес
     .toBe(true);
 });
 
-test("Капель, финальное падение и звук касания работают с новыми настройками", async ({
+test("Капель, gachi по клику и звук удара работают с новыми настройками", async ({
   page,
 }) => {
+  await watchAudioPlayCalls(page, "СимуляцияОргазма.mov");
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await resetRootExperience(page);
@@ -427,11 +462,54 @@ test("Капель, финальное падение и звук касания
     "drizzleVolumeEasing",
     "cubic-bezier(0, 0, 1, 1)",
   );
+  await saveRoomSettings(page);
   await closeSettingsPanel(page);
 
   await expectReadyAtBottom(page);
+  await page.evaluate(() => {
+    params.handAudioEnabled = false;
+  });
+  const gachiBeforeClick = await page.evaluate(
+    () => window.__sisyphusTestApi.getGachiClickAudioState(),
+  );
+  await scrollToRock(page);
+  const rightClickPoint = await visibleRockPoint(page);
+  await page.mouse.click(rightClickPoint.x, rightClickPoint.y, {
+    button: "right",
+  });
+  expect(
+    await page.evaluate(
+      () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+    ),
+  ).toBe(gachiBeforeClick.playCount);
   await grabVisibleRock(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
+    )
+    .toMatchObject({
+      active: true,
+      playCount: gachiBeforeClick.playCount + 1,
+    });
+  const selectedGachiFilename = await page.evaluate(
+    () => window.__sisyphusTestApi.getGachiClickAudioState().lastFilename,
+  );
+  expect(
+    await page.evaluate(
+      (filename) =>
+        window.SisyphusGachiSounds.GACHI_SOUND_FILENAMES.includes(filename),
+      selectedGachiFilename,
+    ),
+  ).toBe(true);
   await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
+    )
+    .toMatchObject({
+      active: false,
+      stopCount: gachiBeforeClick.stopCount + 1,
+    });
   await expect
     .poll(
       () =>
@@ -458,44 +536,47 @@ test("Капель, финальное падение и звук касания
   await expect(page.locator('[name="drizzleStartVolume"]')).toBeDisabled();
   await expect(page.locator('[name="drizzleEndVolume"]')).toBeDisabled();
   await expect(page.locator('[name="drizzleVolumeEasing"]')).toBeDisabled();
+  await saveRoomSettings(page);
+  await closeSettingsPanel(page);
   await expect
-    .poll(() => page.evaluate(() => getDrizzleAudioState()))
-    .toMatchObject({
-      fadeActive: true,
-      fadeDurationMs: 250,
-      fadeTargetVolume: 0,
-      playing: true,
-    });
-  await expect
-    .poll(() => page.evaluate(() => getDrizzleAudioState()))
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getDrizzleAudioState()),
+    )
     .toMatchObject({
       activeSourceCount: 0,
       fadeActive: false,
       playing: false,
       running: false,
       schedulerActive: false,
-      startCount: 1,
-      volume: 0,
+      startCount: 0,
     });
-  await closeSettingsPanel(page);
   await grabVisibleRock(page);
   await page.mouse.up();
   await expect
-    .poll(() => page.evaluate(() => getDrizzleAudioState().startCount))
-    .toBe(1);
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.getDrizzleAudioState().startCount,
+      ),
+    )
+    .toBe(0);
   await openSettingsPanel(page);
   await openControlGroup(page, "Капель");
   await setCheckbox(page, "drizzleEnabled", true);
   await expect(page.locator('[name="drizzleStartVolume"]')).toBeEnabled();
+  await saveRoomSettings(page);
+  await closeSettingsPanel(page);
+  await grabVisibleRock(page);
+  await page.mouse.up();
   await expect
-    .poll(() => page.evaluate(() => getDrizzleAudioState()))
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getDrizzleAudioState()),
+    )
     .toMatchObject({
       playing: true,
       running: true,
       schedulerActive: true,
-      startCount: 2,
+      startCount: 1,
     });
-  await closeSettingsPanel(page);
 
   const audioState = await page.evaluate(() => {
     collab.enabled = false;
@@ -517,32 +598,31 @@ test("Капель, финальное падение и звук касания
     updateBounds();
     setPosition(bounds.maxX / 2, bounds.maxY - 1);
     motion.vy = 1000;
+    const groundPlayCountBeforeImpact =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
     window.__sisyphusTestApi.applyPhysics(0.032);
     return {
       bottomVolume,
+      gachiPlayCount:
+        window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+      groundPlayCountBeforeImpact,
       firstGroundPlayCount:
-        window.__sisyphusTestApi.getGroundTouchAudioState().playCount,
+        window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
       topVolume,
     };
   });
   expect(audioState.bottomVolume).toBeCloseTo(0.2, 5);
   expect(audioState.topVolume).toBeCloseTo(0.8, 5);
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          () => window.__sisyphusTestApi.getGroundTouchAudioState().playCount,
-        ),
-      { timeout: 10_000 },
-    )
-    .toBe(audioState.firstGroundPlayCount + 1);
+  expect(audioState.firstGroundPlayCount).toBe(
+    audioState.groundPlayCountBeforeImpact + 1,
+  );
 
   const contactCounts = await page.evaluate(() => {
     const first =
-      window.__sisyphusTestApi.getGroundTouchAudioState().playCount;
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
     window.__sisyphusTestApi.applyPhysics(0.032);
     const continuous =
-      window.__sisyphusTestApi.getGroundTouchAudioState().playCount;
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
     updateBounds();
     setPosition(bounds.maxX / 2, bounds.maxY - 1);
     motion.vy = 1000;
@@ -554,11 +634,27 @@ test("Капель, финальное падение и звук касания
     .poll(
       () =>
         page.evaluate(
-          () => window.__sisyphusTestApi.getGroundTouchAudioState().playCount,
+          () => window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
         ),
       { timeout: 10_000 },
     )
     .toBe(contactCounts.first + 1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        gachiPlayCount:
+          window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+        impactFilename:
+          window.__sisyphusTestApi.getGroundImpactAudioState().lastFilename,
+        watchedImpactCount:
+          window.__watchedAudioPlayCounts["СимуляцияОргазма.mov"],
+      })),
+    )
+    .toMatchObject({
+      gachiPlayCount: audioState.gachiPlayCount,
+      impactFilename: "СимуляцияОргазма.mov",
+      watchedImpactCount: contactCounts.first + 1,
+    });
 
   await page.evaluate(() => {
     collab.enabled = true;
@@ -576,16 +672,8 @@ test("Капель, финальное падение и звук касания
     "cubic-bezier(0.4, 0, 0.2, 1)",
   );
   await expect(page.locator('[name="finalFallEnabled"]')).not.toBeChecked();
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          !collab.settingsUpdateInFlight &&
-          !collab.settingsUpdateQueued &&
-          Object.keys(collab.pendingRoomSettingsChanges).length === 0,
-      ),
-    )
-    .toBe(true);
+  await saveRoomSettings(page);
+  await closeSettingsPanel(page);
 });
 
 test("UI выключает hover и grab звуки руки", async ({ page }) => {
