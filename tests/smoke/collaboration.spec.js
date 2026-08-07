@@ -51,9 +51,14 @@ async function setCheckbox(page, name, checked) {
 }
 
 async function saveRoomSettings(page) {
-  await page.locator(".settings-room-save").click();
+  await expect(page.locator(".settings-room-save")).toHaveCount(0);
+  const saveButton = page.getByRole("button", {
+    name: "Сохранить версию и настройки комнаты",
+  });
+  await expect(saveButton).toHaveClass(/settings-version-save/);
+  await saveButton.click();
   await expect(page.locator(".settings-production-status")).toContainText(
-    "Сохранено для всех участников",
+    "Версия и настройки комнаты сохранены",
   );
 }
 
@@ -363,6 +368,9 @@ test("camera UI и новые настройки сохраняются вмес
   await page.locator('[data-settings-version-choice=""]').click();
   await page.locator(".settings-version-name").fill("camera-ui-smoke");
   await page.locator(".settings-version-save").click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Версия и настройки комнаты сохранены",
+  );
   await expect(page.locator("#settings-version-current")).toContainText(
     "camera-ui-smoke",
   );
@@ -783,6 +791,12 @@ test("dev-каталог шаблонов общий для личных сес�
       openSettingsPanel(first),
       openSettingsPanel(second),
     ]);
+    await expect(first.locator(".settings-room-save")).toHaveCount(0);
+    await expect(
+      first.getByRole("button", {
+        name: "Сохранить версию и настройки комнаты",
+      }),
+    ).toBeVisible();
 
     await first.locator(".settings-version-toggle").click();
     await first.locator('[data-settings-version-choice=""]').click();
@@ -791,10 +805,18 @@ test("dev-каталог шаблонов общий для личных сес�
       .locator(".settings-version-name")
       .fill("Межбраузерный шаблон");
     await first.locator(".settings-version-save").click();
+    await expect(first.locator(".settings-production-status")).toContainText(
+      "Версия и настройки комнаты сохранены",
+    );
 
     const firstVersion = first.locator(".settings-version-option", {
       hasText: "Межбраузерный шаблон",
     });
+    await expect(firstVersion).toHaveCount(1);
+    await first.locator(".settings-version-save").click();
+    await expect(first.locator(".settings-production-status")).toContainText(
+      "Версия и настройки комнаты сохранены",
+    );
     await expect(firstVersion).toHaveCount(1);
 
     await second.locator(".settings-version-toggle").click();
@@ -1711,6 +1733,9 @@ test("вход на корень открывает рабочую личную 
   ).toHaveCount(0);
   await page.locator(".settings-version-name").fill("Проверка удаления");
   await page.locator(".settings-version-save").click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Версия и настройки комнаты сохранены",
+  );
   await page.locator(".settings-version-toggle").click();
   const savedVersion = page.locator(".settings-version-option", {
     hasText: "Проверка удаления",

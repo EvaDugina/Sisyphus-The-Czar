@@ -398,9 +398,14 @@ test("reload сохраняет preclick и настройки до первог
   for (const [name, value] of Object.entries(expectedSettings)) {
     await setSettingValue(page, name, value);
   }
-  await page.locator(".settings-room-save").click();
+  await expect(page.locator(".settings-room-save")).toHaveCount(0);
+  await page
+    .getByRole("button", {
+      name: "Сохранить версию и настройки комнаты",
+    })
+    .click();
   await expect(page.locator(".settings-production-status")).toContainText(
-    "Сохранено для всех участников",
+    "Версия и настройки комнаты сохранены",
   );
   await page.locator(".settings-page__back").click();
   await waitForFoldReady(page);

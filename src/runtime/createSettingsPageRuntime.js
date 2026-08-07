@@ -39,6 +39,7 @@ export function createSettingsPageRuntime(elements = {}) {
   let reconnectTimerId = null;
   let sessionCreateInFlight = false;
   let pendingRequestId = "";
+  let combinedSave = null;
   let settingsController;
 
   const listen = (target, type, listener, options) => {
@@ -144,10 +145,52 @@ export function createSettingsPageRuntime(elements = {}) {
     return true;
   }
 
-  function saveRoomSettings() {
+  function updateCombinedSaveStatus() {
+    if (!combinedSave) {
+      return false;
+    }
+    if (combinedSave.error) {
+      setStatus(combinedSave.error, "error");
+      if (!combinedSave.versionPending && !combinedSave.roomPending) {
+        combinedSave = null;
+      }
+      return true;
+    }
+    if (combinedSave.versionPending || combinedSave.roomPending) {
+      setStatus("Сохраняем версию и настройки комнаты…", "pending");
+      return true;
+    }
+    setStatus(
+      "Версия и настройки комнаты сохранены. Перезагрузите сцену.",
+      "success",
+    );
+    combinedSave = null;
+    return true;
+  }
+
+  function failCombinedSave(message, failedPart = "") {
+    if (!combinedSave) {
+      return false;
+    }
+    combinedSave.error = String(message || "Не удалось сохранить настройки");
+    if (failedPart === "version") {
+      combinedSave.versionPending = false;
+    } else if (failedPart === "room") {
+      combinedSave.roomPending = false;
+    }
+    updateCombinedSaveStatus();
+    return true;
+  }
+
+  function saveRoomSettings({ versionSavePending = false } = {}) {
     readDraftControls();
+    combinedSave = {
+      error: "",
+      roomPending: false,
+      versionPending: Boolean(versionSavePending),
+    };
     if (!socket || socket.readyState !== WebSocket.OPEN || settingsRevision < 1) {
-      setStatus("Нет соединения с комнатой", "error");
+      failCombinedSave("Нет соединения с комнатой", "room");
       return false;
     }
     pendingRequestId = randomRequestId();
@@ -158,7 +201,10 @@ export function createSettingsPageRuntime(elements = {}) {
       settings: sharedSettingsPayload(),
     });
     if (sent) {
-      setStatus("Сохраняем общие настройки…", "pending");
+      combinedSave.roomPending = true;
+      updateCombinedSaveStatus();
+    } else {
+      failCombinedSave("Не удалось отправить настройки комнаты", "room");
     }
     return sent;
   }
@@ -200,12 +246,21 @@ export function createSettingsPageRuntime(elements = {}) {
       settingsRevision = Math.max(settingsRevision, Number(payload.settingsRevision) || 0);
       pendingRequestId = "";
       settingsController.markRoomSettingsSaved();
-      setStatus("Сохранено для всех участников. Перезагрузите сцену.", "success");
+      if (combinedSave) {
+        combinedSave.roomPending = false;
+        updateCombinedSaveStatus();
+      } else {
+        setStatus("Сохранено для всех участников. Перезагрузите сцену.", "success");
+      }
       return;
     }
     if (message.type === "settings.conflict") {
       pendingRequestId = "";
-      setStatus("Настройки уже изменил другой участник. Обновите страницу.", "error");
+      const conflictMessage =
+        "Настройки уже изменил другой участник. Обновите страницу.";
+      if (!failCombinedSave(conflictMessage, "room")) {
+        setStatus(conflictMessage, "error");
+      }
       return;
     }
     if (message.type === "settingsTemplates.page") {
@@ -214,12 +269,21 @@ export function createSettingsPageRuntime(elements = {}) {
       settingsController.setSettingsTemplatesImported(payload);
     } else if (message.type === "settingsTemplates.saved") {
       settingsController.setSettingsTemplateSaved(payload);
+      if (combinedSave?.versionPending) {
+        combinedSave.versionPending = false;
+        updateCombinedSaveStatus();
+      }
     } else if (message.type === "settingsTemplates.deleted") {
       settingsController.setSettingsTemplateDeleted(payload);
     } else if (message.type === "settingsTemplates.changed") {
       settingsController.applySettingsTemplateChange(payload);
     } else if (message.type === "error") {
-      setStatus(String(payload.message || "Не удалось сохранить настройки"), "error");
+      const errorMessage = String(
+        payload.message || "Не удалось сохранить настройки",
+      );
+      if (!failCombinedSave(errorMessage, "version")) {
+        setStatus(errorMessage, "error");
+      }
     }
   }
 

@@ -61,9 +61,9 @@ export function SettingsPanel({
           <button
             className="settings-version-save"
             type="button"
-            aria-label="Сохранить версию настроек"
-            title="Сохранить версию"
-            data-hint="Сохраняет текущие настройки как новую версию или обновляет выбранную."
+            aria-label="Сохранить версию и настройки комнаты"
+            title="Сохранить версию и настройки комнаты"
+            data-hint="Сохраняет или обновляет версию и применяет текущие настройки ко всей комнате."
           >
             <svg aria-hidden="true" viewBox="0 0 24 24">
               <path d="M5 4h12l2 2v14H5z" />
@@ -72,13 +72,6 @@ export function SettingsPanel({
             </svg>
           </button>
         </div>
-        <button
-          className="settings-room-save"
-          type="button"
-          aria-label="Сохранить настройки комнаты для всех участников"
-        >
-          Сохранить для комнаты
-        </button>
         <p
           className="settings-production-status"
           role="status"

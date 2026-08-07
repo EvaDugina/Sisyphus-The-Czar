@@ -74,9 +74,6 @@ export function createSettingsController(options) {
   const settingsVersionSave =
     options.settingsVersionSave ||
     document.querySelector(".settings-version-save");
-  const settingsRoomSave =
-    options.settingsRoomSave ||
-    document.querySelector(".settings-room-save");
   const productionPresetStatus =
     options.productionPresetStatus ||
     document.querySelector(".settings-production-status");
@@ -1099,7 +1096,7 @@ export function createSettingsController(options) {
         onSaveSettingsTemplate(candidate, selected?.updatedAt || "") !== false
       ) {
         setProductionPresetStatus("Сохраняем общий шаблон…", "pending");
-        return;
+        return "pending";
       }
     }
     let savedEntry = selected;
@@ -1134,6 +1131,7 @@ export function createSettingsController(options) {
     ) {
       requestProductionPresetSelection(savedEntry);
     }
+    return "saved";
   }
 
   function writeSettingsVersionToControls(entry) {
@@ -1579,23 +1577,17 @@ export function createSettingsController(options) {
       if (collab.enabled && !localCanEditSettings()) {
         return;
       }
-      readControls({ changedKeys: [] });
-      saveCurrentSettingsVersion();
-    });
-    listen(settingsRoomSave, "click", () => {
-      if (collab.enabled && !localCanEditSettings()) {
-        return;
-      }
       readControls({ changedKeys: [], commit: false });
-      if (typeof onSaveRoomSettings !== "function") {
-        return;
+      const versionSaveState = saveCurrentSettingsVersion();
+      if (typeof onSaveRoomSettings === "function") {
+        onSaveRoomSettings({
+          settings: {
+            ...readPhysicsControls(),
+            ...readRoomSettingsControls(),
+          },
+          versionSavePending: versionSaveState === "pending",
+        });
       }
-      onSaveRoomSettings({
-        settings: {
-          ...readPhysicsControls(),
-          ...readRoomSettingsControls(),
-        },
-      });
     });
     listen(settingsVersionName, "input", refreshDraftState);
     listen(settingsVersionToggle, "click", () => {

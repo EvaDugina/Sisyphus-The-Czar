@@ -226,6 +226,9 @@ test("production DEBUG включает UI, draft и изолированные 
 
   await setRangeValue(page, "gravity", 9);
   await page.locator(".settings-version-save").click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Версия и настройки комнаты сохранены",
+  );
   const stored = await page.evaluate((versionsKey) => {
     const document = JSON.parse(localStorage.getItem(versionsKey) || "{}");
     return document.entries.find((entry) => entry.id === "latest");

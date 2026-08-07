@@ -305,26 +305,6 @@
     color-mix(in srgb, var(--draft-blue) 28%, transparent);
 }
 
-.settings-room-save {
-  width: 100%;
-  margin-top: 0.45rem;
-  padding: 0.5rem 0.65rem;
-  border: 1px solid var(--target-line);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--accent) 16%, transparent);
-  color: var(--accent-strong);
-  cursor: pointer;
-  font-weight: 700;
-}
-
-body.theme-dark .settings-room-save {
-  color: var(--accent-strong);
-}
-
-.settings-room-save:hover {
-  background: color-mix(in srgb, var(--accent) 28%, transparent);
-}
-
 .settings-version-toggle.is-dirty,
 .settings-version-save.is-dirty {
   color: var(--draft-blue);
