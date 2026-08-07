@@ -3,7 +3,7 @@ import { createSisyphusRuntime } from "../runtime/createSisyphusRuntime";
 import { useSettings } from "./useSettings";
 
 export function useSisyphusExperience() {
-  const settings = useSettings(true);
+  const settings = useSettings();
   const realtime = {
     sessionStatusRef: useRef(null),
     sessionRestartButtonRef: useRef(null),
@@ -31,10 +31,7 @@ export function useSisyphusExperience() {
   };
   const { settingsRef: foldSettingsRef } = fold;
 
-  const {
-    settingsPanelRef,
-    settingsToggleRef,
-  } = settings;
+  const { settingsLinkRef } = settings;
   const {
     sessionRestartButtonRef,
     sessionStatusRef,
@@ -63,8 +60,8 @@ export function useSisyphusExperience() {
       handCursor: handCursorRef.current,
       heightGateStatus: heightGateStatusRef.current,
       remoteCursorLayer: remoteCursorLayerRef.current,
-      settingsToggle: settingsToggleRef.current,
-      settingsPanel: settingsPanelRef.current,
+      settingsToggle: settingsLinkRef.current,
+      settingsLink: settingsLinkRef.current,
       trailCanvas: trailCanvasRef.current,
       trailGlowCanvas: trailGlowCanvasRef.current,
       rainLayer: rainLayerRef.current,
@@ -90,8 +87,7 @@ export function useSisyphusExperience() {
     rockRef,
     sessionRestartButtonRef,
     sessionStatusRef,
-    settingsPanelRef,
-    settingsToggleRef,
+    settingsLinkRef,
     trailCanvasRef,
     trailGlowCanvasRef,
     worldRef,

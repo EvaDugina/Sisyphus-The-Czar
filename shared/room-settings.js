@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 28;
+  const ROOM_SETTINGS_VERSION = 29;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
@@ -81,6 +81,7 @@
     preclickParallaxReturnDurationMs: [0, 2000],
     rockGrabRadiusVh: [0, 10],
     rockPressShrinkPercent: [0, 50],
+    rockPulseBpm: [20, 240],
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
     rockJumpInertiaSpreadPercent: [0, 100],
@@ -131,6 +132,8 @@
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockActivatedWidthVw: DEFAULT_ROCK_ACTIVATED_WIDTH_VW,
     rockPressShrinkPercent: 5,
+    rockPulseEnabled: false,
+    rockPulseBpm: 60,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickParallaxMaxOffsetVw: 0.6,
@@ -694,6 +697,18 @@
         "rockPressShrinkPercent",
         rockPressShrinkMin,
         rockPressShrinkMax
+      ),
+      rockPulseEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "rockPulseEnabled"
+      ),
+      rockPulseBpm: finiteSetting(
+        source,
+        fallbackSource,
+        "rockPulseBpm",
+        ROOM_SETTINGS_LIMITS.rockPulseBpm[0],
+        ROOM_SETTINGS_LIMITS.rockPulseBpm[1]
       ),
       preclickParallaxMaxOffsetVw,
       preclickParallaxEndMaxOffsetVw,

@@ -44,6 +44,10 @@ import {
   calculatePreclickParallaxTransition,
 } from "../../src/lib/preclickParallax.mjs";
 import { cursorCircleIntersectsRect } from "../../src/lib/rockGrab.mjs";
+import {
+  rockPulseProgress,
+  rockPulseScaleFactor,
+} from "../../src/lib/rockPulse.mjs";
 import { trailAnchorPoint } from "../../src/lib/trailAnchor.mjs";
 import {
   canonicalVisualTrailPointToLocal,
@@ -632,6 +636,14 @@ test("нажатие уменьшает текущий масштаб камня
   assert.equal(rockPressScaleFactor("invalid"), 1);
 });
 
+test("пульс использует BPM и не накапливает уменьшение", () => {
+  assert.equal(rockPulseProgress(1000, 0, 60), 0);
+  assert.equal(rockPulseProgress(1500, 0, 60), 0.5);
+  assert.equal(rockPulseScaleFactor(0.2, 20) < 1, true);
+  assert.equal(rockPulseScaleFactor(0.9, 20), 1);
+  assert.equal(rockPulseScaleFactor(1.2, 20), rockPulseScaleFactor(0.2, 20));
+});
+
 test("камера вычисляет ограниченную цель и приближается к ней через lerp", () => {
   assert.equal(
     cameraTargetScrollY({
@@ -956,6 +968,8 @@ test("настройки размера камня есть в UI и получ�
       "rockScaleEasing",
       "rockActivatedWidthVw",
       "rockPressShrinkPercent",
+      "rockPulseEnabled",
+      "rockPulseBpm",
       "preclickParallaxMaxOffsetVw",
       "preclickParallaxEndMaxOffsetVw",
       "preclickParallaxActivationRadiusVw",
@@ -996,6 +1010,30 @@ test("настройки размера камня есть в UI и получ�
       max: 50,
       step: 1,
       defaultValue: 5,
+    },
+  );
+  const rockPulseEnabled = controls.find(
+    (control) => control.name === "rockPulseEnabled",
+  );
+  const rockPulseBpm = controls.find(
+    (control) => control.name === "rockPulseBpm",
+  );
+  assert.equal(rockPulseEnabled.type, "checkbox");
+  assert.equal(rockPulseEnabled.defaultChecked, false);
+  assert.deepEqual(
+    {
+      label: rockPulseBpm.label,
+      type: rockPulseBpm.type,
+      min: rockPulseBpm.min,
+      max: rockPulseBpm.max,
+      defaultValue: rockPulseBpm.defaultValue,
+    },
+    {
+      label: "Частота пульса, BPM",
+      type: "range",
+      min: 20,
+      max: 240,
+      defaultValue: 60,
     },
   );
   assert.deepEqual(
@@ -1937,12 +1975,14 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 28);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 29);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
     rockActivatedWidthVw: 999,
     rockPressShrinkPercent: 999,
+    rockPulseEnabled: "true",
+    rockPulseBpm: 999,
     preclickParallaxMaxOffsetPx: 9999,
     preclickParallaxActivationRadiusVw: -1,
     preclickParallaxStartDelayMs: 9999,
@@ -1961,6 +2001,8 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   assert.equal(visualSettings.rockActivatedWidthVw, 150);
   assert.equal(visualSettings.rockPressShrinkPercent, 50);
+  assert.equal(visualSettings.rockPulseEnabled, true);
+  assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickParallaxMaxOffsetVw, 150);
   assert.equal(visualSettings.preclickParallaxActivationRadiusVw, 0);
   assert.equal(visualSettings.preclickParallaxStartDelayMs, 1000);

@@ -1,6 +1,5 @@
 import { FoldLayer } from "./components/FoldLayer";
 import { Scene } from "./components/Scene";
-import { SettingsPanel } from "./components/SettingsPanel";
 import { Toolbar } from "./components/Toolbar";
 import { useSisyphusExperience } from "./hooks/useSisyphusExperience";
 
@@ -14,17 +13,10 @@ export function App() {
   return (
     <>
       <Toolbar
-        settingsToggleRef={settings.settingsToggleRef}
-        isSettingsOpen={settings.isOpen}
-        onToggleSettings={settings.toggle}
-        settingsUiEnabled={settingsUiEnabled}
-        settingsAvailable={settingsAvailable}
-      />
-      <SettingsPanel
-        panelRef={settings.settingsPanelRef}
-        restartButtonRef={realtime.sessionRestartButtonRef}
+        settingsLinkRef={settings.settingsLinkRef}
+        sessionRestartButtonRef={realtime.sessionRestartButtonRef}
         sessionStatusRef={realtime.sessionStatusRef}
-        isOpen={settings.isOpen}
+        settingsUiEnabled={settingsUiEnabled}
         settingsAvailable={settingsAvailable}
       />
       {settingsUiEnabled ? (

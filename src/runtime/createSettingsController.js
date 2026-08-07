@@ -46,6 +46,7 @@ export function createSettingsController(options) {
     onDeleteSettingsTemplate,
     onImportSettingsTemplates,
     onListSettingsTemplates,
+    onSaveRoomSettings,
     onSaveSettingsTemplate,
     onSelectProductionPreset,
     params,
@@ -55,6 +56,7 @@ export function createSettingsController(options) {
     secondsOutput,
     settingValueToControlValue,
     stageControlChange = () => {},
+    draftOnly = false,
   } = options;
   const settingsPanel =
     options.settingsPanel || document.querySelector(".settings-panel");
@@ -73,6 +75,9 @@ export function createSettingsController(options) {
   const settingsVersionSave =
     options.settingsVersionSave ||
     document.querySelector(".settings-version-save");
+  const settingsRoomSave =
+    options.settingsRoomSave ||
+    document.querySelector(".settings-room-save");
   const productionPresetStatus =
     options.productionPresetStatus ||
     document.querySelector(".settings-production-status");
@@ -888,6 +893,14 @@ export function createSettingsController(options) {
     saveSettingsVersions();
   }
 
+  function markRoomSettingsSaved() {
+    settingsVersions.baselineSettings = currentSettingsSnapshot();
+    settingsVersions.draftDetached = false;
+    settingsVersions.dirtyKeys.clear();
+    renderSettingsVersions();
+    renderDraftState();
+  }
+
   function roomSettingControlElement(key) {
     return settingsPanel?.querySelector(`[name="${key}"]`) || null;
   }
@@ -1264,6 +1277,7 @@ export function createSettingsController(options) {
       turbulence: params.turbulence.toFixed(2),
       rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
       rockPressShrinkPercent: `${params.rockPressShrinkPercent.toFixed(0)}%`,
+      rockPulseBpm: `${params.rockPulseBpm.toFixed(0)} BPM`,
       preclickParallaxMaxOffsetVw:
         `${params.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
       preclickParallaxEndMaxOffsetVw:
@@ -1480,6 +1494,16 @@ export function createSettingsController(options) {
 
   function bind() {
     settingsControlElements().forEach((element) => {
+      if (draftOnly) {
+        const handleDraftControlChange = () => {
+          syncSettingDependencies();
+          readControls({ changedKeys: [element.name], commit: false });
+          refreshDraftState();
+        };
+        listen(element, "input", handleDraftControlChange);
+        listen(element, "change", handleDraftControlChange);
+        return;
+      }
       let discreteInputHandled = false;
       let discreteInputResetTimerId = null;
       const restoreLockedControl = () => {
@@ -1560,6 +1584,21 @@ export function createSettingsController(options) {
       }
       readControls({ changedKeys: [] });
       saveCurrentSettingsVersion();
+    });
+    listen(settingsRoomSave, "click", () => {
+      if (collab.enabled && !localCanEditSettings()) {
+        return;
+      }
+      readControls({ changedKeys: [], commit: false });
+      if (typeof onSaveRoomSettings !== "function") {
+        return;
+      }
+      onSaveRoomSettings({
+        settings: {
+          ...readPhysicsControls(),
+          ...readRoomSettingsControls(),
+        },
+      });
     });
     listen(settingsVersionName, "input", refreshDraftState);
     listen(settingsVersionToggle, "click", () => {
@@ -1647,16 +1686,18 @@ export function createSettingsController(options) {
     bind,
     getLatestSettingsVersionPreset: () =>
       settingsFromLatestVersionEntry(settingsVersions.entries),
-    hasLocalSettings: () => loadedLocalSettings,
+    hasLocalSettings: () => Boolean(settingsPanel) && loadedLocalSettings,
     getLoadedSettingsVersionEntry: () =>
       copySettingsVersionEntry(baselineSettingsVersion()),
     getSettingsVersions: () =>
       settingsVersions.entries.map(copySettingsVersionEntry),
-    load() {
-      loadedLocalSettings = loadSettings();
+    load(options = {}) {
+      const loadLocalSettings = options.loadLocalSettings !== false;
+      const loadLatestVersion = options.loadLatestVersion !== false;
+      loadedLocalSettings = loadLocalSettings ? loadSettings() : false;
       loadSettingsVersions();
       const latest = selectLatestSettingsVersionEntry(settingsVersions.entries);
-      if (latest) {
+      if (latest && loadLatestVersion) {
         loadedLocalSettings = true;
         writeSettingsVersionToControls(latest);
         renderSettingsVersions();
@@ -1665,6 +1706,7 @@ export function createSettingsController(options) {
       renderDraftState();
     },
     captureCurrentAsBaseline,
+    markRoomSettingsSaved,
     dispose: cancelScheduledControlUpdates,
     markSettingsVersionDraft,
     readPhysicsControls,

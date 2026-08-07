@@ -73,6 +73,13 @@ export function SettingsPanel({
             </svg>
           </button>
         </div>
+        <button
+          className="settings-room-save"
+          type="button"
+          aria-label="Сохранить настройки комнаты для всех участников"
+        >
+          Сохранить для комнаты
+        </button>
         <p
           className="settings-production-status"
           role="status"
@@ -105,23 +112,29 @@ export function SettingsPanel({
       {SETTINGS_GROUPS.map((group) => (
         <details className="control-group" key={group.title}>
           <summary>{group.title}</summary>
-          {group.controls.map((control) => (
-            <SettingsControl control={control} key={control.name} />
-          ))}
+          {group.controls?.length ? (
+            <details className="control-subgroup" open>
+              <summary>Основные</summary>
+              {group.controls.map((control) => (
+                <SettingsControl control={control} key={control.name} />
+              ))}
+            </details>
+          ) : null}
           {group.subgroups?.map((subgroup) => (
-            <section
+            <details
               className="control-subgroup"
               key={subgroup.title}
               aria-label={`${group.title}: ${subgroup.title}`}
+              open
             >
-              <h3>{subgroup.title}</h3>
+              <summary>{subgroup.title}</summary>
               {subgroup.permissionControl === "window-obstacle" && (
                 <WindowObstaclePermissionControl />
               )}
               {settingsGroupControls(subgroup).map((control) => (
                 <SettingsControl control={control} key={control.name} />
               ))}
-            </section>
+            </details>
           ))}
           {group.action && (
             <button

@@ -1,28 +1,47 @@
 export function Toolbar({
-  settingsToggleRef,
-  isSettingsOpen,
-  onToggleSettings,
+  settingsLinkRef,
+  sessionRestartButtonRef,
+  sessionStatusRef,
   settingsUiEnabled = true,
   settingsAvailable,
 }) {
   return (
     <>
       {settingsUiEnabled ? (
-        <button
-          ref={settingsToggleRef}
-          className="settings-toggle"
-          type="button"
-          aria-controls="settings-panel"
-          aria-expanded={String(isSettingsOpen)}
+        <a
+          ref={settingsLinkRef}
+          className="settings-toggle settings-link"
+          href="/settings/"
           aria-label="Параметры"
           title="Параметры"
-          onClick={onToggleSettings}
           hidden={!settingsAvailable}
-          disabled={!settingsAvailable}
         >
           ⚙
-        </button>
+        </a>
       ) : null}
+      <section
+        className="session-panel session-panel--toolbar"
+        aria-label="Совместная сессия"
+      >
+        <div
+          ref={sessionStatusRef}
+          className="session-state"
+          data-session-status
+          data-state="local"
+          data-testid="session-status"
+          aria-live="polite"
+        >
+          Локальная сессия
+        </div>
+        <button
+          ref={sessionRestartButtonRef}
+          className="session-restart"
+          type="button"
+          data-testid="restart-session"
+        >
+          Начать сначала
+        </button>
+      </section>
     </>
   );
 }

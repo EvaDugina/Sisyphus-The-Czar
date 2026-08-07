@@ -53,6 +53,10 @@ import {
 } from "../lib/rockScale.mjs";
 import { trailAnchorPoint } from "../lib/trailAnchor.mjs";
 import {
+  rockPulseProgress,
+  rockPulseScaleFactor,
+} from "../lib/rockPulse.mjs";
+import {
   canonicalVisualTrailPointToLocal,
   localVisualTrailPointToCanonical,
   normalizeStoredTrailPoint,
@@ -144,6 +148,8 @@ export function createSisyphusRuntime(elements = {}) {
   const handCursor = elements.handCursor || document.querySelector(".hand-cursor");
   const settingsToggle =
     elements.settingsToggle || document.querySelector(".settings-toggle");
+  const settingsLink =
+    elements.settingsLink || document.querySelector(".settings-link");
   const settingsPanel =
     elements.settingsPanel || document.querySelector(".settings-panel");
   const heightGateStatus =
@@ -301,6 +307,9 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
     rockPressShrinkPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPressShrinkPercent,
+    rockPulseEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseEnabled,
+    rockPulseBpm: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseBpm,
     preclickParallaxMaxOffsetVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
     preclickParallaxEndMaxOffsetVw:
@@ -430,6 +439,9 @@ export function createSisyphusRuntime(elements = {}) {
     sceneReady: false,
     rockScale: 1,
     rockPressActive: false,
+    rockPulseScaleFactor: 1,
+    rockPulseAnimationId: null,
+    rockPulseStartedAt: 0,
     rockActivationArmed: false,
     physicsActivated: false,
     rockActivationScaleFactor: 1,
@@ -2298,6 +2310,9 @@ export function createSisyphusRuntime(elements = {}) {
     if (shouldHandleChange("handAlwaysVisible")) {
       applyHandVisibilitySetting();
     }
+    if (shouldHandleChange("rockPulseEnabled", "rockPulseBpm")) {
+      syncRockPulse();
+    }
     if (shouldHandleChange("handAudioEnabled") && !params.handAudioEnabled) {
       stopHandInteractionSounds();
     }
@@ -3008,11 +3023,50 @@ export function createSisyphusRuntime(elements = {}) {
     return baseScaleForLocalY(y) * motion.rockActivationScaleFactor;
   }
 
+  function visualShrinkScaleFactor() {
+    const pressFactor = motion.rockPressActive
+      ? rockPressScaleFactor(params.rockPressShrinkPercent)
+      : 1;
+    return Math.min(pressFactor, motion.rockPulseScaleFactor);
+  }
+
   function visualScaleForLocalY(y) {
-    const scale = scaleForLocalY(y);
-    return motion.rockPressActive
-      ? scale * rockPressScaleFactor(params.rockPressShrinkPercent)
-      : scale;
+    return scaleForLocalY(y) * visualShrinkScaleFactor();
+  }
+
+  function stopRockPulse() {
+    if (motion.rockPulseAnimationId !== null) {
+      window.cancelAnimationFrame(motion.rockPulseAnimationId);
+      motion.rockPulseAnimationId = null;
+    }
+    motion.rockPulseScaleFactor = 1;
+    applyRockScale();
+  }
+
+  function renderRockPulse(now) {
+    motion.rockPulseAnimationId = null;
+    if (!params.rockPulseEnabled || document.hidden) {
+      motion.rockPulseScaleFactor = 1;
+      applyRockScale();
+      return;
+    }
+    motion.rockPulseScaleFactor = rockPulseScaleFactor(
+      rockPulseProgress(now, motion.rockPulseStartedAt, params.rockPulseBpm),
+      params.rockPressShrinkPercent,
+    );
+    applyRockScale();
+    motion.rockPulseAnimationId = window.requestAnimationFrame(renderRockPulse);
+  }
+
+  function syncRockPulse() {
+    if (!params.rockPulseEnabled || document.hidden) {
+      stopRockPulse();
+      return;
+    }
+    if (motion.rockPulseAnimationId === null) {
+      motion.rockPulseStartedAt = performance.now();
+      motion.rockPulseAnimationId = window.requestAnimationFrame(renderRockPulse);
+    }
   }
 
   function activateRockPress() {
@@ -3096,9 +3150,7 @@ export function createSisyphusRuntime(elements = {}) {
   function applyRockScale() {
     updateBounds();
     const baseScale = scaleForLocalY(motion.y);
-    const scale = motion.rockPressActive
-      ? baseScale * rockPressScaleFactor(params.rockPressShrinkPercent)
-      : baseScale;
+    const scale = baseScale * visualShrinkScaleFactor();
     const roundedScale = Math.round(scale * 10000) / 10000;
     const wallCompensation = rockHorizontalWallCompensation(
       motion.x,
@@ -3324,6 +3376,17 @@ export function createSisyphusRuntime(elements = {}) {
   function appUrl(relativePath) {
     const normalizedPath = String(relativePath || "").replace(/^\/+/, "");
     return new URL(`/${normalizedPath}`, window.location.origin);
+  }
+
+  function updateSettingsLink() {
+    if (!settingsLink) {
+      return;
+    }
+    const url = appUrl("settings/");
+    if (collab.sessionId) {
+      url.searchParams.set("session", collab.sessionId);
+    }
+    settingsLink.href = `${url.pathname}${url.search}`;
   }
 
   function localToCanonical(x, y) {
@@ -4006,6 +4069,18 @@ export function createSisyphusRuntime(elements = {}) {
     collab.sessionCreateAbortController = abortController;
     setSessionStatus("Создаём личную сессию…", "connecting");
     try {
+      let storedSessionId = "";
+      try {
+        storedSessionId = sessionStorage.getItem("sisyphus-room-session-id") || "";
+      } catch {
+        storedSessionId = "";
+      }
+      if (/^[A-Za-z0-9_-]{22}$/.test(storedSessionId)) {
+        collab.sessionId = storedSessionId;
+        updateSettingsLink();
+        connectSharedSession();
+        return;
+      }
       const sessionPayload = settingsController.hasLocalSettings()
         ? {
             physics: SharedPhysics.sanitizePhysics(params),
@@ -4034,6 +4109,12 @@ export function createSisyphusRuntime(elements = {}) {
       collab.enabled = true;
       collab.expired = false;
       collab.sessionId = result.sessionId;
+      try {
+        sessionStorage.setItem("sisyphus-room-session-id", collab.sessionId);
+      } catch {
+        /* sessionStorage недоступен — ссылка всё равно получит query-параметр */
+      }
+      updateSettingsLink();
       collab.leaveToken = null;
       collab.sequence = 0;
       collab.trailCursor = 0;
@@ -4329,6 +4410,11 @@ export function createSisyphusRuntime(elements = {}) {
         collab.sessionId = "";
         collab.leaveToken = null;
         collab.trailCursor = 0;
+        try {
+          sessionStorage.removeItem("sisyphus-room-session-id");
+        } catch {
+          /* sessionStorage недоступен */
+        }
       }
       updateSessionStatus();
       if (collab.expired) {
@@ -4434,6 +4520,11 @@ export function createSisyphusRuntime(elements = {}) {
         collab.sessionId = "";
         collab.leaveToken = null;
         collab.trailCursor = 0;
+        try {
+          sessionStorage.removeItem("sisyphus-room-session-id");
+        } catch {
+          /* sessionStorage недоступен */
+        }
         updateSessionStatus();
         void createSharedSession();
       }
@@ -4503,6 +4594,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     const previousPhase = motion.phase;
+    const initialSnapshot = collab.lastRevision < 0;
     collab.lastRevision = revision;
     collab.trailWriterId = normalizeHolderId(payload.trailWriterId);
     const offsetSample = Date.now() - Number(payload.serverTime || Date.now());
@@ -4511,10 +4603,10 @@ export function createSisyphusRuntime(elements = {}) {
       : offsetSample;
     collab.clockOffsetReady = true;
     applySummitTimerSnapshot(payload);
-    if (Object.hasOwn(payload, "physics")) {
+    if (initialSnapshot && Object.hasOwn(payload, "physics")) {
       applySharedPhysics(payload.physics);
     }
-    if (Object.hasOwn(payload, "roomSettings")) {
+    if (initialSnapshot && Object.hasOwn(payload, "roomSettings")) {
       applySharedRoomSettings(payload.roomSettings);
     }
     syncHeightGateState(payload.heightGateState, payload.serverTime);
@@ -5925,8 +6017,8 @@ export function createSisyphusRuntime(elements = {}) {
       return false;
     }
     return Boolean(
-      settingsToggle.contains(target) ||
-        settingsPanel.contains(target) ||
+      settingsToggle?.contains(target) ||
+        settingsPanel?.contains(target) ||
         target.closest(
           'a, button, input, select, textarea, [contenteditable="true"], [role="button"]',
         ),
@@ -6060,6 +6152,13 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   settingsController.bind();
+  listen(document, "visibilitychange", () => {
+    if (document.hidden) {
+      stopRockPulse();
+    } else {
+      syncRockPulse();
+    }
+  });
   listen(windowObstaclePopupTest, "click", () => {
     windowObstacleController.testPopupPermission();
   });
@@ -6283,6 +6382,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
       collab.leaving = true;
       stopLoop();
+      stopRockPulse();
       cancelGlowRenderSchedule();
       settingsController.dispose?.();
       windowObstacleController.dispose();
