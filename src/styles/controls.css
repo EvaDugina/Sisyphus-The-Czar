@@ -825,7 +825,8 @@ input[type="range"] {
   line-height: 1.35;
 }
 
-.trail-clear {
+.trail-clear,
+.session-restart {
   width: 100%;
   margin-top: 0.7rem;
   padding: 0.45rem 0.6rem;
@@ -839,7 +840,8 @@ input[type="range"] {
     border-color 180ms ease;
 }
 
-.trail-clear:hover {
+.trail-clear:hover,
+.session-restart:hover {
   border-color: var(--target-line);
   background: color-mix(in srgb, var(--surface) 80%, transparent);
 }
@@ -1004,6 +1006,10 @@ body.settings-page .settings-panel {
   background: var(--panel);
   box-shadow: 0 0.8rem 1.4rem color-mix(in srgb, var(--shadow) 30%, transparent);
   backdrop-filter: blur(12px);
+}
+
+.session-panel--toolbar .session-restart {
+  margin-top: 0;
 }
 
 .hint {

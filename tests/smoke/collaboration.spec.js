@@ -1961,7 +1961,7 @@ test("вход на корень открывает рабочую личную 
   await expect(page).toHaveURL(urlBeforeReload);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expectReadyAtBottom(page);
-  await expect(page.getByTestId("restart-session")).toHaveCount(0);
+  await expect(page.getByTestId("restart-session")).toBeVisible();
 
   await context.close();
 });
@@ -2041,6 +2041,69 @@ test("reload восстанавливает активную сессию и в�
       sameSession: true,
       stateClassRestored: true,
     });
+});
+
+test("кнопка Начать сначала возвращает preclick и сохраняет настройки", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+
+  const activeState = await page.evaluate(() => {
+    params.gravity = 8;
+    sendShared("physics.update", {
+      bounce: 0,
+      gravity: 8,
+      turbulence: 0,
+    });
+    sendShared("session.restart", {
+      phase: SharedPhysics.PHASES.PLAY,
+      suspended: false,
+      x: SharedPhysics.WORLD_WIDTH * 0.3,
+      y: SharedPhysics.WORLD_HEIGHT * 0.2,
+    });
+    return {
+      sessionId: collab.sessionId,
+    };
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        gravity: params.gravity,
+        suspended: currentSharedState().suspended,
+      })),
+    )
+    .toEqual({
+      gravity: 8,
+      suspended: false,
+    });
+
+  const restartButton = page.getByRole("button", { name: "Начать сначала" });
+  await expect(restartButton).toBeVisible();
+  await expect(restartButton).toBeEnabled();
+  await restartButton.focus();
+  await expect(restartButton).toBeFocused();
+  await restartButton.press("Enter");
+
+  await expect
+    .poll(() =>
+      page.evaluate((expectedSessionId) => ({
+        gravity: params.gravity,
+        phase: currentSharedState().phase,
+        preclick: document.body.classList.contains("preclick-rock-guidance"),
+        sameSession: collab.sessionId === expectedSessionId,
+        suspended: currentSharedState().suspended,
+      }), activeState.sessionId),
+    )
+    .toEqual({
+      gravity: 8,
+      phase: "play",
+      preclick: true,
+      sameSession: true,
+      suspended: true,
+    });
+  await expect(page.locator(SOURCE_ROCK)).toHaveClass(/is-preclick-parallax/);
+  await expect(page.locator("body")).toHaveClass(/is-manual-scroll-disabled/);
 });
 
 test.skip("legacy: общий pointerdown-звук не применяется к личным сессиям", async ({ browser }) => {
@@ -3136,7 +3199,7 @@ test.skip("legacy: два браузера больше не объединяю�
 
   await first.reload();
   await expect(first.getByTestId("session-status")).toContainText("В сессии");
-  await expect(first.getByTestId("restart-session")).toHaveCount(0);
+  await expect(first.getByTestId("restart-session")).toBeVisible();
   await expect
     .poll(() =>
       first.evaluate(

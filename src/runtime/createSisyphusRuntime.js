@@ -165,6 +165,8 @@ export function createSisyphusRuntime(elements = {}) {
   const rainFxCanvas = elements.rainFxCanvas || document.querySelector(".weather-rain__canvas--fx");
   const rainFallbackCanvas = elements.rainFallbackCanvas || document.querySelector(".weather-rain__canvas--fallback");
   const sessionStatus = elements.sessionStatus || document.querySelector("[data-session-status]");
+  const sessionRestartButton =
+    elements.sessionRestartButton || document.querySelector(".session-restart");
   const windowObstaclePopupStatus = document.querySelector(
     "[data-window-obstacle-popup-status]",
   );
@@ -6227,6 +6229,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   settingsController.bind();
+  listen(sessionRestartButton, "click", restartExperience);
   listen(document, "visibilitychange", () => {
     if (document.hidden) {
       stopRockPulse();

@@ -20,6 +20,7 @@ test("production /drafts/ serves the same Fold application", async ({ page }) =>
   );
   await expect(page.locator('[data-fold-zone="top"]')).toHaveCount(1);
   await expect(page.locator(".settings-panel")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Начать сначала" })).toBeVisible();
 });
 
 async function visibleRockPoint(page) {
@@ -92,6 +93,33 @@ async function scrollToRock(page) {
 function sessionIdFromWebSocket(url) {
   return new URL(url).searchParams.get("session");
 }
+
+test("production кнопка Начать сначала возвращает preclick", async ({ page }) => {
+  await page.goto("/");
+  await waitForProductionRuntime(page);
+
+  const restartButton = page.getByRole("button", { name: "Начать сначала" });
+  await expect(restartButton).toBeVisible();
+  await expect(restartButton).toBeEnabled();
+  await restartButton.focus();
+  await expect(restartButton).toBeFocused();
+
+  await page.evaluate(() => {
+    document.body.classList.remove(
+      "preclick-rock-guidance",
+      "is-manual-scroll-disabled",
+    );
+    document.documentElement.classList.remove("is-manual-scroll-disabled");
+    document.querySelector("#root > .world > .rock")
+      ?.classList.remove("is-preclick-parallax");
+  });
+  await expect(page.locator("body")).not.toHaveClass(/preclick-rock-guidance/);
+
+  await restartButton.press("Enter");
+  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  await expect(page.locator("body")).toHaveClass(/is-manual-scroll-disabled/);
+  await expect(page.locator(SOURCE_ROCK)).toHaveClass(/is-preclick-parallax/);
+});
 
 test("production build creates one personal session per user, keeps a clean URL and keeps the hand visible", async ({
   browser,

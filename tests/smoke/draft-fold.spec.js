@@ -409,7 +409,7 @@ test("reload сохраняет preclick и настройки до первог
   const rock = page.locator("#root > .world > .rock");
   const body = page.locator("body");
   const html = page.locator("html");
-  await expect(page.getByTestId("restart-session")).toHaveCount(0);
+  await expect(page.getByTestId("restart-session")).toBeVisible();
   const readCurrentSettings = () =>
     page.evaluate(() => {
       const { params } = window.__sisyphusTestApi;
