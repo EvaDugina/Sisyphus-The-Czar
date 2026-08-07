@@ -93,6 +93,42 @@ test("production DEBUG мгновенно применяет последний 
     .toBe("800vh");
 });
 
+test("stale realtime session creates a clean replacement session", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toHaveAttribute(
+    "data-state",
+    "online",
+  );
+
+  const originalSessionId = await page.evaluate(() => collab.sessionId);
+  await page.evaluate(() => {
+    collab.lastRevision = 100_000;
+    collab.snapshots.length = 0;
+    collab.socket.close(4004, "session_not_found");
+  });
+
+  await expect
+    .poll(() => page.evaluate(() => collab.sessionId))
+    .not.toBe(originalSessionId);
+  await expect
+    .poll(() => page.evaluate(() => collab.lastRevision))
+    .toBeLessThan(100_000);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        connected: collab.connected,
+        expired: collab.expired,
+      })),
+    )
+    .toEqual({ connected: true, expired: false });
+  await expect(page.getByTestId("session-status")).toHaveAttribute(
+    "data-state",
+    "online",
+  );
+});
+
 test("production DEBUG включает UI, draft и изолированные возможности master", async ({
   browser,
   page,

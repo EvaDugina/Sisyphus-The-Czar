@@ -4052,6 +4052,55 @@ export function createSisyphusRuntime(elements = {}) {
     return true;
   }
 
+  function recoverExpiredSharedSession(socket = null) {
+    if (socket && collab.socket === socket) {
+      collab.socket = null;
+    }
+    if (socket && socket.readyState < WebSocket.CLOSING) {
+      socket.close(4004, "session_not_found");
+    }
+
+    collab.expired = true;
+    collab.connected = false;
+    collab.sessionId = "";
+    collab.leaveToken = null;
+    collab.sequence = 0;
+    collab.lastRevision = -1;
+    collab.clockOffset = 0;
+    collab.clockOffsetReady = false;
+    collab.snapshots = [];
+    collab.trailCursor = 0;
+    collab.trailWriterId = null;
+    collab.groundTouchSeq = null;
+    collab.settingsRevision = 0;
+    collab.settingsUpdateInFlight = null;
+    collab.settingsUpdateQueued =
+      collab.settingsUpdateQueued ||
+      Object.keys(collab.pendingPhysicsChanges).length > 0 ||
+      Object.keys(collab.pendingRoomSettingsChanges).length > 0;
+    collab.holderId = null;
+    collab.remoteControllerId = null;
+    collab.hasControl = false;
+    collab.pendingControl = false;
+    collab.releasePending = false;
+    collab.firstFallRequestSent = false;
+    clearSharedReleaseHandoff();
+    cancelSharedLocalDrag();
+    clearRemotePointers();
+    resetHeightGateState();
+    try {
+      sessionStorage.removeItem("sisyphus-room-session-id");
+    } catch {
+      /* sessionStorage недоступен */
+    }
+
+    if (disposed) {
+      return;
+    }
+    setSessionStatus("Сессия недействительна, создаём новую…", "connecting");
+    void createSharedSession();
+  }
+
   async function createSharedSession() {
     if (disposed || collab.sessionCreateInFlight) {
       return;
@@ -4406,20 +4455,10 @@ export function createSisyphusRuntime(elements = {}) {
       hideHandCursor();
       clearRemotePointers();
       if (event.code === 4004) {
-        collab.expired = true;
-        collab.sessionId = "";
-        collab.leaveToken = null;
-        collab.trailCursor = 0;
-        try {
-          sessionStorage.removeItem("sisyphus-room-session-id");
-        } catch {
-          /* sessionStorage недоступен */
-        }
+        recoverExpiredSharedSession(socket);
+        return;
       }
       updateSessionStatus();
-      if (collab.expired) {
-        void createSharedSession();
-      }
       scheduleSharedReconnect();
     });
   }
@@ -4515,18 +4554,7 @@ export function createSisyphusRuntime(elements = {}) {
       ) {
         settingsController.setSettingsTemplateError(payload.message);
       } else if (payload.code === "session_not_found") {
-        collab.expired = true;
-        collab.connected = false;
-        collab.sessionId = "";
-        collab.leaveToken = null;
-        collab.trailCursor = 0;
-        try {
-          sessionStorage.removeItem("sisyphus-room-session-id");
-        } catch {
-          /* sessionStorage недоступен */
-        }
-        updateSessionStatus();
-        void createSharedSession();
+        recoverExpiredSharedSession(collab.socket);
       }
     }
   }

@@ -113,12 +113,9 @@ export function SettingsPanel({
         <details className="control-group" key={group.title}>
           <summary>{group.title}</summary>
           {group.controls?.length ? (
-            <details className="control-subgroup" open>
-              <summary>Основные</summary>
-              {group.controls.map((control) => (
-                <SettingsControl control={control} key={control.name} />
-              ))}
-            </details>
+            group.controls.map((control) => (
+              <SettingsControl control={control} key={control.name} />
+            ))
           ) : null}
           {group.subgroups?.map((subgroup) => (
             <details
