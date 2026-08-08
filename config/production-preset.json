@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "selectedAt": "2026-08-08T09:32:00.000Z",
+  "source": {
+    "id": "builtin-prod-v32",
+    "name": "prod",
+    "settingsSchemaVersion": 32,
+    "updatedAt": "2026-08-08T09:32:00.000Z"
+  },
+  "settings": {
+    "sceneHeightScreens": 1,
+    "customCursorEnabled": false,
+    "customCursorSizePx": 32
+  }
+}

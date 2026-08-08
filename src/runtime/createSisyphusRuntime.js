@@ -153,6 +153,8 @@ export function createSisyphusRuntime(elements = {}) {
     elements.settingsLink || document.querySelector(".settings-link");
   const settingsPanel =
     elements.settingsPanel || document.querySelector(".settings-panel");
+  const sessionPanel =
+    elements.sessionPanel || document.querySelector(".session-panel--toolbar");
   const heightGateStatus =
     elements.heightGateStatus || document.querySelector(".height-gate-status");
   const remoteCursorLayer = elements.remoteCursorLayer || document.querySelector(".remote-cursors");
@@ -338,6 +340,10 @@ export function createSisyphusRuntime(elements = {}) {
         .preclickParallaxReturnDurationMs,
     preclickParallaxReturnEasing:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxReturnEasing,
+    customCursorEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorEnabled,
+    customCursorSizePx:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorSizePx,
     handAlwaysVisible:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handAlwaysVisible,
     rockMinWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
@@ -479,6 +485,7 @@ export function createSisyphusRuntime(elements = {}) {
     outsideRadius: false,
   };
   body.classList.toggle("hand-always-visible", params.handAlwaysVisible);
+  applyCustomCursorSettings();
   resetPreclickRockGuidance();
   const finalFallGate = {
     enteredAt: null,
@@ -2180,6 +2187,14 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function applyCustomCursorSettings() {
+    body.classList.toggle("custom-cursor-enabled", params.customCursorEnabled);
+    body.style.setProperty(
+      "--custom-cursor-size-px",
+      `${params.customCursorSizePx}px`,
+    );
+  }
+
   function resolveTheme(autoTheme) {
     return params.themeMode === "auto" ? autoTheme : params.themeMode;
   }
@@ -2363,6 +2378,9 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (shouldHandleChange("handAlwaysVisible")) {
       applyHandVisibilitySetting();
+    }
+    if (shouldHandleChange("customCursorEnabled", "customCursorSizePx")) {
+      applyCustomCursorSettings();
     }
     if (shouldHandleChange("rockPulseEnabled", "rockPulseBpm")) {
       syncRockPulse();
@@ -4063,7 +4081,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 31,
+      settingsSchemaVersion: 32,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -6249,6 +6267,8 @@ export function createSisyphusRuntime(elements = {}) {
   listen(settingsToggle, "pointerleave", hideNativeSettingsCursor);
   listen(settingsPanel, "pointerenter", showNativeSettingsCursor);
   listen(settingsPanel, "pointerleave", hideNativeSettingsCursor);
+  listen(sessionPanel, "pointerenter", showNativeSettingsCursor);
+  listen(sessionPanel, "pointerleave", hideNativeSettingsCursor);
   listen(rock, "pointerenter", enterRock);
   listen(rock, "pointerleave", leaveRock);
   listen(rock, "pointerdown", startDrag);
@@ -6429,6 +6449,7 @@ export function createSisyphusRuntime(elements = {}) {
       getSettingsVersions: settingsController.getSettingsVersions,
       getLatestSettingsVersionPreset:
         settingsController.getLatestSettingsVersionPreset,
+      receiveRemotePointer,
       restartExperience,
       resetTrail,
       sendShared,

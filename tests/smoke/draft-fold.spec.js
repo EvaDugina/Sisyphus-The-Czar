@@ -142,11 +142,169 @@ test("постоянная рука показывает нативный кур
   await expect(hand).not.toHaveClass(/is-visible/);
 });
 
+test("session toolbar показывает нативный курсор вместо фото-руки", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  await expect(page.locator("body")).toHaveClass(/hand-always-visible/);
+
+  const body = page.locator("body");
+  const hand = page.locator(
+    "#root > .world > .hand-cursor:not(.is-remote)",
+  );
+  const sessionPanel = page.locator(".session-panel--toolbar");
+  await sessionPanel.hover({ position: { x: 16, y: 16 } });
+  await expect(sessionPanel).toHaveCSS("cursor", "auto");
+  await expect(body).toHaveClass(/is-settings-pointer-active/);
+  await expect(hand).toHaveCSS("opacity", "0");
+
+  const restart = sessionPanel.getByTestId("restart-session");
+  await restart.hover();
+  await expect(restart).toHaveCSS("cursor", "pointer");
+  await expect(body).toHaveClass(/is-settings-pointer-active/);
+  await expect(hand).toHaveCSS("opacity", "0");
+
+  await page.mouse.move(8, 8);
+  await expect(body).not.toHaveClass(/is-settings-pointer-active/);
+  await expect(hand).toHaveCSS("opacity", "1");
+});
+
+test("общая настройка показывает SVG-курсор и меняет его размер", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+
+  const body = page.locator("body");
+  const hand = page.locator(
+    "#root > .world > .hand-cursor:not(.is-remote)",
+  );
+  const settingsToggle = page.locator(".settings-toggle");
+  await settingsToggle.click();
+  await expect(page).toHaveURL(/\/settings\//);
+  const size = page.locator('[name="customCursorSizePx"]');
+
+  await expect(size).toBeDisabled();
+
+  await setSettingValue(page, "customCursorEnabled", true);
+  await expect(size).toBeEnabled();
+  await setSettingValue(page, "customCursorSizePx", 64);
+  await page
+    .getByRole("button", {
+      name: "Сохранить версию и настройки комнаты",
+    })
+    .click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Версия и настройки комнаты сохранены",
+  );
+  await page.locator(".settings-page__back").click();
+  await waitForFoldReady(page);
+  await expect(body).toHaveClass(/custom-cursor-enabled/);
+
+  const openCursor = await hand.evaluate((element) => {
+    const style = getComputedStyle(element, "::after");
+    return {
+      backgroundImage: style.backgroundImage,
+      display: style.display,
+      height: style.height,
+      width: style.width,
+    };
+  });
+  expect(openCursor).toEqual({
+    backgroundImage: expect.stringMatching(
+      /(?:handopen(?:-[A-Za-z0-9_-]+)?\.svg|data:image\/svg\+xml)/,
+    ),
+    display: "block",
+    height: "64px",
+    width: "64px",
+  });
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.receiveRemotePointer({
+      clientId: "00000000-0000-4000-8000-000000000099",
+      mode: "grab",
+      visible: true,
+      x: 500,
+      y: 500,
+    });
+  });
+  const remoteCursor = page.getByTestId("remote-cursor");
+  await expect(remoteCursor).toHaveClass(/is-visible/);
+  await expect
+    .poll(() =>
+      remoteCursor.evaluate((cursor) => {
+        const style = getComputedStyle(cursor, "::after");
+        return {
+          backgroundImage: style.backgroundImage,
+          display: style.display,
+          width: style.width,
+        };
+      }),
+    )
+    .toEqual({
+      backgroundImage: expect.stringMatching(
+        /(?:handopen(?:-[A-Za-z0-9_-]+)?\.svg|data:image\/svg\+xml)/,
+      ),
+      display: "block",
+      width: "64px",
+    });
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.receiveRemotePointer({
+      clientId: "00000000-0000-4000-8000-000000000099",
+      mode: "grabbing",
+      visible: true,
+      x: 500,
+      y: 500,
+    });
+  });
+  await expect(remoteCursor).toHaveClass(/is-grabbing/);
+  await expect
+    .poll(() =>
+      remoteCursor.evaluate(
+        (cursor) => getComputedStyle(cursor, "::after").backgroundImage,
+      ),
+    )
+    .toContain("handgrabbing");
+
+  await page.mouse.move(80, 80);
+  await page.mouse.down();
+  await expect(hand).toHaveClass(/is-grabbing/);
+  await expect
+    .poll(() =>
+      hand.evaluate(
+        (element) => getComputedStyle(element, "::after").backgroundImage,
+      ),
+    )
+    .toContain("handgrabbing.svg");
+  await page.mouse.up();
+  await expect(hand).not.toHaveClass(/is-grabbing/);
+
+  await page.locator(".settings-toggle").click();
+  await expect(page).toHaveURL(/\/settings\//);
+  await setSettingValue(page, "customCursorEnabled", false);
+  await expect(size).toBeDisabled();
+  await page
+    .getByRole("button", {
+      name: "Сохранить версию и настройки комнаты",
+    })
+    .click();
+  await page.locator(".settings-page__back").click();
+  await waitForFoldReady(page);
+  await expect(body).not.toHaveClass(/custom-cursor-enabled/);
+  await expect
+    .poll(() =>
+      hand.evaluate((element) => getComputedStyle(element, "::after").display),
+    )
+    .toBe("none");
+});
+
 test("настройки parallax меняют задержку, радиусы и плавность возврата", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v31");
+    localStorage.removeItem("sisyphus-czar-settings-v32");
     localStorage.setItem(
       "sisyphus-czar-settings-v26",
       JSON.stringify({ preclickParallaxActivationRadiusPx: 1000 }),
@@ -278,7 +436,7 @@ test("настройки parallax меняют задержку, радиусы 
       page.evaluate(() =>
         Boolean(
           JSON.parse(
-            localStorage.getItem("sisyphus-czar-settings-v31") || "{}",
+            localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
           ).preclickParallaxInverted,
         ),
       ),
@@ -288,7 +446,7 @@ test("настройки parallax меняют задержку, радиусы 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v31") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
         );
         return {
           startDelay: stored.preclickParallaxStartDelayMs,
@@ -319,7 +477,7 @@ test("задержка parallax отменяется при выходе и пр
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v31",
+      "sisyphus-czar-settings-v32",
       JSON.stringify({
         handAlwaysVisible: false,
         preclickParallaxActivationRadiusVw: 50,
@@ -517,7 +675,7 @@ test("mouse захватывает камень внутри расширенн�
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v31",
+      "sisyphus-czar-settings-v32",
       JSON.stringify({
         handAlwaysVisible: false,
         preclickParallaxMaxOffsetVw: 0,
@@ -993,7 +1151,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v31") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
         );
         return [
           stored.glowOptimizationMode,

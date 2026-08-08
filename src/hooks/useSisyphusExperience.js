@@ -5,6 +5,7 @@ import { useSettings } from "./useSettings";
 export function useSisyphusExperience() {
   const settings = useSettings();
   const realtime = {
+    sessionPanelRef: useRef(null),
     sessionStatusRef: useRef(null),
     sessionRestartButtonRef: useRef(null),
   };
@@ -33,6 +34,7 @@ export function useSisyphusExperience() {
 
   const { settingsLinkRef } = settings;
   const {
+    sessionPanelRef,
     sessionRestartButtonRef,
     sessionStatusRef,
   } = realtime;
@@ -69,6 +71,7 @@ export function useSisyphusExperience() {
       rainFallbackCanvas: rainFallbackCanvasRef.current,
       hint: hintRef.current,
       sessionStatus: sessionStatusRef.current,
+      sessionPanel: sessionPanelRef.current,
       sessionRestartButton: sessionRestartButtonRef.current,
       foldSettingsRef,
     });
@@ -86,6 +89,7 @@ export function useSisyphusExperience() {
     rockImprintRef,
     rockRef,
     sessionRestartButtonRef,
+    sessionPanelRef,
     sessionStatusRef,
     settingsLinkRef,
     trailCanvasRef,

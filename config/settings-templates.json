@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "savedAt": "2026-08-06T19:38:42.644Z",
-  "revision": 29,
+  "savedAt": "2026-08-08T09:32:00.000Z",
+  "revision": 30,
   "entries": [
     {
       "id": "settings-version-mscz5hfd-c30065d5-639b-4c30-9b66-03f291160c20",
       "name": "v1",
-      "settingsSchemaVersion": 31,
+      "settingsSchemaVersion": 32,
       "createdAt": "2026-08-03T08:35:52.057Z",
-      "updatedAt": "2026-08-06T19:38:42.643Z",
+      "updatedAt": "2026-08-08T09:32:00.000Z",
       "settings": {
         "themeMode": "dark",
         "lightBackgroundColor": "#f8f8f5",
@@ -47,6 +47,8 @@
         "preclickParallaxInverted": true,
         "preclickParallaxReturnDurationMs": 400,
         "preclickParallaxReturnEasing": "cubic-bezier(0.22, 1, 0.36, 1)",
+        "customCursorEnabled": false,
+        "customCursorSizePx": 32,
         "handAlwaysVisible": false,
         "rockGrabRadiusVh": 0,
         "rockMinWidthVw": 25,

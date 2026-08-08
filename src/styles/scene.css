@@ -367,6 +367,22 @@ body.theme-light .weather-rain__canvas--fallback {
   will-change: transform, opacity;
 }
 
+.hand-cursor::after {
+  position: absolute;
+  top: var(--hotspot-y);
+  left: var(--hotspot-x);
+  z-index: 1;
+  display: none;
+  width: var(--custom-cursor-size-px, 32px);
+  height: var(--custom-cursor-size-px, 32px);
+  background-image: url("../../assets/cursor/handopen.svg");
+  background-position: left top;
+  background-repeat: no-repeat;
+  background-size: contain;
+  content: "";
+  pointer-events: none;
+}
+
 .hand-cursor.is-visible {
   opacity: 1;
   transform: translate3d(
@@ -394,6 +410,10 @@ body.theme-light .weather-rain__canvas--fallback {
       0
     )
     scale(1.04);
+}
+
+.hand-cursor.is-grabbing::after {
+  background-image: url("../../assets/cursor/handgrabbing.svg");
 }
 
 .hand-cursor.is-remote {
@@ -434,6 +454,10 @@ body.state-fallingToBottom .hand-cursor {
 }
 
 @media (pointer: fine) {
+  body.custom-cursor-enabled .hand-cursor::after {
+    display: block;
+  }
+
   body.preclick-rock-guidance.hand-always-visible,
   body.preclick-rock-guidance.hand-always-visible * {
     cursor: none !important;
@@ -444,8 +468,16 @@ body.state-fallingToBottom .hand-cursor {
   }
 
   body.preclick-rock-guidance.hand-always-visible .settings-panel.is-open,
-  body.preclick-rock-guidance.hand-always-visible .settings-panel.is-open * {
+  body.preclick-rock-guidance.hand-always-visible .settings-panel.is-open *,
+  body.preclick-rock-guidance.hand-always-visible .session-panel--toolbar,
+  body.preclick-rock-guidance.hand-always-visible .session-panel--toolbar * {
     cursor: auto !important;
+  }
+
+  body.preclick-rock-guidance.hand-always-visible
+    .session-panel--toolbar
+    .session-restart {
+    cursor: pointer !important;
   }
 
   body.preclick-rock-guidance.hand-always-visible.is-settings-pointer-active

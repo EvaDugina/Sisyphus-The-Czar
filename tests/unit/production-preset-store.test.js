@@ -6,8 +6,10 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const Physics = require("../../shared/physics");
+const ProductionPreset = require("../../shared/production-preset");
 const RoomSettings = require("../../shared/room-settings");
 const {
+  normalizeDocument,
   ProductionPresetStore,
   STORE_VERSION,
 } = require("../../server/production-preset-store");
@@ -27,6 +29,19 @@ function selection(id, overrides = {}) {
     },
   };
 }
+
+test("Git production preset совпадает со встроенным fallback", () => {
+  const document = JSON.parse(
+    fs.readFileSync(
+      path.join(__dirname, "../../config/production-preset.json"),
+      "utf8",
+    ),
+  );
+  const normalized = normalizeDocument(document);
+
+  assert.equal(normalized.source.settingsSchemaVersion, 32);
+  assert.deepEqual(normalized.settings, ProductionPreset.settings);
+});
 
 test("production preset store атомарно сохраняет полный whitelist настроек", (context) => {
   const directory = fs.mkdtempSync(

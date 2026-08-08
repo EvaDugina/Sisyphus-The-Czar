@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 29;
+  const ROOM_SETTINGS_VERSION = 30;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
@@ -63,6 +63,7 @@
     draftFoldZoneSize: [0, 50],
     finalFallDelaySeconds: [0, 10],
     drizzleVolume: [0, 1],
+    customCursorSizePx: [8, 128],
     handWidthVw: [10, 90],
     heightGateCount: [0, MAX_HEIGHT_GATES],
     heightGatePercent: [1, 99],
@@ -149,6 +150,8 @@
     preclickParallaxInverted: false,
     preclickParallaxReturnDurationMs: 400,
     preclickParallaxReturnEasing: DEFAULT_PRECLICK_PARALLAX_RETURN_EASING,
+    customCursorEnabled: false,
+    customCursorSizePx: 32,
     handAlwaysVisible: true,
     rockGrabRadiusVh: 0,
     handWidthVw: 14.375,
@@ -763,6 +766,18 @@
         fallbackSource,
         "preclickParallaxReturnEasing"
       ),
+      customCursorEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "customCursorEnabled"
+      ),
+      customCursorSizePx: integerSetting(
+        source,
+        fallbackSource,
+        "customCursorSizePx",
+        ROOM_SETTINGS_LIMITS.customCursorSizePx[0],
+        ROOM_SETTINGS_LIMITS.customCursorSizePx[1]
+      ),
       handAlwaysVisible: boolSetting(
         source,
         fallbackSource,
@@ -1151,6 +1166,13 @@
         "preclickParallaxDelayEasing",
         "preclickParallaxTransitionDurationSeconds",
       ].forEach((key) => {
+        if (!Object.hasOwn(source, key)) {
+          source[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
+    if (finiteNumber(version, 1) < 30) {
+      ["customCursorEnabled", "customCursorSizePx"].forEach((key) => {
         if (!Object.hasOwn(source, key)) {
           source[key] = DEFAULT_ROOM_SETTINGS[key];
         }

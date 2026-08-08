@@ -1,5 +1,6 @@
 export function Toolbar({
   settingsLinkRef,
+  sessionPanelRef,
   sessionRestartButtonRef,
   sessionStatusRef,
   settingsUiEnabled = true,
@@ -20,6 +21,7 @@ export function Toolbar({
         </a>
       ) : null}
       <section
+        ref={sessionPanelRef}
         className="session-panel session-panel--toolbar"
         aria-label="Совместная сессия"
       >

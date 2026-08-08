@@ -8,7 +8,7 @@ import {
 } from "../lib/glowOptimization.mjs";
 import { createSettingsController } from "./createSettingsController.js";
 
-const SETTINGS_SCHEMA_VERSION = 31;
+const SETTINGS_SCHEMA_VERSION = 32;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 function randomRequestId() {

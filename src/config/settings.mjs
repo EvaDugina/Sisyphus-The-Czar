@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v31";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v32";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v31",
   "sisyphus-czar-settings-v30",
   "sisyphus-czar-settings-v29",
   "sisyphus-czar-settings-v28",
@@ -919,6 +920,30 @@ export const SETTINGS_GROUPS = [
         output: `${DEFAULT_ROOM_SETTINGS.rockMaxWidthVw}%`,
         hint: "Ширина камня в конце пути, у вершины, в процентах от ширины экрана. Значение может быть меньше начального.",
         formulas: PHYSICS_FORMULAS.rockMaxWidthVw,
+      },
+    ],
+  },
+  {
+    title: "Курсор",
+    controls: [
+      {
+        name: "customCursorEnabled",
+        label: "Показывать курсор",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.customCursorEnabled,
+        hint: "Показывает SVG-курсор из assets/cursor одновременно с фото-рукой для всех участников комнаты.",
+      },
+      {
+        name: "customCursorSizePx",
+        label: "Размер курсора, px",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.customCursorSizePx[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.customCursorSizePx[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.customCursorSizePx,
+        output: `${DEFAULT_ROOM_SETTINGS.customCursorSizePx}px`,
+        enabledWhen: "customCursorEnabled",
+        hint: "Размер SVG-курсора в пикселях. Значение сохраняется, когда показ курсора выключен.",
       },
     ],
   },
