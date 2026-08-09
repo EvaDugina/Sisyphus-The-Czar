@@ -6,6 +6,7 @@ import {
   foldEffectEnabled,
   normalizeFoldSettings,
 } from "../lib/fold.mjs";
+import { rockImageUrl } from "../config/rockImages.mjs";
 
 const DYNAMIC_SELECTORS = [
   ".world",
@@ -43,6 +44,12 @@ function sanitizeMirror(root) {
 function copyPresentation(source, target) {
   target.className = source.className;
   target.style.cssText = source.style.cssText;
+  if (
+    source instanceof HTMLImageElement &&
+    target instanceof HTMLImageElement
+  ) {
+    target.src = source.src;
+  }
   if (source.hidden) {
     target.setAttribute("hidden", "");
   } else {
@@ -141,7 +148,7 @@ function syncCanvas(sourceWorld, mirrorWorld, selector) {
   }
 }
 
-function syncMirror(sourceWorld, mirrorWorld) {
+function syncMirror(sourceWorld, mirrorWorld, foldRockImageId) {
   syncRemoteCursors(sourceWorld, mirrorWorld);
 
   for (const selector of DYNAMIC_SELECTORS) {
@@ -158,6 +165,12 @@ function syncMirror(sourceWorld, mirrorWorld) {
     if (selector === ".summit-timer") {
       mirror.textContent = source.textContent;
     }
+  }
+
+  const mirrorRock = mirrorWorld.querySelector(".rock");
+  if (mirrorRock instanceof HTMLImageElement) {
+    mirrorRock.src = rockImageUrl(foldRockImageId);
+    mirrorRock.dataset.rockImageId = foldRockImageId;
   }
 
   const sourcePointers = sourceWorld.querySelectorAll(
@@ -220,9 +233,8 @@ export function FoldLayer({ settingsRef, worldRef }) {
         return;
       }
 
-      const clean = normalizeFoldSettings(
-        settingsRef.current || DEFAULT_FOLD_SETTINGS,
-      );
+      const currentSettings = settingsRef.current || DEFAULT_FOLD_SETTINGS;
+      const clean = normalizeFoldSettings(currentSettings);
       const signature = [
         clean.foldAngle,
         clean.foldZoneSize,
@@ -236,7 +248,7 @@ export function FoldLayer({ settingsRef, worldRef }) {
 
       const scrollOffset = `${window.scrollY}px`;
       track.style.setProperty("--fold-scroll-offset", scrollOffset);
-      syncMirror(sourceWorld, mirror);
+      syncMirror(sourceWorld, mirror, currentSettings.foldRockImageId);
       frameNumber += 1;
       layer.dataset.mirrorFrame = String(frameNumber);
       layer.dataset.foldReady = "true";

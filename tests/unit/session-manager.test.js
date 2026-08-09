@@ -550,7 +550,7 @@ test("старая сессия внутри вершины получает н�
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 });
 
-test("persisted session мигрирует Fold и длину отскока в room schema 32", () => {
+test("persisted session мигрирует Fold, отскок и камень в room schema 33", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
     {
@@ -564,6 +564,7 @@ test("persisted session мигрирует Fold и длину отскока в 
         draftFoldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
         foldAngle: 54,
         preclickParallaxActivationRadiusVw: 36,
+        rockPressShrinkPercent: 17,
       },
       expiresAt: 5000,
       emptyDeleteAt: null,
@@ -584,6 +585,9 @@ test("persisted session мигрирует Fold и длину отскока в 
     false,
   );
   assert.equal(session.roomSettings.preclickHopMaxDistanceVw, 45);
+  assert.equal(session.roomSettings.rockImageId, "rock-03");
+  assert.equal(session.roomSettings.foldRockImageId, "rock-03");
+  assert.equal(session.roomSettings.rockPulseShrinkPercent, 17);
   assert.equal(
     manager.serializeSessions()[0].roomSettingsVersion,
     RoomSettings.ROOM_SETTINGS_VERSION,

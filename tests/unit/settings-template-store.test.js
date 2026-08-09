@@ -65,7 +65,7 @@ test("settings template store атомарно сохраняет whitelist и �
   assert.deepEqual(loaded.latest(), saved.entry);
 });
 
-test("settings template store мигрирует legacy Fold-ключи в schema 34", (context) => {
+test("settings template store мигрирует legacy Fold-ключи в schema 35", (context) => {
   const { store } = temporaryStore(context);
   const legacy = entry("legacy-fold");
   legacy.settingsSchemaVersion = 32;
@@ -79,7 +79,7 @@ test("settings template store мигрирует legacy Fold-ключи в schem
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 34);
+  assert.equal(imported.settingsSchemaVersion, 35);
   assert.equal(imported.settings.foldAngle, 55);
   assert.equal(imported.settings.foldZoneSize, 18);
   assert.equal(imported.settings.foldBlendEnabled, false);
@@ -92,6 +92,8 @@ test("settings template store мигрирует legacy Fold-ключи в schem
     false,
   );
   assert.equal(imported.settings.preclickHopMaxDistanceVw, 62.5);
+  assert.equal(imported.settings.rockImageId, "rock-03");
+  assert.equal(imported.settings.foldRockImageId, "rock-03");
 });
 
 test("settings template store мигрирует длину отскока из schema 33", (context) => {
@@ -104,8 +106,25 @@ test("settings template store мигрирует длину отскока из 
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 34);
+  assert.equal(imported.settingsSchemaVersion, 35);
   assert.equal(imported.settings.preclickHopMaxDistanceVw, 25);
+});
+
+test("settings template store разделяет press и pulse из schema 34", (context) => {
+  const { store } = temporaryStore(context);
+  const legacy = entry("legacy-rock-visuals");
+  legacy.settingsSchemaVersion = 34;
+  legacy.settings = {
+    rockPressShrinkPercent: 17,
+  };
+
+  const imported = store.importEntries([legacy]).entries[0];
+
+  assert.equal(imported.settingsSchemaVersion, 35);
+  assert.equal(imported.settings.rockPressShrinkPercent, 17);
+  assert.equal(imported.settings.rockPulseShrinkPercent, 17);
+  assert.equal(imported.settings.rockImageId, "rock-03");
+  assert.equal(imported.settings.foldRockImageId, "rock-03");
 });
 
 test("latest выбирается по updatedAt, createdAt и id", (context) => {

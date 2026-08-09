@@ -400,7 +400,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -672,7 +672,7 @@ test("gachi накладывается по primary click и останавли�
   await page.mouse.up();
 });
 
-test("звук удара повторяется на каждом отскоке без нового касания рукой", async ({
+test("звук удара срабатывает один раз после каждого нового касания рукой", async ({
   page,
 }) => {
   await watchAudioPlayCalls(page, "СимуляцияОргазма.mov");
@@ -681,83 +681,70 @@ test("звук удара повторяется на каждом отскок�
   await resetRootExperience(page);
   await expectReadyAtBottom(page);
 
-  const falling = await page.evaluate(() => {
-    motion.phase = SharedPhysics.PHASES.PLAY;
-    const before =
-      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    window.__sisyphusTestApi.receiveSharedSnapshot({
-      phase: SharedPhysics.PHASES.FALLING,
-      x: SharedPhysics.WORLD_WIDTH / 2,
-      y: 1,
-      vx: 0,
-      vy: 100,
-      dragging: false,
-      suspended: false,
-      holderId: null,
-      revision: collab.lastRevision + 1,
-      serverTime: Date.now(),
-      groundTouchSeq: collab.groundTouchSeq,
-    });
-    return {
-      after: window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
-      before,
-    };
-  });
-  expect(falling.after).toBe(falling.before);
+  await scrollToRock(page);
+  const touchedPoint = await visibleRockPoint(page);
+  await page.mouse.move(touchedPoint.x, touchedPoint.y);
+  await page.mouse.down();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.getGroundImpactAudioState().armed,
+      ),
+    )
+    .toBe(true);
+  await page.mouse.up();
 
   const localContacts = await page.evaluate(() => {
     collab.enabled = false;
+    restartExperience();
     params.finalFallEnabled = false;
     params.bounce = 0.5;
     params.gravity = 10;
     motion.phase = SharedPhysics.PHASES.PLAY;
     motion.suspended = false;
     updateBounds();
-    setPosition(bounds.maxX / 2, bounds.maxY - 1);
-    motion.vy = 1000;
     const before =
       window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    const contacts = [];
-    let previousCount = before;
-    for (let frame = 0; frame < 600 && contacts.length < 3; frame += 1) {
-      window.__sisyphusTestApi.applyPhysics(
-        SharedPhysics.FIXED_STEP_SECONDS,
-      );
-      const currentCount =
-        window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-      if (currentCount > previousCount) {
-        contacts.push(currentCount);
-        previousCount = currentCount;
-      }
-    }
 
-    params.bounce = 0;
-    setPosition(bounds.maxX / 2, bounds.maxY);
-    motion.vy = 0;
-    const restingBefore =
+    setPosition(bounds.maxX / 2, bounds.maxY - 1);
+    motion.vy = 1000;
+    window.__sisyphusTestApi.applyPhysics(SharedPhysics.FIXED_STEP_SECONDS);
+    const unarmedAfter =
       window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    for (let frame = 0; frame < 30; frame += 1) {
+
+    window.__sisyphusTestApi.armGroundImpactSound();
+    setPosition(bounds.maxX / 2, bounds.maxY - 1);
+    motion.vy = 1000;
+    for (let frame = 0; frame < 600; frame += 1) {
       window.__sisyphusTestApi.applyPhysics(
         SharedPhysics.FIXED_STEP_SECONDS,
       );
     }
+    const afterBounces =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    const armedAfterBounces =
+      window.__sisyphusTestApi.getGroundImpactAudioState().armed;
+
+    window.__sisyphusTestApi.armGroundImpactSound();
+    setPosition(bounds.maxX / 2, bounds.maxY - 1);
+    motion.vy = 1000;
+    window.__sisyphusTestApi.applyPhysics(SharedPhysics.FIXED_STEP_SECONDS);
     return {
       activeCount:
         window.__sisyphusTestApi.getGroundImpactAudioState().activeCount,
-      before,
-      contacts,
-      restingBefore,
-      restingAfter:
+      afterBounces,
+      afterNewTouch:
         window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
+      armedAfterBounces,
+      before,
+      unarmedAfter,
     };
   });
-  expect(localContacts.contacts).toEqual([
-    localContacts.before + 1,
-    localContacts.before + 2,
-    localContacts.before + 3,
-  ]);
-  expect(localContacts.restingAfter).toBe(localContacts.restingBefore);
-  expect(localContacts.activeCount).toBeGreaterThanOrEqual(3);
+  expect(localContacts.unarmedAfter).toBe(localContacts.before);
+  expect(localContacts.afterBounces).toBe(localContacts.before + 1);
+  expect(localContacts.armedAfterBounces).toBe(false);
+  expect(localContacts.afterNewTouch).toBe(localContacts.before + 2);
+  expect(localContacts.activeCount).toBeGreaterThanOrEqual(2);
 
   const sharedContacts = await page.evaluate(() => {
     const before =
@@ -766,21 +753,29 @@ test("звук удара повторяется на каждом отскок�
     window.__sisyphusTestApi.syncSharedGroundTouchSeq(7);
     const initialized =
       window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    window.__sisyphusTestApi.syncSharedGroundTouchSeq(7);
-    const duplicate =
-      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    window.__sisyphusTestApi.armGroundImpactSound();
     window.__sisyphusTestApi.syncSharedGroundTouchSeq(10);
+    const firstArmedLanding =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    window.__sisyphusTestApi.syncSharedGroundTouchSeq(12);
+    const unarmedLandings =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    window.__sisyphusTestApi.armGroundImpactSound();
+    window.__sisyphusTestApi.syncSharedGroundTouchSeq(13);
+    window.__sisyphusTestApi.syncSharedGroundTouchSeq(7);
     return {
       before,
-      duplicate,
-      incremented:
+      firstArmedLanding,
+      afterNewTouch:
         window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
       initialized,
+      unarmedLandings,
     };
   });
   expect(sharedContacts.initialized).toBe(sharedContacts.before);
-  expect(sharedContacts.duplicate).toBe(sharedContacts.before);
-  expect(sharedContacts.incremented).toBe(sharedContacts.before + 3);
+  expect(sharedContacts.firstArmedLanding).toBe(sharedContacts.before + 1);
+  expect(sharedContacts.unarmedLandings).toBe(sharedContacts.before + 1);
+  expect(sharedContacts.afterNewTouch).toBe(sharedContacts.before + 2);
   await expect
     .poll(() =>
       page.evaluate(() => ({
@@ -792,7 +787,7 @@ test("звук удара повторяется на каждом отскок�
     )
     .toMatchObject({
       filename: "СимуляцияОргазма.mov",
-      watched: sharedContacts.incremented,
+      watched: sharedContacts.afterNewTouch,
     });
 });
 
@@ -1319,7 +1314,7 @@ test("dev при запуске переносит последний локал
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
         );
         return stored.gravity;
       }),
@@ -1331,7 +1326,7 @@ test("локальные настройки v20 мигрируют в v29 без
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v34");
+    localStorage.removeItem("sisyphus-czar-settings-v35");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1353,7 +1348,7 @@ test("локальные настройки v20 мигрируют в v29 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2191,7 +2186,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v34",
+      "sisyphus-czar-settings-v35",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2653,7 +2648,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -2692,7 +2687,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2828,7 +2823,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2863,7 +2858,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2880,7 +2875,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}"
         );
         return stored.rainEnabled;
       })

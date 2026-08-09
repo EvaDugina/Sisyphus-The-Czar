@@ -117,6 +117,12 @@ const DEFAULT_CUSTOM_CURSOR_SETTINGS = Object.freeze({
   preclickHopMaxDistanceVw:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw,
 });
+const DEFAULT_ROCK_VISUAL_MIGRATION = Object.freeze({
+  rockImageId: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockImageId,
+  foldRockImageId: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldRockImageId,
+  rockPulseShrinkPercent:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent,
+});
 
 test("визуальная точка следа сохраняет позицию после canonical round-trip", () => {
   const geometry = {
@@ -398,7 +404,7 @@ test("настройки инерции отображают шкалу 0–5", 
     (control) => control.name === "preclickHopMaxDistanceVw"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v34");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v35");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -461,7 +467,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 34);
+  assert.equal(productionSettingsSchemaVersion, 35);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1040,6 +1046,15 @@ test("настройки размера камня есть в UI и получ�
   const rockPressShrinkPercent = controls.find(
     (control) => control.name === "rockPressShrinkPercent",
   );
+  const rockPulseShrinkPercent = controls.find(
+    (control) => control.name === "rockPulseShrinkPercent",
+  );
+  const rockImageId = controls.find(
+    (control) => control.name === "rockImageId",
+  );
+  const foldRockImageId = controls.find(
+    (control) => control.name === "foldRockImageId",
+  );
   const preclickParallaxMaxOffsetVw = controls.find(
     (control) => control.name === "preclickParallaxMaxOffsetVw",
   );
@@ -1112,10 +1127,13 @@ test("настройки размера камня есть в UI и получ�
       "rockJumpAngleSpreadDegrees",
       "rockJumpInertiaSpreadPercent",
       "mass",
+      "rockImageId",
+      "foldRockImageId",
       "rockScaleEasing",
       "rockActivatedWidthVw",
       "rockPressShrinkPercent",
       "rockPulseEnabled",
+      "rockPulseShrinkPercent",
       "rockPulseBpm",
       "preclickParallaxMaxOffsetVw",
       "preclickParallaxEndMaxOffsetVw",
@@ -1144,6 +1162,42 @@ test("настройки размера камня есть в UI и получ�
   assert.equal(rockActivatedWidthVw.defaultValue, 10);
   assert.deepEqual(
     {
+      label: rockImageId.label,
+      type: rockImageId.type,
+      options: rockImageId.options,
+      defaultValue: rockImageId.defaultValue,
+    },
+    {
+      label: "Изображение основного камня",
+      type: "select",
+      options: [
+        ["rock-03", "rock-03.png"],
+        ["rock", "rock.webp"],
+        ["rock2", "rock2.png"],
+      ],
+      defaultValue: "rock-03",
+    },
+  );
+  assert.deepEqual(
+    {
+      label: foldRockImageId.label,
+      type: foldRockImageId.type,
+      options: foldRockImageId.options,
+      defaultValue: foldRockImageId.defaultValue,
+    },
+    {
+      label: "Изображение камня в fold-зеркале",
+      type: "select",
+      options: [
+        ["rock-03", "rock-03.png"],
+        ["rock", "rock.webp"],
+        ["rock2", "rock2.png"],
+      ],
+      defaultValue: "rock-03",
+    },
+  );
+  assert.deepEqual(
+    {
       label: rockPressShrinkPercent.label,
       type: rockPressShrinkPercent.type,
       min: rockPressShrinkPercent.min,
@@ -1168,6 +1222,26 @@ test("настройки размера камня есть в UI и получ�
   );
   assert.equal(rockPulseEnabled.type, "checkbox");
   assert.equal(rockPulseEnabled.defaultChecked, false);
+  assert.deepEqual(
+    {
+      label: rockPulseShrinkPercent.label,
+      type: rockPulseShrinkPercent.type,
+      min: rockPulseShrinkPercent.min,
+      max: rockPulseShrinkPercent.max,
+      step: rockPulseShrinkPercent.step,
+      defaultValue: rockPulseShrinkPercent.defaultValue,
+      enabledWhen: rockPulseShrinkPercent.enabledWhen,
+    },
+    {
+      label: "Уменьшение при пульсе, %",
+      type: "range",
+      min: 0,
+      max: 50,
+      step: 1,
+      defaultValue: 5,
+      enabledWhen: "rockPulseEnabled",
+    },
+  );
   assert.deepEqual(
     {
       label: rockPulseBpm.label,
@@ -2007,6 +2081,7 @@ test("настройки препятствия Окна нормализуют 
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
 });
@@ -2149,12 +2224,15 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 32);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 33);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
     rockActivatedWidthVw: 999,
     rockPressShrinkPercent: 999,
+    rockPulseShrinkPercent: 999,
+    rockImageId: "unknown",
+    foldRockImageId: "rock",
     rockPulseEnabled: "true",
     rockPulseBpm: 999,
     preclickParallaxMaxOffsetPx: 9999,
@@ -2177,6 +2255,9 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   assert.equal(visualSettings.rockActivatedWidthVw, 150);
   assert.equal(visualSettings.rockPressShrinkPercent, 50);
+  assert.equal(visualSettings.rockPulseShrinkPercent, 50);
+  assert.equal(visualSettings.rockImageId, "rock-03");
+  assert.equal(visualSettings.foldRockImageId, "rock");
   assert.equal(visualSettings.rockPulseEnabled, true);
   assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickParallaxMaxOffsetVw, 150);
@@ -2191,6 +2272,17 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.customCursorEnabled, true);
   assert.equal(visualSettings.customCursorSizePx, 128);
   assert.equal(visualSettings.rockGrabRadiusVh, 10);
+  assert.deepEqual(
+    SharedRoomSettings.migrateRockVisualSettings({
+      rockPressShrinkPercent: 17,
+    }),
+    {
+      rockPressShrinkPercent: 17,
+      rockPulseShrinkPercent: 17,
+      rockImageId: "rock-03",
+      foldRockImageId: "rock-03",
+    },
+  );
   assert.equal(
     visualSettings.preclickParallaxReturnEasing,
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxReturnEasing,
@@ -2218,6 +2310,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2236,6 +2329,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2252,6 +2346,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2268,6 +2363,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2286,6 +2382,7 @@ test("группа дождя содержит общий toggle и blur тём�
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
       preclickHopMaxDistanceVw: 30,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2304,6 +2401,7 @@ test("группа дождя содержит общий toggle и blur тём�
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
       preclickHopMaxDistanceVw: 30,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2317,6 +2415,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2329,6 +2428,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2338,6 +2438,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2345,21 +2446,30 @@ test("группа дождя содержит общий toggle и blur тём�
     {
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({}, 27),
-    DEFAULT_CUSTOM_CURSOR_SETTINGS,
+    {
+      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
+    },
   );
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({}, 29),
-    DEFAULT_CUSTOM_CURSOR_SETTINGS,
+    {
+      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
+    },
   );
   assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 30), {
     preclickHopMaxDistanceVw: 62.5,
+    ...DEFAULT_ROCK_VISUAL_MIGRATION,
   });
   assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 31), {
     preclickHopMaxDistanceVw: 62.5,
+    ...DEFAULT_ROCK_VISUAL_MIGRATION,
   });
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings(
@@ -2378,6 +2488,7 @@ test("группа дождя содержит общий toggle и blur тём�
       foldBlendEnabled: false,
       foldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
       preclickHopMaxDistanceVw: 62.5,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
   );
   assert.deepEqual(
@@ -2391,6 +2502,19 @@ test("группа дождя содержит общий toggle и blur тём�
     {
       preclickParallaxActivationRadiusVw: 80,
       preclickHopMaxDistanceVw: 45,
+      ...DEFAULT_ROCK_VISUAL_MIGRATION,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings(
+      { rockPressShrinkPercent: 17 },
+      32,
+    ),
+    {
+      rockPressShrinkPercent: 17,
+      rockPulseShrinkPercent: 17,
+      rockImageId: "rock-03",
+      foldRockImageId: "rock-03",
     },
   );
   assert.deepEqual(

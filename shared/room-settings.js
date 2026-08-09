@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 32;
+  const ROOM_SETTINGS_VERSION = 33;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
@@ -33,6 +33,7 @@
   const DEFAULT_DRIZZLE_VOLUME_EASING =
     "cubic-bezier(0.4, 0, 0.2, 1)";
   const ROCK_WIDTH_VW_LIMITS = Object.freeze([1, 150]);
+  const ROCK_IMAGE_IDS = Object.freeze(["rock-03", "rock", "rock2"]);
 
   const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
   const MIX_BLEND_MODES = Object.freeze([
@@ -83,6 +84,7 @@
     preclickParallaxReturnDurationMs: [0, 2000],
     rockGrabRadiusVh: [0, 10],
     rockPressShrinkPercent: [0, 50],
+    rockPulseShrinkPercent: [0, 50],
     rockPulseBpm: [20, 240],
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
@@ -131,10 +133,13 @@
     rockJumpIntervalSeconds: 5,
     rockJumpAngleSpreadDegrees: 90,
     rockJumpInertiaSpreadPercent: 25,
+    rockImageId: "rock-03",
+    foldRockImageId: "rock-03",
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockActivatedWidthVw: DEFAULT_ROCK_ACTIVATED_WIDTH_VW,
     rockPressShrinkPercent: 5,
     rockPulseEnabled: false,
+    rockPulseShrinkPercent: 5,
     rockPulseBpm: 60,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
@@ -456,6 +461,8 @@
       ROOM_SETTINGS_LIMITS.rockGrabRadiusVh;
     const [rockPressShrinkMin, rockPressShrinkMax] =
       ROOM_SETTINGS_LIMITS.rockPressShrinkPercent;
+    const [rockPulseShrinkMin, rockPulseShrinkMax] =
+      ROOM_SETTINGS_LIMITS.rockPulseShrinkPercent;
     const windowObstacleHeightRange = normalizeNumericRange(
       source,
       fallbackSource,
@@ -716,6 +723,18 @@
         rockJumpSpreadMin,
         rockJumpSpreadMax
       ),
+      rockImageId: enumSetting(
+        source,
+        fallbackSource,
+        "rockImageId",
+        ROCK_IMAGE_IDS
+      ),
+      foldRockImageId: enumSetting(
+        source,
+        fallbackSource,
+        "foldRockImageId",
+        ROCK_IMAGE_IDS
+      ),
       rockScaleEasing: cubicBezierSetting(
         source,
         fallbackSource,
@@ -739,6 +758,13 @@
         source,
         fallbackSource,
         "rockPulseEnabled"
+      ),
+      rockPulseShrinkPercent: integerSetting(
+        source,
+        fallbackSource,
+        "rockPulseShrinkPercent",
+        rockPulseShrinkMin,
+        rockPulseShrinkMax
       ),
       rockPulseBpm: finiteSetting(
         source,
@@ -1086,6 +1112,25 @@
     return source;
   }
 
+  function migrateRockVisualSettings(input) {
+    const source = input && typeof input === "object" ? { ...input } : {};
+    if (!Object.hasOwn(source, "rockImageId")) {
+      source.rockImageId = DEFAULT_ROOM_SETTINGS.rockImageId;
+    }
+    if (!Object.hasOwn(source, "foldRockImageId")) {
+      source.foldRockImageId = DEFAULT_ROOM_SETTINGS.foldRockImageId;
+    }
+    if (!Object.hasOwn(source, "rockPulseShrinkPercent")) {
+      source.rockPulseShrinkPercent = Object.hasOwn(
+        source,
+        "rockPressShrinkPercent"
+      )
+        ? source.rockPressShrinkPercent
+        : DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent;
+    }
+    return source;
+  }
+
   function migrateRoomSettings(input, version = 1) {
     const source = input && typeof input === "object" ? { ...input } : {};
     if (finiteNumber(version, 1) < 4) {
@@ -1246,9 +1291,12 @@
     const foldMigrated = finiteNumber(version, 1) < 31
       ? migrateFoldSettings(source)
       : source;
-    return finiteNumber(version, 1) < 32
+    const hopMigrated = finiteNumber(version, 1) < 32
       ? migratePreclickHopSettings(foldMigrated)
       : foldMigrated;
+    return finiteNumber(version, 1) < 33
+      ? migrateRockVisualSettings(hopMigrated)
+      : hopMigrated;
   }
 
   function sceneMotionMultiplier(settings) {
@@ -1266,6 +1314,7 @@
     MAX_HEIGHT_GATES,
     PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
     PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
+    ROCK_IMAGE_IDS,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,
@@ -1275,6 +1324,7 @@
     sanitizeHeightGates,
     migrateFoldSettings,
     migratePreclickHopSettings,
+    migrateRockVisualSettings,
     migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,

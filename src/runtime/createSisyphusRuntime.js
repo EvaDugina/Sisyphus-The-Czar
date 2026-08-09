@@ -7,6 +7,7 @@ import groundImpactAudioUrl from "../../assets/audio/СимуляцияОрга�
 import preclickHopAudioUrl from "../../assets/audio/Смех.mp3?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
+import { rockImageUrl } from "../config/rockImages.mjs";
 import { createClientId } from "../lib/clientId.mjs";
 import {
   cameraFollowScrollY,
@@ -324,8 +325,13 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
     rockPressShrinkPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPressShrinkPercent,
+    rockImageId: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockImageId,
+    foldRockImageId:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldRockImageId,
     rockPulseEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseEnabled,
+    rockPulseShrinkPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent,
     rockPulseBpm: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseBpm,
     preclickParallaxMaxOffsetVw:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
@@ -793,6 +799,7 @@ export function createSisyphusRuntime(elements = {}) {
     stopCount: 0,
   };
   const groundImpactAudio = {
+    armed: false,
     elements: new Set(),
     lastFilename: null,
     playCount: 0,
@@ -1396,6 +1403,19 @@ export function createSisyphusRuntime(elements = {}) {
       releaseAudio();
       // Ошибка отдельного звука не должна останавливать физический цикл.
     }
+  }
+
+  function armGroundImpactSound() {
+    groundImpactAudio.armed = true;
+  }
+
+  function playArmedGroundImpactSound() {
+    if (!groundImpactAudio.armed) {
+      return false;
+    }
+    groundImpactAudio.armed = false;
+    playGroundImpactSound();
+    return true;
   }
 
   function setDrizzleLoopVolume(value) {
@@ -2444,7 +2464,16 @@ export function createSisyphusRuntime(elements = {}) {
     if (shouldHandleChange("customCursorEnabled", "customCursorSizePx")) {
       applyCustomCursorSettings();
     }
-    if (shouldHandleChange("rockPulseEnabled", "rockPulseBpm")) {
+    if (shouldHandleChange("rockImageId")) {
+      applyRockImageSettings();
+    }
+    if (
+      shouldHandleChange(
+        "rockPulseEnabled",
+        "rockPulseShrinkPercent",
+        "rockPulseBpm",
+      )
+    ) {
       syncRockPulse();
     }
     if (shouldHandleChange("handAudioEnabled") && !params.handAudioEnabled) {
@@ -2515,6 +2544,7 @@ export function createSisyphusRuntime(elements = {}) {
         "rockMaxWidthVw",
         "rockScaleEasing",
         "rockPressShrinkPercent",
+        "rockPulseShrinkPercent",
       )
     ) {
       applyRockScale();
@@ -3266,10 +3296,7 @@ export function createSisyphusRuntime(elements = {}) {
     );
     const targetScale =
       scaleForLocalY(targetY) *
-      Math.min(
-        rockPressScaleFactor(params.rockPressShrinkPercent),
-        motion.rockPulseScaleFactor,
-      );
+      rockPressScaleFactor(params.rockPressShrinkPercent);
     const targetX = rockLocalXForVisualGrab(
       targetCenterX,
       bounds.rockWidth / 2,
@@ -3334,10 +3361,10 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function visualShrinkScaleFactor() {
-    const pressFactor = motion.rockPressActive
-      ? rockPressScaleFactor(params.rockPressShrinkPercent)
-      : 1;
-    return Math.min(pressFactor, motion.rockPulseScaleFactor);
+    if (motion.rockPressActive) {
+      return rockPressScaleFactor(params.rockPressShrinkPercent);
+    }
+    return motion.rockPulseScaleFactor;
   }
 
   function visualScaleForLocalY(y) {
@@ -3362,7 +3389,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     motion.rockPulseScaleFactor = rockPulseScaleFactor(
       rockPulseProgress(now, motion.rockPulseStartedAt, params.rockPulseBpm),
-      params.rockPressShrinkPercent,
+      params.rockPulseShrinkPercent,
     );
     applyRockScale();
     motion.rockPulseAnimationId = window.requestAnimationFrame(renderRockPulse);
@@ -3393,6 +3420,33 @@ export function createSisyphusRuntime(elements = {}) {
     }
     motion.rockPressActive = false;
     applyRockScale();
+  }
+
+  function applyRockImageSettings() {
+    const imageId = params.rockImageId;
+    const imageSource = rockImageUrl(imageId);
+    const imageChanged = rock.dataset.rockImageId !== imageId;
+    const resolvedImageSource = new URL(imageSource, window.location.href).href;
+
+    if (imageChanged && rock.src !== resolvedImageSource) {
+      rock.addEventListener(
+        "load",
+        () => {
+          if (disposed) {
+            return;
+          }
+          updateBounds();
+          applyRockScale();
+          renderImprint();
+        },
+        { once: true },
+      );
+    }
+
+    rock.dataset.rockImageId = imageId;
+    rockImprint.dataset.rockImageId = imageId;
+    rock.src = imageSource;
+    rockImprint.src = imageSource;
   }
 
   function clearRockActivationScaleTransition() {
@@ -4332,7 +4386,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 34,
+      settingsSchemaVersion: 35,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -4612,6 +4666,7 @@ export function createSisyphusRuntime(elements = {}) {
   function resetLocalExperience() {
     const pointerId = motion.activePointerId;
     releaseRockPress();
+    groundImpactAudio.armed = false;
     resetHeightGateState();
     stopLoop();
     motion.dragging = false;
@@ -5228,6 +5283,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     event.preventDefault();
+    armGroundImpactSound();
     activateRockPress();
     clearSharedReleaseHandoff();
     collab.releasePending = false;
@@ -5522,9 +5578,7 @@ export function createSisyphusRuntime(elements = {}) {
     const touchedGround = previous !== null && next > previous;
     if (touchedGround) {
       hideReturnRain();
-      for (let sequence = previous; sequence < next; sequence += 1) {
-        playGroundImpactSound();
-      }
+      playArmedGroundImpactSound();
     }
     return resetTrailOnGroundTouch(touchedGround);
   }
@@ -6166,7 +6220,7 @@ export function createSisyphusRuntime(elements = {}) {
       (previousY < bounds.maxY - 0.75 && motion.y >= bounds.maxY - 0.75);
     if (touchedGround) {
       hideReturnRain();
-      playGroundImpactSound();
+      playArmedGroundImpactSound();
     }
     resetTrailOnGroundTouch(touchedGround);
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
@@ -6332,6 +6386,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     event.preventDefault();
+    armGroundImpactSound();
     activateRockPress();
     toggleHandVariant();
     updateBounds();
@@ -6594,6 +6649,7 @@ export function createSisyphusRuntime(elements = {}) {
     testApi = {
       SharedPhysics,
       applyPhysics,
+      applySharedRoomSettings,
       applyDragTargetMovement,
       bounds,
       canonicalToLocal,
@@ -6618,6 +6674,13 @@ export function createSisyphusRuntime(elements = {}) {
         lineWidth: scaledVisualPixel(params.lineWidth),
         rainBlurPx: scaledVisualPixel(params.rainBlurPx),
       }),
+      getRockVisualScaleState: () => ({
+        pressActive: motion.rockPressActive,
+        pressShrinkPercent: params.rockPressShrinkPercent,
+        pulseScaleFactor: motion.rockPulseScaleFactor,
+        pulseShrinkPercent: params.rockPulseShrinkPercent,
+        visualShrinkScaleFactor: visualShrinkScaleFactor(),
+      }),
       getRoleAudioState: () => {
         const state = roleAudioFade.latest;
         return {
@@ -6640,10 +6703,12 @@ export function createSisyphusRuntime(elements = {}) {
       playGachiClickSound,
       stopGachiClickSound,
       getGroundImpactAudioState: () => ({
+        armed: groundImpactAudio.armed,
         activeCount: groundImpactAudio.elements.size,
         lastFilename: groundImpactAudio.lastFilename,
         playCount: groundImpactAudio.playCount,
       }),
+      armGroundImpactSound,
       receiveSharedSnapshot,
       syncSharedGroundTouchSeq,
       getPreclickHopState: () => ({
@@ -6802,6 +6867,7 @@ export function createSisyphusRuntime(elements = {}) {
       stopPreclickHopSounds();
       groundImpactAudio.elements.forEach(pauseAndResetAudio);
       groundImpactAudio.elements.clear();
+      groundImpactAudio.armed = false;
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {

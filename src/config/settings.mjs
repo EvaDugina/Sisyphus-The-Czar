@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v34";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v35";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v34",
   "sisyphus-czar-settings-v33",
   "sisyphus-czar-settings-v32",
   "sisyphus-czar-settings-v31",
@@ -64,6 +65,16 @@ const MIX_BLEND_LABELS = {
 const RAIN_MIX_BLEND_OPTIONS = MIX_BLEND_MODES.map((value) => [
   value,
   MIX_BLEND_LABELS[value],
+]);
+
+const ROCK_IMAGE_LABELS = Object.freeze({
+  "rock-03": "rock-03.png",
+  rock: "rock.webp",
+  rock2: "rock2.png",
+});
+const ROCK_IMAGE_OPTIONS = SharedRoomSettings.ROCK_IMAGE_IDS.map((value) => [
+  value,
+  ROCK_IMAGE_LABELS[value],
 ]);
 
 const PHYSICS_FORMULAS = {
@@ -695,6 +706,22 @@ export const SETTINGS_GROUPS = [
         formulas: PHYSICS_FORMULAS.mass,
       },
       {
+        name: "rockImageId",
+        label: "Изображение основного камня",
+        type: "select",
+        options: ROCK_IMAGE_OPTIONS,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockImageId,
+        hint: "Изображение основного камня и его отпечатка. Fold-зеркало настраивается отдельно.",
+      },
+      {
+        name: "foldRockImageId",
+        label: "Изображение камня в fold-зеркале",
+        type: "select",
+        options: ROCK_IMAGE_OPTIONS,
+        defaultValue: DEFAULT_ROOM_SETTINGS.foldRockImageId,
+        hint: "Независимое изображение камня внутри верхнего fold-зеркала.",
+      },
+      {
         name: "rockScaleEasing",
         label: "Кривая размера",
         type: "cubic-bezier",
@@ -732,7 +759,21 @@ export const SETTINGS_GROUPS = [
         label: "Пульс камня",
         type: "checkbox",
         defaultChecked: DEFAULT_ROOM_SETTINGS.rockPulseEnabled,
-        hint: "Включает ритмичное уменьшение и восстановление камня. Амплитуда использует параметр уменьшения при нажатии.",
+        hint: "Включает ритмичное уменьшение и восстановление камня с отдельной глубиной пульса.",
+      },
+      {
+        name: "rockPulseShrinkPercent",
+        label: "Уменьшение при пульсе, %",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockPulseShrinkPercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockPulseShrinkPercent[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent,
+        output: `${DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent}%`,
+        enabledWhen: "rockPulseEnabled",
+        hint: "Максимальное уменьшение камня в фазе сжатия пульса. Ноль оставляет пульс без изменения размера.",
       },
       {
         name: "rockPulseBpm",

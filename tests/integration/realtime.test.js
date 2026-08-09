@@ -337,7 +337,7 @@ test("последнее сохранение помеченного preset пр
   const entry = {
     id: "hand-audio-disabled",
     name: "Без звука руки",
-    settingsSchemaVersion: 34,
+    settingsSchemaVersion: 35,
     createdAt: "2026-08-09T10:00:00.000Z",
     updatedAt: "2026-08-09T10:00:00.000Z",
     settings: {

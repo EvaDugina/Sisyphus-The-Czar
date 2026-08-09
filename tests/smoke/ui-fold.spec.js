@@ -57,9 +57,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v34", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v35", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v34");
+    localStorage.removeItem("sisyphus-czar-settings-v35");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -78,7 +78,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v34", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -104,7 +104,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v34", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -112,9 +112,9 @@ test("Fold-настройки мигрируют из localStorage v32 в v34", 
     .toEqual([47, 13]);
 });
 
-test("длина отскока мигрирует из localStorage v33 в v34", async ({ page }) => {
+test("длина отскока мигрирует из localStorage v33 в v35", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v34");
+    localStorage.removeItem("sisyphus-czar-settings-v35");
     localStorage.setItem(
       "sisyphus-czar-settings-v33",
       JSON.stringify({
@@ -129,7 +129,7 @@ test("длина отскока мигрирует из localStorage v33 в v34"
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
         );
         return stored.preclickHopMaxDistanceVw;
       }),
@@ -137,11 +137,46 @@ test("длина отскока мигрирует из localStorage v33 в v34"
     .toBe(15);
 });
 
+test("визуальные настройки камня мигрируют из localStorage v34 в v35", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem("sisyphus-czar-settings-v35");
+    localStorage.setItem(
+      "sisyphus-czar-settings-v34",
+      JSON.stringify({ rockPressShrinkPercent: 17 }),
+    );
+  });
+
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
+        );
+        return {
+          rockImageId: stored.rockImageId,
+          foldRockImageId: stored.foldRockImageId,
+          rockPressShrinkPercent: stored.rockPressShrinkPercent,
+          rockPulseShrinkPercent: stored.rockPulseShrinkPercent,
+        };
+      }),
+    )
+    .toEqual({
+      rockImageId: "rock-03",
+      foldRockImageId: "rock-03",
+      rockPressShrinkPercent: 17,
+      rockPulseShrinkPercent: 17,
+    });
+});
+
 test("ползунок максимальной длины отскока обновляет output", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v34");
+    localStorage.removeItem("sisyphus-czar-settings-v35");
   });
 
   await page.goto("/");
@@ -161,6 +196,94 @@ test("ползунок максимальной длины отскока обн
 
   await expect(slider).toHaveValue("184.3");
   await expect(output).toHaveText("184.3vw");
+});
+
+test("изображения камня и сжатие пульса настраиваются независимо", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await page.evaluate(() => {
+    applySharedRoomSettings({
+      foldRockImageId: "rock",
+      rockImageId: "rock2",
+      rockPressShrinkPercent: 7,
+      rockPulseEnabled: true,
+      rockPulseShrinkPercent: 30,
+    });
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        foldRockImageId: params.foldRockImageId,
+        rockImageId: params.rockImageId,
+        rockPressShrinkPercent: params.rockPressShrinkPercent,
+        rockPulseShrinkPercent: params.rockPulseShrinkPercent,
+      })),
+    )
+    .toEqual({
+      foldRockImageId: "rock",
+      rockImageId: "rock2",
+      rockPressShrinkPercent: 7,
+      rockPulseShrinkPercent: 30,
+    });
+  await expect(page.locator("#root > .world > .rock")).toHaveAttribute(
+    "data-rock-image-id",
+    "rock2",
+  );
+  await expect(page.getByTestId("rock-imprint")).toHaveAttribute(
+    "data-rock-image-id",
+    "rock2",
+  );
+  await expect(page.locator("[data-fold-zone] .rock")).toHaveAttribute(
+    "data-rock-image-id",
+    "rock",
+  );
+  await expect(page.locator("#root > .world > .rock")).toHaveAttribute(
+    "src",
+    /rock2\.png/,
+  );
+  await expect(page.getByTestId("rock-imprint")).toHaveAttribute(
+    "src",
+    /rock2\.png/,
+  );
+  await expect(page.locator("[data-fold-zone] .rock")).toHaveAttribute(
+    "src",
+    /rock\.webp/,
+  );
+
+  const scalePriority = await page.evaluate(() => {
+    motion.rockPulseScaleFactor = 0.7;
+    motion.rockPressActive = false;
+    const pulse = getRockVisualScaleState().visualShrinkScaleFactor;
+    motion.rockPressActive = true;
+    const press = getRockVisualScaleState().visualShrinkScaleFactor;
+    motion.rockPressActive = false;
+    return { press, pulse };
+  });
+  expect(scalePriority.pulse).toBeCloseTo(0.7, 5);
+  expect(scalePriority.press).toBeCloseTo(0.93, 5);
+
+  await navigateToSettings(page);
+  const pulseEnabled = page.locator('[name="rockPulseEnabled"]');
+  const pulseShrink = page.locator('[name="rockPulseShrinkPercent"]');
+  await setSettingValue(page, "rockImageId", "rock2");
+  await setSettingValue(page, "foldRockImageId", "rock");
+  await setSettingValue(page, "rockPressShrinkPercent", 7);
+  await setSettingValue(page, "rockPulseEnabled", true);
+  await setSettingValue(page, "rockPulseShrinkPercent", 30);
+  await expect(page.locator('[name="rockImageId"]')).toHaveValue("rock2");
+  await expect(page.locator('[name="foldRockImageId"]')).toHaveValue("rock");
+  await expect(pulseEnabled).toBeChecked();
+  await expect(pulseShrink).toHaveValue("30");
+  await expect(
+    page.locator('[data-output="rockPulseShrinkPercent"]'),
+  ).toHaveText("30%");
+  await setSettingValue(page, "rockPulseEnabled", false);
+  await expect(pulseShrink).toBeDisabled();
+  await setSettingValue(page, "rockPulseEnabled", true);
+  await expect(pulseShrink).toBeEnabled();
 });
 
 test("основной маршрут использует Fold-сцену и общее меню", async ({
@@ -431,7 +554,7 @@ test("настройки parallax меняют задержку, радиусы 
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v34");
+    localStorage.removeItem("sisyphus-czar-settings-v35");
     localStorage.setItem(
       "sisyphus-czar-settings-v26",
       JSON.stringify({ preclickParallaxActivationRadiusPx: 1000 }),
@@ -563,7 +686,7 @@ test("настройки parallax меняют задержку, радиусы 
       page.evaluate(() =>
         Boolean(
           JSON.parse(
-            localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+            localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
           ).preclickParallaxInverted,
         ),
       ),
@@ -573,7 +696,7 @@ test("настройки parallax меняют задержку, радиусы 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
         );
         return {
           startDelay: stored.preclickParallaxStartDelayMs,
@@ -604,7 +727,7 @@ test("задержка parallax отменяется при выходе и пр
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v34",
+      "sisyphus-czar-settings-v35",
       JSON.stringify({
         handAlwaysVisible: false,
         preclickParallaxActivationRadiusVw: 50,
@@ -832,7 +955,7 @@ test("mouse захватывает камень внутри расширенн�
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v34",
+      "sisyphus-czar-settings-v35",
       JSON.stringify({
         handAlwaysVisible: false,
         preclickParallaxMaxOffsetVw: 0,
@@ -1328,7 +1451,7 @@ test("glow-профили и зависимости select работают на
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v34") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
         );
         return [
           stored.glowOptimizationMode,

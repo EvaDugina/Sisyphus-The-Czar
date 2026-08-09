@@ -1,11 +1,11 @@
-import rockImage from "../../assets/rock/rock-03.png";
+import { rockImageUrl } from "../config/rockImages.mjs";
 
 export function Rock({ rockRef }) {
   return (
     <img
       ref={rockRef}
       className="rock"
-      src={rockImage}
+      src={rockImageUrl()}
       alt="Камень"
       draggable="false"
     />

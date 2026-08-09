@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 34;
+const SETTINGS_SCHEMA_VERSION = 35;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -385,6 +385,9 @@ export function createSettingsController(options) {
     }
     if (Number(settingsSchemaVersion) < 34) {
       migrated = SharedRoomSettings.migratePreclickHopSettings(migrated);
+    }
+    if (Number(settingsSchemaVersion) < 35) {
+      migrated = SharedRoomSettings.migrateRockVisualSettings(migrated);
     }
     if (!Object.hasOwn(migrated, "preclickParallaxActivationRadiusVw")) {
       const radiusPx = Number(migrated.preclickParallaxActivationRadiusPx);
@@ -1305,6 +1308,7 @@ export function createSettingsController(options) {
       turbulence: params.turbulence.toFixed(2),
       rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
       rockPressShrinkPercent: `${params.rockPressShrinkPercent.toFixed(0)}%`,
+      rockPulseShrinkPercent: `${params.rockPulseShrinkPercent.toFixed(0)}%`,
       rockPulseBpm: `${params.rockPulseBpm.toFixed(0)} BPM`,
       preclickParallaxMaxOffsetVw:
         `${params.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
