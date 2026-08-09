@@ -1312,6 +1312,8 @@ export function createSettingsController(options) {
         `${params.preclickParallaxEndMaxOffsetVw.toFixed(1)}vw`,
       preclickParallaxActivationRadiusVw:
         `${params.preclickParallaxActivationRadiusVw.toFixed(0)}vw`,
+      preclickHopMaxDistanceVw:
+        `${params.preclickHopMaxDistanceVw.toFixed(1)}vw`,
       preclickParallaxStartDelayMs:
         `${params.preclickParallaxStartDelayMs.toFixed(0)}мс`,
       preclickParallaxEndDelayMs:

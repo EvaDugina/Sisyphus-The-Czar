@@ -137,6 +137,32 @@ test("длина отскока мигрирует из localStorage v33 в v34"
     .toBe(15);
 });
 
+test("ползунок максимальной длины отскока обновляет output", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem("sisyphus-czar-settings-v34");
+  });
+
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await navigateToSettings(page);
+
+  const slider = page.locator('[name="preclickHopMaxDistanceVw"]');
+  const output = page.locator(
+    '[data-output="preclickHopMaxDistanceVw"]',
+  );
+  await expect(slider).toHaveValue("62.5");
+  await expect(slider).toHaveAttribute("min", "0");
+  await expect(slider).toHaveAttribute("max", "200");
+  await expect(slider).toHaveAttribute("step", "0.1");
+
+  await setSettingValue(page, "preclickHopMaxDistanceVw", 184.3);
+
+  await expect(slider).toHaveValue("184.3");
+  await expect(output).toHaveText("184.3vw");
+});
+
 test("основной маршрут использует Fold-сцену и общее меню", async ({
   page,
 }) => {
