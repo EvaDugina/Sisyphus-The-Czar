@@ -200,8 +200,6 @@ class SessionManager {
     this.getSettingsTemplatesPage =
       options.getSettingsTemplatesPage ||
       (() => ({ revision: 0, offset: 0, nextOffset: null, entries: [] }));
-    this.getLatestSettingsTemplate =
-      options.getLatestSettingsTemplate || (() => null);
     this.importSettingsTemplates =
       options.importSettingsTemplates || (() => ({ revision: 0, entries: [] }));
     this.saveSettingsTemplate =
@@ -1218,6 +1216,16 @@ class SessionManager {
     return count;
   }
 
+  connectedCountExcluding(session, clientId) {
+    let count = 0;
+    session.clients.forEach((client) => {
+      if (client.id !== clientId && socketIsOpen(client.socket)) {
+        count += 1;
+      }
+    });
+    return count;
+  }
+
   handleMessage(session, client, message) {
     if (!message || message.v !== 1 || typeof message.type !== "string") {
       this.sendError(client, "invalid_envelope", "Некорректный формат сообщения");
@@ -1589,12 +1597,6 @@ class SessionManager {
       const result = this.importSettingsTemplates(payload.entries, {
         protectedId: this.settingsTemplateProtectedId(),
       });
-      if (result.entries.length > 0) {
-        const latest = this.getLatestSettingsTemplate();
-        if (latest?.settings) {
-          this.applySettingsPreset(session, latest.settings);
-        }
-      }
       this.sendTo(client, "settingsTemplates.imported", result);
       if (result.entries.length > 0) {
         this.broadcastSettingsTemplateChange({

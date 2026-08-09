@@ -113,6 +113,7 @@ async function startService(context, options = {}) {
     host: "127.0.0.1",
     debug: options.debug ?? false,
     sessionStorePath: "",
+    productionPresetPath: options.productionPresetPath || "",
     settingsTemplateStorePath: options.settingsTemplateStorePath || "",
     logger: () => {},
   });
@@ -261,9 +262,9 @@ test("debug-каталог шаблонов общий для разных ли�
     updatedAt: "2026-07-27T19:00:00.000Z",
     settings: { gravity: 8.25, sceneHeightScreens: 7 },
   };
-  first.send("settingsTemplates.save", { entry });
-  const [saved, changed] = await Promise.all([
-    first.waitFor("settingsTemplates.saved"),
+  first.send("settingsTemplates.import", { entries: [entry] });
+  const [imported, changed] = await Promise.all([
+    first.waitFor("settingsTemplates.imported"),
     second.waitFor(
       "settingsTemplates.changed",
       (payload) =>
@@ -271,7 +272,7 @@ test("debug-каталог шаблонов общий для разных ли�
         payload.entries?.some((item) => item.id === entry.id),
     ),
   ]);
-  assert.equal(saved.payload.entry.id, entry.id);
+  assert.equal(imported.payload.entries[0].id, entry.id);
   assert.equal(changed.payload.entries[0].settings.gravity, 8.25);
   assert.equal(
     service.manager.getSession(secondCreated.sessionId).physics.gravity,
@@ -287,7 +288,7 @@ test("debug-каталог шаблонов общий для разных ли�
   assert.equal(thirdPage.payload.entries[0].id, entry.id);
   assert.equal(
     service.manager.getSession(thirdCreated.sessionId).physics.gravity,
-    8.25,
+    9.8,
   );
   assert.equal(
     third.messages.find(
@@ -312,6 +313,123 @@ test("debug-каталог шаблонов общий для разных ли�
   second.socket.close();
   third.socket.close();
   await Promise.all([first.closed, second.closed, third.closed]);
+});
+
+test("последнее сохранение помеченного preset применяется к новым и перезагруженным сессиям", async (context) => {
+  const directory = fs.mkdtempSync(
+    path.join(os.tmpdir(), "sisyphus-selected-preset-")
+  );
+  context.after(() => fs.rmSync(directory, { recursive: true, force: true }));
+  const productionPresetPath = path.join(directory, "production-preset.json");
+  const { service, base, wsBase } = await startService(context, {
+    debug: true,
+    productionPresetPath,
+    settingsTemplateStorePath: path.join(directory, "settings.json"),
+  });
+  const firstCreated = await createSession(base, "preset-browser-a001");
+  const first = connect(
+    `${wsBase}?session=${firstCreated.sessionId}&client=preset-browser-a001`
+  );
+  await first.opened;
+  const current = await first.waitFor("productionPreset.current");
+  assert.equal(current.payload.canSelect, true);
+
+  const entry = {
+    id: "hand-audio-disabled",
+    name: "Без звука руки",
+    settingsSchemaVersion: 32,
+    createdAt: "2026-08-09T10:00:00.000Z",
+    updatedAt: "2026-08-09T10:00:00.000Z",
+    settings: {
+      gravity: 7.25,
+      sceneHeightScreens: 8,
+      handAudioEnabled: false,
+    },
+  };
+  first.send("settingsTemplates.save", { entry });
+  const initiallySaved = await first.waitFor(
+    "settingsTemplates.saved",
+    (payload) => payload.entry?.id === entry.id
+  );
+  first.send("productionPreset.select", initiallySaved.payload.entry);
+  const selected = await first.waitFor(
+    "productionPreset.selected",
+    (payload) => payload.selection?.source?.id === entry.id
+  );
+  assert.equal(selected.payload.canSelect, true);
+  assert.equal(
+    service.manager.getSession(firstCreated.sessionId).physics.gravity,
+    9.8,
+  );
+
+  const secondCreated = await createSession(base, "preset-browser-b001");
+  const secondSession = service.manager.getSession(secondCreated.sessionId);
+  assert.equal(secondSession.physics.gravity, 7.25);
+  assert.equal(secondSession.roomSettings.sceneHeightScreens, 8);
+  assert.equal(secondSession.roomSettings.handAudioEnabled, false);
+
+  const updatedEntry = {
+    ...initiallySaved.payload.entry,
+    settings: {
+      ...initiallySaved.payload.entry.settings,
+      gravity: 5.75,
+      sceneHeightScreens: 12,
+      handAudioEnabled: false,
+      rainEnabled: true,
+    },
+  };
+  first.send("settingsTemplates.save", {
+    entry: updatedEntry,
+    baseUpdatedAt: initiallySaved.payload.entry.updatedAt,
+  });
+  const updatedSaved = await first.waitFor(
+    "settingsTemplates.saved",
+    (payload) =>
+      payload.entry?.id === entry.id &&
+      payload.entry?.settings?.gravity === 5.75,
+  );
+  assert.equal(updatedSaved.payload.branched, false);
+  assert.equal(updatedSaved.payload.entry.settings.gravity, 5.75);
+  assert.equal(updatedSaved.payload.entry.settings.sceneHeightScreens, 12);
+  assert.equal(updatedSaved.payload.entry.settings.handAudioEnabled, false);
+  assert.equal(updatedSaved.payload.entry.settings.rainEnabled, true);
+
+  first.send("productionPreset.select", updatedSaved.payload.entry);
+  const reselected = await first.waitFor(
+    "productionPreset.selected",
+    (payload) =>
+      payload.selection?.source?.id === entry.id &&
+      payload.selection?.source?.updatedAt === updatedSaved.payload.entry.updatedAt,
+  );
+  assert.equal(reselected.payload.canSelect, true);
+  const storedPreset = JSON.parse(fs.readFileSync(productionPresetPath, "utf8"));
+  assert.equal(storedPreset.source.id, entry.id);
+  assert.equal(storedPreset.source.updatedAt, updatedSaved.payload.entry.updatedAt);
+  assert.equal(storedPreset.settings.gravity, 5.75);
+  assert.equal(storedPreset.settings.sceneHeightScreens, 12);
+  assert.equal(storedPreset.settings.handAudioEnabled, false);
+  assert.equal(storedPreset.settings.rainEnabled, true);
+
+  const thirdCreated = await createSession(base, "preset-browser-c001");
+  const thirdSession = service.manager.getSession(thirdCreated.sessionId);
+  assert.equal(thirdSession.physics.gravity, 5.75);
+  assert.equal(thirdSession.roomSettings.sceneHeightScreens, 12);
+  assert.equal(thirdSession.roomSettings.handAudioEnabled, false);
+  assert.equal(thirdSession.roomSettings.rainEnabled, true);
+
+  const reloaded = connect(
+    `${wsBase}?session=${firstCreated.sessionId}&client=preset-browser-a001`
+  );
+  await reloaded.opened;
+  const reloadedSnapshot = await reloaded.waitFor("session.snapshot");
+  assert.equal(reloadedSnapshot.payload.physics.gravity, 5.75);
+  assert.equal(reloadedSnapshot.payload.roomSettings.sceneHeightScreens, 12);
+  assert.equal(reloadedSnapshot.payload.roomSettings.handAudioEnabled, false);
+  assert.equal(reloadedSnapshot.payload.roomSettings.rainEnabled, true);
+  await first.closed;
+
+  reloaded.socket.close();
+  await reloaded.closed;
 });
 
 test("между комнатами передаются только подтверждаемые trail-дельты раз в 30 секунд", async (context) => {

@@ -189,7 +189,7 @@ function createService(options = {}) {
   const productionPresetStore =
     options.productionPresetStore ||
     new ProductionPresetStore(config.productionPresetPath, { logger: log });
-  const storedProductionPreset = productionPresetStore.load();
+  let storedProductionPreset = productionPresetStore.load();
   const settingsTemplateStore =
     options.settingsTemplateStore ||
     new SettingsTemplateStore(config.settingsTemplateStorePath, { logger: log });
@@ -204,12 +204,13 @@ function createService(options = {}) {
       soundRandom: options.soundRandom,
       productionPresetSelectionEnabled: config.debug,
       getProductionPresetSelection: () => productionPresetStore.metadata(),
-      saveProductionPresetSelection: (selection) =>
-        productionPresetStore.save(selection),
+      saveProductionPresetSelection: (selection) => {
+        storedProductionPreset = productionPresetStore.save(selection);
+        return storedProductionPreset;
+      },
       settingsTemplatesEnabled: config.debug,
       getSettingsTemplatesPage: (payload = {}) =>
         settingsTemplateStore.page(payload.offset, payload.limit),
-      getLatestSettingsTemplate: () => settingsTemplateStore.latest(),
       importSettingsTemplates: (entries, storeOptions) =>
         settingsTemplateStore.importEntries(entries, storeOptions),
       saveSettingsTemplate: (entry, storeOptions) =>
@@ -227,9 +228,7 @@ function createService(options = {}) {
   const persistSessions = (force = false) =>
     sessionStore.save(manager.serializeSessions(), { force });
   const settingsPresetForNewSession = () =>
-    config.debug
-      ? settingsTemplateStore.latest()?.settings || null
-      : storedProductionPreset?.settings || ProductionPreset.settings;
+    storedProductionPreset?.settings || ProductionPreset.settings;
   const defaultSession = manager.ensureDefaultSession();
   defaultSession.trailHubOnly = true;
   const startupSettingsPreset = settingsPresetForNewSession();
@@ -518,6 +517,16 @@ function createService(options = {}) {
     websocket.on("pong", () => {
       websocket.lastPongAt = Date.now();
     });
+
+    if (
+      session.singleClient &&
+      manager.connectedCountExcluding(session, context.clientId) === 0
+    ) {
+      const settingsPreset = settingsPresetForNewSession();
+      if (settingsPreset) {
+        manager.applySettingsPreset(session, settingsPreset);
+      }
+    }
 
     const client = manager.connectClient(session, context.clientId, websocket);
     if (!client) {

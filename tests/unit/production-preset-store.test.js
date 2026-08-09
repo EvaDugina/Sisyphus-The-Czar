@@ -6,7 +6,6 @@ const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
 const Physics = require("../../shared/physics");
-const ProductionPreset = require("../../shared/production-preset");
 const RoomSettings = require("../../shared/room-settings");
 const {
   normalizeDocument,
@@ -30,7 +29,7 @@ function selection(id, overrides = {}) {
   };
 }
 
-test("Git production preset совпадает со встроенным fallback", () => {
+test("Git production preset содержит полный canonical snapshot", () => {
   const document = JSON.parse(
     fs.readFileSync(
       path.join(__dirname, "../../config/production-preset.json"),
@@ -40,7 +39,17 @@ test("Git production preset совпадает со встроенным fallbac
   const normalized = normalizeDocument(document);
 
   assert.equal(normalized.source.settingsSchemaVersion, 32);
-  assert.deepEqual(normalized.settings, ProductionPreset.settings);
+  assert.equal(normalized.source.name, "v1");
+  assert.equal(normalized.settings.handAudioEnabled, false);
+  assert.deepEqual(
+    Object.keys(normalized.settings).sort(),
+    [
+      ...new Set([
+        ...Object.keys(RoomSettings.DEFAULT_ROOM_SETTINGS),
+        ...Object.keys(Physics.DEFAULT_PHYSICS),
+      ]),
+    ].sort(),
+  );
 });
 
 test("production preset store атомарно сохраняет полный whitelist настроек", (context) => {

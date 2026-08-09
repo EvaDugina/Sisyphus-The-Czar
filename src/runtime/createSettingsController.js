@@ -77,6 +77,7 @@ export function createSettingsController(options) {
   const productionPresetStatus =
     options.productionPresetStatus ||
     document.querySelector(".settings-production-status");
+  const physicsSettingKeys = Object.keys(SharedPhysics.DEFAULT_PHYSICS || {});
   const sharedRoomSettingKeys = SharedRoomSettings.ROOM_SETTINGS_KEYS;
   const settingsVersions = {
     entries: [],
@@ -93,7 +94,6 @@ export function createSettingsController(options) {
     catalogPages: [],
     pendingImportBatches: 0,
   };
-  let loadedLocalSettings = false;
   let previewAnimationFrame = null;
   let commitTimerId = null;
   const pendingPreviewKeys = new Set();
@@ -422,7 +422,7 @@ export function createSettingsController(options) {
     return migrated;
   }
 
-  function loadSettings() {
+  function loadSettings({ includeVersioned = true } = {}) {
     let stored = null;
     let migratedLegacySettings = false;
     let legacyKey = null;
@@ -495,7 +495,11 @@ export function createSettingsController(options) {
 
     settingsControlElements().forEach((element) => {
       const key = element.getAttribute("name");
-      if (!key || !(key in stored)) {
+      if (
+        !key ||
+        !(key in stored) ||
+        (!includeVersioned && !LOCAL_SETTING_CONTROL_NAMES.includes(key))
+      ) {
         return;
       }
       if (element.type === "checkbox") {
@@ -948,6 +952,13 @@ export function createSettingsController(options) {
 
   function syncRoomSettingControls() {
     sharedRoomSettingKeys.forEach((key) => {
+      syncSettingControl(roomSettingControlElement(key), key);
+    });
+    syncSettingDependencies();
+  }
+
+  function syncPhysicsSettingControls() {
+    physicsSettingKeys.forEach((key) => {
       syncSettingControl(roomSettingControlElement(key), key);
     });
     syncSettingDependencies();
@@ -1674,19 +1685,21 @@ export function createSettingsController(options) {
     bind,
     getLatestSettingsVersionPreset: () =>
       settingsFromLatestVersionEntry(settingsVersions.entries),
-    hasLocalSettings: () => Boolean(settingsPanel) && loadedLocalSettings,
     getLoadedSettingsVersionEntry: () =>
       copySettingsVersionEntry(baselineSettingsVersion()),
     getSettingsVersions: () =>
       settingsVersions.entries.map(copySettingsVersionEntry),
     load(options = {}) {
       const loadLocalSettings = options.loadLocalSettings !== false;
-      const loadLatestVersion = options.loadLatestVersion !== false;
-      loadedLocalSettings = loadLocalSettings ? loadSettings() : false;
+      const loadVersionedSettings = options.loadVersionedSettings !== false;
+      const loadLatestVersion =
+        options.loadLatestVersion !== false && loadVersionedSettings;
+      if (loadLocalSettings) {
+        loadSettings({ includeVersioned: loadVersionedSettings });
+      }
       loadSettingsVersions();
       const latest = selectLatestSettingsVersionEntry(settingsVersions.entries);
       if (latest && loadLatestVersion) {
-        loadedLocalSettings = true;
         writeSettingsVersionToControls(latest);
         renderSettingsVersions();
       }
@@ -1711,6 +1724,7 @@ export function createSettingsController(options) {
     setSettingsTemplatesImported,
     setSettingsTemplatesPage,
     applySettingsTemplateChange,
+    syncPhysicsSettingControls,
     syncRoomSettingControls,
     syncLocalSettingControls,
     syncSettingControl,

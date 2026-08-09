@@ -4204,17 +4204,11 @@ export function createSisyphusRuntime(elements = {}) {
         connectSharedSession();
         return;
       }
-      const sessionPayload = settingsController.hasLocalSettings()
-        ? {
-            physics: SharedPhysics.sanitizePhysics(params),
-            roomSettings: sharedRoomSettingsPayload(),
-          }
-        : {};
       const response = await fetch(appUrl("api/sessions"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         signal: abortController.signal,
-        body: JSON.stringify(sessionPayload),
+        body: "{}",
       });
       if (!response.ok) {
         throw new Error(`HTTP ${response.status}`);
@@ -6463,7 +6457,10 @@ export function createSisyphusRuntime(elements = {}) {
     window.__sisyphusTestApi = testApi;
     Object.assign(window, testApi);
   }
-  settingsController.load();
+  settingsController.load({
+    loadLatestVersion: false,
+    loadVersionedSettings: false,
+  });
   readControls();
   settingsController.captureCurrentAsBaseline();
   document.fonts?.ready.then(() => {

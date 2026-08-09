@@ -3,7 +3,7 @@
 ## Паспорт
 
 - **Стадия:** POC B
-- **Последнее обновление:** 2026-08-08
+- **Последнее обновление:** 2026-08-09
 - **Runtime:** Node.js 24, Express 5, WebSocket `ws`, React 19, Vite 8
 - **Развёртывание:** один Docker-контейнер приложения; nginx/HTTPS находятся на хосте
 
@@ -14,7 +14,7 @@ React отвечает за структуру UI, imperative runtime — за r
 Поток данных:
 
 1. `/` и `/drafts/` обслуживаются одним `index.html`, запускают общий `App` runtime и рендерят один `FoldLayer`.
-2. Runtime вызывает `POST /api/sessions`; в debug локальный черновик/последняя локальная версия передаются новой сессии, а при их отсутствии сервер применяет актуальный debug template. Production всегда использует production preset.
+2. Runtime вызывает `POST /api/sessions` без локального room/physics preset; сервер во всех режимах применяет единственный помеченный production preset. При WebSocket reconnect single-client-сессии, когда нет подключённого другого `clientId`, preset повторно применяется до первого snapshot даже при overlapping-сокетах быстрого reload: игровое состояние сохраняется, physics/room settings обновляются. Если canonical файл отсутствует или повреждён, используется встроенный fallback, но не последний debug template. Импорт legacy/localStorage-версий пополняет только каталог и не меняет настройки комнаты.
 3. Клиент соединяется с `WS /realtime?session=<id>&client=<id>`.
 4. Input отправляется не чаще 30 Hz; snapshots публикуются до 20 Hz.
 5. Сервер хранит один `holder` и рассчитывает движение камня.
@@ -22,8 +22,7 @@ React отвечает за структуру UI, imperative runtime — за r
 7. Trail-дельты личных сессий агрегируются отдельным root trail hub и подтверждаются независимо от физики камня.
 8. Runtime выбирает click-gachi только из совпадения shared-манифеста с Vite audio glob, создаёт независимый `Audio` для каждого клика и при release/переходе в `falling` останавливает весь набор активных экземпляров. `СимуляцияОргазма.mov` запускается отдельно по серверному `groundTouchSeq` или локальному `touchedGround`.
 9. Dev/debug `Toolbar` показывает кнопку рядом со статусом сессии, а production `Toolbar` — ту же пользовательскую кнопку без debug-настроек. React ref передаёт `restart-session` в общий runtime, который регистрирует доступный click/keyboard action и вызывает существующий `restartExperience`. Reload не вызывает этот обработчик и независимо восстанавливает серверный snapshot.
-10. `settings-version-save` запускает существующие `settingsTemplates.save` и `settings.update` одним пользовательским действием. Settings-page runtime держит два pending-флага, не показывает промежуточный успех и завершает единый статус только после `settingsTemplates.saved` и `settings.applied`; конфликт или ошибка одного запроса сохраняет итоговое состояние `error`.
-
+10. `settings-version-save` запускает существующие `settingsTemplates.save` и `settings.update` одним пользовательским действием. Settings-page runtime держит два pending-флага, не показывает промежуточный успех и завершает единый статус только после `settingsTemplates.saved` и `settings.applied`; конфликт или ошибка одного запроса сохраняет итоговое состояние `error`. Сообщения `productionPreset.current/selected` отдельно обновляют доступность и отображение единственного флага.
 `POST /api/sessions/root` сохранён для trail hub и совместимости, но пользовательский runtime к root-комнате не подключается.
 
 ## Доменная модель
@@ -190,8 +189,9 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - Отдельный preclick-guidance smoke является постоянным regression-тестом и проверяет статичную камеру до активации, руку сразу после загрузки, рост смещения при приближении к центру, обычное радиальное направление, неизменность размеров камня, две временные bezier-оси, уменьшение max только при активном движении, статичную паузу, сброс при выходе, отключение parallax первым кликом и движение камеры вслед за drag камня.
 - Collaboration smoke проверяет доступную с клавиатуры кнопку «Начать сначала» и полный restart, случайный актуальный gachi по click/tap, наложение независимых экземпляров, остановку всего набора при начале падения, отдельный `СимуляцияОргазма.mov` на каждый новый ground impact без повторного запуска на кадрах покоя и восстановление активной сессии с видимым камнем после reload.
 - Unit-тест контроллера использует виртуальные timeout/interval и fake popup: проверяет отсутствие дублирующего schedule, одновременные окна, независимый click/2s close, выход/возврат в диапазон и паузу при блокировке.
+- Unit/integration regression проверяет сообщения флага в settings-page, игнорирование последнего непомеченного шаблона, повторное сохранение уже помеченной версии, полную замену canonical production preset и применение последних physics/room settings в новой сессии и при overlapping-reconnect. Settings-page после snapshot синхронизирует с сервером не только room/local, но и все physics-контролы, чтобы следующее сохранение не возвращало дефолты.
 
-Изменения `config/settings-templates.json` и `config/production-preset.json`, полученные через Git, перечитываются при следующем запуске сервера. Уже открытый production-клиент применяет обновлённый preset после обновления страницы на обновлённом приложении; live-доставка конфигурации активным production-клиентам в POC B не требуется. `shared/production-preset.js` задаёт безопасный fallback, если canonical JSON отсутствует или повреждён.
+Изменения `config/settings-templates.json` и `config/production-preset.json`, полученные через Git, перечитываются при следующем запуске сервера. Выбор флага через debug UI обновляет серверный preset сразу и применяется к следующим новым сессиям и при reload той же персональной сессии; другие уже открытые сессии live не сбрасываются. `shared/production-preset.js` задаёт безопасный fallback, если canonical JSON отсутствует или повреждён.
 
 ## Технический долг
 

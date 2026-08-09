@@ -6,6 +6,9 @@ import {
   DEFAULT_GLOW_OPTIMIZATION_SETTINGS,
   sanitizeGlowOptimizationSettings,
 } from "../lib/glowOptimization.mjs";
+import {
+  resolveProductionPresetMessage,
+} from "../lib/productionPresetMessages.mjs";
 import { createSettingsController } from "./createSettingsController.js";
 
 const SETTINGS_SCHEMA_VERSION = 32;
@@ -219,6 +222,7 @@ export function createSettingsPageRuntime(elements = {}) {
         SharedRoomSettings.sanitizeRoomSettings(payload.roomSettings, params),
       );
     }
+    settingsController.syncPhysicsSettingControls();
     settingsController.syncRoomSettingControls();
     settingsController.syncLocalSettingControls();
     settingsController.updateControlOutputs();
@@ -230,6 +234,19 @@ export function createSettingsPageRuntime(elements = {}) {
       return;
     }
     const payload = message.payload || {};
+    const productionPresetMessage = resolveProductionPresetMessage(message);
+    if (productionPresetMessage?.kind === "state") {
+      settingsController.setProductionPresetState(
+        productionPresetMessage.payload,
+      );
+      return;
+    }
+    if (productionPresetMessage?.kind === "error") {
+      settingsController.setProductionPresetError(
+        productionPresetMessage.message,
+      );
+      return;
+    }
     if (message.type === "session.snapshot") {
       const revision = Number(payload.settingsRevision);
       if (Number.isSafeInteger(revision) && revision > 0) {

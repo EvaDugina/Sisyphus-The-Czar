@@ -82,6 +82,9 @@ import {
   settingsSchemaVersion as productionSettingsSchemaVersion,
 } from "../../src/config/production-preset.mjs";
 import {
+  resolveProductionPresetMessage,
+} from "../../src/lib/productionPresetMessages.mjs";
+import {
   SETTINGS_GROUPS,
   SETTINGS_STORAGE_KEY,
   SETTINGS_VERSIONS_STORAGE_KEY,
@@ -449,6 +452,53 @@ test("production preset совместим с актуальной схемой 
       .map((control) => control.name)
       .filter((name) => !Object.hasOwn(productionSettings, name)),
     [],
+  );
+});
+
+test("settings page распознаёт состояние и ошибки production preset", () => {
+  const selection = {
+    selectedAt: "2026-08-09T10:00:00.000Z",
+    source: { id: "flagged", name: "Помеченный" },
+  };
+  assert.deepEqual(
+    resolveProductionPresetMessage({
+      type: "productionPreset.current",
+      payload: { canSelect: true, selection },
+    }),
+    {
+      kind: "state",
+      payload: { canSelect: true, selection },
+    },
+  );
+  assert.deepEqual(
+    resolveProductionPresetMessage({
+      type: "productionPreset.selected",
+      payload: { canSelect: true, selection },
+    }),
+    {
+      kind: "state",
+      payload: { canSelect: true, selection },
+    },
+  );
+  assert.deepEqual(
+    resolveProductionPresetMessage({
+      type: "error",
+      payload: {
+        code: "production_preset_store_unavailable",
+        message: "Не удалось сохранить production preset",
+      },
+    }),
+    {
+      kind: "error",
+      message: "Не удалось сохранить production preset",
+    },
+  );
+  assert.equal(
+    resolveProductionPresetMessage({
+      type: "settingsTemplates.saved",
+      payload: {},
+    }),
+    null,
   );
 });
 

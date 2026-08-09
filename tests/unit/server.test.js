@@ -108,7 +108,26 @@ test("production startup применяет preset из отдельного sto
   assert.equal(root.roomSettings.sceneHeightScreens, 14);
 });
 
-test("debug startup применяет последний общий шаблон", async (context) => {
+test("debug startup применяет помеченный preset вместо последнего шаблона", async (context) => {
+  const productionPresetStore = {
+    load: () => ({
+      settings: {
+        gravity: 6.25,
+        sceneHeightScreens: 13,
+        handAudioEnabled: false,
+      },
+    }),
+    metadata: () => ({
+      selectedAt: "2026-08-09T10:00:00.000Z",
+      source: {
+        id: "flagged-debug",
+        name: "Помеченный шаблон",
+        settingsSchemaVersion: 32,
+        updatedAt: "2026-08-09T09:59:00.000Z",
+      },
+    }),
+    save: () => null,
+  };
   const settingsTemplateStore = {
     load: () => [],
     latest: () => ({
@@ -129,6 +148,7 @@ test("debug startup применяет последний общий шабло�
     host: "127.0.0.1",
     debug: true,
     sessionStore: emptySessionStore(),
+    productionPresetStore,
     settingsTemplateStore,
     logger: () => {},
   });
@@ -136,8 +156,9 @@ test("debug startup применяет последний общий шабло�
   context.after(async () => service.close());
 
   const root = service.manager.ensureDefaultSession();
-  assert.equal(root.physics.gravity, 5.5);
-  assert.equal(root.roomSettings.sceneHeightScreens, 17);
+  assert.equal(root.physics.gravity, 6.25);
+  assert.equal(root.roomSettings.sceneHeightScreens, 13);
+  assert.equal(root.roomSettings.handAudioEnabled, false);
   assert.equal(root.settingsRevision, 2);
 });
 

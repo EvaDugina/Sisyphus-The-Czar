@@ -199,6 +199,11 @@ test("общая настройка показывает SVG-курсор и м�
   await expect(page.locator(".settings-production-status")).toContainText(
     "Версия и настройки комнаты сохранены",
   );
+  await page.locator(".settings-version-toggle").click();
+  await expect(
+    page.locator(".settings-version-production").first(),
+  ).toBeEnabled();
+  await page.locator(".settings-version-toggle").click();
   await page.locator(".settings-page__back").click();
   await waitForFoldReady(page);
   await expect(body).toHaveClass(/custom-cursor-enabled/);

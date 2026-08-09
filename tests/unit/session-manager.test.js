@@ -53,7 +53,6 @@ function setup(options = {}) {
     saveProductionPresetSelection: options.saveProductionPresetSelection,
     settingsTemplatesEnabled: options.settingsTemplatesEnabled,
     getSettingsTemplatesPage: options.getSettingsTemplatesPage,
-    getLatestSettingsTemplate: options.getLatestSettingsTemplate,
     importSettingsTemplates: options.importSettingsTemplates,
     saveSettingsTemplate: options.saveSettingsTemplate,
     deleteSettingsTemplate: options.deleteSettingsTemplate,
