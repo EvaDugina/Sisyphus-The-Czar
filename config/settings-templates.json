@@ -6,7 +6,7 @@
     {
       "id": "settings-version-mscz5hfd-c30065d5-639b-4c30-9b66-03f291160c20",
       "name": "v1",
-      "settingsSchemaVersion": 32,
+      "settingsSchemaVersion": 33,
       "createdAt": "2026-08-03T08:35:52.057Z",
       "updatedAt": "2026-08-09T11:16:26.232Z",
       "settings": {
@@ -22,10 +22,10 @@
         "returnScrollEasing": "cubic-bezier(0.4, 0, 0.2, 1)",
         "stationaryAutoSlipEnabled": true,
         "cameraFollowLerp": 0.1,
-        "draftFoldAngle": 30,
-        "draftFoldZoneSize": 20,
-        "draftFoldBlendEnabled": true,
-        "draftFoldBlendCurve": "cubic-bezier(0, 1, 0, 1)",
+        "foldAngle": 30,
+        "foldZoneSize": 20,
+        "foldBlendEnabled": true,
+        "foldBlendCurve": "cubic-bezier(0, 1, 0, 1)",
         "finalFallEnabled": false,
         "finalFallDelaySeconds": 2,
         "randomDropEnabled": false,

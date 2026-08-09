@@ -2,7 +2,7 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: "./tests/smoke",
-  testMatch: /draft-fold\.spec\.js/,
+  testMatch: /ui-fold\.spec\.js/,
   timeout: 30_000,
   expect: { timeout: 8_000 },
   workers: 1,
@@ -24,10 +24,10 @@ module.exports = defineConfig({
       SLIP_DELAY_MIN_MS: "10000",
       SLIP_DELAY_MAX_MS: "10000",
       STATIONARY_HOLD_RELEASE_MS: "10000",
-      SESSION_STORE_PATH: "/tmp/sisyphus-draft-smoke-sessions.json",
-      PRODUCTION_PRESET_PATH: "/tmp/sisyphus-draft-production-preset.json",
+      SESSION_STORE_PATH: "/tmp/sisyphus-ui-smoke-sessions.json",
+      PRODUCTION_PRESET_PATH: "/tmp/sisyphus-ui-production-preset.json",
       SETTINGS_TEMPLATE_STORE_PATH:
-        "/tmp/sisyphus-draft-settings-templates.json",
+        "/tmp/sisyphus-ui-settings-templates.json",
       SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },

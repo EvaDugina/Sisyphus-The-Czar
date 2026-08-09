@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 30;
+  const ROOM_SETTINGS_VERSION = 31;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
@@ -28,7 +28,7 @@
     "cubic-bezier(0.22, 1, 0.36, 1)";
   const DEFAULT_PRECLICK_PARALLAX_TRANSITION_EASING =
     "cubic-bezier(0, 0, 1, 1)";
-  const DEFAULT_DRAFT_FOLD_BLEND_CURVE =
+  const DEFAULT_FOLD_BLEND_CURVE =
     "cubic-bezier(0.333, 0, 0.667, 1)";
   const DEFAULT_DRIZZLE_VOLUME_EASING =
     "cubic-bezier(0.4, 0, 0.2, 1)";
@@ -59,8 +59,8 @@
     sceneHeightScreens: [1, 100],
     returnScrollDurationSeconds: [0, 10],
     cameraFollowLerp: [0.01, 1],
-    draftFoldAngle: [0, 180],
-    draftFoldZoneSize: [0, 50],
+    foldAngle: [0, 180],
+    foldZoneSize: [0, 50],
     finalFallDelaySeconds: [0, 10],
     drizzleVolume: [0, 1],
     customCursorSizePx: [8, 128],
@@ -119,10 +119,10 @@
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     stationaryAutoSlipEnabled: true,
     cameraFollowLerp: 0.1,
-    draftFoldAngle: 30,
-    draftFoldZoneSize: 20,
-    draftFoldBlendEnabled: true,
-    draftFoldBlendCurve: DEFAULT_DRAFT_FOLD_BLEND_CURVE,
+    foldAngle: 30,
+    foldZoneSize: 20,
+    foldBlendEnabled: true,
+    foldBlendCurve: DEFAULT_FOLD_BLEND_CURVE,
     finalFallEnabled: false,
     finalFallDelaySeconds: 2,
     randomDropEnabled: true,
@@ -419,10 +419,10 @@
       ROOM_SETTINGS_LIMITS.returnScrollDurationSeconds;
     const [cameraFollowLerpMin, cameraFollowLerpMax] =
       ROOM_SETTINGS_LIMITS.cameraFollowLerp;
-    const [draftFoldAngleMin, draftFoldAngleMax] =
-      ROOM_SETTINGS_LIMITS.draftFoldAngle;
-    const [draftFoldZoneMin, draftFoldZoneMax] =
-      ROOM_SETTINGS_LIMITS.draftFoldZoneSize;
+    const [foldAngleMin, foldAngleMax] =
+      ROOM_SETTINGS_LIMITS.foldAngle;
+    const [foldZoneMin, foldZoneMax] =
+      ROOM_SETTINGS_LIMITS.foldZoneSize;
     const [finalFallDelayMin, finalFallDelayMax] =
       ROOM_SETTINGS_LIMITS.finalFallDelaySeconds;
     const [rockJumpIntervalMin, rockJumpIntervalMax] =
@@ -615,29 +615,29 @@
         cameraFollowLerpMin,
         cameraFollowLerpMax
       ),
-      draftFoldAngle: integerSetting(
+      foldAngle: integerSetting(
         source,
         fallbackSource,
-        "draftFoldAngle",
-        draftFoldAngleMin,
-        draftFoldAngleMax
+        "foldAngle",
+        foldAngleMin,
+        foldAngleMax
       ),
-      draftFoldZoneSize: integerSetting(
+      foldZoneSize: integerSetting(
         source,
         fallbackSource,
-        "draftFoldZoneSize",
-        draftFoldZoneMin,
-        draftFoldZoneMax
+        "foldZoneSize",
+        foldZoneMin,
+        foldZoneMax
       ),
-      draftFoldBlendEnabled: boolSetting(
+      foldBlendEnabled: boolSetting(
         source,
         fallbackSource,
-        "draftFoldBlendEnabled"
+        "foldBlendEnabled"
       ),
-      draftFoldBlendCurve: cubicBezierSetting(
+      foldBlendCurve: cubicBezierSetting(
         source,
         fallbackSource,
-        "draftFoldBlendCurve"
+        "foldBlendCurve"
       ),
       finalFallEnabled: boolSetting(
         source,
@@ -1021,6 +1021,22 @@
     };
   }
 
+  function migrateFoldSettings(input) {
+    const source = input && typeof input === "object" ? { ...input } : {};
+    [
+      ["foldAngle", "draftFoldAngle"],
+      ["foldZoneSize", "draftFoldZoneSize"],
+      ["foldBlendEnabled", "draftFoldBlendEnabled"],
+      ["foldBlendCurve", "draftFoldBlendCurve"],
+    ].forEach(([currentKey, legacyKey]) => {
+      if (!Object.hasOwn(source, currentKey) && Object.hasOwn(source, legacyKey)) {
+        source[currentKey] = source[legacyKey];
+      }
+      delete source[legacyKey];
+    });
+    return source;
+  }
+
   function migrateRoomSettings(input, version = 1) {
     const source = input && typeof input === "object" ? { ...input } : {};
     if (finiteNumber(version, 1) < 4) {
@@ -1178,6 +1194,9 @@
         }
       });
     }
+    if (finiteNumber(version, 1) < 31) {
+      return migrateFoldSettings(source);
+    }
     return source;
   }
 
@@ -1203,6 +1222,7 @@
     normalizeHexColor,
     parseCubicBezier,
     sanitizeHeightGates,
+    migrateFoldSettings,
     migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,

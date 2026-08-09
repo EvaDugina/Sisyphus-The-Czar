@@ -44,7 +44,9 @@ Dev и production используют один локальный origin `http:
 
 В каждой сессии есть единственная роль `master`, единственная рука и не более одного holder. Сила не суммируется между пользователями. Во всех режимах новая или перезагруженная личная сессия получает настройки только из выбранного production preset; последняя или локально выбранная непомеченная версия не подменяет его. Reload сохраняет игровое состояние и положение камня, но заново применяет помеченные physics/room settings. Чужие открытые сессии live не сбрасываются. Каталог шаблонов общий, но текущие положение камня, настройки сессии и таймеры автоматического поведения не рассылаются другим пользователям.
 
-Маршруты `/` и `/drafts/` открывают одну основную страницу с одинаковыми сценой, 3D Fold-слоем и меню настроек; `/drafts/` сохранён только как совместимый URL.
+Основная сцена доступна только по `/`. Удалённые compatibility-адреса `/drafts`, `/drafts/` и `/drafts/assets/*` возвращают `404` и в dev, и в production; 3D Fold остаётся частью основной страницы.
+
+Preclick-эксперимент включён по умолчанию: каждый новый вход мыши в радиус заставляет камень ускакивать от курсора на расстояние, зависящее от скорости, без возврата в центр, и запускает независимый `Смех.mp3`. Build-time значение `EXPERIMENT_PRECLICK_ROCK_HOP=false` возвращает прежний непрерывный parallax.
 
 Если `Fhand < m · g`, рука не отпускает камень: он плавно отстаёт со скоростью, зависящей от `Fhand / Fg`. В группе «Камень» независимо включаются случайное выпадение через `0.5–2 s` и выпрыгивание вверх. Для выпрыгивания задаются интервал `1–10 s` (default `5`), полная ширина симметричного углового сектора `0–180°` (default `90°`) и разброс силы `0–100%` (default `25%`). Значение угла `0°` направляет камень строго вверх, `180°` разрешает всю верхнюю полуплоскость.
 
@@ -74,6 +76,7 @@ Production frontend использует существующий `rock.webp`, P
 | `PRODUCTION_PRESET_PATH` | отслеживаемый canonical production preset, по умолчанию `/app/repository-config/production-preset.json` |
 | `SETTINGS_TEMPLATE_STORE_PATH` | отслеживаемый каталог debug-шаблонов, по умолчанию `/app/repository-config/settings-templates.json` |
 | `SESSION_PERSIST_INTERVAL_MS` | интервал фонового сохранения, по умолчанию `250` мс |
+| `EXPERIMENT_PRECLICK_ROCK_HOP` | build-time флаг экспериментального preclick-отскока; по умолчанию `true`, `false` возвращает прежний parallax |
 
 Секретов приложение не использует. Файл `.env` не коммитится.
 
@@ -84,6 +87,7 @@ Production frontend использует существующий `rock.webp`, P
 ```bash
 docker run --rm -v "$(pwd):/app" -v /app/node_modules -w /app node:24.18.0-alpine3.23 sh -c "npm ci && npm run lint && npm run build && npm test"
 docker run --rm --ipc=host -v "$(pwd):/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "npm ci && npm run test:smoke"
+docker run --rm --ipc=host -v "$(pwd):/app" -v /app/node_modules -w /app mcr.microsoft.com/playwright:v1.61.1-noble sh -c "npm ci && npm run test:smoke:ui && npm run test:smoke:hop"
 ```
 
 Перед крупным релизом замените `npm run test:smoke` на `npm run test:soak`: две независимые пользовательские сессии проверяются не менее 10 минут.

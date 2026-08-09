@@ -65,6 +65,34 @@ test("settings template store атомарно сохраняет whitelist и �
   assert.deepEqual(loaded.latest(), saved.entry);
 });
 
+test("settings template store мигрирует legacy Fold-ключи в schema 33", (context) => {
+  const { store } = temporaryStore(context);
+  const legacy = entry("legacy-fold");
+  legacy.settingsSchemaVersion = 32;
+  legacy.settings = {
+    draftFoldAngle: 44,
+    draftFoldZoneSize: 18,
+    draftFoldBlendEnabled: false,
+    draftFoldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
+    foldAngle: 55,
+  };
+
+  const imported = store.importEntries([legacy]).entries[0];
+
+  assert.equal(imported.settingsSchemaVersion, 33);
+  assert.equal(imported.settings.foldAngle, 55);
+  assert.equal(imported.settings.foldZoneSize, 18);
+  assert.equal(imported.settings.foldBlendEnabled, false);
+  assert.equal(
+    imported.settings.foldBlendCurve,
+    "cubic-bezier(0, 0, 1, 1)",
+  );
+  assert.equal(
+    Object.keys(imported.settings).some((key) => key.startsWith("draftFold")),
+    false,
+  );
+});
+
 test("latest выбирается по updatedAt, createdAt и id", (context) => {
   const { store } = temporaryStore(context);
   store.importEntries([

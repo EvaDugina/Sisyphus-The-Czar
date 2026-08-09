@@ -8,7 +8,7 @@
 - **Создано:** 2026-08-08 00:17
 - **TTL:** до решения `promote` или `reject`; перед следующим релизом POC B эксперимент должен быть закрыт
 - **Base commit:** `0b5d5469393aba1c7d534d0d19f79452a7b4b07b`
-- **Feature flag:** `EXPERIMENT_PRECLICK_ROCK_HOP` (default off)
+- **Feature flag:** `EXPERIMENT_PRECLICK_ROCK_HOP` (default on; rollback: `false`)
 
 ## Approved-карточка
 
@@ -33,11 +33,11 @@
 
 ## Impact analysis
 
-- **Минимальные файлы:** `src/lib/preclickParallax.mjs`, `src/runtime/createSisyphusRuntime.js`, `tests/unit/frontend-model.test.mjs`, `tests/smoke/preclick-rock-guidance.spec.js`; новый аудиофайл — после предоставления пользователем.
+- **Минимальные файлы:** `src/lib/preclickParallax.mjs`, `src/runtime/createSisyphusRuntime.js`, `src/styles/scene.css`, `vite.config.mjs`, `assets/audio/Смех.mp3`, `tests/unit/frontend-model.test.mjs`, `tests/smoke/preclick-rock-hop.spec.js`, `playwright.hop.config.js`.
 - **Затронутые сценарии:** preclick pointermove, вход/выход из радиуса, reset/reload до первого захвата, завершение guidance первым захватом, локальное аудио отскока.
-- **Контракты и данные:** серверные API, WebSocket payload, room settings и сохранённая сессия не меняются; flag локальный и по умолчанию выключен.
+- **Контракты и данные:** серверные API, WebSocket payload, room settings и сохранённая сессия не меняются; flag локальный, по умолчанию включён и отключается build-time значением `false`.
 - **Скрытые зависимости / регрессии:** CSS-offset участвует в `getBoundingClientRect`; накопительный offset должен использовать визуальный центр, не исходный; resize/reset/dispose обязаны отменять активную анимацию; reduced motion требует мгновенной посадки без возврата.
-- **Риск-класс:** низкий/локальный UI — default-off flag ограничивает эксперимент preclick-режимом, но нужна browser-проверка геометрии и событий.
+- **Риск-класс:** низкий/локальный UI — эксперимент ограничен preclick-режимом и имеет build-time rollback `false`, но требует browser-проверки геометрии и событий.
 
 ## Реализация эксперимента
 
@@ -50,26 +50,28 @@
 
 | Проверка | Команда / источник | Результат | Примечание |
 |---|---|---|---|
-| Ожидает реализации | — | — | — |
+| Unit: геометрия hop | `npm test` | pass | Скорость/дальность, направление, накопление и viewport clamp |
+| Browser: flag on | `npm run test:smoke:hop` | pass | Один hop/смех на вход, отсутствие возврата, fast > slow, resize, reduced motion, first grab |
+| Browser: flag off | `npx playwright test --config=playwright.prod-debug.config.js tests/smoke/preclick-rock-guidance.spec.js` | pass | Штатный parallax, возврат, временные кривые, пауза и reset проверены через production preset |
 
 ### Ручная демонстрация
 
-- **Шаги:** ожидают реализации
-- **Наблюдение:** не измерено
-- **Метрика:** не измерено
+- **Шаги:** описаны в `.docs/demo.md`, раздел «0a. Эксперимент отскока со смехом»
+- **Наблюдение:** автоматический Chromium smoke подтверждает утверждённую геометрию и аудио; пользовательская ручная демонстрация ещё не проведена
+- **Метрика:** в smoke число `audioPlayCount` равно `hopCount`, быстрый вход дальше медленного
 
 ## Решение
 
-- **Гипотеза полезна:** недостаточно данных
-- **Экспериментальная реализация пригодна:** нет
-- **Outcome:** extend
-- **Дата и основание:** 2026-08-08, карточка одобрена; реализация и evidence ожидаются
+- **Гипотеза полезна:** предварительно да; пользователь выбрал default-on rollout
+- **Экспериментальная реализация пригодна:** да; автоматические проверки обеих веток зелёные, ручная продуктовая оценка продолжается
+- **Outcome:** extend, default-on rollout
+- **Дата и основание:** 2026-08-09, пользователь включил эксперимент по умолчанию после зелёного автоматического evidence; build-time rollback `false` сохранён
 
 ## Promotion и rollout
 
-- **Что переписать:** определить постоянный источник flag и окончательную шкалу скорости после демонстрации
+- **Что переписать:** после демонстрации решить, удалить ли временный flag или сохранить его как постоянный rollback
 - **Постоянные тесты / контракты:** unit геометрии и browser smoke preclick-прыжка
 - **Совместимость / миграции:** миграции не требуются
 - **Наблюдаемость:** test API счётчика отскоков и аудио только в dev
-- **Условие rollout:** подтверждённый ручной сценарий и зелёные проверки POC B
+- **Условие rollout:** выполнено — пользователь включил default-on после зелёных проверок POC B
 - **Срок / условие удаления flag:** после `promote` или `reject`

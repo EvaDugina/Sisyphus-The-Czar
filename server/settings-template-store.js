@@ -7,7 +7,7 @@ const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
 
 const STORE_VERSION = 1;
-const SETTINGS_SCHEMA_VERSION = 32;
+const SETTINGS_SCHEMA_VERSION = 33;
 const MAX_ENTRIES = 50;
 const MAX_ID_LENGTH = 180;
 const MAX_NAME_LENGTH = 120;
@@ -38,13 +38,16 @@ function normalizedTimestamp(value, field, fallback) {
   throw validationError(`invalid_${field}`);
 }
 
-function normalizeSettings(settings) {
+function normalizeSettings(settings, settingsSchemaVersion) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
     throw validationError("invalid_settings");
   }
+  const migratedSettings = Number(settingsSchemaVersion) < SETTINGS_SCHEMA_VERSION
+    ? RoomSettings.migrateFoldSettings(settings)
+    : settings;
   return {
-    ...RoomSettings.sanitizeRoomSettings(settings),
-    ...Physics.sanitizePhysics(settings),
+    ...RoomSettings.sanitizeRoomSettings(migratedSettings),
+    ...Physics.sanitizePhysics(migratedSettings),
   };
 }
 
@@ -73,10 +76,10 @@ function normalizeEntry(entry, options = {}) {
   return {
     id: requiredString(entry.id, "id", MAX_ID_LENGTH),
     name: requiredString(entry.name, "name", MAX_NAME_LENGTH),
-    settingsSchemaVersion,
+    settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
     createdAt,
     updatedAt,
-    settings: normalizeSettings(entry.settings),
+    settings: normalizeSettings(entry.settings, settingsSchemaVersion),
   };
 }
 

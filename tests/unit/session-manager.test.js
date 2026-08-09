@@ -550,6 +550,44 @@ test("старая сессия внутри вершины получает н�
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 });
 
+test("persisted session мигрирует legacy Fold-ключи в room schema 31", () => {
+  const { manager } = setup();
+  const restored = manager.restoreSessions([
+    {
+      id: "legacyfold000000000000",
+      state: { phase: Physics.PHASES.PLAY, suspended: true },
+      roomSettingsVersion: 30,
+      roomSettings: {
+        draftFoldAngle: 43,
+        draftFoldZoneSize: 19,
+        draftFoldBlendEnabled: false,
+        draftFoldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
+        foldAngle: 54,
+      },
+      expiresAt: 5000,
+      emptyDeleteAt: null,
+    },
+  ]);
+
+  assert.equal(restored, 1);
+  const session = manager.getSession("legacyfold000000000000");
+  assert.equal(session.roomSettings.foldAngle, 54);
+  assert.equal(session.roomSettings.foldZoneSize, 19);
+  assert.equal(session.roomSettings.foldBlendEnabled, false);
+  assert.equal(
+    session.roomSettings.foldBlendCurve,
+    "cubic-bezier(0, 0, 1, 1)",
+  );
+  assert.equal(
+    Object.keys(session.roomSettings).some((key) => key.startsWith("draftFold")),
+    false,
+  );
+  assert.equal(
+    manager.serializeSessions()[0].roomSettingsVersion,
+    RoomSettings.ROOM_SETTINGS_VERSION,
+  );
+});
+
 test("legacy masterClientId игнорируется, а все новые подключения получают master", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
@@ -1724,11 +1762,13 @@ test("debug settings.update принимает любого участника �
         ...RoomSettings.DEFAULT_ROOM_SETTINGS,
         ...Physics.DEFAULT_PHYSICS,
         gravity: 8,
+        preclickParallaxMaxOffsetVw: 20,
       },
     },
   });
 
   assert.equal(session.physics.gravity, 8);
+  assert.equal(session.roomSettings.preclickParallaxMaxOffsetVw, 20);
   assert.equal(session.settingsRevision, 2);
   assert.equal(
     second.socket.messages.findLast(

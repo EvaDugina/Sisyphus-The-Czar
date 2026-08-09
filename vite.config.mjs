@@ -61,13 +61,14 @@ function reloadSharedPhysics() {
   };
 }
 
-function serveMainFromDraftPath() {
+function serveSettingsPage() {
   return {
-    name: "serve-main-from-draft-path",
+    name: "serve-settings-page",
     configureServer(server) {
       server.middlewares.use((request, _response, next) => {
-        if (request.url === "/drafts" || request.url === "/drafts/") {
-          request.url = "/index.html";
+        const url = new URL(request.url || "/", "http://vite.local");
+        if (url.pathname === "/settings" || url.pathname === "/settings/") {
+          request.url = `/index.html${url.search}`;
         }
         next();
       });
@@ -79,10 +80,18 @@ export default defineConfig(({ command }) => {
   const isProductionBuild = command === "build";
   const debugUiEnabled =
     !isProductionBuild || process.env.VITE_DEBUG_UI === "true";
+  const preclickRockHopEnabled =
+    process.env.EXPERIMENT_PRECLICK_ROCK_HOP !== "false";
 
   return {
+    appType: "mpa",
     base: "./",
-    plugins: [react(), reloadSharedPhysics(), serveMainFromDraftPath()],
+    define: {
+      "import.meta.env.EXPERIMENT_PRECLICK_ROCK_HOP": JSON.stringify(
+        preclickRockHopEnabled,
+      ),
+    },
+    plugins: [react(), serveSettingsPage(), reloadSharedPhysics()],
     resolve: {
       alias: isProductionBuild && !debugUiEnabled
         ? [

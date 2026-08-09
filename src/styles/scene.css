@@ -154,6 +154,15 @@
     scale(var(--rock-scale));
 }
 
+.rock.is-preclick-hop {
+  transition:
+    transform 400ms cubic-bezier(0.22, 1, 0.36, 1),
+    --rock-scale 0ms ease-out,
+    --rock-wall-compensation 0ms ease-out,
+    filter 160ms ease,
+    opacity 240ms ease;
+}
+
 .rock.is-activation-scaling {
   transition:
     --rock-scale 300ms ease-out,
@@ -525,7 +534,7 @@ body.state-fallingToBottom .hand-cursor {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rock.is-preclick-parallax {
+  .rock.is-preclick-parallax:not(.is-preclick-hop) {
     transform:
       translate3d(
         calc(var(--rock-x) + var(--rock-wall-compensation)),
@@ -533,6 +542,10 @@ body.state-fallingToBottom .hand-cursor {
         0
       )
       scale(var(--rock-scale));
+  }
+
+  .rock.is-preclick-hop {
+    transition-duration: 0.001ms;
   }
 
   .weather-rain,

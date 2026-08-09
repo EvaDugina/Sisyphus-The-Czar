@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v32";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v33";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v32",
   "sisyphus-czar-settings-v31",
   "sisyphus-czar-settings-v30",
   "sisyphus-czar-settings-v29",
@@ -480,40 +481,40 @@ export const SETTINGS_GROUPS = [
     title: "3D Fold",
     controls: [
       {
-        name: "draftFoldAngle",
+        name: "foldAngle",
         label: "Угол линзы",
         type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.draftFoldAngle[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.draftFoldAngle[1],
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.foldAngle[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.foldAngle[1],
         step: 1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.draftFoldAngle,
-        output: `${DEFAULT_ROOM_SETTINGS.draftFoldAngle}°`,
+        defaultValue: DEFAULT_ROOM_SETTINGS.foldAngle,
+        output: `${DEFAULT_ROOM_SETTINGS.foldAngle}°`,
         hint: "Угол наклона верхней перспективной Fold-зоны.",
       },
       {
-        name: "draftFoldZoneSize",
+        name: "foldZoneSize",
         label: "Размер линзы",
         type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.draftFoldZoneSize[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.draftFoldZoneSize[1],
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.foldZoneSize[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.foldZoneSize[1],
         step: 1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.draftFoldZoneSize,
-        output: `${DEFAULT_ROOM_SETTINGS.draftFoldZoneSize} vh`,
+        defaultValue: DEFAULT_ROOM_SETTINGS.foldZoneSize,
+        output: `${DEFAULT_ROOM_SETTINGS.foldZoneSize} vh`,
         hint: "Высота верхней Fold-зоны. Нулевое значение отключает эффект.",
       },
       {
-        name: "draftFoldBlendEnabled",
+        name: "foldBlendEnabled",
         label: "Плавное смешивание",
         type: "checkbox",
-        defaultChecked: DEFAULT_ROOM_SETTINGS.draftFoldBlendEnabled,
+        defaultChecked: DEFAULT_ROOM_SETTINGS.foldBlendEnabled,
         hint: "Смешивает Fold-зону с основной сценой по настраиваемой кривой.",
       },
       {
-        name: "draftFoldBlendCurve",
+        name: "foldBlendCurve",
         label: "Кривая смешивания",
         type: "cubic-bezier",
-        defaultValue: DEFAULT_ROOM_SETTINGS.draftFoldBlendCurve,
-        enabledWhen: "draftFoldBlendEnabled",
+        defaultValue: DEFAULT_ROOM_SETTINGS.foldBlendCurve,
+        enabledWhen: "foldBlendEnabled",
         hint: "Кривая изменения непрозрачности от верхнего края Fold-зоны к основной сцене.",
       },
     ],

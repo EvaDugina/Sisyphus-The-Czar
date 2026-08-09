@@ -12,7 +12,8 @@ module.exports = defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command: "npm run build && node server/index.js",
+    command:
+      "cross-env VITE_DEBUG_UI=true EXPERIMENT_PRECLICK_ROCK_HOP=false npm run build && node server/index.js",
     url: "http://127.0.0.1:4174/healthz",
     timeout: 45_000,
     reuseExistingServer: false,

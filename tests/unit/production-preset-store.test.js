@@ -38,7 +38,7 @@ test("Git production preset содержит полный canonical snapshot", (
   );
   const normalized = normalizeDocument(document);
 
-  assert.equal(normalized.source.settingsSchemaVersion, 32);
+  assert.equal(normalized.source.settingsSchemaVersion, 33);
   assert.equal(normalized.source.name, "v1");
   assert.equal(normalized.settings.handAudioEnabled, false);
   assert.deepEqual(
@@ -49,6 +49,39 @@ test("Git production preset содержит полный canonical snapshot", (
         ...Object.keys(Physics.DEFAULT_PHYSICS),
       ]),
     ].sort(),
+  );
+});
+
+test("production preset мигрирует legacy Fold-ключи в schema 33", () => {
+  const normalized = normalizeDocument({
+    version: STORE_VERSION,
+    selectedAt: "2026-08-09T10:00:00.000Z",
+    source: {
+      id: "legacy-fold",
+      name: "Legacy Fold",
+      settingsSchemaVersion: 32,
+      updatedAt: "2026-08-09T09:00:00.000Z",
+    },
+    settings: {
+      draftFoldAngle: 41,
+      draftFoldZoneSize: 17,
+      draftFoldBlendEnabled: false,
+      draftFoldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
+      foldAngle: 52,
+    },
+  });
+
+  assert.equal(normalized.source.settingsSchemaVersion, 33);
+  assert.equal(normalized.settings.foldAngle, 52);
+  assert.equal(normalized.settings.foldZoneSize, 17);
+  assert.equal(normalized.settings.foldBlendEnabled, false);
+  assert.equal(
+    normalized.settings.foldBlendCurve,
+    "cubic-bezier(0, 0, 1, 1)",
+  );
+  assert.equal(
+    Object.keys(normalized.settings).some((key) => key.startsWith("draftFold")),
+    false,
   );
 });
 

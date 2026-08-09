@@ -4,14 +4,14 @@ const SOURCE_ROCK = "#root > .world > .rock";
 const SOURCE_HAND = "#root > .world > .hand-cursor:not(.is-remote)";
 
 async function waitForProductionRuntime(page) {
-  await expect(page).toHaveURL(/\/(?:drafts\/)?$/);
+  await expect(page).toHaveURL(/\/$/);
   await expect(page.locator("body")).toHaveAttribute("data-client-role", "master");
   await expect(page.locator("body")).toHaveClass(/state-play/);
   await expect(page.locator(SOURCE_ROCK)).toBeVisible();
 }
 
-test("production /drafts/ serves the same Fold application", async ({ page }) => {
-  await page.goto("/drafts/");
+test("production / serves the Fold application", async ({ page }) => {
+  await page.goto("/");
   await waitForProductionRuntime(page);
   await expect(page.locator("#root > .world")).toHaveCount(1);
   await expect(page.locator("[data-fold-layer]")).toHaveAttribute(
@@ -19,8 +19,16 @@ test("production /drafts/ serves the same Fold application", async ({ page }) =>
     "true",
   );
   await expect(page.locator('[data-fold-zone="top"]')).toHaveCount(1);
+  await expect(page.locator(SOURCE_ROCK)).toHaveClass(/is-preclick-hop/);
   await expect(page.locator(".settings-panel")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Начать сначала" })).toBeVisible();
+});
+
+test("production legacy drafts маршруты возвращают 404", async ({ request }) => {
+  for (const path of ["/drafts", "/drafts/", "/drafts/assets/missing.js"]) {
+    const response = await request.get(path);
+    expect(response.status()).toBe(404);
+  }
 });
 
 async function visibleRockPoint(page) {
@@ -51,8 +59,14 @@ async function visibleRockPoint(page) {
 }
 
 async function moveToVisibleRock(page) {
-  for (let attempt = 0; attempt < 6; attempt += 1) {
-    const point = await visibleRockPoint(page);
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    let point;
+    try {
+      point = await visibleRockPoint(page);
+    } catch {
+      await scrollToRock(page);
+      continue;
+    }
     await page.mouse.move(point.x, point.y);
     const hitsRock = await page.locator(SOURCE_ROCK).evaluate(
       (rock, target) =>

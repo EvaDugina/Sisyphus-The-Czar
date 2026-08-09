@@ -204,9 +204,13 @@ test("штатный runtime включает parallax до первого кл�
   await expect.poll(() => parallaxX(page)).toBe(0);
   const scrollAtActivation = await page.evaluate(() => window.scrollY);
   await page.mouse.move(point.x, Math.max(50, point.y - 350), { steps: 8 });
-  await expect
-    .poll(() => page.evaluate(() => window.scrollY))
-    .toBeLessThan(scrollAtActivation);
+  if (scrollAtActivation > 0) {
+    await expect
+      .poll(() => page.evaluate(() => window.scrollY))
+      .toBeLessThan(scrollAtActivation);
+  } else {
+    await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  }
 
   await page.mouse.up();
   await page.mouse.move(24, 24);
@@ -226,9 +230,64 @@ test("штатный runtime включает parallax до первого кл�
 test("активное движение меняет parallax по двум временным графикам и сбрасывается при выходе", async ({
   page,
 }) => {
+  let sentSettingsPayload = null;
+  let rootSentSettingsPayload = null;
+  let rootSnapshot = null;
+  let captureRootSnapshot = false;
+  let settingsSocketSessionId = "";
+  let rootSocketSessionId = "";
+  page.on("websocket", (socket) => {
+    const socketSessionId = new URL(socket.url()).searchParams.get("session") || "";
+    if (captureRootSnapshot) {
+      rootSocketSessionId = socketSessionId;
+    } else {
+      settingsSocketSessionId = socketSessionId;
+    }
+    socket.on("framesent", (event) => {
+      try {
+        const message = JSON.parse(event.payload);
+        if (message.type === "settings.update") {
+          if (captureRootSnapshot) {
+            rootSentSettingsPayload = message.payload;
+          } else {
+            sentSettingsPayload = message.payload;
+          }
+        }
+      } catch {
+        /* Бинарные и служебные кадры не относятся к настройкам. */
+      }
+    });
+    socket.on("framereceived", (event) => {
+      try {
+        const message = JSON.parse(event.payload);
+        if (
+          captureRootSnapshot &&
+          !rootSnapshot &&
+          message.type === "session.snapshot"
+        ) {
+          rootSnapshot = message.payload;
+        }
+      } catch {
+        /* Бинарные и служебные кадры не относятся к snapshot. */
+      }
+    });
+  });
   await page.setViewportSize({ width: 1600, height: 1000 });
   await page.goto("/");
   await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  await page.goto("/settings/");
+  await expect(page.locator(".settings-panel")).toHaveAttribute(
+    "aria-hidden",
+    "false",
+  );
+  await expect(page.locator("[data-session-status]")).toContainText(
+    "В сессии",
+  );
+  const settingsSessionId = await page.evaluate(() =>
+    sessionStorage.getItem("sisyphus-room-session-id"),
+  );
+  expect(settingsSessionId).toMatch(/^[A-Za-z0-9_-]{22}$/);
+  expect(settingsSocketSessionId).toBe(settingsSessionId);
 
   const maxCurve = page.locator(
     '[data-cubic-bezier-control]:has(input[name="preclickParallaxMaxOffsetEasing"])',
@@ -248,7 +307,7 @@ test("активное движение меняет parallax по двум вр
   );
 
   await setSetting(page, "preclickParallaxMaxOffsetVw", 20);
-  await setSetting(page, "preclickParallaxEndMaxOffsetVw", 0);
+  await setSetting(page, "preclickParallaxEndMaxOffsetVw", 2);
   await setSetting(page, "preclickParallaxActivationRadiusVw", 40);
   await setSetting(page, "preclickParallaxStartDelayMs", 0);
   await setSetting(page, "preclickParallaxEndDelayMs", 1000);
@@ -264,6 +323,9 @@ test("активное движение меняет parallax по двум вр
     "cubic-bezier(0, 0, 1, 1)",
   );
   await setSetting(page, "preclickParallaxReturnDurationMs", 0);
+  await expect(
+    page.locator('[data-setting-input][name="preclickParallaxMaxOffsetVw"]'),
+  ).toHaveValue("20");
 
   await expect(maxCurve.locator(".bezier-graph-range")).toContainText(
     "0–1 s",
@@ -271,6 +333,49 @@ test("активное движение меняет parallax по двум вр
   await expect(delayCurve.locator(".bezier-graph-range")).toContainText(
     "0–1 s",
   );
+  await page
+    .getByRole("button", {
+      name: "Сохранить версию и настройки комнаты",
+    })
+    .click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Версия и настройки комнаты сохранены",
+  );
+  expect(sentSettingsPayload?.settings?.preclickParallaxMaxOffsetVw).toBe(20);
+  const selectedVersionId = await page.evaluate(() => {
+    const stored = JSON.parse(
+      localStorage.getItem("sisyphus-czar-settings-versions-v1") || "{}",
+    );
+    return stored.selectedId;
+  });
+  expect(selectedVersionId).toBeTruthy();
+  await page.locator(".settings-version-toggle").click();
+  const productionButton = page.locator(
+    `[data-production-preset-select="${selectedVersionId}"]`,
+  );
+  await expect(productionButton).toBeEnabled();
+  await productionButton.click();
+  await expect(
+    page.locator(
+      `.settings-version-option.is-production [data-production-preset-select="${selectedVersionId}"]`,
+    ),
+  ).toBeVisible();
+  captureRootSnapshot = true;
+  await page.goto("/");
+  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  await expect(page.locator("[data-session-status]")).toContainText(
+    "В сессии",
+  );
+  expect(
+    await page.evaluate(() =>
+      sessionStorage.getItem("sisyphus-room-session-id"),
+    ),
+  ).toBe(settingsSessionId);
+  expect(rootSocketSessionId).toBe(settingsSessionId);
+  await expect
+    .poll(() => rootSnapshot?.roomSettings?.preclickParallaxMaxOffsetVw)
+    .toBe(20);
+  expect(rootSentSettingsPayload).toBeNull();
 
   await scrollToRock(page);
   const center = await rockCenter(page);

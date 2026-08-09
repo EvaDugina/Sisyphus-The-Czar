@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 32;
+const SETTINGS_SCHEMA_VERSION = 33;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -375,11 +375,14 @@ export function createSettingsController(options) {
     return migrated;
   }
 
-  function migrateStoredSettingsSchema29(settings) {
+  function migrateStoredSettings(settings, settingsSchemaVersion = 0) {
     if (!settings || typeof settings !== "object") {
       return settings;
     }
     let migrated = { ...settings };
+    if (Number(settingsSchemaVersion) < SETTINGS_SCHEMA_VERSION) {
+      migrated = SharedRoomSettings.migrateFoldSettings(migrated);
+    }
     if (!Object.hasOwn(migrated, "preclickParallaxActivationRadiusVw")) {
       const radiusPx = Number(migrated.preclickParallaxActivationRadiusPx);
       if (Number.isFinite(radiusPx)) {
@@ -442,9 +445,11 @@ export function createSettingsController(options) {
     if (!stored || typeof stored !== "object") {
       return false;
     }
-    stored = migrateStoredSettingsSchema29(stored);
-
     const legacyKeyVersion = settingsStorageKeyVersion(legacyKey);
+    stored = migrateStoredSettings(
+      stored,
+      migratedLegacySettings ? legacyKeyVersion : SETTINGS_SCHEMA_VERSION,
+    );
     const migratedPreV7Settings =
       migratedLegacySettings && legacyKeyVersion > 0 && legacyKeyVersion < 7;
     const migratedPreV10Settings =
@@ -493,6 +498,17 @@ export function createSettingsController(options) {
       }
     }
 
+    if (migratedLegacySettings) {
+      try {
+        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(stored));
+        if (legacyKey) {
+          localStorage.removeItem(legacyKey);
+        }
+      } catch {
+        // Недоступный localStorage не должен блокировать применение настроек.
+      }
+    }
+
     settingsControlElements().forEach((element) => {
       const key = element.getAttribute("name");
       if (
@@ -518,11 +534,12 @@ export function createSettingsController(options) {
     }
     const settings =
       entry.settings && typeof entry.settings === "object"
-        ? migrateStoredSettingsSchema29(
+        ? migrateStoredSettings(
             migrateStoredInertiaSettings(
               entry.settings,
               Number(entry.settingsSchemaVersion) || 0,
             ),
+            Number(entry.settingsSchemaVersion) || 0,
           )
         : null;
     if (!settings) {
@@ -545,8 +562,7 @@ export function createSettingsController(options) {
     return {
       id,
       name,
-      settingsSchemaVersion:
-        Number(entry.settingsSchemaVersion) || SETTINGS_SCHEMA_VERSION,
+      settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
       createdAt: String(entry.createdAt || ""),
       updatedAt: String(entry.updatedAt || entry.createdAt || ""),
       settings: cleanSettings,
@@ -572,6 +588,9 @@ export function createSettingsController(options) {
       ? stored.selectedId
       : "";
     renderSettingsVersions();
+    if (stored) {
+      saveSettingsVersions();
+    }
   }
 
   function saveSettingsVersions() {
@@ -1302,8 +1321,8 @@ export function createSettingsController(options) {
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
       cameraFollowLerp: params.cameraFollowLerp.toFixed(2),
-      draftFoldAngle: `${params.draftFoldAngle.toFixed(0)}°`,
-      draftFoldZoneSize: `${params.draftFoldZoneSize.toFixed(0)} vh`,
+      foldAngle: `${params.foldAngle.toFixed(0)}°`,
+      foldZoneSize: `${params.foldZoneSize.toFixed(0)} vh`,
       finalFallDelaySeconds: secondsOutput(params.finalFallDelaySeconds),
       rockJumpIntervalSeconds: secondsOutput(
         params.rockJumpIntervalSeconds,

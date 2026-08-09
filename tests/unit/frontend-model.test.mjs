@@ -40,8 +40,11 @@ import {
 } from "../../src/lib/rockScale.mjs";
 import {
   activePreclickMovementDeltaMs,
+  calculatePreclickHopTarget,
   calculatePreclickParallaxOffset,
   calculatePreclickParallaxTransition,
+  preclickHopDistance,
+  preclickPointerSpeed,
 } from "../../src/lib/preclickParallax.mjs";
 import { cursorCircleIntersectsRect } from "../../src/lib/rockGrab.mjs";
 import {
@@ -389,7 +392,7 @@ test("настройки инерции отображают шкалу 0–5", 
     (control) => control.name === "horizontalInertia"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v32");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v33");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -436,7 +439,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 32);
+  assert.equal(productionSettingsSchemaVersion, 33);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -900,6 +903,56 @@ test("preclick transition считает только непрерывное д�
       maxOffset: 25,
     },
   );
+});
+
+test("preclick hop зависит от скорости, уходит от руки и остаётся в viewport", () => {
+  assert.equal(
+    preclickPointerSpeed({
+      previousX: 0,
+      previousY: 0,
+      previousAtMs: 100,
+      x: 100,
+      y: 0,
+      atMs: 150,
+    }),
+    2000,
+  );
+  assert.equal(preclickHopDistance({ speedPxPerSecond: 0, activationRadius: 100 }), 35);
+  assert.equal(
+    preclickHopDistance({ speedPxPerSecond: 2000, activationRadius: 100 }),
+    125,
+  );
+
+  const slow = calculatePreclickHopTarget({
+    pointerX: 50,
+    pointerY: 100,
+    centerX: 100,
+    centerY: 100,
+    speedPxPerSecond: 0,
+    activationRadius: 100,
+    currentOffsetX: 10,
+    rockRect: { left: 80, right: 120, top: 80, bottom: 120 },
+    viewportWidth: 300,
+    viewportHeight: 300,
+  });
+  assert.equal(slow.x, 45);
+  assert.equal(slow.y, 0);
+  assert.equal(slow.directionX, 1);
+
+  const clamped = calculatePreclickHopTarget({
+    pointerX: 200,
+    pointerY: 100,
+    centerX: 260,
+    centerY: 100,
+    speedPxPerSecond: 2000,
+    activationRadius: 100,
+    currentOffsetX: 0,
+    rockRect: { left: 250, right: 290, top: 80, bottom: 120 },
+    viewportWidth: 300,
+    viewportHeight: 300,
+  });
+  assert.equal(clamped.x, 10);
+  assert.equal(clamped.actualDistance, 10);
 });
 
 test("радиус курсора пересекает визуальные границы камня", () => {
@@ -1466,54 +1519,54 @@ test("3D Fold входит в общую схему настроек с утве
   assert.deepEqual(
     foldGroup.controls.map((control) => control.name),
     [
-      "draftFoldAngle",
-      "draftFoldZoneSize",
-      "draftFoldBlendEnabled",
-      "draftFoldBlendCurve",
+      "foldAngle",
+      "foldZoneSize",
+      "foldBlendEnabled",
+      "foldBlendCurve",
     ],
   );
   assert.deepEqual(
     {
-      min: byName("draftFoldAngle").min,
-      max: byName("draftFoldAngle").max,
-      defaultValue: byName("draftFoldAngle").defaultValue,
+      min: byName("foldAngle").min,
+      max: byName("foldAngle").max,
+      defaultValue: byName("foldAngle").defaultValue,
     },
     { min: 0, max: 180, defaultValue: 30 },
   );
   assert.deepEqual(
     {
-      min: byName("draftFoldZoneSize").min,
-      max: byName("draftFoldZoneSize").max,
-      defaultValue: byName("draftFoldZoneSize").defaultValue,
+      min: byName("foldZoneSize").min,
+      max: byName("foldZoneSize").max,
+      defaultValue: byName("foldZoneSize").defaultValue,
     },
     { min: 0, max: 50, defaultValue: 20 },
   );
-  assert.equal(byName("draftFoldBlendEnabled").defaultChecked, true);
+  assert.equal(byName("foldBlendEnabled").defaultChecked, true);
   assert.equal(
-    byName("draftFoldBlendCurve").defaultValue,
+    byName("foldBlendCurve").defaultValue,
     "cubic-bezier(0.333, 0, 0.667, 1)",
   );
   assert.equal(
-    byName("draftFoldBlendCurve").enabledWhen,
-    "draftFoldBlendEnabled",
+    byName("foldBlendCurve").enabledWhen,
+    "foldBlendEnabled",
   );
 
   assert.deepEqual(
     normalizeFoldSettings({
-      draftFoldAngle: 200,
-      draftFoldZoneSize: -10,
-      draftFoldBlendCurve: "invalid",
+      foldAngle: 200,
+      foldZoneSize: -10,
+      foldBlendCurve: "invalid",
     }),
     {
-      draftFoldAngle: 180,
-      draftFoldZoneSize: 0,
-      draftFoldBlendEnabled: true,
-      draftFoldBlendCurve: "cubic-bezier(0.333, 0, 0.667, 1)",
+      foldAngle: 180,
+      foldZoneSize: 0,
+      foldBlendEnabled: true,
+      foldBlendCurve: "cubic-bezier(0.333, 0, 0.667, 1)",
     },
   );
-  assert.equal(foldEffectEnabled({ draftFoldZoneSize: 0 }), false);
+  assert.equal(foldEffectEnabled({ foldZoneSize: 0 }), false);
   assert.equal(
-    foldEffectEnabled({ draftFoldZoneSize: 20 }),
+    foldEffectEnabled({ foldZoneSize: 20 }),
     true,
   );
   assert.match(
@@ -2057,7 +2110,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 30);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 31);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2261,6 +2314,25 @@ test("группа дождя содержит общий toggle и blur тём�
     DEFAULT_CUSTOM_CURSOR_SETTINGS,
   );
   assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 30), {});
+  assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 31), {});
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings(
+      {
+        draftFoldAngle: 15,
+        draftFoldZoneSize: 12,
+        draftFoldBlendEnabled: false,
+        draftFoldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
+        foldAngle: 45,
+      },
+      30,
+    ),
+    {
+      foldAngle: 45,
+      foldZoneSize: 12,
+      foldBlendEnabled: false,
+      foldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
+    },
+  );
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings({
       handAudioEnabled: "false",

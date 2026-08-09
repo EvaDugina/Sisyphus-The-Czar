@@ -1,10 +1,10 @@
 import { cubicBezierYForX, parseCubicBezier } from "./rockScale.mjs";
 
 export const DEFAULT_FOLD_SETTINGS = Object.freeze({
-  draftFoldAngle: 30,
-  draftFoldZoneSize: 20,
-  draftFoldBlendEnabled: true,
-  draftFoldBlendCurve: "cubic-bezier(0.333, 0, 0.667, 1)",
+  foldAngle: 30,
+  foldZoneSize: 20,
+  foldBlendEnabled: true,
+  foldBlendCurve: "cubic-bezier(0.333, 0, 0.667, 1)",
 });
 
 const FOLD_MASK_SAMPLE_COUNT = 32;
@@ -28,36 +28,36 @@ export function normalizeFoldSettings(
       ? fallback
       : DEFAULT_FOLD_SETTINGS;
   const fallbackCurve =
-    parseCubicBezier(fallbackSource.draftFoldBlendCurve)
-      ? fallbackSource.draftFoldBlendCurve
-      : DEFAULT_FOLD_SETTINGS.draftFoldBlendCurve;
-  const curve = String(source.draftFoldBlendCurve || "").trim();
+    parseCubicBezier(fallbackSource.foldBlendCurve)
+      ? fallbackSource.foldBlendCurve
+      : DEFAULT_FOLD_SETTINGS.foldBlendCurve;
+  const curve = String(source.foldBlendCurve || "").trim();
 
   return {
-    draftFoldAngle: finiteSetting(
-      source.draftFoldAngle,
-      fallbackSource.draftFoldAngle,
+    foldAngle: finiteSetting(
+      source.foldAngle,
+      fallbackSource.foldAngle,
       0,
       180,
     ),
-    draftFoldZoneSize: finiteSetting(
-      source.draftFoldZoneSize,
-      fallbackSource.draftFoldZoneSize,
+    foldZoneSize: finiteSetting(
+      source.foldZoneSize,
+      fallbackSource.foldZoneSize,
       0,
       50,
     ),
-    draftFoldBlendEnabled:
-      typeof source.draftFoldBlendEnabled === "boolean"
-        ? source.draftFoldBlendEnabled
-        : Boolean(fallbackSource.draftFoldBlendEnabled),
-    draftFoldBlendCurve: parseCubicBezier(curve) ? curve : fallbackCurve,
+    foldBlendEnabled:
+      typeof source.foldBlendEnabled === "boolean"
+        ? source.foldBlendEnabled
+        : Boolean(fallbackSource.foldBlendEnabled),
+    foldBlendCurve: parseCubicBezier(curve) ? curve : fallbackCurve,
   };
 }
 
 export function buildFoldBlendMask(curve) {
   const points =
     parseCubicBezier(curve) ||
-    parseCubicBezier(DEFAULT_FOLD_SETTINGS.draftFoldBlendCurve);
+    parseCubicBezier(DEFAULT_FOLD_SETTINGS.foldBlendCurve);
   const stops = [];
   for (let index = 0; index <= FOLD_MASK_SAMPLE_COUNT; index += 1) {
     const topProgress = index / FOLD_MASK_SAMPLE_COUNT;
@@ -77,5 +77,5 @@ export function buildFoldBlendMask(curve) {
 
 export function foldEffectEnabled(settings) {
   const clean = normalizeFoldSettings(settings);
-  return clean.draftFoldZoneSize > 0;
+  return clean.foldZoneSize > 0;
 }

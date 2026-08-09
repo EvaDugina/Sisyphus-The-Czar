@@ -8,6 +8,9 @@ const LINEAR_CURVE = Object.freeze([0, 0, 1, 1]);
 
 export const PRECLICK_MOVEMENT_SPEED_THRESHOLD_PX_PER_SECOND = 12;
 export const PRECLICK_MOVEMENT_MAX_SAMPLE_GAP_MS = 120;
+export const PRECLICK_HOP_MAX_SPEED_PX_PER_SECOND = 2000;
+export const PRECLICK_HOP_MIN_RADIUS_FACTOR = 0.35;
+export const PRECLICK_HOP_MAX_RADIUS_FACTOR = 1.25;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -105,6 +108,113 @@ function normalizedDirection(x, y) {
     return null;
   }
   return { x: x / length, y: y / length };
+}
+
+export function preclickPointerSpeed({
+  previousX,
+  previousY,
+  previousAtMs,
+  x,
+  y,
+  atMs,
+  maxSampleGapMs = PRECLICK_MOVEMENT_MAX_SAMPLE_GAP_MS,
+}) {
+  const elapsedMs = Number(atMs) - Number(previousAtMs);
+  if (
+    !Number.isFinite(elapsedMs) ||
+    elapsedMs <= 0 ||
+    elapsedMs > Math.max(0, finiteNumber(maxSampleGapMs, 0))
+  ) {
+    return 0;
+  }
+  const distance = Math.hypot(
+    Number(x) - Number(previousX),
+    Number(y) - Number(previousY),
+  );
+  return Number.isFinite(distance) ? distance / (elapsedMs / 1000) : 0;
+}
+
+export function preclickHopDistance({
+  speedPxPerSecond,
+  activationRadius,
+  maxSpeedPxPerSecond = PRECLICK_HOP_MAX_SPEED_PX_PER_SECOND,
+  minRadiusFactor = PRECLICK_HOP_MIN_RADIUS_FACTOR,
+  maxRadiusFactor = PRECLICK_HOP_MAX_RADIUS_FACTOR,
+}) {
+  const radius = Math.max(0, finiteNumber(activationRadius, 0));
+  const maximumSpeed = Math.max(1, finiteNumber(maxSpeedPxPerSecond, 1));
+  const speedProgress = clamp(
+    Math.max(0, finiteNumber(speedPxPerSecond, 0)) / maximumSpeed,
+    0,
+    1,
+  );
+  const minimumFactor = Math.max(0, finiteNumber(minRadiusFactor, 0));
+  const maximumFactor = Math.max(
+    minimumFactor,
+    finiteNumber(maxRadiusFactor, minimumFactor),
+  );
+  return radius * (
+    minimumFactor + (maximumFactor - minimumFactor) * speedProgress
+  );
+}
+
+export function calculatePreclickHopTarget({
+  pointerX,
+  pointerY,
+  centerX,
+  centerY,
+  speedPxPerSecond,
+  activationRadius,
+  currentOffsetX = 0,
+  currentOffsetY = 0,
+  rockRect,
+  viewportWidth,
+  viewportHeight,
+  lastDirectionX = null,
+  lastDirectionY = null,
+}) {
+  const fallbackDirection = normalizedDirection(
+    lastDirectionX,
+    lastDirectionY,
+  );
+  const direction = normalizedDirection(
+    Number(centerX) - Number(pointerX),
+    Number(centerY) - Number(pointerY),
+  ) || fallbackDirection || { x: 1, y: 0 };
+  const distance = preclickHopDistance({
+    speedPxPerSecond,
+    activationRadius,
+  });
+  const requestedDeltaX = direction.x * distance;
+  const requestedDeltaY = direction.y * distance;
+  const rect = rockRect && typeof rockRect === "object" ? rockRect : {};
+  const width = Math.max(0, finiteNumber(viewportWidth, 0));
+  const height = Math.max(0, finiteNumber(viewportHeight, 0));
+  const minDeltaX = -finiteNumber(rect.left, 0);
+  const maxDeltaX = width - finiteNumber(rect.right, width);
+  const minDeltaY = -finiteNumber(rect.top, 0);
+  const maxDeltaY = height - finiteNumber(rect.bottom, height);
+  const deltaX = clamp(
+    requestedDeltaX,
+    Math.min(minDeltaX, maxDeltaX),
+    Math.max(minDeltaX, maxDeltaX),
+  );
+  const deltaY = clamp(
+    requestedDeltaY,
+    Math.min(minDeltaY, maxDeltaY),
+    Math.max(minDeltaY, maxDeltaY),
+  );
+
+  return {
+    x: finiteNumber(currentOffsetX, 0) + deltaX,
+    y: finiteNumber(currentOffsetY, 0) + deltaY,
+    deltaX,
+    deltaY,
+    directionX: direction.x,
+    directionY: direction.y,
+    requestedDistance: distance,
+    actualDistance: Math.hypot(deltaX, deltaY),
+  };
 }
 
 export function calculatePreclickParallaxOffset({

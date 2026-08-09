@@ -81,6 +81,29 @@ test("backend публикует shared-модули клиента", async (con
   }
 });
 
+test("backend канонизирует settings route и не восстанавливает drafts", async (context) => {
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    sessionStore: emptySessionStore(),
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+  const baseUrl = `http://${address.address}:${address.port}`;
+
+  const settingsWithSlash = await fetch(`${baseUrl}/settings/?source=test`, {
+    redirect: "manual",
+  });
+  assert.equal(settingsWithSlash.status, 308);
+  assert.equal(settingsWithSlash.headers.get("location"), "/settings?source=test");
+  assert.equal((await fetch(`${baseUrl}/settings`)).status, 200);
+  assert.equal((await fetch(`${baseUrl}/drafts`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}/drafts/`)).status, 404);
+  assert.equal((await fetch(`${baseUrl}/drafts/assets/missing.js`)).status, 404);
+});
+
 test("production startup применяет preset из отдельного store", async (context) => {
   const productionPresetStore = {
     load: () => ({
@@ -122,7 +145,7 @@ test("debug startup применяет помеченный preset вместо 
       source: {
         id: "flagged-debug",
         name: "Помеченный шаблон",
-        settingsSchemaVersion: 32,
+        settingsSchemaVersion: 33,
         updatedAt: "2026-08-09T09:59:00.000Z",
       },
     }),
@@ -165,7 +188,7 @@ test("debug startup применяет помеченный preset вместо 
 test("debug-сессия сохраняет локальный черновик поверх общего шаблона", async (context) => {
   const settingsTemplateStore = {
     load: () => [],
-    latest: () => ({ settings: { gravity: 5.5, draftFoldAngle: 30 } }),
+    latest: () => ({ settings: { gravity: 5.5, foldAngle: 30 } }),
     page: () => ({ revision: 1, offset: 0, nextOffset: null, entries: [] }),
     importEntries: () => ({ revision: 1, entries: [] }),
     saveEntry: () => ({ revision: 1, entry: null, branched: false }),
@@ -189,10 +212,10 @@ test("debug-сессия сохраняет локальный черновик 
     body: JSON.stringify({
       physics: { gravity: 8.5 },
       roomSettings: {
-        draftFoldAngle: 45,
-        draftFoldZoneSize: 10,
-        draftFoldBlendEnabled: true,
-        draftFoldBlendCurve: "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
+        foldAngle: 45,
+        foldZoneSize: 10,
+        foldBlendEnabled: true,
+        foldBlendCurve: "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
       },
     }),
   });
@@ -201,6 +224,6 @@ test("debug-сессия сохраняет локальный черновик 
 
   assert.equal(response.status, 201);
   assert.equal(session.physics.gravity, 8.5);
-  assert.equal(session.roomSettings.draftFoldAngle, 45);
-  assert.equal(session.roomSettings.draftFoldZoneSize, 10);
+  assert.equal(session.roomSettings.foldAngle, 45);
+  assert.equal(session.roomSettings.foldZoneSize, 10);
 });

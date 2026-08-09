@@ -368,15 +368,6 @@ function createService(options = {}) {
       maxAge: config.debug ? 0 : "1y",
     })
   );
-  app.use(
-    "/drafts/assets",
-    express.static(path.join(DIST_DIR, "assets"), {
-      dotfiles: "deny",
-      immutable: !config.debug,
-      maxAge: config.debug ? 0 : "1y",
-    })
-  );
-
   app.get("/shared/physics.js", (_request, response) => {
     response.type("application/javascript");
     response.setHeader(
@@ -428,7 +419,15 @@ function createService(options = {}) {
   };
   app.get("/", sendIndex);
   app.get("/index.html", sendIndex);
-  app.get(["/drafts", "/drafts/"], sendIndex);
+  app.get(["/settings", "/settings/"], (request, response) => {
+    if (request.path === "/settings/") {
+      const queryIndex = request.originalUrl.indexOf("?");
+      const query = queryIndex >= 0 ? request.originalUrl.slice(queryIndex) : "";
+      response.redirect(308, `/settings${query}`);
+      return;
+    }
+    sendIndex(request, response);
+  });
 
   app.use((error, _request, response, next) => {
     if (error && error.type === "entity.too.large") {

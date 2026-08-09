@@ -7,6 +7,17 @@ async function waitForFoldReady(page) {
   return layer;
 }
 
+async function navigateToSettings(page) {
+  const href = await page.locator(".settings-toggle").getAttribute("href");
+  expect(href).toMatch(/^\/settings\//);
+  await page.goto(href);
+  await expect(page).toHaveURL(/\/settings\//);
+  await expect(page.locator("#settings-panel")).toHaveAttribute(
+    "aria-hidden",
+    "false",
+  );
+}
+
 async function setSettingValue(page, name, value) {
   await page.locator(`[name="${name}"]`).evaluate((element, nextValue) => {
     if (element.type === "checkbox") {
@@ -39,12 +50,71 @@ function rockParallaxX(page) {
   );
 }
 
-test("основной и drafts маршруты используют одну Fold-сцену и одно меню", async ({
+test("legacy drafts маршруты возвращают 404", async ({ request }) => {
+  for (const path of ["/drafts", "/drafts/", "/drafts/assets/missing.js"]) {
+    const response = await request.get(path);
+    expect(response.status()).toBe(404);
+  }
+});
+
+test("Fold-настройки мигрируют из localStorage v32 в v33", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem("sisyphus-czar-settings-v33");
+    localStorage.setItem(
+      "sisyphus-czar-settings-v32",
+      JSON.stringify({
+        draftFoldAngle: 47,
+        draftFoldZoneSize: 13,
+        draftFoldBlendEnabled: false,
+        draftFoldBlendCurve: "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
+      }),
+    );
+  });
+  await page.goto("/");
+  const layer = await waitForFoldReady(page);
+  await expect(layer).toHaveAttribute("data-fold-angle", "30");
+  await expect(layer).toHaveAttribute("data-fold-zone-size", "20");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}",
+        );
+        return {
+          foldAngle: stored.foldAngle,
+          foldZoneSize: stored.foldZoneSize,
+          foldBlendEnabled: stored.foldBlendEnabled,
+          foldBlendCurve: stored.foldBlendCurve,
+          hasLegacy: Object.keys(stored).some((key) => key.startsWith("draftFold")),
+        };
+      }),
+    )
+    .toEqual({
+      foldAngle: 47,
+      foldZoneSize: 13,
+      foldBlendEnabled: false,
+      foldBlendCurve: "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
+      hasLegacy: false,
+    });
+  await page.reload();
+  await waitForFoldReady(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}",
+        );
+        return [stored.foldAngle, stored.foldZoneSize];
+      }),
+    )
+    .toEqual([47, 13]);
+});
+
+test("основной маршрут использует Fold-сцену и общее меню", async ({
   page,
 }) => {
-  for (const path of ["/", "/drafts/"]) {
-    await page.goto(path);
-    const layer = await waitForFoldReady(page);
+  await page.goto("/");
+  const layer = await waitForFoldReady(page);
 
     await expect(page.locator('[data-fold-zone="top"]')).toHaveCount(1);
     await expect(page.locator('[data-fold-zone="bottom"]')).toHaveCount(0);
@@ -68,17 +138,6 @@ test("основной и drafts маршруты используют одну 
     ).toHaveCSS("display", "none");
     await expect(page.locator("#root > .world")).toHaveCount(1);
     await expect(page.locator("[data-fold-zone] main")).toHaveCount(1);
-    await expect(page.locator("[data-draft-fold-controls]")).toHaveCount(0);
-    await expect(page.locator('[name="draftFoldAngle"]')).toHaveValue("30");
-    await expect(page.locator('[name="draftFoldZoneSize"]')).toHaveValue(
-      "20",
-    );
-    await expect(
-      page.locator('[name="draftFoldBlendEnabled"]'),
-    ).toBeChecked();
-    await expect(page.locator('[name="draftFoldBlendCurve"]')).toHaveValue(
-      "cubic-bezier(0.333, 0, 0.667, 1)",
-    );
     await expect(page.getByTestId("summit-timer")).toHaveCount(1);
     await expect(page.getByTestId("weather-rain")).toHaveCount(1);
     await expect(page.locator("[data-fold-zone] [id]")).toHaveCount(0);
@@ -93,7 +152,17 @@ test("основной и drafts маршруты используют одну 
     ).toHaveCount(1);
     await expect(layer).toHaveAttribute("data-fold-angle", "30");
     await expect(layer).toHaveAttribute("data-fold-zone-size", "20");
-  }
+    await navigateToSettings(page);
+    await expect(page.locator('[name="foldAngle"]')).toHaveValue("30");
+    await expect(page.locator('[name="foldZoneSize"]')).toHaveValue(
+      "20",
+    );
+    await expect(
+      page.locator('[name="foldBlendEnabled"]'),
+    ).toBeChecked();
+    await expect(page.locator('[name="foldBlendCurve"]')).toHaveValue(
+      "cubic-bezier(0.333, 0, 0.667, 1)",
+    );
 });
 
 test("постоянная рука показывает нативный курсор над настройками", async ({
@@ -309,7 +378,7 @@ test("настройки parallax меняют задержку, радиусы 
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v32");
+    localStorage.removeItem("sisyphus-czar-settings-v33");
     localStorage.setItem(
       "sisyphus-czar-settings-v26",
       JSON.stringify({ preclickParallaxActivationRadiusPx: 1000 }),
@@ -441,7 +510,7 @@ test("настройки parallax меняют задержку, радиусы 
       page.evaluate(() =>
         Boolean(
           JSON.parse(
-            localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
+            localStorage.getItem("sisyphus-czar-settings-v33") || "{}",
           ).preclickParallaxInverted,
         ),
       ),
@@ -451,7 +520,7 @@ test("настройки parallax меняют задержку, радиусы 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}",
         );
         return {
           startDelay: stored.preclickParallaxStartDelayMs,
@@ -482,7 +551,7 @@ test("задержка parallax отменяется при выходе и пр
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v32",
+      "sisyphus-czar-settings-v33",
       JSON.stringify({
         handAlwaysVisible: false,
         preclickParallaxActivationRadiusVw: 50,
@@ -569,6 +638,36 @@ test("reload сохраняет preclick и настройки до первог
     .click();
   await expect(page.locator(".settings-production-status")).toContainText(
     "Версия и настройки комнаты сохранены",
+  );
+  const selectedVersion = await page.evaluate(() => {
+    const stored = JSON.parse(
+      localStorage.getItem("sisyphus-czar-settings-versions-v1") || "{}",
+    );
+    return {
+      selectedId: stored.selectedId,
+      settings: stored.entries?.find((entry) => entry.id === stored.selectedId)
+        ?.settings,
+    };
+  });
+  expect(selectedVersion.settings).toMatchObject({
+    foldAngle: 45,
+    foldZoneSize: 10,
+    foldBlendEnabled: false,
+    foldBlendCurve: "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
+  });
+  await page.locator(".settings-version-toggle").click();
+  const productionButton = page.locator(
+    `[data-production-preset-select="${selectedVersion.selectedId}"]`,
+  );
+  await expect(productionButton).toBeEnabled();
+  await productionButton.click();
+  await expect(
+    page.locator(
+      `.settings-version-option.is-production [data-production-preset-select="${selectedVersion.selectedId}"]`,
+    ),
+  ).toBeVisible();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Production:",
   );
   await page.locator(".settings-page__back").click();
   await waitForFoldReady(page);
@@ -680,7 +779,7 @@ test("mouse захватывает камень внутри расширенн�
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v32",
+      "sisyphus-czar-settings-v33",
       JSON.stringify({
         handAlwaysVisible: false,
         preclickParallaxMaxOffsetVw: 0,
@@ -738,15 +837,14 @@ test("mouse захватывает камень внутри расширенн�
   await page.mouse.up();
 });
 
-test("препятствие Окна имеет одинаковый UI и сообщает о popup-блокировке", async ({
+test("препятствие Окна сообщает о popup-блокировке", async ({
   page,
 }) => {
   await page.addInitScript(() => {
     window.open = () => null;
   });
 
-  for (const path of ["/", "/drafts/"]) {
-    await page.goto(path);
+  await page.goto("/");
     await waitForFoldReady(page);
     await page.locator(".settings-toggle").click();
     await expect(page.locator("#settings-panel")).toHaveAttribute(
@@ -805,24 +903,59 @@ test("препятствие Окна имеет одинаковый UI и со
         permission: "blocked",
         schedulePending: false,
       });
-  }
 });
 
 test("Fold синхронизирует сцену и применяет общие сохраняемые настройки", async ({
   page,
 }) => {
   await page.goto("/");
-  const layer = await waitForFoldReady(page);
-
-  await setSettingValue(page, "draftFoldAngle", 45);
-  await setSettingValue(page, "draftFoldZoneSize", 10);
+  await waitForFoldReady(page);
+  await navigateToSettings(page);
+  await expect(page.locator('[name="foldAngle"]')).toHaveValue("30");
+  await setSettingValue(page, "foldAngle", 45);
+  await setSettingValue(page, "foldZoneSize", 10);
   await setSettingValue(
     page,
-    "draftFoldBlendCurve",
+    "foldBlendCurve",
     "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
   );
+  await setSettingValue(page, "foldBlendEnabled", false);
+  await expect(page.locator('[name="foldBlendCurve"]')).toBeDisabled();
+  await page
+    .getByRole("button", {
+      name: "Сохранить версию и настройки комнаты",
+    })
+    .click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Версия и настройки комнаты сохранены",
+  );
+  const selectedVersionId = await page.evaluate(() => {
+    const stored = JSON.parse(
+      localStorage.getItem("sisyphus-czar-settings-versions-v1") || "{}",
+    );
+    return stored.selectedId;
+  });
+  expect(selectedVersionId).toBeTruthy();
+  await page.locator(".settings-version-toggle").click();
+  const productionButton = page.locator(
+    `[data-production-preset-select="${selectedVersionId}"]`,
+  );
+  await expect(productionButton).toBeEnabled();
+  await productionButton.click();
+  await expect(
+    page.locator(
+      `.settings-version-option.is-production [data-production-preset-select="${selectedVersionId}"]`,
+    ),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    sessionStorage.removeItem("sisyphus-room-session-id");
+  });
+  await page.goto("/");
+
+  let layer = await waitForFoldReady(page);
   await expect(layer).toHaveAttribute("data-fold-angle", "45");
   await expect(layer).toHaveAttribute("data-fold-zone-size", "10");
+  await expect(layer).toHaveAttribute("data-fold-blend-enabled", "false");
   await expect(layer).toHaveAttribute(
     "data-fold-blend-curve",
     "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
@@ -834,10 +967,6 @@ test("Fold синхронизирует сцену и применяет общ�
       ),
     )
     .toBe("45deg");
-
-  await setSettingValue(page, "draftFoldBlendEnabled", false);
-  await expect(layer).toHaveAttribute("data-fold-blend-enabled", "false");
-  await expect(page.locator('[name="draftFoldBlendCurve"]')).toBeDisabled();
   await expect
     .poll(() =>
       page
@@ -846,21 +975,15 @@ test("Fold синхронизирует сцену и применяет общ�
     )
     .toBe("none");
 
-  await setSettingValue(page, "draftFoldBlendEnabled", true);
-  await expect(layer).toHaveAttribute("data-fold-blend-enabled", "true");
-  await expect(page.locator('[name="draftFoldBlendCurve"]')).toBeEnabled();
-
-  await setSettingValue(page, "draftFoldZoneSize", 0);
-  await expect(layer).toHaveAttribute("data-fold-enabled", "false");
-  await setSettingValue(page, "draftFoldZoneSize", 10);
-  await expect(layer).toHaveAttribute("data-fold-enabled", "true");
-
-  await page.goto("/drafts/");
-  const draftLayer = await waitForFoldReady(page);
-  await expect(page.locator('[name="draftFoldAngle"]')).toHaveValue("45");
-  await expect(page.locator('[name="draftFoldZoneSize"]')).toHaveValue("10");
-  await expect(draftLayer).toHaveAttribute("data-fold-angle", "45");
-  await expect(draftLayer).toHaveAttribute("data-fold-zone-size", "10");
+  await page.reload();
+  layer = await waitForFoldReady(page);
+  await expect(layer).toHaveAttribute("data-fold-angle", "45");
+  await expect(layer).toHaveAttribute("data-fold-zone-size", "10");
+  await expect(layer).toHaveAttribute("data-fold-blend-enabled", "false");
+  await expect(layer).toHaveAttribute(
+    "data-fold-blend-curve",
+    "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
+  );
 
   const presentation = await page.evaluate(() => {
     const sourceRock = document.querySelector("#root > .world .rock");
@@ -910,11 +1033,10 @@ test("Fold синхронизирует сцену и применяет общ�
   );
 });
 
-test("настройки выпадения и выпрыгивания одинаковы на обоих маршрутах", async ({
+test("настройки выпадения и выпрыгивания доступны на основном маршруте", async ({
   page,
 }) => {
-  for (const path of ["/", "/drafts/"]) {
-    await page.goto(path);
+  await page.goto("/");
     await expect(page.getByTestId("session-status")).toContainText("В сессии");
     const randomDrop = page.locator('[name="randomDropEnabled"]');
     const rockJump = page.locator('[name="rockJumpEnabled"]');
@@ -943,8 +1065,7 @@ test("настройки выпадения и выпрыгивания один
     await expect(rockJump).not.toBeChecked();
     await expect(jumpInterval).toBeDisabled();
     await expect(jumpAngleSpread).toBeDisabled();
-    await expect(jumpSpread).toBeDisabled();
-  }
+  await expect(jumpSpread).toBeDisabled();
 });
 
 test("первое падение анимирует размер камня, сохраняет контакт с полом, а темы используют свои градиенты", async ({
@@ -1091,11 +1212,10 @@ test("первое падение анимирует размер камня, с
   });
 });
 
-test("glow-профили и зависимости select одинаковы на обоих маршрутах", async ({
+test("glow-профили и зависимости select работают на основном маршруте", async ({
   page,
 }) => {
-  for (const path of ["/", "/drafts/"]) {
-    await page.goto(path);
+  await page.goto("/");
     await expect(page.getByTestId("session-status")).toContainText("В сессии");
 
     const mode = page.locator('[name="glowOptimizationMode"]');
@@ -1148,7 +1268,6 @@ test("glow-профили и зависимости select одинаковы н
     await expect(page.locator('[name="blendMode"]')).toBeEnabled();
     await expect(page.locator('[name="rainBlurPx"]')).toBeDisabled();
     await setSettingValue(page, "themeMode", "auto");
-  }
 
   await setSettingValue(page, "glowOptimizationMode", "manual");
   await setSettingValue(page, "glowBufferScalePercent", 35);
@@ -1156,7 +1275,7 @@ test("glow-профили и зависимости select одинаковы н
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}",
         );
         return [
           stored.glowOptimizationMode,

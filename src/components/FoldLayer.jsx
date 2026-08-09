@@ -179,19 +179,19 @@ function syncMirror(sourceWorld, mirrorWorld) {
 
 function applyFoldSettings(layer, settings) {
   const clean = normalizeFoldSettings(settings);
-  const mask = clean.draftFoldBlendEnabled
-    ? buildFoldBlendMask(clean.draftFoldBlendCurve)
+  const mask = clean.foldBlendEnabled
+    ? buildFoldBlendMask(clean.foldBlendCurve)
     : "none";
-  layer.dataset.foldAngle = String(clean.draftFoldAngle);
-  layer.dataset.foldBlendCurve = clean.draftFoldBlendCurve;
-  layer.dataset.foldBlendEnabled = String(clean.draftFoldBlendEnabled);
+  layer.dataset.foldAngle = String(clean.foldAngle);
+  layer.dataset.foldBlendCurve = clean.foldBlendCurve;
+  layer.dataset.foldBlendEnabled = String(clean.foldBlendEnabled);
   layer.dataset.foldEnabled = String(foldEffectEnabled(clean));
-  layer.dataset.foldZoneSize = String(clean.draftFoldZoneSize);
-  layer.style.setProperty("--fold-angle", `${clean.draftFoldAngle}deg`);
+  layer.dataset.foldZoneSize = String(clean.foldZoneSize);
+  layer.style.setProperty("--fold-angle", `${clean.foldAngle}deg`);
   layer.style.setProperty("--fold-mask-image", mask);
   layer.style.setProperty(
     "--fold-zone-height",
-    `${clean.draftFoldZoneSize}vh`,
+    `${clean.foldZoneSize}vh`,
   );
   return clean;
 }
@@ -224,10 +224,10 @@ export function FoldLayer({ settingsRef, worldRef }) {
         settingsRef.current || DEFAULT_FOLD_SETTINGS,
       );
       const signature = [
-        clean.draftFoldAngle,
-        clean.draftFoldZoneSize,
-        clean.draftFoldBlendEnabled,
-        clean.draftFoldBlendCurve,
+        clean.foldAngle,
+        clean.foldZoneSize,
+        clean.foldBlendEnabled,
+        clean.foldBlendCurve,
       ].join(":");
       if (signature !== lastSettingsSignature) {
         applyFoldSettings(layer, clean);
@@ -280,19 +280,19 @@ export function FoldLayer({ settingsRef, worldRef }) {
       ref={layerRef}
       className="fold-layer"
       data-fold-layer
-      data-fold-angle={DEFAULT_FOLD_SETTINGS.draftFoldAngle}
-      data-fold-blend-curve={DEFAULT_FOLD_SETTINGS.draftFoldBlendCurve}
+      data-fold-angle={DEFAULT_FOLD_SETTINGS.foldAngle}
+      data-fold-blend-curve={DEFAULT_FOLD_SETTINGS.foldBlendCurve}
       data-fold-blend-enabled="true"
       data-fold-enabled="false"
       data-fold-ready="false"
-      data-fold-zone-size={DEFAULT_FOLD_SETTINGS.draftFoldZoneSize}
+      data-fold-zone-size={DEFAULT_FOLD_SETTINGS.foldZoneSize}
       aria-hidden="true"
       style={{
-        "--fold-angle": `${DEFAULT_FOLD_SETTINGS.draftFoldAngle}deg`,
+        "--fold-angle": `${DEFAULT_FOLD_SETTINGS.foldAngle}deg`,
         "--fold-mask-image": buildFoldBlendMask(
-          DEFAULT_FOLD_SETTINGS.draftFoldBlendCurve,
+          DEFAULT_FOLD_SETTINGS.foldBlendCurve,
         ),
-        "--fold-zone-height": `${DEFAULT_FOLD_SETTINGS.draftFoldZoneSize}vh`,
+        "--fold-zone-height": `${DEFAULT_FOLD_SETTINGS.foldZoneSize}vh`,
       }}
     >
       <div className="fold-zone fold-zone--top" data-fold-zone="top">

@@ -6,7 +6,7 @@ const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
 
 const STORE_VERSION = 1;
-const SETTINGS_SCHEMA_VERSION = 32;
+const SETTINGS_SCHEMA_VERSION = 33;
 const MAX_SOURCE_ID_LENGTH = 180;
 const MAX_SOURCE_NAME_LENGTH = 120;
 
@@ -32,13 +32,16 @@ function normalizedTimestamp(value, field) {
   return new Date(timestamp).toISOString();
 }
 
-function normalizeSettings(settings) {
+function normalizeSettings(settings, settingsSchemaVersion) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
     throw validationError("invalid_settings");
   }
+  const migratedSettings = Number(settingsSchemaVersion) < SETTINGS_SCHEMA_VERSION
+    ? RoomSettings.migrateFoldSettings(settings)
+    : settings;
   return {
-    ...RoomSettings.sanitizeRoomSettings(settings),
-    ...Physics.sanitizePhysics(settings),
+    ...RoomSettings.sanitizeRoomSettings(migratedSettings),
+    ...Physics.sanitizePhysics(migratedSettings),
   };
 }
 
@@ -56,7 +59,7 @@ function normalizeSource(source) {
   return {
     id: requiredString(source.id, "source_id", MAX_SOURCE_ID_LENGTH),
     name: requiredString(source.name, "source_name", MAX_SOURCE_NAME_LENGTH),
-    settingsSchemaVersion,
+    settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
     updatedAt: normalizedTimestamp(source.updatedAt, "source_updated_at"),
   };
 }
@@ -65,11 +68,15 @@ function normalizeSelection(selection, now = Date.now()) {
   if (!selection || typeof selection !== "object" || Array.isArray(selection)) {
     throw validationError("invalid_selection");
   }
+  const source = normalizeSource(selection);
   return {
     version: STORE_VERSION,
     selectedAt: new Date(now).toISOString(),
-    source: normalizeSource(selection),
-    settings: normalizeSettings(selection.settings),
+    source,
+    settings: normalizeSettings(
+      selection.settings,
+      selection.settingsSchemaVersion,
+    ),
   };
 }
 
@@ -81,11 +88,15 @@ function normalizeDocument(document) {
   ) {
     throw validationError("unsupported_production_preset_store_format");
   }
+  const source = normalizeSource(document.source);
   return {
     version: STORE_VERSION,
     selectedAt: normalizedTimestamp(document.selectedAt, "selected_at"),
-    source: normalizeSource(document.source),
-    settings: normalizeSettings(document.settings),
+    source,
+    settings: normalizeSettings(
+      document.settings,
+      document.source.settingsSchemaVersion,
+    ),
   };
 }
 

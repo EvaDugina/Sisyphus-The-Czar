@@ -328,8 +328,8 @@ test("camera UI и новые настройки сохраняются вмес
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("35");
   await expect(page.locator('[name^="returnScroll"]')).toHaveCount(0);
   await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(7);
-  await expect(page.locator('[name="draftFoldAngle"]')).toHaveValue("30");
-  await expect(page.locator('[name="draftFoldZoneSize"]')).toHaveValue("20");
+  await expect(page.locator('[name="foldAngle"]')).toHaveValue("30");
+  await expect(page.locator('[name="foldZoneSize"]')).toHaveValue("20");
 
   await setRange(page, "cameraFollowLerp", 0.25);
   await setCheckbox(page, "handAlwaysVisible", false);
@@ -400,7 +400,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -445,10 +445,9 @@ test("camera UI и новые настройки сохраняются вмес
     .toBe(true);
 });
 
-test("Капель, gachi по клику и звук удара работают с новыми настройками", async ({
+test("Капель работает с новыми настройками", async ({
   page,
 }) => {
-  await watchAudioPlayCalls(page, "СимуляцияОргазма.mov");
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await resetRootExperience(page);
@@ -474,64 +473,6 @@ test("Капель, gachi по клику и звук удара работаю�
   await closeSettingsPanel(page);
 
   await expectReadyAtBottom(page);
-  await page.evaluate(() => {
-    params.handAudioEnabled = false;
-  });
-  const gachiBeforeClick = await page.evaluate(
-    () => window.__sisyphusTestApi.getGachiClickAudioState(),
-  );
-  await scrollToRock(page);
-  const rightClickPoint = await visibleRockPoint(page);
-  await page.mouse.click(rightClickPoint.x, rightClickPoint.y, {
-    button: "right",
-  });
-  expect(
-    await page.evaluate(
-      () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
-    ),
-  ).toBe(gachiBeforeClick.playCount);
-  await grabVisibleRock(page);
-  await expect
-    .poll(() =>
-      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
-    )
-    .toMatchObject({
-      active: true,
-      activeCount: 1,
-      playCount: gachiBeforeClick.playCount + 1,
-    });
-  const selectedGachiFilename = await page.evaluate(
-    () => window.__sisyphusTestApi.getGachiClickAudioState().lastFilename,
-  );
-  expect(
-    await page.evaluate(
-      (filename) =>
-        window.SisyphusGachiSounds.GACHI_SOUND_FILENAMES.includes(filename),
-      selectedGachiFilename,
-    ),
-  ).toBe(true);
-  await page.evaluate(() => {
-    window.__sisyphusTestApi.playGachiClickSound();
-  });
-  await expect
-    .poll(() =>
-      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
-    )
-    .toMatchObject({
-      active: true,
-      activeCount: 2,
-      playCount: gachiBeforeClick.playCount + 2,
-    });
-  await page.mouse.up();
-  await expect
-    .poll(() =>
-      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
-    )
-    .toMatchObject({
-      active: false,
-      activeCount: 0,
-      stopCount: gachiBeforeClick.stopCount + 1,
-    });
   await expect
     .poll(
       () =>
@@ -600,7 +541,7 @@ test("Капель, gachi по клику и звук удара работаю�
       startCount: 1,
     });
 
-  const audioState = await page.evaluate(() => {
+  const drizzleVolumes = await page.evaluate(() => {
     collab.enabled = false;
     collab.snapshots.length = 0;
     motion.phase = SharedPhysics.PHASES.PLAY;
@@ -614,69 +555,13 @@ test("Капель, gachi по клику и звук удара работаю�
     const topVolume =
       window.__sisyphusTestApi.getDrizzleAudioState().volume;
 
-    params.bounce = 0;
-    params.gravity = 50;
-    motion.suspended = false;
-    updateBounds();
-    setPosition(bounds.maxX / 2, bounds.maxY - 1);
-    motion.vy = 1000;
-    const groundPlayCountBeforeImpact =
-      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    window.__sisyphusTestApi.applyPhysics(0.032);
     return {
       bottomVolume,
-      gachiPlayCount:
-        window.__sisyphusTestApi.getGachiClickAudioState().playCount,
-      groundPlayCountBeforeImpact,
-      firstGroundPlayCount:
-        window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
       topVolume,
     };
   });
-  expect(audioState.bottomVolume).toBeCloseTo(0.2, 5);
-  expect(audioState.topVolume).toBeCloseTo(0.8, 5);
-  expect(audioState.firstGroundPlayCount).toBe(
-    audioState.groundPlayCountBeforeImpact + 1,
-  );
-
-  const contactCounts = await page.evaluate(() => {
-    const first =
-      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    window.__sisyphusTestApi.applyPhysics(0.032);
-    const continuous =
-      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    updateBounds();
-    setPosition(bounds.maxX / 2, bounds.maxY - 1);
-    motion.vy = 1000;
-    window.__sisyphusTestApi.applyPhysics(0.032);
-    return { continuous, first };
-  });
-  expect(contactCounts.continuous).toBe(contactCounts.first);
-  await expect
-    .poll(
-      () =>
-        page.evaluate(
-          () => window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
-        ),
-      { timeout: 10_000 },
-    )
-    .toBe(contactCounts.first + 1);
-  await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        gachiPlayCount:
-          window.__sisyphusTestApi.getGachiClickAudioState().playCount,
-        impactFilename:
-          window.__sisyphusTestApi.getGroundImpactAudioState().lastFilename,
-        watchedImpactCount:
-          window.__watchedAudioPlayCounts["СимуляцияОргазма.mov"],
-      })),
-    )
-    .toMatchObject({
-      gachiPlayCount: audioState.gachiPlayCount,
-      impactFilename: "СимуляцияОргазма.mov",
-      watchedImpactCount: contactCounts.first + 1,
-    });
+  expect(drizzleVolumes.bottomVolume).toBeCloseTo(0.2, 5);
+  expect(drizzleVolumes.topVolume).toBeCloseTo(0.8, 5);
 
   await page.evaluate(() => {
     collab.enabled = true;
@@ -696,6 +581,172 @@ test("Капель, gachi по клику и звук удара работаю�
   await expect(page.locator('[name="finalFallEnabled"]')).not.toBeChecked();
   await saveRoomSettings(page);
   await closeSettingsPanel(page);
+});
+
+test("gachi накладывается по primary click и останавливается при падении, а звук удара играет только при новом контакте", async ({
+  page,
+}) => {
+  await watchAudioPlayCalls(page, "СимуляцияОргазма.mov");
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+  await expectReadyAtBottom(page);
+  await page.evaluate(() => {
+    collab.enabled = false;
+    params.handAudioEnabled = false;
+  });
+
+  const initial = await page.evaluate(() => ({
+    gachi: window.__sisyphusTestApi.getGachiClickAudioState(),
+    impact: window.__sisyphusTestApi.getGroundImpactAudioState(),
+  }));
+  await scrollToRock(page);
+  const point = await visibleRockPoint(page);
+  await page.mouse.click(point.x, point.y, { button: "right" });
+  await page.mouse.click(point.x, point.y, { button: "middle" });
+  expect(
+    await page.evaluate(
+      () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+    ),
+  ).toBe(initial.gachi.playCount);
+
+  await page.mouse.move(point.x, point.y);
+  await page.mouse.down();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
+    )
+    .toMatchObject({
+      active: true,
+      activeCount: 1,
+      playCount: initial.gachi.playCount + 1,
+    });
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.playGachiClickSound();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
+    )
+    .toMatchObject({
+      active: true,
+      activeCount: 2,
+      playCount: initial.gachi.playCount + 2,
+    });
+  expect(
+    await page.evaluate(() =>
+      window.SisyphusGachiSounds.GACHI_SOUND_FILENAMES.includes(
+        window.__sisyphusTestApi.getGachiClickAudioState().lastFilename,
+      ),
+    ),
+  ).toBe(true);
+
+  const falling = await page.evaluate(() => {
+    motion.phase = SharedPhysics.PHASES.PLAY;
+    const impactBefore =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    const stopBefore =
+      window.__sisyphusTestApi.getGachiClickAudioState().stopCount;
+    window.__sisyphusTestApi.receiveSharedSnapshot({
+      phase: SharedPhysics.PHASES.FALLING,
+      x: SharedPhysics.WORLD_WIDTH / 2,
+      y: 1,
+      vx: 0,
+      vy: 100,
+      dragging: false,
+      suspended: false,
+      holderId: null,
+      revision: collab.lastRevision + 1,
+      serverTime: Date.now(),
+      groundTouchSeq: collab.groundTouchSeq,
+    });
+    return {
+      gachi: window.__sisyphusTestApi.getGachiClickAudioState(),
+      impactBefore,
+      impactAfter:
+        window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
+      expectedPhase: SharedPhysics.PHASES.FALLING,
+      phase: motion.phase,
+      stopBefore,
+    };
+  });
+  expect(falling.phase).toBe(falling.expectedPhase);
+  expect(falling.gachi).toMatchObject({
+    active: false,
+    activeCount: 0,
+    stopCount: falling.stopBefore + 1,
+  });
+  expect(falling.impactAfter).toBe(falling.impactBefore);
+  await page.mouse.up();
+
+  const localContacts = await page.evaluate(() => {
+    collab.enabled = false;
+    params.finalFallEnabled = false;
+    params.bounce = 0;
+    params.gravity = 50;
+    motion.phase = SharedPhysics.PHASES.PLAY;
+    motion.suspended = false;
+    updateBounds();
+    setPosition(bounds.maxX / 2, bounds.maxY - 1);
+    motion.vy = 1000;
+    const before =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    window.__sisyphusTestApi.applyPhysics(0.032);
+    const first =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    window.__sisyphusTestApi.applyPhysics(0.032);
+    const resting =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    setPosition(bounds.maxX / 2, bounds.maxY - 1);
+    motion.vy = 1000;
+    window.__sisyphusTestApi.applyPhysics(0.032);
+    return {
+      before,
+      first,
+      resting,
+      second:
+        window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
+    };
+  });
+  expect(localContacts.first).toBe(localContacts.before + 1);
+  expect(localContacts.resting).toBe(localContacts.first);
+  expect(localContacts.second).toBe(localContacts.first + 1);
+
+  const sharedContacts = await page.evaluate(() => {
+    const before =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    collab.groundTouchSeq = null;
+    window.__sisyphusTestApi.syncSharedGroundTouchSeq(7);
+    const initialized =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    window.__sisyphusTestApi.syncSharedGroundTouchSeq(7);
+    const duplicate =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    window.__sisyphusTestApi.syncSharedGroundTouchSeq(8);
+    return {
+      before,
+      duplicate,
+      incremented:
+        window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
+      initialized,
+    };
+  });
+  expect(sharedContacts.initialized).toBe(sharedContacts.before);
+  expect(sharedContacts.duplicate).toBe(sharedContacts.before);
+  expect(sharedContacts.incremented).toBe(sharedContacts.before + 1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        filename:
+          window.__sisyphusTestApi.getGroundImpactAudioState().lastFilename,
+        watched:
+          window.__watchedAudioPlayCounts["СимуляцияОргазма.mov"],
+      })),
+    )
+    .toMatchObject({
+      filename: "СимуляцияОргазма.mov",
+      watched: sharedContacts.incremented,
+    });
 });
 
 test("UI выключает hover и grab звуки руки", async ({ page }) => {
@@ -985,7 +1036,6 @@ async function moveSharedDragToBottom(...pages) {
 
 async function expectReadyAtBottom(page) {
   await expect(page.locator("body")).toHaveClass(/state-play/);
-  await expect(page.locator("body")).toHaveClass(/theme-dark/);
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -1222,7 +1272,7 @@ test("dev при запуске переносит последний локал
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}",
         );
         return stored.gravity;
       }),
@@ -1234,7 +1284,7 @@ test("локальные настройки v20 мигрируют в v29 без
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v32");
+    localStorage.removeItem("sisyphus-czar-settings-v33");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1256,7 +1306,7 @@ test("локальные настройки v20 мигрируют в v29 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2068,6 +2118,70 @@ test("reload восстанавливает активную сессию и в�
     });
 });
 
+test("reload высокой сцены открывает низ и сохраняет suspended-сессию", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+
+  const preparedRoom = await page.evaluate(() => {
+    const settingsRevision = collab.settingsRevision;
+    sendShared("roomSettings.update", { sceneHeightScreens: 12 });
+    return {
+      sessionId: collab.sessionId,
+      settingsRevision,
+    };
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => collab.settingsRevision),
+    )
+    .toBeGreaterThan(preparedRoom.settingsRevision);
+  await expect
+    .poll(() => page.evaluate(() => currentSharedState().suspended))
+    .toBe(true);
+
+  await page.evaluate(() => {
+    localStorage.setItem(
+      "sisyphus-czar-settings-v33",
+      JSON.stringify({ ...params, sceneHeightScreens: 1 }),
+    );
+    window.scrollTo(0, 0);
+  });
+  await page.reload();
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+
+  await expect
+    .poll(() =>
+      page.evaluate((expectedSessionId) => {
+        const rock = document.querySelector(".rock");
+        const rect = rock?.getBoundingClientRect();
+        const maxScroll =
+          document.documentElement.scrollHeight - window.innerHeight;
+        return {
+          atBottom: window.scrollY >= maxScroll - 2,
+          highSceneRestored: params.sceneHeightScreens === 12,
+          rockVisible: Boolean(
+            rect && rect.bottom > 0 && rect.top < window.innerHeight,
+          ),
+          sameSession:
+            collab.sessionId === expectedSessionId &&
+            sessionStorage.getItem("sisyphus-room-session-id") ===
+              expectedSessionId,
+          suspended: currentSharedState().suspended,
+        };
+      }, preparedRoom.sessionId),
+    )
+    .toEqual({
+      atBottom: true,
+      highSceneRestored: true,
+      rockVisible: true,
+      sameSession: true,
+      suspended: true,
+    });
+});
+
 test("кнопка Начать сначала возвращает preclick и сохраняет настройки", async ({
   page,
 }) => {
@@ -2492,7 +2606,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -2531,7 +2645,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2667,7 +2781,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2702,7 +2816,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2719,7 +2833,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v32") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v33") || "{}"
         );
         return stored.rainEnabled;
       })
