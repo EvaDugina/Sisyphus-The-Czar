@@ -583,10 +583,9 @@ test("Капель работает с новыми настройками", asy
   await closeSettingsPanel(page);
 });
 
-test("gachi накладывается по primary click и останавливается при падении, а звук удара играет только при новом контакте", async ({
+test("gachi накладывается по primary click и останавливается при падении", async ({
   page,
 }) => {
-  await watchAudioPlayCalls(page, "СимуляцияОргазма.mov");
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await resetRootExperience(page);
@@ -596,10 +595,9 @@ test("gachi накладывается по primary click и останавли�
     params.handAudioEnabled = false;
   });
 
-  const initial = await page.evaluate(() => ({
-    gachi: window.__sisyphusTestApi.getGachiClickAudioState(),
-    impact: window.__sisyphusTestApi.getGroundImpactAudioState(),
-  }));
+  const initial = await page.evaluate(
+    () => window.__sisyphusTestApi.getGachiClickAudioState(),
+  );
   await scrollToRock(page);
   const point = await visibleRockPoint(page);
   await page.mouse.click(point.x, point.y, { button: "right" });
@@ -608,7 +606,7 @@ test("gachi накладывается по primary click и останавли�
     await page.evaluate(
       () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
     ),
-  ).toBe(initial.gachi.playCount);
+  ).toBe(initial.playCount);
 
   await page.mouse.move(point.x, point.y);
   await page.mouse.down();
@@ -619,7 +617,7 @@ test("gachi накладывается по primary click и останавли�
     .toMatchObject({
       active: true,
       activeCount: 1,
-      playCount: initial.gachi.playCount + 1,
+      playCount: initial.playCount + 1,
     });
   await page.evaluate(() => {
     window.__sisyphusTestApi.playGachiClickSound();
@@ -631,7 +629,7 @@ test("gachi накладывается по primary click и останавли�
     .toMatchObject({
       active: true,
       activeCount: 2,
-      playCount: initial.gachi.playCount + 2,
+      playCount: initial.playCount + 2,
     });
   expect(
     await page.evaluate(() =>
@@ -643,8 +641,6 @@ test("gachi накладывается по primary click и останавли�
 
   const falling = await page.evaluate(() => {
     motion.phase = SharedPhysics.PHASES.PLAY;
-    const impactBefore =
-      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
     const stopBefore =
       window.__sisyphusTestApi.getGachiClickAudioState().stopCount;
     window.__sisyphusTestApi.receiveSharedSnapshot({
@@ -662,9 +658,6 @@ test("gachi накладывается по primary click и останавли�
     });
     return {
       gachi: window.__sisyphusTestApi.getGachiClickAudioState(),
-      impactBefore,
-      impactAfter:
-        window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
       expectedPhase: SharedPhysics.PHASES.FALLING,
       phase: motion.phase,
       stopBefore,
@@ -676,14 +669,47 @@ test("gachi накладывается по primary click и останавли�
     activeCount: 0,
     stopCount: falling.stopBefore + 1,
   });
-  expect(falling.impactAfter).toBe(falling.impactBefore);
   await page.mouse.up();
+});
+
+test("звук удара повторяется на каждом отскоке без нового касания рукой", async ({
+  page,
+}) => {
+  await watchAudioPlayCalls(page, "СимуляцияОргазма.mov");
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+  await expectReadyAtBottom(page);
+
+  const falling = await page.evaluate(() => {
+    motion.phase = SharedPhysics.PHASES.PLAY;
+    const before =
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+    window.__sisyphusTestApi.receiveSharedSnapshot({
+      phase: SharedPhysics.PHASES.FALLING,
+      x: SharedPhysics.WORLD_WIDTH / 2,
+      y: 1,
+      vx: 0,
+      vy: 100,
+      dragging: false,
+      suspended: false,
+      holderId: null,
+      revision: collab.lastRevision + 1,
+      serverTime: Date.now(),
+      groundTouchSeq: collab.groundTouchSeq,
+    });
+    return {
+      after: window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
+      before,
+    };
+  });
+  expect(falling.after).toBe(falling.before);
 
   const localContacts = await page.evaluate(() => {
     collab.enabled = false;
     params.finalFallEnabled = false;
-    params.bounce = 0;
-    params.gravity = 50;
+    params.bounce = 0.5;
+    params.gravity = 10;
     motion.phase = SharedPhysics.PHASES.PLAY;
     motion.suspended = false;
     updateBounds();
@@ -691,26 +717,47 @@ test("gachi накладывается по primary click и останавли�
     motion.vy = 1000;
     const before =
       window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    window.__sisyphusTestApi.applyPhysics(0.032);
-    const first =
+    const contacts = [];
+    let previousCount = before;
+    for (let frame = 0; frame < 600 && contacts.length < 3; frame += 1) {
+      window.__sisyphusTestApi.applyPhysics(
+        SharedPhysics.FIXED_STEP_SECONDS,
+      );
+      const currentCount =
+        window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
+      if (currentCount > previousCount) {
+        contacts.push(currentCount);
+        previousCount = currentCount;
+      }
+    }
+
+    params.bounce = 0;
+    setPosition(bounds.maxX / 2, bounds.maxY);
+    motion.vy = 0;
+    const restingBefore =
       window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    window.__sisyphusTestApi.applyPhysics(0.032);
-    const resting =
-      window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    setPosition(bounds.maxX / 2, bounds.maxY - 1);
-    motion.vy = 1000;
-    window.__sisyphusTestApi.applyPhysics(0.032);
+    for (let frame = 0; frame < 30; frame += 1) {
+      window.__sisyphusTestApi.applyPhysics(
+        SharedPhysics.FIXED_STEP_SECONDS,
+      );
+    }
     return {
+      activeCount:
+        window.__sisyphusTestApi.getGroundImpactAudioState().activeCount,
       before,
-      first,
-      resting,
-      second:
+      contacts,
+      restingBefore,
+      restingAfter:
         window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
     };
   });
-  expect(localContacts.first).toBe(localContacts.before + 1);
-  expect(localContacts.resting).toBe(localContacts.first);
-  expect(localContacts.second).toBe(localContacts.first + 1);
+  expect(localContacts.contacts).toEqual([
+    localContacts.before + 1,
+    localContacts.before + 2,
+    localContacts.before + 3,
+  ]);
+  expect(localContacts.restingAfter).toBe(localContacts.restingBefore);
+  expect(localContacts.activeCount).toBeGreaterThanOrEqual(3);
 
   const sharedContacts = await page.evaluate(() => {
     const before =
@@ -722,7 +769,7 @@ test("gachi накладывается по primary click и останавли�
     window.__sisyphusTestApi.syncSharedGroundTouchSeq(7);
     const duplicate =
       window.__sisyphusTestApi.getGroundImpactAudioState().playCount;
-    window.__sisyphusTestApi.syncSharedGroundTouchSeq(8);
+    window.__sisyphusTestApi.syncSharedGroundTouchSeq(10);
     return {
       before,
       duplicate,
@@ -733,7 +780,7 @@ test("gachi накладывается по primary click и останавли�
   });
   expect(sharedContacts.initialized).toBe(sharedContacts.before);
   expect(sharedContacts.duplicate).toBe(sharedContacts.before);
-  expect(sharedContacts.incremented).toBe(sharedContacts.before + 1);
+  expect(sharedContacts.incremented).toBe(sharedContacts.before + 3);
   await expect
     .poll(() =>
       page.evaluate(() => ({

@@ -793,7 +793,7 @@ export function createSisyphusRuntime(elements = {}) {
     stopCount: 0,
   };
   const groundImpactAudio = {
-    element: null,
+    elements: new Set(),
     lastFilename: null,
     playCount: 0,
   };
@@ -1375,21 +1375,25 @@ export function createSisyphusRuntime(elements = {}) {
     if (typeof Audio !== "function") {
       return;
     }
-    if (!groundImpactAudio.element) {
-      groundImpactAudio.element = new Audio(groundImpactAudioUrl);
-      groundImpactAudio.element.preload = "auto";
-    }
-    const audio = groundImpactAudio.element;
+    const audio = new Audio(groundImpactAudioUrl);
+    audio.preload = "auto";
+    const releaseAudio = () => {
+      groundImpactAudio.elements.delete(audio);
+    };
+    audio.addEventListener("ended", releaseAudio);
+    audio.addEventListener("error", releaseAudio);
+    groundImpactAudio.elements.add(audio);
     try {
       audio.currentTime = 0;
       audio.volume = 1;
       const promise = audio.play();
       if (promise && typeof promise.catch === "function") {
-        promise.catch(() => {});
+        promise.catch(releaseAudio);
       }
       groundImpactAudio.lastFilename = "СимуляцияОргазма.mov";
       groundImpactAudio.playCount += 1;
     } catch {
+      releaseAudio();
       // Ошибка отдельного звука не должна останавливать физический цикл.
     }
   }
@@ -5518,7 +5522,9 @@ export function createSisyphusRuntime(elements = {}) {
     const touchedGround = previous !== null && next > previous;
     if (touchedGround) {
       hideReturnRain();
-      playGroundImpactSound();
+      for (let sequence = previous; sequence < next; sequence += 1) {
+        playGroundImpactSound();
+      }
     }
     return resetTrailOnGroundTouch(touchedGround);
   }
@@ -6634,6 +6640,7 @@ export function createSisyphusRuntime(elements = {}) {
       playGachiClickSound,
       stopGachiClickSound,
       getGroundImpactAudioState: () => ({
+        activeCount: groundImpactAudio.elements.size,
         lastFilename: groundImpactAudio.lastFilename,
         playCount: groundImpactAudio.playCount,
       }),
@@ -6793,7 +6800,8 @@ export function createSisyphusRuntime(elements = {}) {
       stopHandInteractionSounds({ immediate: true });
       stopGachiClickSound();
       stopPreclickHopSounds();
-      pauseAndResetAudio(groundImpactAudio.element);
+      groundImpactAudio.elements.forEach(pauseAndResetAudio);
+      groundImpactAudio.elements.clear();
       collab.sessionCreateAbortController?.abort();
       collab.sessionCreateAbortController = null;
       if (collab.renderId !== null) {
