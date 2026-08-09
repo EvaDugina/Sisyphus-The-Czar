@@ -3194,9 +3194,44 @@ export function createSisyphusRuntime(elements = {}) {
     updatePreclickRockParallax(event);
   }
 
-  function completePreclickRockGuidance() {
+  function materializePreclickRockHopPosition() {
+    if (!PRECLICK_ROCK_HOP_ENABLED) {
+      return;
+    }
+
+    updateBounds();
+    const rect = rock.getBoundingClientRect();
+    const targetCenterX = rect.left + rect.width / 2;
+    const targetCenterY = rect.top + rect.height / 2;
+    const targetY = clamp(
+      targetCenterY + window.scrollY - bounds.rockHeight / 2,
+      0,
+      bounds.maxY,
+    );
+    const targetScale =
+      scaleForLocalY(targetY) *
+      Math.min(
+        rockPressScaleFactor(params.rockPressShrinkPercent),
+        motion.rockPulseScaleFactor,
+      );
+    const targetX = rockLocalXForVisualGrab(
+      targetCenterX,
+      bounds.rockWidth / 2,
+      bounds.maxX,
+      bounds.rockWidth,
+      targetScale,
+    );
+    rock.classList.remove("is-preclick-hop");
+    void rock.offsetWidth;
+    setPosition(targetX, targetY);
+  }
+
+  function completePreclickRockGuidance({ preserveHopPosition = false } = {}) {
     if (preclickRockGuidance.completed) {
       return;
+    }
+    if (preserveHopPosition) {
+      materializePreclickRockHopPosition();
     }
     preclickRockGuidance.completed = true;
     preclickRockGuidance.insideRadius = false;
@@ -6228,7 +6263,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    completePreclickRockGuidance();
+    completePreclickRockGuidance({ preserveHopPosition: true });
 
     playDrizzleLoopSound();
     playRockPointerDownSound();

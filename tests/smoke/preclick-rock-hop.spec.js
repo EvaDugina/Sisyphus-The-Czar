@@ -5,6 +5,19 @@ const SOURCE_ROCK = "#root > .world > .rock";
 async function watchLaughPlayCalls(page) {
   await page.addInitScript(() => {
     window.__laughPlayCount = 0;
+    window.__controlAcquireMessages = [];
+    const sendWebSocketMessage = WebSocket.prototype.send;
+    WebSocket.prototype.send = function send(data) {
+      try {
+        const message = JSON.parse(String(data));
+        if (message?.type === "control.acquire") {
+          window.__controlAcquireMessages.push(message.payload);
+        }
+      } catch {
+        // Бинарные и не-JSON сообщения этому smoke не нужны.
+      }
+      return sendWebSocketMessage.call(this, data);
+    };
     HTMLMediaElement.prototype.play = function play() {
       let decodedSrc = this.currentSrc || this.src || "";
       try {
@@ -53,6 +66,32 @@ function rockCenter(page) {
 
 function hopState(page) {
   return page.evaluate(() => window.__sisyphusTestApi.getPreclickHopState());
+}
+
+function rockGeometry(page) {
+  return page.locator(SOURCE_ROCK).evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    const style = getComputedStyle(rock);
+    const { bounds, motion } = window.__sisyphusTestApi;
+    return {
+      bounds: { maxX: bounds.maxX, maxY: bounds.maxY },
+      center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
+      className: rock.className,
+      motion: { x: motion.x, y: motion.y },
+      parallax: {
+        x: Number.parseFloat(style.getPropertyValue("--rock-parallax-x")) || 0,
+        y: Number.parseFloat(style.getPropertyValue("--rock-parallax-y")) || 0,
+      },
+      rect: {
+        height: rect.height,
+        left: rect.left,
+        top: rect.top,
+        width: rect.width,
+      },
+      rockScale: style.getPropertyValue("--rock-scale"),
+      wallCompensation: style.getPropertyValue("--rock-wall-compensation"),
+    };
+  });
 }
 
 async function enterFromLeft(page, radius, delayMs) {
@@ -201,12 +240,42 @@ test("экспериментальный камень прыгает накоп�
   const point = await rockCenter(page);
   await page.mouse.move(point.x, point.y);
   const beforeGrab = await hopState(page);
+  const beforeGrabCenter = await rockCenter(page);
+  const beforeGrabGeometry = await rockGeometry(page);
+  const beforeGrabMotion = await page.evaluate(() => ({
+    x: window.__sisyphusTestApi.motion.x,
+    y: window.__sisyphusTestApi.motion.y,
+  }));
   expect(beforeGrab.audioPlayCount).toBe(beforeGrab.hopCount);
   expect(beforeGrab.activeAudioCount).toBe(beforeGrab.hopCount);
   expect(await page.evaluate(() => window.__laughPlayCount)).toBe(
     beforeGrab.hopCount,
   );
   await page.mouse.down();
+  const afterGrabCenter = await rockCenter(page);
+  const afterGrabGeometry = await rockGeometry(page);
+  const afterGrabMotion = await page.evaluate(() => ({
+    x: window.__sisyphusTestApi.motion.x,
+    y: window.__sisyphusTestApi.motion.y,
+  }));
+  const grabGeometry = JSON.stringify({
+    afterGrabGeometry,
+    beforeGrabGeometry,
+  });
+  expect(
+    Math.abs(afterGrabCenter.x - beforeGrabCenter.x),
+    grabGeometry,
+  ).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(afterGrabCenter.y - beforeGrabCenter.y),
+    grabGeometry,
+  ).toBeLessThanOrEqual(2);
+  expect(
+    Math.hypot(
+      afterGrabMotion.x - beforeGrabMotion.x,
+      afterGrabMotion.y - beforeGrabMotion.y,
+    ),
+  ).toBeGreaterThan(1);
   await expect(rock).not.toHaveClass(/is-preclick-hop/);
   await expect.poll(() => hopState(page)).toMatchObject({
     activeAudioCount: beforeGrab.activeAudioCount,
@@ -214,6 +283,17 @@ test("экспериментальный камень прыгает накоп�
     hopCount: beforeGrab.hopCount,
     offset: { x: 0, y: 0 },
   });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__controlAcquireMessages.at(-1) || null),
+    )
+    .not.toBeNull();
+  const acquiredLocalPosition = await page.evaluate(() => {
+    const payload = window.__controlAcquireMessages.at(-1);
+    return window.__sisyphusTestApi.canonicalToLocal(payload.x, payload.y);
+  });
+  expect(acquiredLocalPosition.x).toBeCloseTo(afterGrabMotion.x, 5);
+  expect(acquiredLocalPosition.y).toBeCloseTo(afterGrabMotion.y, 5);
   await page.mouse.up();
   await page.mouse.move(10, 10);
   await page.mouse.move(point.x, point.y);

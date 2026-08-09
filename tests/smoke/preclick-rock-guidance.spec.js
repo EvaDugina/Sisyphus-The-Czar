@@ -46,6 +46,31 @@ function parallaxX(page) {
   );
 }
 
+async function movePointerActively(page, { centerY, finalX, leftX, rightX }) {
+  await page.evaluate(
+    async ({ centerY: y, finalX: endX, leftX: minX, rightX: maxX }) => {
+      const move = (x) => {
+        window.dispatchEvent(
+          new PointerEvent("pointermove", {
+            bubbles: true,
+            clientX: x,
+            clientY: y,
+            isPrimary: true,
+            pointerId: 1,
+            pointerType: "mouse",
+          }),
+        );
+      };
+      for (let index = 0; index < 16; index += 1) {
+        await new Promise((resolve) => window.setTimeout(resolve, 35));
+        move(index % 2 === 0 ? minX : maxX);
+      }
+      move(endX);
+    },
+    { centerY, finalX, leftX, rightX },
+  );
+}
+
 function handPosition(page) {
   return page.locator(SOURCE_HAND).evaluate((hand) => {
     const style = getComputedStyle(hand);
@@ -179,10 +204,9 @@ test("штатный runtime включает parallax до первого кл�
   const outsideY = 24;
   await page.mouse.move(outsideX, outsideY);
   expect(Math.abs(await parallaxX(page))).toBeGreaterThan(0);
-  await page.waitForTimeout(50);
-  const returningOffset = Math.abs(await parallaxX(page));
-  expect(returningOffset).toBeGreaterThan(0);
-  expect(returningOffset).toBeLessThan(7.2);
+  await expect
+    .poll(async () => Math.abs(await parallaxX(page)), { timeout: 1000 })
+    .toBeLessThan(7.2);
   const handOutside = await handPosition(page);
   expect(handOutside.x).toBeCloseTo(outsideX, 3);
   expect(handOutside.y).toBeCloseTo(outsideY, 3);
@@ -385,13 +409,12 @@ test("активное движение меняет parallax по двум вр
   const initialOffset = Math.abs(await parallaxX(page));
   expect(initialOffset).toBeGreaterThan(120);
 
-  for (let index = 0; index < 8; index += 1) {
-    const x = center.x + (index % 2 === 0 ? -250 : 250);
-    await page.waitForTimeout(50);
-    await page.mouse.move(x, center.y);
-  }
-  await page.waitForTimeout(50);
-  await page.mouse.move(sampleX, center.y);
+  await movePointerActively(page, {
+    centerY: center.y,
+    finalX: sampleX,
+    leftX: center.x - 250,
+    rightX: center.x + 250,
+  });
   const progressedOffset = Math.abs(await parallaxX(page));
   expect(progressedOffset).toBeGreaterThan(0);
   expect(progressedOffset).toBeLessThan(initialOffset * 0.8);
