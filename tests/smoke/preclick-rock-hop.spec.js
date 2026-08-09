@@ -128,6 +128,48 @@ async function enterFromRight(page, radius, delayMs) {
   return { center, initialCenter, inside, outside };
 }
 
+async function enterFromTop(page, radius, delayMs) {
+  const initialCenter = await rockCenter(page);
+  const outside = {
+    x: initialCenter.x,
+    y: Math.max(5, initialCenter.y - radius - 80),
+  };
+  await page.mouse.move(outside.x, outside.y);
+  await page.waitForTimeout(Math.max(16, delayMs));
+  const center = await rockCenter(page);
+  const inside = { x: center.x, y: center.y - radius / 2 };
+  await page.mouse.move(inside.x, inside.y);
+  return { center, initialCenter, inside, outside };
+}
+
+async function enterFromBottomRight(page, radius, delayMs) {
+  const initialCenter = await rockCenter(page);
+  const viewport = page.viewportSize();
+  const outside = {
+    x: Math.min(viewport.width - 5, initialCenter.x + radius + 80),
+    y: Math.min(viewport.height - 5, initialCenter.y + radius + 80),
+  };
+  await page.mouse.move(outside.x, outside.y);
+  await page.waitForTimeout(Math.max(16, delayMs));
+  const center = await rockCenter(page);
+  const component = radius / (2 * Math.sqrt(2));
+  const inside = {
+    x: center.x + component,
+    y: center.y + component,
+  };
+  await page.mouse.move(inside.x, inside.y);
+  return { center, initialCenter, inside, outside };
+}
+
+function wrap(value, span) {
+  return ((value % span) + span) % span;
+}
+
+function hopDistance(maxDistancePx, speedPxPerSecond) {
+  const speedProgress = Math.min(Math.max(speedPxPerSecond / 2000, 0), 1);
+  return maxDistancePx * (0.28 + 0.72 * speedProgress);
+}
+
 test("экспериментальный камень прыгает накопительно и смеётся один раз на вход", async ({
   page,
 }) => {
@@ -143,6 +185,7 @@ test("экспериментальный камень прыгает накоп�
   await expect(rock).toHaveClass(/is-preclick-hop/);
   await page.evaluate(() => {
     params.preclickParallaxActivationRadiusVw = 5;
+    params.preclickHopMaxDistanceVw = 10;
   });
   const radius = 100;
   expect(await hopState(page)).toMatchObject({
@@ -164,6 +207,7 @@ test("экспериментальный камень прыгает накоп�
     audioPlayCount: 1,
     activeAudioCount: 1,
     lastFilename: "Смех.mp3",
+    animating: false,
   });
   const first = await hopState(page);
   expect(first.offset.x).toBeGreaterThan(0);
@@ -192,6 +236,7 @@ test("экспериментальный камень прыгает накоп�
     hopCount: 2,
     audioPlayCount: 2,
     activeAudioCount: 2,
+    animating: false,
   });
   const second = await hopState(page);
   const slowDistance = Math.hypot(first.offset.x, first.offset.y);
@@ -208,34 +253,33 @@ test("экспериментальный камень прыгает накоп�
     .poll(() =>
       rock.evaluate((element) => {
         const rect = element.getBoundingClientRect();
-        return (
-          rect.left >= -1 &&
-          rect.right <= innerWidth + 1 &&
-          rect.bottom <= innerHeight + 1
-        );
+        const centerX = rect.left + rect.width / 2;
+        const centerY = rect.top + rect.height / 2;
+        return centerX >= 0 && centerX < innerWidth && centerY >= 0 && centerY < innerHeight;
       }),
     )
     .toBe(true);
-  const clamped = await rock.evaluate((element) => {
+  const normalized = await rock.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     return {
-      bottom: rect.bottom,
-      left: rect.left,
-      right: rect.right,
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
       viewportHeight: innerHeight,
       viewportWidth: innerWidth,
     };
   });
-  expect(clamped.left).toBeGreaterThanOrEqual(-1);
-  expect(clamped.right).toBeLessThanOrEqual(clamped.viewportWidth + 1);
-  expect(clamped.bottom).toBeLessThanOrEqual(clamped.viewportHeight + 1);
+  expect(normalized.centerX).toBeGreaterThanOrEqual(0);
+  expect(normalized.centerX).toBeLessThan(normalized.viewportWidth);
+  expect(normalized.centerY).toBeGreaterThanOrEqual(0);
+  expect(normalized.centerY).toBeLessThan(normalized.viewportHeight);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  expect(
-    await rock.evaluate((element) =>
-      Number.parseFloat(getComputedStyle(element).transitionDuration),
-    ),
-  ).toBeLessThan(0.01);
+  const beforeReducedHop = await hopState(page);
+  await enterFromLeft(page, 45, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    hopCount: beforeReducedHop.hopCount + 1,
+    animating: false,
+  });
 
   const point = await rockCenter(page);
   await page.mouse.move(point.x, point.y);
@@ -301,4 +345,96 @@ test("экспериментальный камень прыгает накоп�
     audioPlayCount: beforeGrab.audioPlayCount,
     hopCount: beforeGrab.hopCount,
   });
+});
+
+test("экспериментальный камень бесшовно переносится по обеим осям и остаётся кликабельным", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1000, height: 700 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await watchLaughPlayCalls(page);
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await scrollToRock(page);
+  await page.evaluate(() => {
+    params.preclickParallaxActivationRadiusVw = 5;
+    params.preclickHopMaxDistanceVw = 200;
+  });
+
+  const radius = 50;
+  const horizontalEntry = await enterFromLeft(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    hopCount: 1,
+    audioPlayCount: 1,
+    animating: false,
+  });
+  const horizontalState = await hopState(page);
+  const horizontalDistance = hopDistance(
+    2000,
+    horizontalState.speedPxPerSecond,
+  );
+  const horizontalCenter = await rockCenter(page);
+  expect(horizontalCenter.x).toBeCloseTo(
+    wrap(horizontalEntry.center.x + horizontalDistance, 1000),
+    0,
+  );
+  expect(horizontalCenter.y).toBeCloseTo(horizontalEntry.center.y, 0);
+
+  const verticalEntry = await enterFromTop(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    hopCount: 2,
+    audioPlayCount: 2,
+    animating: false,
+  });
+  const verticalState = await hopState(page);
+  const verticalDistance = hopDistance(
+    2000,
+    verticalState.speedPxPerSecond,
+  );
+  const verticalCenter = await rockCenter(page);
+  expect(verticalCenter.x).toBeCloseTo(verticalEntry.center.x, 0);
+  expect(verticalCenter.y).toBeCloseTo(
+    wrap(verticalEntry.center.y + verticalDistance, 700),
+    0,
+  );
+
+  const cornerEntry = await enterFromBottomRight(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    hopCount: 3,
+    audioPlayCount: 3,
+    animating: false,
+  });
+  const cornerState = await hopState(page);
+  const cornerCenter = await rockCenter(page);
+  const cornerComponent = hopDistance(
+    2000,
+    cornerState.speedPxPerSecond,
+  ) / Math.sqrt(2);
+  expect(cornerCenter.x).toBeCloseTo(
+    wrap(cornerEntry.center.x - cornerComponent, 1000),
+    0,
+  );
+  expect(cornerCenter.y).toBeCloseTo(
+    wrap(cornerEntry.center.y - cornerComponent, 700),
+    0,
+  );
+  expect(cornerCenter.x).toBeGreaterThanOrEqual(0);
+  expect(cornerCenter.x).toBeLessThan(1000);
+  expect(cornerCenter.y).toBeGreaterThanOrEqual(0);
+  expect(cornerCenter.y).toBeLessThan(700);
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(3);
+
+  await page.mouse.move(cornerCenter.x, cornerCenter.y);
+  const beforeGrabCenter = await rockCenter(page);
+  await page.mouse.down();
+  const afterGrabCenter = await rockCenter(page);
+  expect(afterGrabCenter.x).toBeCloseTo(beforeGrabCenter.x, 0);
+  expect(afterGrabCenter.y).toBeCloseTo(beforeGrabCenter.y, 0);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    completed: true,
+    hopCount: 3,
+    audioPlayCount: 3,
+    offset: { x: 0, y: 0 },
+  });
+  await page.mouse.up();
 });

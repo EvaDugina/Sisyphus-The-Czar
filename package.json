@@ -21,6 +21,7 @@
     "test:smoke:dev": "playwright test --config=playwright.dev.config.js",
     "test:smoke:ui": "playwright test --config=playwright.ui.config.js",
     "test:smoke:hop": "playwright test --config=playwright.hop.config.js",
+    "test:smoke:hop-off": "playwright test --config=playwright.hop-off.config.js",
     "test:smoke:prod-debug": "playwright test --config=playwright.prod-debug.config.js",
     "test:smoke:compose": "playwright test --config=playwright.compose.config.js",
     "test:soak": "playwright test --config=playwright.soak.config.js",

@@ -9,8 +9,8 @@ const LINEAR_CURVE = Object.freeze([0, 0, 1, 1]);
 export const PRECLICK_MOVEMENT_SPEED_THRESHOLD_PX_PER_SECOND = 12;
 export const PRECLICK_MOVEMENT_MAX_SAMPLE_GAP_MS = 120;
 export const PRECLICK_HOP_MAX_SPEED_PX_PER_SECOND = 2000;
-export const PRECLICK_HOP_MIN_RADIUS_FACTOR = 0.35;
-export const PRECLICK_HOP_MAX_RADIUS_FACTOR = 1.25;
+export const PRECLICK_HOP_MIN_DISTANCE_FACTOR = 0.28;
+export const PRECLICK_HOP_MAX_DISTANCE_FACTOR = 1;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -136,26 +136,47 @@ export function preclickPointerSpeed({
 
 export function preclickHopDistance({
   speedPxPerSecond,
-  activationRadius,
+  maxDistance,
   maxSpeedPxPerSecond = PRECLICK_HOP_MAX_SPEED_PX_PER_SECOND,
-  minRadiusFactor = PRECLICK_HOP_MIN_RADIUS_FACTOR,
-  maxRadiusFactor = PRECLICK_HOP_MAX_RADIUS_FACTOR,
+  minDistanceFactor = PRECLICK_HOP_MIN_DISTANCE_FACTOR,
+  maxDistanceFactor = PRECLICK_HOP_MAX_DISTANCE_FACTOR,
 }) {
-  const radius = Math.max(0, finiteNumber(activationRadius, 0));
+  const maximumDistance = Math.max(0, finiteNumber(maxDistance, 0));
   const maximumSpeed = Math.max(1, finiteNumber(maxSpeedPxPerSecond, 1));
   const speedProgress = clamp(
     Math.max(0, finiteNumber(speedPxPerSecond, 0)) / maximumSpeed,
     0,
     1,
   );
-  const minimumFactor = Math.max(0, finiteNumber(minRadiusFactor, 0));
+  const minimumFactor = Math.max(0, finiteNumber(minDistanceFactor, 0));
   const maximumFactor = Math.max(
     minimumFactor,
-    finiteNumber(maxRadiusFactor, minimumFactor),
+    finiteNumber(maxDistanceFactor, minimumFactor),
   );
-  return radius * (
+  return maximumDistance * (
     minimumFactor + (maximumFactor - minimumFactor) * speedProgress
   );
+}
+
+export function wrapPreclickHopCoordinate(value, span) {
+  const normalizedSpan = Math.max(0, finiteNumber(span, 0));
+  if (normalizedSpan <= 0) {
+    return 0;
+  }
+  const normalizedValue = finiteNumber(value, 0);
+  return ((normalizedValue % normalizedSpan) + normalizedSpan) % normalizedSpan;
+}
+
+export function wrapPreclickHopCenter({
+  x,
+  y,
+  viewportWidth,
+  viewportHeight,
+}) {
+  return {
+    x: wrapPreclickHopCoordinate(x, viewportWidth),
+    y: wrapPreclickHopCoordinate(y, viewportHeight),
+  };
 }
 
 export function calculatePreclickHopTarget({
@@ -164,12 +185,9 @@ export function calculatePreclickHopTarget({
   centerX,
   centerY,
   speedPxPerSecond,
-  activationRadius,
+  maxDistance,
   currentOffsetX = 0,
   currentOffsetY = 0,
-  rockRect,
-  viewportWidth,
-  viewportHeight,
   lastDirectionX = null,
   lastDirectionY = null,
 }) {
@@ -183,27 +201,10 @@ export function calculatePreclickHopTarget({
   ) || fallbackDirection || { x: 1, y: 0 };
   const distance = preclickHopDistance({
     speedPxPerSecond,
-    activationRadius,
+    maxDistance,
   });
-  const requestedDeltaX = direction.x * distance;
-  const requestedDeltaY = direction.y * distance;
-  const rect = rockRect && typeof rockRect === "object" ? rockRect : {};
-  const width = Math.max(0, finiteNumber(viewportWidth, 0));
-  const height = Math.max(0, finiteNumber(viewportHeight, 0));
-  const minDeltaX = -finiteNumber(rect.left, 0);
-  const maxDeltaX = width - finiteNumber(rect.right, width);
-  const minDeltaY = -finiteNumber(rect.top, 0);
-  const maxDeltaY = height - finiteNumber(rect.bottom, height);
-  const deltaX = clamp(
-    requestedDeltaX,
-    Math.min(minDeltaX, maxDeltaX),
-    Math.max(minDeltaX, maxDeltaX),
-  );
-  const deltaY = clamp(
-    requestedDeltaY,
-    Math.min(minDeltaY, maxDeltaY),
-    Math.max(minDeltaY, maxDeltaY),
-  );
+  const deltaX = direction.x * distance;
+  const deltaY = direction.y * distance;
 
   return {
     x: finiteNumber(currentOffsetX, 0) + deltaX,
@@ -213,7 +214,7 @@ export function calculatePreclickHopTarget({
     directionX: direction.x,
     directionY: direction.y,
     requestedDistance: distance,
-    actualDistance: Math.hypot(deltaX, deltaY),
+    actualDistance: distance,
   };
 }
 

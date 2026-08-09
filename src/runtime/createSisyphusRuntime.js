@@ -37,6 +37,7 @@ import {
   calculatePreclickParallaxOffset,
   calculatePreclickParallaxTransition,
   preclickPointerSpeed,
+  wrapPreclickHopCenter,
 } from "../lib/preclickParallax.mjs";
 import { cursorCircleIntersectsRect } from "../lib/rockGrab.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
@@ -79,6 +80,8 @@ const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
 const AUDIO_TOGGLE_FADE_OUT_MS = 250;
 const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
+const PRECLICK_HOP_DURATION_MS = 400;
+const PRECLICK_HOP_EASING_CURVE = Object.freeze([0.22, 1, 0.36, 1]);
 const PRECLICK_ROCK_HOP_ENABLED =
   import.meta.env.EXPERIMENT_PRECLICK_ROCK_HOP === true;
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
@@ -493,6 +496,7 @@ export function createSisyphusRuntime(elements = {}) {
     returnAnimationId: null,
     outsideRadius: false,
     hopCount: 0,
+    hopAnimationId: null,
     hopSampleAtMs: null,
     hopSampleX: null,
     hopSampleY: null,
@@ -2390,6 +2394,7 @@ export function createSisyphusRuntime(elements = {}) {
         "preclickParallaxEndMaxOffsetVw",
         "preclickParallaxMaxOffsetEasing",
         "preclickParallaxActivationRadiusVw",
+        "preclickHopMaxDistanceVw",
         "preclickParallaxStartDelayMs",
         "preclickParallaxEndDelayMs",
         "preclickParallaxDelayEasing",
@@ -2775,8 +2780,17 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.returnAnimationId = null;
   }
 
+  function cancelPreclickHopAnimation() {
+    if (preclickRockGuidance.hopAnimationId === null) {
+      return;
+    }
+    window.cancelAnimationFrame(preclickRockGuidance.hopAnimationId);
+    preclickRockGuidance.hopAnimationId = null;
+  }
+
   function resetPreclickRockParallax() {
     cancelPreclickGuidanceReturn();
+    cancelPreclickHopAnimation();
     rock.classList.remove("is-preclick-hop");
     setPreclickRockParallaxOffset(0, 0);
   }
@@ -2865,6 +2879,7 @@ export function createSisyphusRuntime(elements = {}) {
       returnAnimationId: null,
       outsideRadius: false,
       hopCount: 0,
+      hopAnimationId: null,
       hopSampleAtMs: null,
       hopSampleX: null,
       hopSampleY: null,
@@ -2882,22 +2897,26 @@ export function createSisyphusRuntime(elements = {}) {
   function performPreclickRockHop({
     centerX,
     centerY,
-    activationRadius,
     speedPxPerSecond,
   }) {
+    cancelPreclickHopAnimation();
     const currentOffset = preclickRockParallaxOffset();
+    const rect = rock.getBoundingClientRect();
+    const startCenter = {
+      x: rect.left + rect.width / 2,
+      y: rect.top + rect.height / 2,
+    };
+    const baseCenter = preclickRockBaseCenter(currentOffset);
     const target = calculatePreclickHopTarget({
       pointerX: preclickRockGuidance.pointerX,
       pointerY: preclickRockGuidance.pointerY,
       centerX,
       centerY,
       speedPxPerSecond,
-      activationRadius,
+      maxDistance:
+        (params.preclickHopMaxDistanceVw / 100) * window.innerWidth,
       currentOffsetX: currentOffset.x,
       currentOffsetY: currentOffset.y,
-      rockRect: rock.getBoundingClientRect(),
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
       lastDirectionX: preclickRockGuidance.directionX,
       lastDirectionY: preclickRockGuidance.directionY,
     });
@@ -2905,8 +2924,46 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.directionY = target.directionY;
     preclickRockGuidance.hopCount += 1;
     rock.classList.add("is-preclick-hop");
-    setPreclickRockParallaxOffset(target.x, target.y);
     playPreclickHopSound();
+
+    const applyHopProgress = (progress) => {
+      const wrappedCenter = wrapPreclickHopCenter({
+        x: startCenter.x + target.deltaX * progress,
+        y: startCenter.y + target.deltaY * progress,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      });
+      setPreclickRockParallaxOffset(
+        wrappedCenter.x - baseCenter.x,
+        wrappedCenter.y - baseCenter.y,
+      );
+    };
+
+    if (reducedMotion.matches || PRECLICK_HOP_DURATION_MS <= 0) {
+      applyHopProgress(1);
+      return;
+    }
+
+    const startedAt = performance.now();
+    const renderHop = (now) => {
+      const progress = clamp(
+        (now - startedAt) / PRECLICK_HOP_DURATION_MS,
+        0,
+        1,
+      );
+      applyHopProgress(cubicBezierYForX(
+        progress,
+        PRECLICK_HOP_EASING_CURVE,
+      ));
+      if (progress < 1) {
+        preclickRockGuidance.hopAnimationId =
+          window.requestAnimationFrame(renderHop);
+        return;
+      }
+      preclickRockGuidance.hopAnimationId = null;
+    };
+    preclickRockGuidance.hopAnimationId =
+      window.requestAnimationFrame(renderHop);
   }
 
   function beginPreclickGuidanceDelay(delay, now = performance.now()) {
@@ -3073,7 +3130,6 @@ export function createSisyphusRuntime(elements = {}) {
         performPreclickRockHop({
           centerX,
           centerY,
-          activationRadius,
           speedPxPerSecond: preclickRockGuidance.hopSpeedPxPerSecond,
         });
       }
@@ -3161,25 +3217,20 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.outsideRadius = false;
     resetPreclickParallaxTransition();
     if (PRECLICK_ROCK_HOP_ENABLED) {
+      cancelPreclickHopAnimation();
       const offset = preclickRockParallaxOffset();
       const rect = rock.getBoundingClientRect();
-      const correctionX = rect.left < 0
-        ? -rect.left
-        : rect.right > window.innerWidth
-          ? window.innerWidth - rect.right
-          : 0;
-      const correctionY = rect.top < 0
-        ? -rect.top
-        : rect.bottom > window.innerHeight
-          ? window.innerHeight - rect.bottom
-          : 0;
-      rock.classList.remove("is-preclick-hop");
+      const baseCenter = preclickRockBaseCenter(offset);
+      const wrappedCenter = wrapPreclickHopCenter({
+        x: rect.left + rect.width / 2,
+        y: rect.top + rect.height / 2,
+        viewportWidth: window.innerWidth,
+        viewportHeight: window.innerHeight,
+      });
       setPreclickRockParallaxOffset(
-        offset.x + correctionX,
-        offset.y + correctionY,
+        wrappedCenter.x - baseCenter.x,
+        wrappedCenter.y - baseCenter.y,
       );
-      void rock.offsetWidth;
-      rock.classList.add("is-preclick-hop");
       return;
     }
     resetPreclickRockParallax();
@@ -3199,6 +3250,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    cancelPreclickHopAnimation();
     updateBounds();
     const rect = rock.getBoundingClientRect();
     const targetCenterX = rect.left + rect.width / 2;
@@ -4276,7 +4328,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 33,
+      settingsSchemaVersion: 34,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -6592,6 +6644,7 @@ export function createSisyphusRuntime(elements = {}) {
         completed: preclickRockGuidance.completed,
         finePointer: finePointer.matches,
         hopCount: preclickRockGuidance.hopCount,
+        animating: preclickRockGuidance.hopAnimationId !== null,
         insideRadius: preclickRockGuidance.insideRadius,
         outsideRadius: preclickRockGuidance.outsideRadius,
         pointer: {

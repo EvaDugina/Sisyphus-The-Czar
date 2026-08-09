@@ -38,7 +38,7 @@ test("Git production preset содержит полный canonical snapshot", (
   );
   const normalized = normalizeDocument(document);
 
-  assert.equal(normalized.source.settingsSchemaVersion, 33);
+  assert.equal(normalized.source.settingsSchemaVersion, 34);
   assert.equal(normalized.source.name, "v1");
   assert.equal(normalized.settings.handAudioEnabled, false);
   assert.deepEqual(
@@ -52,7 +52,7 @@ test("Git production preset содержит полный canonical snapshot", (
   );
 });
 
-test("production preset мигрирует legacy Fold-ключи в schema 33", () => {
+test("production preset мигрирует legacy Fold-ключи и длину отскока в schema 34", () => {
   const normalized = normalizeDocument({
     version: STORE_VERSION,
     selectedAt: "2026-08-09T10:00:00.000Z",
@@ -71,7 +71,7 @@ test("production preset мигрирует legacy Fold-ключи в schema 33",
     },
   });
 
-  assert.equal(normalized.source.settingsSchemaVersion, 33);
+  assert.equal(normalized.source.settingsSchemaVersion, 34);
   assert.equal(normalized.settings.foldAngle, 52);
   assert.equal(normalized.settings.foldZoneSize, 17);
   assert.equal(normalized.settings.foldBlendEnabled, false);
@@ -83,6 +83,26 @@ test("production preset мигрирует legacy Fold-ключи в schema 33",
     Object.keys(normalized.settings).some((key) => key.startsWith("draftFold")),
     false,
   );
+  assert.equal(normalized.settings.preclickHopMaxDistanceVw, 62.5);
+});
+
+test("production preset сохраняет старую дальность отскока через миграцию", () => {
+  const normalized = normalizeDocument({
+    version: STORE_VERSION,
+    selectedAt: "2026-08-09T10:00:00.000Z",
+    source: {
+      id: "legacy-hop",
+      name: "Legacy Hop",
+      settingsSchemaVersion: 33,
+      updatedAt: "2026-08-09T09:00:00.000Z",
+    },
+    settings: {
+      preclickParallaxActivationRadiusVw: 12,
+    },
+  });
+
+  assert.equal(normalized.source.settingsSchemaVersion, 34);
+  assert.equal(normalized.settings.preclickHopMaxDistanceVw, 15);
 });
 
 test("production preset store атомарно сохраняет полный whitelist настроек", (context) => {

@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 31;
+  const ROOM_SETTINGS_VERSION = 32;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
@@ -76,6 +76,7 @@
     preclickParallaxMaxOffsetVw: [0, 150],
     preclickParallaxEndMaxOffsetVw: [0, 50],
     preclickParallaxActivationRadiusVw: [0, 200],
+    preclickHopMaxDistanceVw: [0, 200],
     preclickParallaxStartDelayMs: [0, 1000],
     preclickParallaxEndDelayMs: [0, 1000],
     preclickParallaxTransitionDurationSeconds: [1, 30],
@@ -142,6 +143,7 @@
     preclickParallaxMaxOffsetEasing:
       DEFAULT_PRECLICK_PARALLAX_TRANSITION_EASING,
     preclickParallaxActivationRadiusVw: 50,
+    preclickHopMaxDistanceVw: 62.5,
     preclickParallaxStartDelayMs: 0,
     preclickParallaxEndDelayMs: 1000,
     preclickParallaxDelayEasing:
@@ -437,6 +439,8 @@
       ROOM_SETTINGS_LIMITS.preclickParallaxEndMaxOffsetVw;
     const [parallaxRadiusMin, parallaxRadiusMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusVw;
+    const [preclickHopDistanceMin, preclickHopDistanceMax] =
+      ROOM_SETTINGS_LIMITS.preclickHopMaxDistanceVw;
     const [parallaxStartDelayMin, parallaxStartDelayMax] =
       ROOM_SETTINGS_LIMITS.preclickParallaxStartDelayMs;
     const [parallaxEndDelayMin, parallaxEndDelayMax] =
@@ -534,6 +538,36 @@
         parallaxEndOffsetMax
       )
     );
+    const parallaxRadiusSource =
+      !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
+      Number.isFinite(Number(source.preclickParallaxActivationRadiusPx))
+        ? {
+            ...source,
+            preclickParallaxActivationRadiusVw:
+              Number(source.preclickParallaxActivationRadiusPx) /
+              PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
+          }
+        : source;
+    const preclickParallaxActivationRadiusVw = finiteSetting(
+      parallaxRadiusSource,
+      fallbackSource,
+      "preclickParallaxActivationRadiusVw",
+      parallaxRadiusMin,
+      parallaxRadiusMax
+    );
+    const preclickHopDistanceSource = Object.hasOwn(
+      source,
+      "preclickHopMaxDistanceVw"
+    )
+      ? source
+      : Object.hasOwn(source, "preclickParallaxActivationRadiusVw") ||
+          Object.hasOwn(source, "preclickParallaxActivationRadiusPx")
+        ? {
+            ...source,
+            preclickHopMaxDistanceVw:
+              preclickParallaxActivationRadiusVw * 1.25,
+          }
+        : source;
     const preclickParallaxStartDelayMs = finiteSetting(
       source,
       fallbackSource,
@@ -720,20 +754,13 @@
         fallbackSource,
         "preclickParallaxMaxOffsetEasing"
       ),
-      preclickParallaxActivationRadiusVw: finiteSetting(
-        !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
-          Number.isFinite(Number(source.preclickParallaxActivationRadiusPx))
-          ? {
-              ...source,
-              preclickParallaxActivationRadiusVw:
-                Number(source.preclickParallaxActivationRadiusPx) /
-                PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
-            }
-          : source,
+      preclickParallaxActivationRadiusVw,
+      preclickHopMaxDistanceVw: finiteSetting(
+        preclickHopDistanceSource,
         fallbackSource,
-        "preclickParallaxActivationRadiusVw",
-        parallaxRadiusMin,
-        parallaxRadiusMax
+        "preclickHopMaxDistanceVw",
+        preclickHopDistanceMin,
+        preclickHopDistanceMax
       ),
       preclickParallaxStartDelayMs,
       preclickParallaxEndDelayMs,
@@ -1037,6 +1064,28 @@
     return source;
   }
 
+  function migratePreclickHopSettings(input) {
+    const source = input && typeof input === "object" ? { ...input } : {};
+    if (Object.hasOwn(source, "preclickHopMaxDistanceVw")) {
+      return source;
+    }
+    const previousRadiusVw = Number(source.preclickParallaxActivationRadiusVw);
+    const previousRadiusPx = Number(source.preclickParallaxActivationRadiusPx);
+    const radiusVw = Number.isFinite(previousRadiusVw)
+      ? previousRadiusVw
+      : Number.isFinite(previousRadiusPx)
+        ? previousRadiusPx / PRECLICK_PARALLAX_RADIUS_PX_PER_VW
+        : DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw;
+    const [minDistance, maxDistance] =
+      ROOM_SETTINGS_LIMITS.preclickHopMaxDistanceVw;
+    source.preclickHopMaxDistanceVw = clamp(
+      radiusVw * 1.25,
+      minDistance,
+      maxDistance
+    );
+    return source;
+  }
+
   function migrateRoomSettings(input, version = 1) {
     const source = input && typeof input === "object" ? { ...input } : {};
     if (finiteNumber(version, 1) < 4) {
@@ -1194,10 +1243,12 @@
         }
       });
     }
-    if (finiteNumber(version, 1) < 31) {
-      return migrateFoldSettings(source);
-    }
-    return source;
+    const foldMigrated = finiteNumber(version, 1) < 31
+      ? migrateFoldSettings(source)
+      : source;
+    return finiteNumber(version, 1) < 32
+      ? migratePreclickHopSettings(foldMigrated)
+      : foldMigrated;
   }
 
   function sceneMotionMultiplier(settings) {
@@ -1223,6 +1274,7 @@
     parseCubicBezier,
     sanitizeHeightGates,
     migrateFoldSettings,
+    migratePreclickHopSettings,
     migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,

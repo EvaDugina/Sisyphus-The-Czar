@@ -45,6 +45,7 @@ import {
   calculatePreclickParallaxTransition,
   preclickHopDistance,
   preclickPointerSpeed,
+  wrapPreclickHopCenter,
 } from "../../src/lib/preclickParallax.mjs";
 import { cursorCircleIntersectsRect } from "../../src/lib/rockGrab.mjs";
 import {
@@ -113,6 +114,8 @@ const DEFAULT_CUSTOM_CURSOR_SETTINGS = Object.freeze({
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorEnabled,
   customCursorSizePx:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorSizePx,
+  preclickHopMaxDistanceVw:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw,
 });
 
 test("визуальная точка следа сохраняет позицию после canonical round-trip", () => {
@@ -391,8 +394,11 @@ test("настройки инерции отображают шкалу 0–5", 
   const horizontalInertia = controls.find(
     (control) => control.name === "horizontalInertia"
   );
+  const preclickHopMaxDistance = controls.find(
+    (control) => control.name === "preclickHopMaxDistanceVw"
+  );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v33");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v34");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -414,6 +420,22 @@ test("настройки инерции отображают шкалу 0–5", 
       defaultValue: horizontalInertia.defaultValue,
     },
     { min: 0, max: 5, step: 0.01, defaultValue: 0.02 }
+  );
+  assert.deepEqual(
+    {
+      label: preclickHopMaxDistance.label,
+      min: preclickHopMaxDistance.min,
+      max: preclickHopMaxDistance.max,
+      step: preclickHopMaxDistance.step,
+      defaultValue: preclickHopMaxDistance.defaultValue,
+    },
+    {
+      label: "Максимальная длина отскока, vw",
+      min: 0,
+      max: 200,
+      step: 0.1,
+      defaultValue: 62.5,
+    },
   );
 });
 
@@ -439,7 +461,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 33);
+  assert.equal(productionSettingsSchemaVersion, 34);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -905,7 +927,7 @@ test("preclick transition считает только непрерывное д�
   );
 });
 
-test("preclick hop зависит от скорости, уходит от руки и остаётся в viewport", () => {
+test("preclick hop зависит от скорости, сохраняет длину и переносится через края", () => {
   assert.equal(
     preclickPointerSpeed({
       previousX: 0,
@@ -917,10 +939,13 @@ test("preclick hop зависит от скорости, уходит от ру�
     }),
     2000,
   );
-  assert.equal(preclickHopDistance({ speedPxPerSecond: 0, activationRadius: 100 }), 35);
+  assert.ok(
+    Math.abs(preclickHopDistance({ speedPxPerSecond: 0, maxDistance: 100 }) - 28) <
+      Number.EPSILON * 100,
+  );
   assert.equal(
-    preclickHopDistance({ speedPxPerSecond: 2000, activationRadius: 100 }),
-    125,
+    preclickHopDistance({ speedPxPerSecond: 2000, maxDistance: 100 }),
+    100,
   );
 
   const slow = calculatePreclickHopTarget({
@@ -929,30 +954,43 @@ test("preclick hop зависит от скорости, уходит от ру�
     centerX: 100,
     centerY: 100,
     speedPxPerSecond: 0,
-    activationRadius: 100,
+    maxDistance: 100,
     currentOffsetX: 10,
-    rockRect: { left: 80, right: 120, top: 80, bottom: 120 },
-    viewportWidth: 300,
-    viewportHeight: 300,
   });
-  assert.equal(slow.x, 45);
+  assert.equal(slow.x, 38);
   assert.equal(slow.y, 0);
   assert.equal(slow.directionX, 1);
 
-  const clamped = calculatePreclickHopTarget({
+  const fullDistance = calculatePreclickHopTarget({
     pointerX: 200,
     pointerY: 100,
     centerX: 260,
     centerY: 100,
     speedPxPerSecond: 2000,
-    activationRadius: 100,
+    maxDistance: 100,
     currentOffsetX: 0,
-    rockRect: { left: 250, right: 290, top: 80, bottom: 120 },
-    viewportWidth: 300,
-    viewportHeight: 300,
   });
-  assert.equal(clamped.x, 10);
-  assert.equal(clamped.actualDistance, 10);
+  assert.equal(fullDistance.x, 100);
+  assert.equal(fullDistance.actualDistance, 100);
+
+  assert.deepEqual(
+    wrapPreclickHopCenter({
+      x: 315,
+      y: -25,
+      viewportWidth: 300,
+      viewportHeight: 200,
+    }),
+    { x: 15, y: 175 },
+  );
+  assert.deepEqual(
+    wrapPreclickHopCenter({
+      x: -620,
+      y: 425,
+      viewportWidth: 300,
+      viewportHeight: 200,
+    }),
+    { x: 280, y: 25 },
+  );
 });
 
 test("радиус курсора пересекает визуальные границы камня", () => {
@@ -1082,6 +1120,7 @@ test("настройки размера камня есть в UI и получ�
       "preclickParallaxMaxOffsetVw",
       "preclickParallaxEndMaxOffsetVw",
       "preclickParallaxActivationRadiusVw",
+      "preclickHopMaxDistanceVw",
       "preclickParallaxStartDelayMs",
       "preclickParallaxEndDelayMs",
       "preclickParallaxTransitionDurationSeconds",
@@ -2110,7 +2149,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 31);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 32);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2142,6 +2181,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickParallaxMaxOffsetVw, 150);
   assert.equal(visualSettings.preclickParallaxActivationRadiusVw, 0);
+  assert.equal(visualSettings.preclickHopMaxDistanceVw, 0);
   assert.equal(visualSettings.preclickParallaxStartDelayMs, 1000);
   assert.equal(visualSettings.preclickParallaxEndDelayMs, 1000);
   assert.equal(visualSettings.preclickParallaxEndMaxOffsetVw, 50);
@@ -2245,6 +2285,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      preclickHopMaxDistanceVw: 30,
     },
   );
   assert.deepEqual(
@@ -2262,6 +2303,7 @@ test("группа дождя содержит общий toggle и blur тём�
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
+      preclickHopMaxDistanceVw: 30,
     },
   );
   assert.deepEqual(
@@ -2313,8 +2355,12 @@ test("группа дождя содержит общий toggle и blur тём�
     SharedRoomSettings.migrateRoomSettings({}, 29),
     DEFAULT_CUSTOM_CURSOR_SETTINGS,
   );
-  assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 30), {});
-  assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 31), {});
+  assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 30), {
+    preclickHopMaxDistanceVw: 62.5,
+  });
+  assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 31), {
+    preclickHopMaxDistanceVw: 62.5,
+  });
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings(
       {
@@ -2331,6 +2377,20 @@ test("группа дождя содержит общий toggle и blur тём�
       foldZoneSize: 12,
       foldBlendEnabled: false,
       foldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
+      preclickHopMaxDistanceVw: 62.5,
+    },
+  );
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings(
+      {
+        preclickParallaxActivationRadiusVw: 80,
+        preclickHopMaxDistanceVw: 45,
+      },
+      31,
+    ),
+    {
+      preclickParallaxActivationRadiusVw: 80,
+      preclickHopMaxDistanceVw: 45,
     },
   );
   assert.deepEqual(

@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 33;
+const SETTINGS_SCHEMA_VERSION = 34;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -380,8 +380,11 @@ export function createSettingsController(options) {
       return settings;
     }
     let migrated = { ...settings };
-    if (Number(settingsSchemaVersion) < SETTINGS_SCHEMA_VERSION) {
+    if (Number(settingsSchemaVersion) < 33) {
       migrated = SharedRoomSettings.migrateFoldSettings(migrated);
+    }
+    if (Number(settingsSchemaVersion) < 34) {
+      migrated = SharedRoomSettings.migratePreclickHopSettings(migrated);
     }
     if (!Object.hasOwn(migrated, "preclickParallaxActivationRadiusVw")) {
       const radiusPx = Number(migrated.preclickParallaxActivationRadiusPx);

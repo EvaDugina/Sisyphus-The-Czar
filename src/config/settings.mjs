@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v33";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v34";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v33",
   "sisyphus-czar-settings-v32",
   "sisyphus-czar-settings-v31",
   "sisyphus-czar-settings-v30",
@@ -786,6 +787,20 @@ export const SETTINGS_GROUPS = [
         output:
           `${DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw}vw`,
         hint: "Радиус круглой активной зоны вокруг исходного центра камня в процентах ширины viewport. При приближении к центру смещение растёт; за пределами зоны камень плавно возвращается в исходную позицию.",
+      },
+      {
+        name: "preclickHopMaxDistanceVw",
+        label: "Максимальная длина отскока, vw",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickHopMaxDistanceVw[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickHopMaxDistanceVw[1],
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw,
+        output:
+          `${DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw.toFixed(1)}vw`,
+        hint: "Максимальная дальность одного отскока. Скорость входа руки в радиус линейно задаёт от 28% до 100% этого значения; радиус срабатывания настраивается отдельно.",
       },
       {
         name: "preclickParallaxStartDelayMs",

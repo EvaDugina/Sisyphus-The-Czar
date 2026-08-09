@@ -65,7 +65,7 @@ test("settings template store атомарно сохраняет whitelist и �
   assert.deepEqual(loaded.latest(), saved.entry);
 });
 
-test("settings template store мигрирует legacy Fold-ключи в schema 33", (context) => {
+test("settings template store мигрирует legacy Fold-ключи в schema 34", (context) => {
   const { store } = temporaryStore(context);
   const legacy = entry("legacy-fold");
   legacy.settingsSchemaVersion = 32;
@@ -79,7 +79,7 @@ test("settings template store мигрирует legacy Fold-ключи в schem
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 33);
+  assert.equal(imported.settingsSchemaVersion, 34);
   assert.equal(imported.settings.foldAngle, 55);
   assert.equal(imported.settings.foldZoneSize, 18);
   assert.equal(imported.settings.foldBlendEnabled, false);
@@ -91,6 +91,21 @@ test("settings template store мигрирует legacy Fold-ключи в schem
     Object.keys(imported.settings).some((key) => key.startsWith("draftFold")),
     false,
   );
+  assert.equal(imported.settings.preclickHopMaxDistanceVw, 62.5);
+});
+
+test("settings template store мигрирует длину отскока из schema 33", (context) => {
+  const { store } = temporaryStore(context);
+  const legacy = entry("legacy-hop");
+  legacy.settingsSchemaVersion = 33;
+  legacy.settings = {
+    preclickParallaxActivationRadiusVw: 20,
+  };
+
+  const imported = store.importEntries([legacy]).entries[0];
+
+  assert.equal(imported.settingsSchemaVersion, 34);
+  assert.equal(imported.settings.preclickHopMaxDistanceVw, 25);
 });
 
 test("latest выбирается по updatedAt, createdAt и id", (context) => {

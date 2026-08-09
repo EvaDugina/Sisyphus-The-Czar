@@ -2,9 +2,9 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: "./tests/smoke",
-  testMatch: /ui-fold\.spec\.js/,
-  timeout: 30_000,
-  expect: { timeout: 8_000 },
+  testMatch: /preclick-rock-hop-off\.spec\.js/,
+  timeout: 35_000,
+  expect: { timeout: 10_000 },
   workers: 1,
   use: {
     baseURL: "http://127.0.0.1:8080",
@@ -15,20 +15,17 @@ module.exports = defineConfig({
     command: "npm run dev",
     url: "http://127.0.0.1:8080/healthz",
     timeout: 45_000,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     env: {
       EXPERIMENT_PRECLICK_ROCK_HOP: "false",
       ALLOWED_ORIGIN: "http://127.0.0.1:8080",
       SESSION_TTL_SECONDS: "86400",
       EMPTY_SESSION_GRACE_SECONDS: "2",
       SESSION_CREATE_RATE_LIMIT: "50",
-      SLIP_DELAY_MIN_MS: "10000",
-      SLIP_DELAY_MAX_MS: "10000",
-      STATIONARY_HOLD_RELEASE_MS: "10000",
-      SESSION_STORE_PATH: "/tmp/sisyphus-ui-smoke-sessions.json",
-      PRODUCTION_PRESET_PATH: "/tmp/sisyphus-ui-production-preset.json",
+      SESSION_STORE_PATH: "/tmp/sisyphus-hop-off-smoke-sessions.json",
+      PRODUCTION_PRESET_PATH: "/tmp/sisyphus-hop-off-production-preset.json",
       SETTINGS_TEMPLATE_STORE_PATH:
-        "/tmp/sisyphus-ui-settings-templates.json",
+        "/tmp/sisyphus-hop-off-settings-templates.json",
       SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },

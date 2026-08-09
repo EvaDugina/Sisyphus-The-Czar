@@ -156,7 +156,6 @@
 
 .rock.is-preclick-hop {
   transition:
-    transform 400ms cubic-bezier(0.22, 1, 0.36, 1),
     --rock-scale 0ms ease-out,
     --rock-wall-compensation 0ms ease-out,
     filter 160ms ease,
@@ -542,10 +541,6 @@ body.state-fallingToBottom .hand-cursor {
         0
       )
       scale(var(--rock-scale));
-  }
-
-  .rock.is-preclick-hop {
-    transition-duration: 0.001ms;
   }
 
   .weather-rain,

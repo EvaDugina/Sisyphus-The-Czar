@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "savedAt": "2026-08-09T11:16:26.232Z",
-  "revision": 32,
+  "savedAt": "2026-08-09T13:56:32.429Z",
+  "revision": 33,
   "entries": [
     {
       "id": "settings-version-mscz5hfd-c30065d5-639b-4c30-9b66-03f291160c20",
       "name": "v1",
-      "settingsSchemaVersion": 33,
+      "settingsSchemaVersion": 34,
       "createdAt": "2026-08-03T08:35:52.057Z",
-      "updatedAt": "2026-08-09T11:16:26.232Z",
+      "updatedAt": "2026-08-09T13:56:32.428Z",
       "settings": {
         "themeMode": "dark",
         "lightBackgroundColor": "#f8f8f5",
@@ -36,12 +36,13 @@
         "rockScaleEasing": "cubic-bezier(0.4, 0, 0.2, 1)",
         "rockActivatedWidthVw": 5,
         "rockPressShrinkPercent": 5,
-        "rockPulseEnabled": false,
+        "rockPulseEnabled": true,
         "rockPulseBpm": 60,
         "preclickParallaxMaxOffsetVw": 50,
         "preclickParallaxEndMaxOffsetVw": 0,
         "preclickParallaxMaxOffsetEasing": "cubic-bezier(0, 0, 1, 1)",
         "preclickParallaxActivationRadiusVw": 11,
+        "preclickHopMaxDistanceVw": 13.75,
         "preclickParallaxStartDelayMs": 0,
         "preclickParallaxEndDelayMs": 1000,
         "preclickParallaxDelayEasing": "cubic-bezier(0, 0, 1, 1)",

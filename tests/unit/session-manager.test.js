@@ -550,7 +550,7 @@ test("старая сессия внутри вершины получает н�
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 });
 
-test("persisted session мигрирует legacy Fold-ключи в room schema 31", () => {
+test("persisted session мигрирует Fold и длину отскока в room schema 32", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
     {
@@ -563,6 +563,7 @@ test("persisted session мигрирует legacy Fold-ключи в room schema
         draftFoldBlendEnabled: false,
         draftFoldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
         foldAngle: 54,
+        preclickParallaxActivationRadiusVw: 36,
       },
       expiresAt: 5000,
       emptyDeleteAt: null,
@@ -582,6 +583,7 @@ test("persisted session мигрирует legacy Fold-ключи в room schema
     Object.keys(session.roomSettings).some((key) => key.startsWith("draftFold")),
     false,
   );
+  assert.equal(session.roomSettings.preclickHopMaxDistanceVw, 45);
   assert.equal(
     manager.serializeSessions()[0].roomSettingsVersion,
     RoomSettings.ROOM_SETTINGS_VERSION,
@@ -694,6 +696,7 @@ test("roomSettings.update синхронизирует размер руки и 
     handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
     preclickParallaxMaxOffsetVw: 36,
     preclickParallaxActivationRadiusVw: 36,
+    preclickHopMaxDistanceVw: 72,
     preclickParallaxStartDelayMs: 320,
     preclickParallaxInverted: true,
     handAlwaysVisible: false,
@@ -722,6 +725,7 @@ test("roomSettings.update синхронизирует размер руки и 
       handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
       preclickParallaxMaxOffsetVw: 36,
       preclickParallaxActivationRadiusVw: 36,
+      preclickHopMaxDistanceVw: 72,
       preclickParallaxStartDelayMs: 320,
       preclickParallaxInverted: true,
       handAlwaysVisible: false,

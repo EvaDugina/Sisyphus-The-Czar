@@ -6,7 +6,7 @@ const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
 
 const STORE_VERSION = 1;
-const SETTINGS_SCHEMA_VERSION = 33;
+const SETTINGS_SCHEMA_VERSION = 34;
 const MAX_SOURCE_ID_LENGTH = 180;
 const MAX_SOURCE_NAME_LENGTH = 120;
 
@@ -36,9 +36,13 @@ function normalizeSettings(settings, settingsSchemaVersion) {
   if (!settings || typeof settings !== "object" || Array.isArray(settings)) {
     throw validationError("invalid_settings");
   }
-  const migratedSettings = Number(settingsSchemaVersion) < SETTINGS_SCHEMA_VERSION
-    ? RoomSettings.migrateFoldSettings(settings)
-    : settings;
+  let migratedSettings = settings;
+  if (Number(settingsSchemaVersion) < 33) {
+    migratedSettings = RoomSettings.migrateFoldSettings(migratedSettings);
+  }
+  if (Number(settingsSchemaVersion) < 34) {
+    migratedSettings = RoomSettings.migratePreclickHopSettings(migratedSettings);
+  }
   return {
     ...RoomSettings.sanitizeRoomSettings(migratedSettings),
     ...Physics.sanitizePhysics(migratedSettings),
