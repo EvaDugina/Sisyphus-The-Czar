@@ -3029,7 +3029,7 @@ test.skip("legacy: два браузера больше не объединяю�
   await expect(remoteCursor).toHaveCSS("opacity", "1");
   await expect(remoteCursor).toHaveCSS(
     "background-image",
-    /cursor-grab(?:-[A-Za-z0-9_-]+)?\.png/
+    /cursor-grab-02(?:-[A-Za-z0-9_-]+)?\.png/
   );
   await expect
     .poll(() =>
@@ -3121,7 +3121,7 @@ test.skip("legacy: два браузера больше не объединяю�
   await expect(localGrabbingCursor).toHaveClass(/is-grabbing/);
   await expect(localGrabbingCursor).toHaveCSS(
     "background-image",
-    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.png/
+    /cursor-grabbing-02(?:-[A-Za-z0-9_-]+)?\.png/
   );
   const grabbingCursorSize = await localGrabbingCursor.evaluate((cursor) => {
     const style = getComputedStyle(cursor);
@@ -3138,7 +3138,7 @@ test.skip("legacy: два браузера больше не объединяю�
   await expect(remoteGrabbingCursor).toHaveClass(/is-grabbing/);
   await expect(remoteGrabbingCursor).toHaveCSS(
     "background-image",
-    /cursor-grabbing(?:-[A-Za-z0-9_-]+)?\.png/
+    /cursor-grabbing-02(?:-[A-Za-z0-9_-]+)?\.png/
   );
   const remoteGrabbingCursorSize = await remoteGrabbingCursor.evaluate(
     (cursor) => {

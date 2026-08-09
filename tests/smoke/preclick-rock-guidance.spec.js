@@ -148,7 +148,7 @@ test("штатный runtime включает parallax до первого кл�
         (element) => getComputedStyle(element).backgroundImage,
       ),
     ),
-  ).toContain("cursor-grabbing");
+  ).toContain("cursor-grabbing-02");
   await expect(rock).toHaveClass(/is-preclick-parallax/);
   await page.mouse.up();
   await expect(hand).not.toHaveClass(/is-grabbing/);
@@ -158,7 +158,7 @@ test("штатный runtime включает parallax до первого кл�
         (element) => getComputedStyle(element).backgroundImage,
       ),
     ),
-  ).toContain("cursor-grab");
+  ).toContain("cursor-grab-02");
   await expect(rock).toHaveClass(/is-preclick-parallax/);
 
   await scrollToRock(page);

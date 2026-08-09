@@ -187,6 +187,14 @@ test("production build creates one personal session per user, keeps a clean URL 
 
     await scrollToRock(page);
     await scrollToRock(second);
+    await expect(page.locator(SOURCE_ROCK)).toHaveAttribute(
+      "src",
+      /rock-03(?:-[A-Za-z0-9_-]+)?\.png/,
+    );
+    await expect(second.locator(SOURCE_ROCK)).toHaveAttribute(
+      "src",
+      /rock-03(?:-[A-Za-z0-9_-]+)?\.png/,
+    );
     const firstTopBefore = await page.locator(SOURCE_ROCK).evaluate(
       (rock) => rock.getBoundingClientRect().top
     );
@@ -195,13 +203,10 @@ test("production build creates one personal session per user, keeps a clean URL 
     const secondPoint = await moveToVisibleRock(second);
     await expect(secondHand).toHaveClass(/is-visible/);
     await expect(secondHand).not.toHaveClass(/is-grabbing/);
-    expect(
-      decodeURIComponent(
-        await secondHand.evaluate(
-          (element) => getComputedStyle(element).backgroundImage
-        )
-      )
-    ).toContain("cursor-grab");
+    await expect(secondHand).toHaveCSS(
+      "background-image",
+      /cursor-grab-02(?:-[A-Za-z0-9_-]+)?\.png/,
+    );
 
     await second.mouse.down();
     await expect(secondHand).toHaveClass(/is-grabbing/);
@@ -211,13 +216,10 @@ test("production build creates one personal session per user, keeps a clean URL 
       )
       .toBe(true);
     await expect(second.locator(SOURCE_ROCK)).toHaveClass(/is-dragging/);
-    expect(
-      decodeURIComponent(
-        await secondHand.evaluate(
-          (element) => getComputedStyle(element).backgroundImage
-        )
-      )
-    ).toContain("cursor-grabbing");
+    await expect(secondHand).toHaveCSS(
+      "background-image",
+      /cursor-grabbing-02(?:-[A-Za-z0-9_-]+)?\.png/,
+    );
     await second.mouse.move(secondPoint.x, Math.max(24, secondPoint.y - 140), {
       steps: 12,
     });
