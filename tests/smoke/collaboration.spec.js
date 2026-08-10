@@ -314,7 +314,12 @@ test("camera UI и новые настройки сохраняются вмес
     "max",
     "1",
   );
-  await expect(page.locator('[name="handAlwaysVisible"]')).toBeChecked();
+  await expect(page.locator('[name="handVisibilityMode"]')).toHaveValue(
+    "always",
+  );
+  await expect(page.locator('[name="handImageChangeDelayMs"]')).toHaveValue(
+    "0",
+  );
   await expect(page.locator('[name="trailAnchorHeightPercent"]')).toHaveValue(
     "100",
   );
@@ -332,7 +337,8 @@ test("camera UI и новые настройки сохраняются вмес
   await expect(page.locator('[name="foldZoneSize"]')).toHaveValue("20");
 
   await setRange(page, "cameraFollowLerp", 0.25);
-  await setCheckbox(page, "handAlwaysVisible", false);
+  await page.locator('[name="handVisibilityMode"]').selectOption("hover");
+  await setRange(page, "handImageChangeDelayMs", 375);
   await setField(page, "rockMinWidthVw", 40);
   await setField(page, "rockMaxWidthVw", 10);
   await setCheckbox(page, "finalFallEnabled", true);
@@ -384,7 +390,12 @@ test("camera UI и новые настройки сохраняются вмес
   await openControlGroup(page, "Рука");
   await openControlGroup(page, "Капель");
   await expect(page.locator('[name="cameraFollowLerp"]')).toHaveValue("0.25");
-  await expect(page.locator('[name="handAlwaysVisible"]')).not.toBeChecked();
+  await expect(page.locator('[name="handVisibilityMode"]')).toHaveValue(
+    "hover",
+  );
+  await expect(page.locator('[name="handImageChangeDelayMs"]')).toHaveValue(
+    "375",
+  );
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("40");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("10");
   await expect(page.locator('[name="finalFallEnabled"]')).toBeChecked();
@@ -400,7 +411,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -411,7 +422,8 @@ test("camera UI и новые настройки сохраняются вмес
           ],
           cameraFollowLerp: stored.cameraFollowLerp,
           finalFallEnabled: stored.finalFallEnabled,
-          handAlwaysVisible: stored.handAlwaysVisible,
+          handVisibilityMode: stored.handVisibilityMode,
+          handImageChangeDelayMs: stored.handImageChangeDelayMs,
           size: [stored.rockMinWidthVw, stored.rockMaxWidthVw],
         };
       }),
@@ -421,7 +433,8 @@ test("camera UI и новые настройки сохраняются вмес
       drizzle: [0.2, 0.8, "cubic-bezier(0, 0, 1, 1)"],
       cameraFollowLerp: 0.25,
       finalFallEnabled: true,
-      handAlwaysVisible: false,
+      handVisibilityMode: "hover",
+      handImageChangeDelayMs: 375,
       size: [40, 10],
     });
   await setCheckbox(page, "finalFallEnabled", false);
@@ -1314,7 +1327,7 @@ test("dev при запуске переносит последний локал
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
         );
         return stored.gravity;
       }),
@@ -1322,11 +1335,11 @@ test("dev при запуске переносит последний локал
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v36 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v37 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v36");
+    localStorage.removeItem("sisyphus-czar-settings-v37");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1348,13 +1361,14 @@ test("локальные настройки v20 мигрируют в v36 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
         );
         return {
           gravity: stored.gravity,
           glowOptimizationMode: stored.glowOptimizationMode,
           cameraFollowLerp: stored.cameraFollowLerp,
-          handAlwaysVisible: stored.handAlwaysVisible,
+          handVisibilityMode: stored.handVisibilityMode,
+          handImageChangeDelayMs: stored.handImageChangeDelayMs,
           preclickHopActivationRadiusVw: stored.preclickHopActivationRadiusVw,
           preclickHopMaxDistanceVw: stored.preclickHopMaxDistanceVw,
           hasLegacyPreclick: Object.keys(stored).some((key) =>
@@ -1369,7 +1383,8 @@ test("локальные настройки v20 мигрируют в v36 без
       gravity: 7.5,
       glowOptimizationMode: "balanced",
       cameraFollowLerp: 0.1,
-      handAlwaysVisible: true,
+      handVisibilityMode: "always",
+      handImageChangeDelayMs: 0,
       preclickHopActivationRadiusVw: 50,
       preclickHopMaxDistanceVw: 62.5,
       hasLegacyPreclick: false,
@@ -2192,7 +2207,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v36",
+      "sisyphus-czar-settings-v37",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2654,7 +2669,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -2693,7 +2708,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2829,7 +2844,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2864,7 +2879,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2881,7 +2896,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}"
         );
         return stored.rainEnabled;
       })

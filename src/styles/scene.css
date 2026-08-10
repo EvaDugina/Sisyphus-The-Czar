@@ -440,6 +440,10 @@ body.state-fallingToBottom .hand-cursor {
   display: none;
 }
 
+body.hand-hidden .hand-cursor {
+  display: none !important;
+}
+
 :is(.trail-glow, .trail) {
   position: fixed;
   inset: 0;
@@ -490,11 +494,11 @@ body.state-fallingToBottom .hand-cursor {
     opacity: 0;
   }
 
-  .rock {
+  body:not(.hand-hidden) .rock {
     cursor: none;
   }
 
-  .rock.is-dragging {
+  body:not(.hand-hidden) .rock.is-dragging {
     cursor: none;
   }
 

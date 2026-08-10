@@ -18,7 +18,7 @@
   function createProductionPreset(Physics, RoomSettings) {
     "use strict";
 
-    const SETTINGS_SCHEMA_VERSION = 36;
+    const SETTINGS_SCHEMA_VERSION = 37;
     const PRESET_NAME = "prod";
     const settings = Object.freeze({
       ...RoomSettings.DEFAULT_ROOM_SETTINGS,

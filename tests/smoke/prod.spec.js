@@ -210,16 +210,16 @@ test("production build creates one personal session per user, keeps a clean URL 
     const secondPoint = await moveToVisibleRock(second);
     await second.mouse.down();
     await expect(secondHand).toHaveClass(/is-grabbing/);
+    await expect(secondHand).toHaveCSS(
+      "background-image",
+      /cursor-grabbing-02(?:-[A-Za-z0-9_-]+)?\.png/,
+    );
     await expect
       .poll(() =>
         secondSocketMessages.some(({ type }) => type === "control.granted"),
       )
       .toBe(true);
     await expect(second.locator(SOURCE_ROCK)).toHaveClass(/is-dragging/);
-    await expect(secondHand).toHaveCSS(
-      "background-image",
-      /cursor-grabbing-02(?:-[A-Za-z0-9_-]+)?\.png/,
-    );
     await second.mouse.move(secondPoint.x, Math.max(24, secondPoint.y - 140), {
       steps: 12,
     });

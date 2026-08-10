@@ -6,7 +6,7 @@
     {
       "id": "settings-version-mscz5hfd-c30065d5-639b-4c30-9b66-03f291160c20",
       "name": "v1",
-      "settingsSchemaVersion": 36,
+      "settingsSchemaVersion": 37,
       "createdAt": "2026-08-03T08:35:52.057Z",
       "updatedAt": "2026-08-09T18:48:36.710Z",
       "settings": {
@@ -44,7 +44,8 @@
         "preclickHopMaxDistanceVw": 184.3,
         "customCursorEnabled": false,
         "customCursorSizePx": 32,
-        "handAlwaysVisible": true,
+        "handVisibilityMode": "always",
+        "handImageChangeDelayMs": 0,
         "rockGrabRadiusVh": 0,
         "rockMinWidthVw": 25,
         "rockMaxWidthVw": 50,

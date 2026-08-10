@@ -410,7 +410,7 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "preclickHopActivationRadiusVw"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v36");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v37");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -482,7 +482,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 36);
+  assert.equal(productionSettingsSchemaVersion, 37);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1466,7 +1466,31 @@ test("UI содержит настройки камеры, физики, overflo
       enabledWhen: "customCursorEnabled",
     },
   );
-  assert.equal(byName("handAlwaysVisible").defaultChecked, true);
+  assert.deepEqual(
+    {
+      type: byName("handVisibilityMode").type,
+      defaultValue: byName("handVisibilityMode").defaultValue,
+      options: byName("handVisibilityMode").options,
+    },
+    {
+      type: "select",
+      defaultValue: "always",
+      options: [
+        ["always", "Показывать всегда"],
+        ["hover", "Показывать по hover"],
+        ["hidden", "Не показывать"],
+      ],
+    },
+  );
+  assert.deepEqual(
+    [
+      byName("handImageChangeDelayMs").min,
+      byName("handImageChangeDelayMs").max,
+      byName("handImageChangeDelayMs").step,
+      byName("handImageChangeDelayMs").defaultValue,
+    ],
+    [0, 1000, 1, 0],
+  );
   assert.deepEqual(
     [
       byName("rockGrabRadiusVh").min,
@@ -1645,7 +1669,8 @@ test("параметры единственной руки вынесены в �
   assert.deepEqual(
     handSizeGroup.controls.map((control) => control.name),
     [
-      "handAlwaysVisible",
+      "handVisibilityMode",
+      "handImageChangeDelayMs",
       "rockGrabRadiusVh",
       "handAudioEnabled",
       "handForce",
@@ -1791,7 +1816,8 @@ test("настройки препятствия Окна нормализуют 
       rockActivatedWidthVw: 10,
       handAudioEnabled: true,
       drizzleEnabled: true,
-      handAlwaysVisible: true,
+      handVisibilityMode: "always",
+      handImageChangeDelayMs: 0,
       cameraFollowLerp: 0.1,
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_HOP_SETTINGS,
@@ -1939,7 +1965,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 34);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 35);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -1963,6 +1989,8 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickParallaxReturnEasing: "invalid",
     customCursorEnabled: "true",
     customCursorSizePx: 999,
+    handVisibilityMode: "invalid",
+    handImageChangeDelayMs: 9999,
     rockGrabRadiusVh: 999,
   });
   assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
@@ -1984,6 +2012,8 @@ test("группа дождя содержит общий toggle и blur тём�
   }
   assert.equal(visualSettings.customCursorEnabled, true);
   assert.equal(visualSettings.customCursorSizePx, 128);
+  assert.equal(visualSettings.handVisibilityMode, "always");
+  assert.equal(visualSettings.handImageChangeDelayMs, 1000);
   assert.equal(visualSettings.rockGrabRadiusVh, 10);
   assert.deepEqual(
     SharedRoomSettings.migrateRockVisualSettings({
@@ -2068,6 +2098,8 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.deepEqual(currentV34, {
     preclickHopActivationRadiusVw: 11,
     preclickHopMaxDistanceVw: 184.3,
+    handVisibilityMode: "always",
+    handImageChangeDelayMs: 0,
   });
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings({

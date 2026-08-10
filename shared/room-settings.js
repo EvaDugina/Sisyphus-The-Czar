@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 34;
+  const ROOM_SETTINGS_VERSION = 35;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -44,6 +44,7 @@
     "cubic-bezier(0.4, 0, 0.2, 1)";
   const ROCK_WIDTH_VW_LIMITS = Object.freeze([1, 150]);
   const ROCK_IMAGE_IDS = Object.freeze(["rock-03", "rock", "rock2"]);
+  const HAND_VISIBILITY_MODES = Object.freeze(["always", "hover", "hidden"]);
 
   const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
   const MIX_BLEND_MODES = Object.freeze([
@@ -75,6 +76,7 @@
     finalFallDelaySeconds: [0, 10],
     drizzleVolume: [0, 1],
     customCursorSizePx: [8, 128],
+    handImageChangeDelayMs: [0, 1000],
     handWidthVw: [10, 90],
     heightGateCount: [0, MAX_HEIGHT_GATES],
     heightGatePercent: [1, 99],
@@ -151,7 +153,8 @@
     preclickHopMaxDistanceVw: 62.5,
     customCursorEnabled: false,
     customCursorSizePx: 32,
-    handAlwaysVisible: true,
+    handVisibilityMode: "always",
+    handImageChangeDelayMs: 0,
     rockGrabRadiusVh: 0,
     handWidthVw: 14.375,
     heightGates: Object.freeze([]),
@@ -720,10 +723,18 @@
         ROOM_SETTINGS_LIMITS.customCursorSizePx[0],
         ROOM_SETTINGS_LIMITS.customCursorSizePx[1]
       ),
-      handAlwaysVisible: boolSetting(
+      handVisibilityMode: enumSetting(
         source,
         fallbackSource,
-        "handAlwaysVisible"
+        "handVisibilityMode",
+        HAND_VISIBILITY_MODES
+      ),
+      handImageChangeDelayMs: integerSetting(
+        source,
+        fallbackSource,
+        "handImageChangeDelayMs",
+        ROOM_SETTINGS_LIMITS.handImageChangeDelayMs[0],
+        ROOM_SETTINGS_LIMITS.handImageChangeDelayMs[1]
       ),
       rockGrabRadiusVh: finiteSetting(
         source,
@@ -1027,6 +1038,23 @@
     return source;
   }
 
+  function migrateHandDisplaySettings(input) {
+    const source = input && typeof input === "object" ? { ...input } : {};
+    if (!Object.hasOwn(source, "handVisibilityMode")) {
+      source.handVisibilityMode = Object.hasOwn(source, "handAlwaysVisible")
+        ? boolSetting(source, DEFAULT_ROOM_SETTINGS, "handAlwaysVisible")
+          ? "always"
+          : "hover"
+        : DEFAULT_ROOM_SETTINGS.handVisibilityMode;
+    }
+    if (!Object.hasOwn(source, "handImageChangeDelayMs")) {
+      source.handImageChangeDelayMs =
+        DEFAULT_ROOM_SETTINGS.handImageChangeDelayMs;
+    }
+    delete source.handAlwaysVisible;
+    return source;
+  }
+
   function migrateRoomSettings(input, version = 1) {
     const source = input && typeof input === "object" ? { ...input } : {};
     if (finiteNumber(version, 1) < 4) {
@@ -1082,7 +1110,7 @@
     }
     if (finiteNumber(version, 1) < 25) {
       if (!Object.hasOwn(source, "handAlwaysVisible")) {
-        source.handAlwaysVisible = DEFAULT_ROOM_SETTINGS.handAlwaysVisible;
+        source.handAlwaysVisible = true;
       }
       if (!Object.hasOwn(source, "cameraFollowLerp")) {
         source.cameraFollowLerp = DEFAULT_ROOM_SETTINGS.cameraFollowLerp;
@@ -1112,9 +1140,12 @@
     const rockMigrated = finiteNumber(version, 1) < 33
       ? migrateRockVisualSettings(foldMigrated)
       : foldMigrated;
-    return finiteNumber(version, 1) < 34
+    const hopMigrated = finiteNumber(version, 1) < 34
       ? migratePreclickHopSettings(rockMigrated)
       : rockMigrated;
+    return finiteNumber(version, 1) < 35
+      ? migrateHandDisplaySettings(hopMigrated)
+      : hopMigrated;
   }
 
   function sceneMotionMultiplier(settings) {
@@ -1132,6 +1163,7 @@
     MAX_HEIGHT_GATES,
     PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
     ROCK_IMAGE_IDS,
+    HAND_VISIBILITY_MODES,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,
@@ -1142,6 +1174,7 @@
     migrateFoldSettings,
     migratePreclickHopSettings,
     migrateRockVisualSettings,
+    migrateHandDisplaySettings,
     migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,

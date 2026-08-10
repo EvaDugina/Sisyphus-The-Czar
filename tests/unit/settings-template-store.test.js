@@ -65,7 +65,7 @@ test("settings template store атомарно сохраняет whitelist и �
   assert.deepEqual(loaded.latest(), saved.entry);
 });
 
-test("settings template store мигрирует legacy Fold-ключи в schema 36", (context) => {
+test("settings template store мигрирует legacy Fold-ключи в schema 37", (context) => {
   const { store } = temporaryStore(context);
   const legacy = entry("legacy-fold");
   legacy.settingsSchemaVersion = 32;
@@ -79,7 +79,7 @@ test("settings template store мигрирует legacy Fold-ключи в schem
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 36);
+  assert.equal(imported.settingsSchemaVersion, 37);
   assert.equal(imported.settings.foldAngle, 55);
   assert.equal(imported.settings.foldZoneSize, 18);
   assert.equal(imported.settings.foldBlendEnabled, false);
@@ -107,7 +107,7 @@ test("settings template store мигрирует длину отскока из 
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 36);
+  assert.equal(imported.settingsSchemaVersion, 37);
   assert.equal(imported.settings.preclickHopActivationRadiusVw, 20);
   assert.equal(imported.settings.preclickHopMaxDistanceVw, 25);
   assert.equal(
@@ -126,11 +126,27 @@ test("settings template store разделяет press и pulse из schema 34",
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 36);
+  assert.equal(imported.settingsSchemaVersion, 37);
   assert.equal(imported.settings.rockPressShrinkPercent, 17);
   assert.equal(imported.settings.rockPulseShrinkPercent, 17);
   assert.equal(imported.settings.rockImageId, "rock-03");
   assert.equal(imported.settings.foldRockImageId, "rock-03");
+});
+
+test("settings template store мигрирует boolean-видимость руки из schema 36", (context) => {
+  const { store } = temporaryStore(context);
+  const legacy = entry("legacy-hand-visibility");
+  legacy.settingsSchemaVersion = 36;
+  legacy.settings = {
+    handAlwaysVisible: false,
+  };
+
+  const imported = store.importEntries([legacy]).entries[0];
+
+  assert.equal(imported.settingsSchemaVersion, 37);
+  assert.equal(imported.settings.handVisibilityMode, "hover");
+  assert.equal(imported.settings.handImageChangeDelayMs, 0);
+  assert.equal(Object.hasOwn(imported.settings, "handAlwaysVisible"), false);
 });
 
 test("latest выбирается по updatedAt, createdAt и id", (context) => {

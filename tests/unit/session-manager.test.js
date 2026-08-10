@@ -550,7 +550,7 @@ test("старая сессия внутри вершины получает н�
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 });
 
-test("persisted session мигрирует Fold, отскок и камень в room schema 34", () => {
+test("persisted session мигрирует Fold, отскок, камень и руку в room schema 35", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
     {
@@ -705,7 +705,8 @@ test("roomSettings.update синхронизирует размер руки и 
     handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
     preclickHopActivationRadiusVw: 36,
     preclickHopMaxDistanceVw: 72,
-    handAlwaysVisible: false,
+    handVisibilityMode: "hidden",
+    handImageChangeDelayMs: 375,
     rockGrabRadiusVh: 4.5,
     cameraFollowLerp: 0.25,
     rainMaxVolume: 2.5,
@@ -729,7 +730,8 @@ test("roomSettings.update синхронизирует размер руки и 
       handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
       preclickHopActivationRadiusVw: 36,
       preclickHopMaxDistanceVw: 72,
-      handAlwaysVisible: false,
+      handVisibilityMode: "hidden",
+      handImageChangeDelayMs: 375,
       rockGrabRadiusVh: 4.5,
       cameraFollowLerp: 0.25,
       rainMaxVolume: 2.5,

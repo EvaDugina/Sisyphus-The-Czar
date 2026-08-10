@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v36";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v37";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v36",
   "sisyphus-czar-settings-v35",
   "sisyphus-czar-settings-v34",
   "sisyphus-czar-settings-v33",
@@ -871,11 +872,27 @@ export const SETTINGS_GROUPS = [
     title: "Рука",
     controls: [
       {
-        name: "handAlwaysVisible",
-        label: "Показывать руку всегда",
-        type: "checkbox",
-        defaultChecked: DEFAULT_ROOM_SETTINGS.handAlwaysVisible,
-        hint: "Если выключено, фото-рука видна только при наведении на камень и во время его захвата.",
+        name: "handVisibilityMode",
+        label: "Отображение руки",
+        type: "select",
+        defaultValue: DEFAULT_ROOM_SETTINGS.handVisibilityMode,
+        options: [
+          ["always", "Показывать всегда"],
+          ["hover", "Показывать по hover"],
+          ["hidden", "Не показывать"],
+        ],
+        hint: "Рука может быть постоянной, появляться только над камнем или быть полностью скрыта.",
+      },
+      {
+        name: "handImageChangeDelayMs",
+        label: "Задержка смены изображения, мс",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handImageChangeDelayMs[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.handImageChangeDelayMs[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.handImageChangeDelayMs,
+        output: `${DEFAULT_ROOM_SETTINGS.handImageChangeDelayMs}мс`,
+        hint: "Задержка между основным кликом и сменой изображения руки. Ноль переключает изображение сразу.",
       },
       {
         name: "rockGrabRadiusVh",

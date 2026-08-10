@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 36;
+const SETTINGS_SCHEMA_VERSION = 37;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -388,6 +388,9 @@ export function createSettingsController(options) {
     }
     if (Number(settingsSchemaVersion) < 36) {
       migrated = SharedRoomSettings.migratePreclickHopSettings(migrated);
+    }
+    if (Number(settingsSchemaVersion) < 37) {
+      migrated = SharedRoomSettings.migrateHandDisplaySettings(migrated);
     }
     delete migrated.positionScrollEnabled;
     delete migrated.positionScrollZonePercent;
@@ -1296,6 +1299,7 @@ export function createSettingsController(options) {
       rockJumpInertiaSpreadPercent:
         `${params.rockJumpInertiaSpreadPercent.toFixed(0)}%`,
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
+      handImageChangeDelayMs: `${params.handImageChangeDelayMs.toFixed(0)}мс`,
       rockGrabRadiusVh: `${params.rockGrabRadiusVh.toFixed(1)}vh`,
       windowObstacleMinHeightVh:
         `${params.windowObstacleMinHeightVh.toFixed(0)}vh`,

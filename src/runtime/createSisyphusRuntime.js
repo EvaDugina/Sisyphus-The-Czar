@@ -335,8 +335,10 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorEnabled,
     customCursorSizePx:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorSizePx,
-    handAlwaysVisible:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handAlwaysVisible,
+    handVisibilityMode:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handVisibilityMode,
+    handImageChangeDelayMs:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handImageChangeDelayMs,
     rockMinWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMinWidthVw,
     rockMaxWidthVw: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockMaxWidthVw,
     sceneHeightScreens:
@@ -454,6 +456,7 @@ export function createSisyphusRuntime(elements = {}) {
     pointerVx: 0,
     pointerVy: 0,
     alternateHand: false,
+    handImageChangeTimerId: null,
     turbTime: 0,
     imprint: null,
     wasAtReturnPlace: false,
@@ -479,7 +482,14 @@ export function createSisyphusRuntime(elements = {}) {
     playCount: 0,
     stopCount: 0,
   };
-  body.classList.toggle("hand-always-visible", params.handAlwaysVisible);
+  body.classList.toggle(
+    "hand-always-visible",
+    params.handVisibilityMode === "always",
+  );
+  body.classList.toggle(
+    "hand-hidden",
+    params.handVisibilityMode === "hidden",
+  );
   applyCustomCursorSettings();
   resetPreclickRockGuidance();
   const finalFallGate = {
@@ -2227,8 +2237,16 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function applyHandVisibilitySetting() {
-    body.classList.toggle("hand-always-visible", params.handAlwaysVisible);
-    if (!params.handAlwaysVisible && !motion.dragging) {
+    body.classList.toggle("hand-always-visible", handIsAlwaysVisible());
+    body.classList.toggle("hand-hidden", handIsHidden());
+    if (handIsHidden()) {
+      setHandToGrab();
+      hideHandCursor();
+      return;
+    }
+    if (handIsAlwaysVisible()) {
+      showInitialHandCursor();
+    } else if (!motion.dragging) {
       hideHandCursor();
     }
   }
@@ -2413,7 +2431,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (shouldHandleChange("themeMode", "blendMode", "lineOpacity")) {
       applyTrailBlendMode();
     }
-    if (shouldHandleChange("handAlwaysVisible")) {
+    if (shouldHandleChange("handVisibilityMode")) {
       applyHandVisibilitySetting();
     }
     if (shouldHandleChange("customCursorEnabled", "customCursorSizePx")) {
@@ -2655,8 +2673,17 @@ export function createSisyphusRuntime(elements = {}) {
     return (
       motion.phase === PHASES.PLAY &&
       finePointer.matches &&
+      !handIsHidden() &&
       (!event.pointerType || event.pointerType === "mouse")
     );
+  }
+
+  function handIsAlwaysVisible() {
+    return params.handVisibilityMode === "always";
+  }
+
+  function handIsHidden() {
+    return params.handVisibilityMode === "hidden";
   }
 
   function setHandCursorViewportPosition(position) {
@@ -2685,7 +2712,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function showInitialHandCursor() {
-    if (finePointer.matches && params.handAlwaysVisible) {
+    if (finePointer.matches && handIsAlwaysVisible()) {
       showHandCursor({
         clientX: window.innerWidth / 2,
         clientY: window.innerHeight / 2,
@@ -2703,7 +2730,7 @@ export function createSisyphusRuntime(elements = {}) {
     moveHandCursor(event);
     handCursor.classList.toggle(
       "is-visible",
-      params.handAlwaysVisible || motion.dragging || pointerIsOverRock(event),
+      handIsAlwaysVisible() || motion.dragging || pointerIsOverRock(event),
     );
   }
 
@@ -2721,11 +2748,13 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     moveHandCursor(event);
-    if (!params.handAlwaysVisible && !pointerIsOverRock(event)) {
+    if (!handIsAlwaysVisible() && !pointerIsOverRock(event)) {
       return;
     }
     handCursor.classList.add("is-visible");
-    setGrabbingCursor(true);
+    if (!motion.dragging) {
+      scheduleGrabbingHandImage();
+    }
   }
 
   function releaseAlwaysVisibleHand(event) {
@@ -2736,8 +2765,8 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    setGrabbingCursor(false);
-    if (!params.handAlwaysVisible && !pointerIsOverRock(event)) {
+    setHandToGrab();
+    if (!handIsAlwaysVisible() && !pointerIsOverRock(event)) {
       hideHandCursor();
     }
   }
@@ -2750,12 +2779,40 @@ export function createSisyphusRuntime(elements = {}) {
     body.classList.remove("is-settings-pointer-active");
   }
 
-  function toggleHandVariant() {
-    motion.alternateHand = !motion.alternateHand;
-    handCursor.classList.toggle("is-alternate", motion.alternateHand);
+  function clearHandImageChangeTimer() {
+    if (motion.handImageChangeTimerId === null) {
+      return;
+    }
+    window.clearTimeout(motion.handImageChangeTimerId);
+    motion.handImageChangeTimerId = null;
+  }
+
+  function applyGrabbingHandImage() {
+    motion.handImageChangeTimerId = null;
+    if (handIsHidden()) {
+      return;
+    }
+    motion.alternateHand = true;
+    handCursor.classList.add("is-alternate", "is-grabbing");
+  }
+
+  function scheduleGrabbingHandImage() {
+    clearHandImageChangeTimer();
+    if (handIsHidden()) {
+      return;
+    }
+    if (params.handImageChangeDelayMs <= 0) {
+      applyGrabbingHandImage();
+      return;
+    }
+    motion.handImageChangeTimerId = window.setTimeout(
+      applyGrabbingHandImage,
+      params.handImageChangeDelayMs,
+    );
   }
 
   function setHandToGrab() {
+    clearHandImageChangeTimer();
     motion.alternateHand = false;
     handCursor.classList.remove("is-alternate", "is-grabbing");
   }
@@ -4106,7 +4163,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 36,
+      settingsSchemaVersion: 37,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -5007,7 +5064,7 @@ export function createSisyphusRuntime(elements = {}) {
     activateRockPress();
     clearSharedReleaseHandoff();
     collab.releasePending = false;
-    toggleHandVariant();
+    scheduleGrabbingHandImage();
     updateBounds();
     const position = localToCanonical(motion.x, motion.y);
     motion.suspended = false;
@@ -5021,13 +5078,16 @@ export function createSisyphusRuntime(elements = {}) {
     motion.lastPointerAt = 0;
     recordPointerVelocity(event);
     showHandCursor(event);
-    setGrabbingCursor(true);
     rock.classList.remove("is-falling");
     rock.classList.add("is-dragging");
     rock.setPointerCapture(event.pointerId);
     collab.pendingControl = true;
 
-    const pointer = updateLocalSharedPointer(event, "grabbing", true);
+    const pointer = updateLocalSharedPointer(
+      event,
+      "grabbing",
+      !handIsHidden(),
+    );
     sendShared("control.acquire", {
       ...position,
       pointer,
@@ -5040,10 +5100,10 @@ export function createSisyphusRuntime(elements = {}) {
     const pointer = updateLocalSharedPointer(
       event,
       motion.dragging ? "grabbing" : "grab",
-      true
+      !handIsHidden(),
     );
     if (!motion.dragging || (!collab.hasControl && !collab.pendingControl)) {
-      sendSharedPointer(event, "grab", true);
+      sendSharedPointer(event, "grab", !handIsHidden());
       return;
     }
     event.preventDefault();
@@ -5095,7 +5155,9 @@ export function createSisyphusRuntime(elements = {}) {
       : { vx: 0, vy: 0 };
     const position = localToCanonical(motion.x, motion.y);
     const pointerVisible =
-      event.type !== "pointercancel" && pointerIsOverRock(event);
+      !handIsHidden() &&
+      event.type !== "pointercancel" &&
+      pointerIsOverRock(event);
     const pointer = updateLocalSharedPointer(event, "grab", pointerVisible);
     if (canReleaseWithImpulse) {
       startSharedReleaseHandoff();
@@ -6108,7 +6170,7 @@ export function createSisyphusRuntime(elements = {}) {
     event.preventDefault();
     armGroundImpactSound();
     activateRockPress();
-    toggleHandVariant();
+    scheduleGrabbingHandImage();
     updateBounds();
     armRockActivationScale();
     motion.suspended = false;
@@ -6122,7 +6184,6 @@ export function createSisyphusRuntime(elements = {}) {
     motion.lastPointerAt = 0;
     recordPointerVelocity(event);
     showHandCursor(event);
-    setGrabbingCursor(true);
     rock.classList.remove("is-falling");
     rock.classList.add("is-dragging");
     rock.setPointerCapture(event.pointerId);
@@ -6233,20 +6294,20 @@ export function createSisyphusRuntime(elements = {}) {
     playChainHoverSound();
     showHandCursor(event);
     if (collab.enabled) {
-      sendSharedPointer(event, "grab", true, true);
+      sendSharedPointer(event, "grab", !handIsHidden(), true);
     }
   }
 
   function leaveRock(event) {
     if (!motion.dragging) {
-      if (!params.handAlwaysVisible) {
+      if (!handIsAlwaysVisible()) {
         hideHandCursor();
       }
       if (collab.enabled) {
         sendSharedPointer(
           event,
           "grab",
-          params.handAlwaysVisible,
+          handIsAlwaysVisible(),
           true,
         );
       }
@@ -6551,6 +6612,7 @@ export function createSisyphusRuntime(elements = {}) {
       collab.leaving = true;
       stopLoop();
       stopRockPulse();
+      clearHandImageChangeTimer();
       cancelGlowRenderSchedule();
       settingsController.dispose?.();
       windowObstacleController.dispose();
@@ -6561,6 +6623,7 @@ export function createSisyphusRuntime(elements = {}) {
         "is-manual-scroll-disabled",
         "preclick-rock-guidance",
         "hand-always-visible",
+        "hand-hidden",
         "is-settings-pointer-active",
       );
       rock.classList.remove("is-preclick-hop");

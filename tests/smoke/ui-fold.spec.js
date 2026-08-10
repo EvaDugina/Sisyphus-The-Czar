@@ -42,6 +42,27 @@ async function setSettingValue(page, name, value) {
   }, value);
 }
 
+async function visibleRockPoint(page) {
+  return page.locator("#root > .world > .rock").evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    const left = Math.max(rect.left, 0);
+    const right = Math.min(rect.right, innerWidth);
+    const top = Math.max(rect.top, 0);
+    const bottom = Math.min(rect.bottom, innerHeight);
+    for (const yRatio of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+      for (const xRatio of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+        const x = left + (right - left) * xRatio;
+        const y = top + (bottom - top) * yRatio;
+        const hit = document.elementFromPoint(x, y);
+        if (hit === rock || rock.contains(hit)) {
+          return { x, y };
+        }
+      }
+    }
+    throw new Error("Не найдена видимая точка камня");
+  });
+}
+
 test("legacy drafts маршруты возвращают 404", async ({ request }) => {
   for (const path of ["/drafts", "/drafts/", "/drafts/assets/missing.js"]) {
     const response = await request.get(path);
@@ -49,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v36", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v37", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v36");
+    localStorage.removeItem("sisyphus-czar-settings-v37");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -70,7 +91,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v36", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -96,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v36", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -104,11 +125,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v36", 
     .toEqual([47, 13]);
 });
 
-test("hop-настройки мигрируют из localStorage v35 в v36 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v35 в v37 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v36");
+    localStorage.removeItem("sisyphus-czar-settings-v37");
     localStorage.setItem(
       "sisyphus-czar-settings-v35",
       JSON.stringify({
@@ -128,7 +149,7 @@ test("hop-настройки мигрируют из localStorage v35 в v36 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
         );
         return {
           radius: stored.preclickHopActivationRadiusVw,
@@ -148,11 +169,11 @@ test("hop-настройки мигрируют из localStorage v35 в v36 б�
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v36", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v37", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v36");
+    localStorage.removeItem("sisyphus-czar-settings-v37");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -165,7 +186,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -183,11 +204,42 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
+test("настройки руки мигрируют из localStorage v36 в v37", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem("sisyphus-czar-settings-v37");
+    localStorage.setItem(
+      "sisyphus-czar-settings-v36",
+      JSON.stringify({ handAlwaysVisible: false }),
+    );
+  });
+
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
+        );
+        return {
+          handVisibilityMode: stored.handVisibilityMode,
+          handImageChangeDelayMs: stored.handImageChangeDelayMs,
+          hasLegacy: Object.hasOwn(stored, "handAlwaysVisible"),
+        };
+      }),
+    )
+    .toEqual({
+      handVisibilityMode: "hover",
+      handImageChangeDelayMs: 0,
+      hasLegacy: false,
+    });
+});
+
 test("группа Камень показывает только два hop-контрола", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v36");
+    localStorage.removeItem("sisyphus-czar-settings-v37");
   });
 
   await page.goto("/");
@@ -384,6 +436,93 @@ test("постоянная рука показывает нативный кур
 
   await page.mouse.move(8, 8);
   await expect(body).not.toHaveClass(/is-settings-pointer-active/);
+});
+
+test("UI переключает три режима руки и задерживает смену изображения", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const handSelector = "#root > .world > .hand-cursor:not(.is-remote)";
+
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await navigateToSettings(page);
+  await setSettingValue(page, "handVisibilityMode", "hover");
+  await setSettingValue(page, "handImageChangeDelayMs", 300);
+  await expect(
+    page.locator('[data-output="handImageChangeDelayMs"]'),
+  ).toHaveText("300мс");
+  await page
+    .getByRole("button", {
+      name: "Сохранить версию и настройки комнаты",
+    })
+    .click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Версия и настройки комнаты сохранены",
+  );
+  await page.locator(".settings-version-toggle").click();
+  const productionButton = page.locator(".settings-version-production").first();
+  await expect(productionButton).toBeEnabled();
+  await productionButton.click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Production:",
+  );
+  await page.locator(".settings-page__back").click();
+  await waitForFoldReady(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopActivationRadiusVw: 0,
+      preclickHopMaxDistanceVw: 0,
+      rockJumpEnabled: false,
+    });
+  });
+
+  const hand = page.locator(handSelector);
+  const rock = page.locator("#root > .world > .rock");
+  await page.mouse.move(4, 4);
+  await expect(hand).not.toHaveClass(/is-visible/);
+  await rock.hover();
+  await expect(hand).toHaveClass(/is-visible/);
+
+  const rockPoint = await visibleRockPoint(page);
+  await page.mouse.move(rockPoint.x, rockPoint.y);
+  await page.mouse.down();
+  await expect(rock).toHaveClass(/is-dragging/);
+  await expect(hand).not.toHaveClass(/is-grabbing/);
+  await page.mouse.up();
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      handVisibilityMode: "always",
+      handImageChangeDelayMs: 300,
+    });
+  });
+  await expect(page.locator("body")).toHaveClass(/hand-always-visible/);
+  await expect(hand).toHaveClass(/is-visible/);
+  await page.mouse.move(80, 80);
+  await page.mouse.down();
+  await expect(hand).not.toHaveClass(/is-grabbing/);
+  await page.waitForTimeout(150);
+  await expect(hand).not.toHaveClass(/is-grabbing/);
+  await expect(hand).toHaveClass(/is-grabbing/, { timeout: 500 });
+  await page.mouse.up();
+  await expect(hand).not.toHaveClass(/is-grabbing/);
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      handVisibilityMode: "hidden",
+    });
+  });
+  await expect(page.locator("body")).toHaveClass(/hand-hidden/);
+  await rock.hover();
+  await expect(hand).not.toHaveClass(/is-visible/);
+  await expect(hand).toHaveCSS("display", "none");
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({ handVisibilityMode: "always" });
+  });
+  await expect(page.locator("body")).toHaveClass(/hand-always-visible/);
+  await expect(hand).toHaveClass(/is-visible/);
 });
 
 test("session toolbar показывает нативный курсор вместо фото-руки", async ({
