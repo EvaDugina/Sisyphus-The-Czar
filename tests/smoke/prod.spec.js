@@ -19,6 +19,34 @@ test("production / serves the Fold application", async ({ page }) => {
     "true",
   );
   await expect(page.locator('[data-fold-zone="top"]')).toHaveCount(1);
+  const zeroAngleFold = await page.evaluate(() => {
+    const layer = document.querySelector("[data-fold-layer]");
+    const surface = layer.querySelector(".fold-surface");
+    const zone = layer.querySelector(".fold-zone");
+    const previousAngle = layer.dataset.foldAngle;
+    const previousAngleStyle = layer.style.getPropertyValue("--fold-angle");
+    layer.dataset.foldAngle = "0";
+    layer.style.setProperty("--fold-angle", "0deg");
+    const transform = new DOMMatrix(getComputedStyle(surface).transform);
+    const result = {
+      angle: layer.dataset.foldAngle,
+      mirrorCount: layer.querySelectorAll(".fold-track > .world").length,
+      mirrorFrame: Number(layer.dataset.mirrorFrame || 0),
+      scaleY: transform.m22,
+      zoneBackground: getComputedStyle(zone).backgroundColor,
+    };
+    layer.dataset.foldAngle = previousAngle;
+    layer.style.setProperty("--fold-angle", previousAngleStyle);
+    return result;
+  });
+  expect(zeroAngleFold).toEqual({
+    angle: "0",
+    mirrorCount: 1,
+    mirrorFrame: expect.any(Number),
+    scaleY: 0,
+    zoneBackground: "rgba(0, 0, 0, 0)",
+  });
+  expect(zeroAngleFold.mirrorFrame).toBeGreaterThan(0);
   await expect(page.locator(SOURCE_ROCK)).toHaveClass(/is-preclick-hop/);
   await expect(page.locator(".settings-panel")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Начать сначала" })).toBeVisible();

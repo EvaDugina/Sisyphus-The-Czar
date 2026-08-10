@@ -18,6 +18,10 @@
   visibility: hidden;
 }
 
+.fold-layer[data-fold-angle="0"] {
+  --fold-seam-scale: 0;
+}
+
 .fold-zone {
   position: absolute;
   left: 0;
@@ -36,6 +40,10 @@
 
 .fold-zone--top {
   top: 0;
+}
+
+.fold-layer[data-fold-angle="0"] .fold-zone {
+  background: transparent;
 }
 
 .fold-camera {
@@ -70,6 +78,10 @@
   overflow: hidden;
   background: var(--surface);
   transform-style: preserve-3d;
+}
+
+.fold-layer[data-fold-angle="0"] .fold-source-window {
+  background: transparent;
 }
 
 .fold-track {
