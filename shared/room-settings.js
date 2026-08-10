@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 41;
+  const ROOM_SETTINGS_VERSION = 42;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -35,6 +35,8 @@
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
   const DEFAULT_ROCK_ACTIVATED_WIDTH_VW = 10;
   const DEFAULT_ROCK_SCALE_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
+  const DEFAULT_PRECLICK_HOP_SPEED_EASING =
+    "cubic-bezier(0.22, 1, 0.36, 1)";
   const DEFAULT_HAND_FORCE_DEFICIT_EASING =
     "cubic-bezier(0.42, 0, 1, 1)";
   const DEFAULT_RETURN_SCROLL_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
@@ -91,6 +93,8 @@
     preclickHopGuardClickCount: [0, 10],
     preclickHopActivationRadiusPercent: [0, 300],
     preclickHopMaxDistancePercent: [0, 150],
+    preclickHopMissProbabilityPercent: [0, 100],
+    preclickHopSpeedPxPerSecond: [100, 5000],
     rockGrabRadiusVh: [0, 10],
     rockPressShrinkPercent: [0, 50],
     rockWallPenetrationPercent: [0, 50],
@@ -159,6 +163,9 @@
     preclickHopGuardClickCount: 1,
     preclickHopActivationRadiusPercent: 50,
     preclickHopMaxDistancePercent: 62.5,
+    preclickHopMissProbabilityPercent: 10,
+    preclickHopSpeedPxPerSecond: 1200,
+    preclickHopSpeedEasing: DEFAULT_PRECLICK_HOP_SPEED_EASING,
     customCursorEnabled: false,
     customCursorSizePx: 32,
     handVisibilityMode: "always",
@@ -450,6 +457,10 @@
       ROOM_SETTINGS_LIMITS.preclickHopActivationRadiusPercent;
     const [preclickHopDistanceMin, preclickHopDistanceMax] =
       ROOM_SETTINGS_LIMITS.preclickHopMaxDistancePercent;
+    const [preclickHopMissMin, preclickHopMissMax] =
+      ROOM_SETTINGS_LIMITS.preclickHopMissProbabilityPercent;
+    const [preclickHopSpeedMin, preclickHopSpeedMax] =
+      ROOM_SETTINGS_LIMITS.preclickHopSpeedPxPerSecond;
     const [drizzleVolumeMin, drizzleVolumeMax] =
       ROOM_SETTINGS_LIMITS.drizzleVolume;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
@@ -756,6 +767,25 @@
         "preclickHopMaxDistancePercent",
         preclickHopDistanceMin,
         preclickHopDistanceMax
+      ),
+      preclickHopMissProbabilityPercent: finiteSetting(
+        preclickHopRadiusSource,
+        preclickHopFallbackSource,
+        "preclickHopMissProbabilityPercent",
+        preclickHopMissMin,
+        preclickHopMissMax
+      ),
+      preclickHopSpeedPxPerSecond: finiteSetting(
+        preclickHopRadiusSource,
+        preclickHopFallbackSource,
+        "preclickHopSpeedPxPerSecond",
+        preclickHopSpeedMin,
+        preclickHopSpeedMax
+      ),
+      preclickHopSpeedEasing: cubicBezierSetting(
+        preclickHopRadiusSource,
+        preclickHopFallbackSource,
+        "preclickHopSpeedEasing"
       ),
       customCursorEnabled: boolSetting(
         source,
@@ -1234,6 +1264,17 @@
         current.trailMaxPoints = ROOM_SETTINGS_LIMITS.trailMaxPoints[1];
       }
       delete current.trailUnlimited;
+    }
+    if (finiteNumber(version, 1) < 42) {
+      [
+        "preclickHopMissProbabilityPercent",
+        "preclickHopSpeedPxPerSecond",
+        "preclickHopSpeedEasing",
+      ].forEach((key) => {
+        if (!Object.hasOwn(current, key)) {
+          current[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
     }
     return current;
   }

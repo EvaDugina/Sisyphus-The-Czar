@@ -1,5 +1,7 @@
 export const WINDOW_OBSTACLE_LIFETIME_MS = 2000;
 export const WINDOW_OBSTACLE_CLOSED_POLL_MS = 100;
+export const PRECLICK_POPUP_WIDTH_PX = 640;
+export const PRECLICK_POPUP_FALLBACK_ASPECT_RATIO = 920 / 387;
 
 export const WINDOW_OBSTACLE_PERMISSION = Object.freeze({
   UNCHECKED: "unchecked",
@@ -56,6 +58,38 @@ export function windowObstacleHeightFromStartVh(
   return Math.max(0, ((start - current) / cleanViewportHeight) * 100);
 }
 
+export function preclickPopupGeometry({
+  aspectRatio = PRECLICK_POPUP_FALLBACK_ASPECT_RATIO,
+  centerX,
+  centerY,
+  screen,
+  width = PRECLICK_POPUP_WIDTH_PX,
+}) {
+  const rawScreen = screen && typeof screen === "object" ? screen : {};
+  const availWidth = Math.max(1, Math.round(finite(rawScreen.availWidth, 1)));
+  const availHeight = Math.max(1, Math.round(finite(rawScreen.availHeight, 1)));
+  const availLeft = Math.round(finite(rawScreen.availLeft, 0));
+  const availTop = Math.round(finite(rawScreen.availTop, 0));
+  const ratio = Math.max(
+    0.01,
+    finite(aspectRatio, PRECLICK_POPUP_FALLBACK_ASPECT_RATIO),
+  );
+  let popupWidth = Math.min(availWidth, Math.max(1, Math.round(finite(width, 1))));
+  let popupHeight = Math.max(1, Math.round(popupWidth / ratio));
+  if (popupHeight > availHeight) {
+    popupHeight = availHeight;
+    popupWidth = Math.min(availWidth, Math.max(1, Math.round(popupHeight * ratio)));
+  }
+  const requestedLeft = Math.round(finite(centerX, availLeft) - popupWidth / 2);
+  const requestedTop = Math.round(finite(centerY, availTop) - popupHeight / 2);
+  return {
+    height: popupHeight,
+    left: clamp(requestedLeft, availLeft, availLeft + availWidth - popupWidth),
+    top: clamp(requestedTop, availTop, availTop + availHeight - popupHeight),
+    width: popupWidth,
+  };
+}
+
 function relevantSettingsSignature(settings) {
   return JSON.stringify([
     Boolean(settings.windowObstacleEnabled),
@@ -84,6 +118,22 @@ export function createWindowObstacleController(options = {}) {
       availLeft: window.screen?.availLeft || 0,
       availTop: window.screen?.availTop || 0,
       availWidth: window.screen?.availWidth || window.innerWidth,
+    }));
+  const getViewportScreenOrigin =
+    options.getViewportScreenOrigin ||
+    (() => ({
+      x:
+        finite(window.screenX, 0) +
+        Math.max(
+          0,
+          (finite(window.outerWidth, window.innerWidth) - window.innerWidth) / 2,
+        ),
+      y:
+        finite(window.screenY, 0) +
+        Math.max(
+          0,
+          finite(window.outerHeight, window.innerHeight) - window.innerHeight,
+        ),
     }));
   const setTimeoutFn = options.setTimeoutFn || window.setTimeout.bind(window);
   const clearTimeoutFn = options.clearTimeoutFn || window.clearTimeout.bind(window);
@@ -196,12 +246,25 @@ export function createWindowObstacleController(options = {}) {
     }
   }
 
-  function bindBlankWindow(entry) {
+  function bindWindow(entry) {
     try {
       entry.popup.document.title = "";
-      entry.popup.document.body.replaceChildren();
-      entry.popup.document.body.style.margin = "0";
-      entry.popup.document.body.style.minHeight = "100vh";
+      const body = entry.popup.document.body;
+      body.style.margin = "0";
+      body.style.minHeight = "100vh";
+      body.style.overflow = "hidden";
+      if (entry.imageUrl) {
+        const image = entry.popup.document.createElement("img");
+        image.alt = "";
+        image.src = entry.imageUrl;
+        image.style.display = "block";
+        image.style.height = "100vh";
+        image.style.objectFit = "fill";
+        image.style.width = "100vw";
+        body.replaceChildren(image);
+      } else {
+        body.replaceChildren();
+      }
       entry.popup.document.addEventListener(
         "click",
         () => finalizeWindow(entry.id, true),
@@ -212,13 +275,14 @@ export function createWindowObstacleController(options = {}) {
     }
   }
 
-  function trackWindow(popup, kind) {
+  function trackWindow(popup, kind, content = {}) {
     const id = nextWindowId;
     nextWindowId += 1;
     const entry = {
       id,
       kind,
       popup,
+      imageUrl: typeof content.imageUrl === "string" ? content.imageUrl : "",
       closeTimerId: null,
     };
     entry.closeTimerId = setTimeoutFn(
@@ -226,7 +290,7 @@ export function createWindowObstacleController(options = {}) {
       WINDOW_OBSTACLE_LIFETIME_MS,
     );
     trackedWindows.set(id, entry);
-    bindBlankWindow(entry);
+    bindWindow(entry);
     ensureClosedPoll();
     notifyActiveObstacleCount();
     return entry;
@@ -288,6 +352,42 @@ export function createWindowObstacleController(options = {}) {
       return null;
     }
     return trackWindow(popup, kind);
+  }
+
+  function openPreclickImageWindow({
+    aspectRatio,
+    clientX,
+    clientY,
+    imageUrl,
+  } = {}) {
+    if (disposed || typeof imageUrl !== "string" || !imageUrl) {
+      return false;
+    }
+    const origin = getViewportScreenOrigin() || {};
+    const geometry = preclickPopupGeometry({
+      aspectRatio,
+      centerX: finite(origin.x, 0) + finite(clientX, 0),
+      centerY: finite(origin.y, 0) + finite(clientY, 0),
+      screen: getScreen(),
+    });
+    const features = [
+      "popup=yes",
+      `width=${geometry.width}`,
+      `height=${geometry.height}`,
+      `left=${geometry.left}`,
+      `top=${geometry.top}`,
+    ].join(",");
+    let popup;
+    try {
+      popup = openPopup("", "_blank", features);
+    } catch {
+      popup = null;
+    }
+    if (!popup) {
+      return false;
+    }
+    trackWindow(popup, "preclick", { imageUrl });
+    return true;
   }
 
   function rangeState(currentSettings = settings()) {
@@ -412,6 +512,7 @@ export function createWindowObstacleController(options = {}) {
       };
     },
     isControlBlocked: () => activeObstacleCount() > 0,
+    openPreclickImageWindow,
     refresh,
     testPopupPermission,
   });

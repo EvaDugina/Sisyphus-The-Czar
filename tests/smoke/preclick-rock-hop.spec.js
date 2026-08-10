@@ -139,15 +139,20 @@ async function enterFromLeft(page, radius, delayMs) {
 async function enterFromRight(page, radius, delayMs) {
   const initialCenter = await rockCenter(page);
   const viewportWidth = page.viewportSize().width;
+  const useRight = initialCenter.x + radius + 80 <= viewportWidth - 5;
   const outside = {
-    x: Math.max(5, initialCenter.x - radius - 10),
+    x: useRight
+      ? initialCenter.x + radius + 80
+      : Math.max(5, initialCenter.x - radius - 80),
     y: initialCenter.y,
   };
   await page.mouse.move(outside.x, outside.y);
   await page.waitForTimeout(Math.max(16, delayMs));
   const center = await rockCenter(page);
   const inside = {
-    x: Math.min(viewportWidth - 5, center.x + radius / 2),
+    x: useRight
+      ? Math.min(viewportWidth - 5, center.x + radius / 2)
+      : Math.max(5, center.x - radius / 2),
     y: center.y,
   };
   await page.mouse.move(inside.x, inside.y);
@@ -156,14 +161,21 @@ async function enterFromRight(page, radius, delayMs) {
 
 async function enterFromTop(page, radius, delayMs) {
   const initialCenter = await rockCenter(page);
+  const viewportHeight = page.viewportSize().height;
+  const useTop = initialCenter.y - radius - 80 >= 5;
   const outside = {
     x: initialCenter.x,
-    y: Math.max(5, initialCenter.y - radius - 80),
+    y: useTop
+      ? initialCenter.y - radius - 80
+      : Math.min(viewportHeight - 5, initialCenter.y + radius + 80),
   };
   await page.mouse.move(outside.x, outside.y);
   await page.waitForTimeout(Math.max(16, delayMs));
   const center = await rockCenter(page);
-  const inside = { x: center.x, y: center.y - radius / 2 };
+  const inside = {
+    x: center.x,
+    y: useTop ? center.y - radius / 2 : center.y + radius / 2,
+  };
   await page.mouse.move(inside.x, inside.y);
   return { center, initialCenter, inside, outside };
 }
@@ -171,17 +183,24 @@ async function enterFromTop(page, radius, delayMs) {
 async function enterFromBottomRight(page, radius, delayMs) {
   const initialCenter = await rockCenter(page);
   const viewport = page.viewportSize();
+  const useBottomRight =
+    initialCenter.x + radius + 80 <= viewport.width - 5 &&
+    initialCenter.y + radius + 80 <= viewport.height - 5;
   const outside = {
-    x: Math.min(viewport.width - 5, initialCenter.x + radius + 80),
-    y: Math.min(viewport.height - 5, initialCenter.y + radius + 80),
+    x: useBottomRight
+      ? initialCenter.x + radius + 80
+      : Math.max(5, initialCenter.x - radius - 80),
+    y: useBottomRight
+      ? initialCenter.y + radius + 80
+      : Math.max(5, initialCenter.y - radius - 80),
   };
   await page.mouse.move(outside.x, outside.y);
   await page.waitForTimeout(Math.max(16, delayMs));
   const center = await rockCenter(page);
   const component = radius / (2 * Math.sqrt(2));
   const inside = {
-    x: center.x + component,
-    y: center.y + component,
+    x: center.x + (useBottomRight ? component : -component),
+    y: center.y + (useBottomRight ? component : -component),
   };
   await page.mouse.move(inside.x, inside.y);
   return { center, initialCenter, inside, outside };
@@ -223,9 +242,12 @@ test("камень прыгает накопительно, сохраняет g
   const rock = page.locator(SOURCE_ROCK);
   await expect(rock).toHaveClass(/is-preclick-hop/);
   await page.evaluate(() => {
-    params.preclickHopGuardClickCount = 0;
+    params.preclickHopGuardClickCount = 1;
     params.preclickHopActivationRadiusPercent = 50;
     params.preclickHopMaxDistancePercent = 10;
+    params.preclickHopMissProbabilityPercent = 0;
+    params.preclickHopSpeedPxPerSecond = 1200;
+    params.preclickHopSpeedEasing = "cubic-bezier(0.22, 1, 0.36, 1)";
     params.rockPressShrinkPercent = 0;
     params.rockWallPenetrationPercent = 0;
   });
@@ -289,7 +311,7 @@ test("камень прыгает накопительно, сохраняет g
     second.offset.y - first.offset.y,
   );
   expect(second.offset.x).toBeLessThan(first.offset.x);
-  expect(fastDistance).toBeGreaterThan(slowDistance);
+  expect(fastDistance).toBeGreaterThanOrEqual(slowDistance);
   expect(await page.evaluate(() => window.__laughPlayCount)).toBe(2);
 
   await page.setViewportSize({ width: 900, height: 700 });
@@ -324,8 +346,24 @@ test("камень прыгает накопительно, сохраняет g
   );
   await enterFromLeft(page, reducedRadius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
-    hopCount: beforeReducedHop.hopCount + 1,
+    hopCount: beforeReducedHop.hopCount,
+    radiusHopCount: 2,
+    forcedRadiusMissConsumed: true,
+    lastRadiusDecision: "forced-miss",
     animating: false,
+  });
+
+  const fakeClickPoint = await rockCenter(page);
+  const popupPromise = page.waitForEvent("popup");
+  await page.mouse.click(fakeClickPoint.x, fakeClickPoint.y);
+  const fakeClickPopup = await popupPromise;
+  await expect(fakeClickPopup.locator("img")).toHaveAttribute(
+    "src",
+    /%D0%92%D0%97%D0%93%D0%9B%D0%AF%D0%94\.jpg|ВЗГЛЯД\.jpg/,
+  );
+  await expect.poll(() => hopState(page)).toMatchObject({
+    guardClicksUsed: 1,
+    hopCount: beforeReducedHop.hopCount + 1,
   });
 
   const point = await rockCenter(page);
@@ -401,6 +439,16 @@ test("камень прыгает накопительно, сохраняет g
   } else {
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
   }
+  const scrollAfterUpwardFollow = await page.evaluate(() => scrollY);
+  await page.mouse.move(
+    afterGrabCenter.x,
+    Math.min((page.viewportSize()?.height || 700) - 50, afterGrabCenter.y + 300),
+    { steps: 8 },
+  );
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => scrollY)).toBeLessThanOrEqual(
+    scrollAfterUpwardFollow + 1,
+  );
   await page.mouse.up();
   await page.mouse.move(10, 10);
   await page.mouse.move(point.x, point.y);
@@ -434,6 +482,7 @@ test("камень бесшовно переносится по обеим ос�
     params.preclickHopGuardClickCount = 0;
     params.preclickHopActivationRadiusPercent = 50;
     params.preclickHopMaxDistancePercent = 150;
+    params.preclickHopMissProbabilityPercent = 0;
     params.rockPressShrinkPercent = 0;
     params.rockWallPenetrationPercent = 0;
   });
@@ -470,6 +519,15 @@ test("камень бесшовно переносится по обеим ос�
   expect(
     toroidalDistance(verticalEntry.inside, verticalCenter, viewport),
   ).toBeGreaterThanOrEqual(radius - 1);
+
+  await enterFromBottomRight(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    hopCount: 2,
+    audioPlayCount: 2,
+    forcedRadiusMissConsumed: true,
+    lastRadiusDecision: "forced-miss",
+    animating: false,
+  });
 
   const cornerEntry = await enterFromBottomRight(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({

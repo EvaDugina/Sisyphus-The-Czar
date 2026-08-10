@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 41;
+const SETTINGS_SCHEMA_VERSION = 42;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -396,6 +396,9 @@ export function createSettingsController(options) {
       migrated = SharedRoomSettings.migrateFoldLayoutSettings(migrated);
     }
     migrated = SharedRoomSettings.migratePreclickHopSettings(migrated);
+    if (Number(settingsSchemaVersion) < SETTINGS_SCHEMA_VERSION) {
+      migrated = SharedRoomSettings.migrateRoomSettings(migrated, 41);
+    }
     delete migrated.positionScrollEnabled;
     delete migrated.positionScrollZonePercent;
     delete migrated.positionScrollStartSpeedVh;
@@ -1297,6 +1300,10 @@ export function createSettingsController(options) {
         `${params.preclickHopActivationRadiusPercent.toFixed(0)}%`,
       preclickHopMaxDistancePercent:
         `${params.preclickHopMaxDistancePercent.toFixed(1)}%`,
+      preclickHopMissProbabilityPercent:
+        `${params.preclickHopMissProbabilityPercent.toFixed(0)}%`,
+      preclickHopSpeedPxPerSecond:
+        `${params.preclickHopSpeedPxPerSecond.toFixed(0)} px/s`,
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,

@@ -350,7 +350,7 @@ test("camera UI и новые настройки сохраняются вмес
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("35");
   await expect(page.locator('[name^="returnScroll"]')).toHaveCount(0);
-  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(6);
+  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(7);
   await expect(page.locator('[name="foldAngle"]')).toHaveValue("30");
   await expect(page.locator('[name="foldZoneSize"]')).toHaveValue("20");
 
@@ -431,7 +431,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v42") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -1370,7 +1370,7 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v42") || "{}",
         );
         return stored.gravity;
       }),
@@ -1378,11 +1378,11 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v41 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v42 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v41");
+    localStorage.removeItem("sisyphus-czar-settings-v42");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1405,7 +1405,7 @@ test("локальные настройки v20 мигрируют в v41 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v42") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2464,7 +2464,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v41",
+      "sisyphus-czar-settings-v42",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2927,7 +2927,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v42") || "{}"
         );
         return stored.trailRenderProfile;
       })
@@ -2966,7 +2966,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v42") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -3102,7 +3102,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v42") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -3137,7 +3137,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v42") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -3154,7 +3154,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v42") || "{}"
         );
         return stored.rainEnabled;
       })

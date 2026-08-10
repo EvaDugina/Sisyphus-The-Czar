@@ -14,7 +14,7 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v41";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v42";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -31,6 +31,7 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
   }),
 ]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v41",
   "sisyphus-czar-settings-v40",
   "sisyphus-czar-settings-v39",
   "sisyphus-czar-settings-v38",
@@ -429,6 +430,9 @@ const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickHopGuardClickCount",
   "preclickHopActivationRadiusPercent",
   "preclickHopMaxDistancePercent",
+  "preclickHopMissProbabilityPercent",
+  "preclickHopSpeedPxPerSecond",
+  "preclickHopSpeedEasing",
 ]);
 
 const TRAIL_SCENE_SETTING_NAMES = [
@@ -463,8 +467,6 @@ const SHARED_SCENE_SETTING_NAMES = new Set([
   "rockPulseEnabled",
   "rockPulseShrinkPercent",
   "rockPulseBpm",
-  "rockMinWidthVw",
-  "rockMaxWidthVw",
   "customCursorEnabled",
   "customCursorSizePx",
   "handVisibilityMode",
@@ -857,17 +859,6 @@ export const SETTINGS_GROUPS = [
         formulas: PHYSICS_FORMULAS.rockScaleEasing,
       },
       {
-        name: "rockActivatedWidthVw",
-        label: "Размер после запуска физики, %",
-        type: "number",
-        min: ROCK_WIDTH_VW_LIMITS[0],
-        max: ROCK_WIDTH_VW_LIMITS[1],
-        step: 1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
-        output: `${DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw}%`,
-        hint: "Целевая ширина камня в vw при первом свободном движении вниз после захвата. Переход длится 300 мс.",
-      },
-      {
         name: "rockPressShrinkPercent",
         label: "Уменьшение при нажатии, %",
         type: "range",
@@ -969,6 +960,42 @@ export const SETTINGS_GROUPS = [
         hint: "Верхняя граница отскока относительно размера viewport по направлению движения. Скорость руки задаёт от 28% до 100%; небезопасная траектория сокращается или отклоняется от руки.",
       },
       {
+        name: "preclickHopMissProbabilityPercent",
+        label: "Несрабатывание отскока, %",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickHopMissProbabilityPercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickHopMissProbabilityPercent[1],
+        step: 1,
+        defaultValue:
+          DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent,
+        output:
+          `${DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent}%`,
+        hint: "После двух обязательных отскоков третье сближение всегда пропускается. Затем этот процент задаёт вероятность пропуска каждого нового входа руки в радиус; 0% — всегда отскакивать, 100% — всегда подпускать.",
+      },
+      {
+        name: "preclickHopSpeedPxPerSecond",
+        label: "Скорость камня при отскоке, px/s",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickHopSpeedPxPerSecond[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickHopSpeedPxPerSecond[1],
+        step: 50,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopSpeedPxPerSecond,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickHopSpeedPxPerSecond} px/s`,
+        hint: "Задаёт скорость прохождения рассчитанной траектории отскока. Длительность автоматически равна длине пути, делённой на эту скорость.",
+      },
+      {
+        name: "preclickHopSpeedEasing",
+        label: "Кривая скорости отскока",
+        type: "cubic-bezier",
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopSpeedEasing,
+        spellCheck: false,
+        hint: "cubic-bezier кривая прогресса камня по траектории отскока. Невалидное значение заменяется стандартной кривой.",
+      },
+      {
         name: "rockMinWidthVw",
         label: "Начальный размер, %",
         type: "number",
@@ -979,6 +1006,17 @@ export const SETTINGS_GROUPS = [
         output: `${DEFAULT_ROOM_SETTINGS.rockMinWidthVw}%`,
         hint: "Ширина камня в начале пути, у нижней границы, в процентах от ширины экрана. Значение может быть больше конечного.",
         formulas: PHYSICS_FORMULAS.rockMinWidthVw,
+      },
+      {
+        name: "rockActivatedWidthVw",
+        label: "Размер после запуска физики, %",
+        type: "number",
+        min: ROCK_WIDTH_VW_LIMITS[0],
+        max: ROCK_WIDTH_VW_LIMITS[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
+        output: `${DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw}%`,
+        hint: "Целевая ширина камня в vw при первом свободном движении вниз после захвата. Переход длится 300 мс.",
       },
       {
         name: "rockMaxWidthVw",

@@ -32,3 +32,12 @@ export function cameraFollowScrollY(currentScrollY, targetScrollY, lerp) {
   }
   return current + (target - current) * factor;
 }
+
+export function cameraFollowScrollUpY(currentScrollY, targetScrollY, lerp) {
+  const current = Math.max(0, finiteNumber(currentScrollY, 0));
+  const target = Math.max(0, finiteNumber(targetScrollY, current));
+  if (target >= current) {
+    return current;
+  }
+  return cameraFollowScrollY(current, target, lerp);
+}

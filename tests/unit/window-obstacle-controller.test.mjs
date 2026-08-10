@@ -5,6 +5,7 @@ import {
   WINDOW_OBSTACLE_LIFETIME_MS,
   WINDOW_OBSTACLE_PERMISSION,
   createWindowObstacleController,
+  preclickPopupGeometry,
   randomStepBetween,
   windowObstacleHeightFromStartVh,
 } from "../../src/runtime/createWindowObstacleController.js";
@@ -77,6 +78,13 @@ function createClock() {
 
 function createPopup() {
   const listeners = new Map();
+  const body = {
+    children: [],
+    replaceChildren(...children) {
+      this.children = children;
+    },
+    style: {},
+  };
   return {
     closed: false,
     close() {
@@ -89,9 +97,14 @@ function createPopup() {
       addEventListener(type, callback) {
         listeners.set(type, callback);
       },
-      body: {
-        replaceChildren() {},
-        style: {},
+      body,
+      createElement(tagName) {
+        return {
+          alt: null,
+          src: "",
+          style: {},
+          tagName: String(tagName).toUpperCase(),
+        };
       },
       title: "not-empty",
     },
@@ -131,6 +144,7 @@ function setup({ blocked = false } = {}) {
       availWidth: 1200,
     }),
     getSettings: () => settings,
+    getViewportScreenOrigin: () => ({ x: 100, y: 200 }),
     onActiveWindowsChange: (count) => activeCounts.push(count),
     onPermissionChange: (permission) => permissions.push(permission),
     openPopup: (_url, _target, features) => {
@@ -163,6 +177,47 @@ test("высота препятствия отсчитывается от ниж
   assert.equal(windowObstacleHeightFromStartVh(800, 760, 800), 0);
   assert.equal(randomStepBetween(101, 139, 10, () => 0), 110);
   assert.equal(randomStepBetween(101, 139, 10, () => 1), 130);
+});
+
+test("фейковый клик открывает центрированное окно с изображением без блокировки управления", () => {
+  const { clock, controller, popups } = setup();
+  assert.deepEqual(
+    preclickPopupGeometry({
+      aspectRatio: 920 / 387,
+      centerX: 700,
+      centerY: 600,
+      screen: {
+        availHeight: 900,
+        availLeft: 10,
+        availTop: 20,
+        availWidth: 1200,
+      },
+    }),
+    { height: 269, left: 380, top: 466, width: 640 },
+  );
+
+  assert.equal(
+    controller.openPreclickImageWindow({
+      clientX: 600,
+      clientY: 400,
+      imageUrl: "/assets/ВЗГЛЯД.jpg",
+    }),
+    true,
+  );
+  assert.match(popups[0].features, /width=640/);
+  assert.match(popups[0].features, /height=269/);
+  assert.match(popups[0].features, /left=380/);
+  assert.match(popups[0].features, /top=466/);
+  const image = popups[0].popup.document.body.children[0];
+  assert.equal(image.tagName, "IMG");
+  assert.equal(image.src, "/assets/ВЗГЛЯД.jpg");
+  assert.equal(image.style.width, "100vw");
+  assert.equal(image.style.height, "100vh");
+  assert.equal(controller.isControlBlocked(), false);
+  assert.equal(controller.getState().trackedWindowCount, 1);
+
+  clock.tick(WINDOW_OBSTACLE_LIFETIME_MS);
+  assert.equal(popups[0].popup.closed, true);
 });
 
 test("окна перекрываются, закрываются независимо и не создают дублирующий таймер", () => {

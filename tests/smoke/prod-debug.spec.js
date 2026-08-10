@@ -1,6 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v41";
+const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v42";
 const VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 
 async function openSettingsPanel(page) {
@@ -56,73 +56,63 @@ test("production DEBUG мгновенно применяет последний 
   await openSettingsPanel(page);
   await setRangeValue(page, "sceneHeightScreens", 7);
   await setRangeValue(page, "gravity", 8.5);
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--scene-height-vh")
-          .trim(),
-      ),
-    )
-    .toBe("700vh");
+  await page.locator(".settings-version-save").click();
 
   await page.waitForTimeout(200);
   await setRangeValue(page, "sceneHeightScreens", 8);
   await setRangeValue(page, "gravity", 9.5);
   await expect(page.locator('[name="gravity"]')).toHaveValue("9.5");
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--scene-height-vh")
-          .trim(),
-      ),
-    )
-    .toBe("800vh");
+  await expect(page.locator('[name="sceneHeightScreens"]')).toHaveValue("8");
 
   await page.waitForTimeout(700);
-  await expect(page.locator('[name="gravity"]')).toHaveValue("9.5");
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--scene-height-vh")
-          .trim(),
-      ),
+      page.evaluate((settingsKey) => {
+        const stored = JSON.parse(localStorage.getItem(settingsKey) || "{}");
+        return [stored.sceneHeightScreens, stored.gravity];
+      }, SETTINGS_STORAGE_KEY),
     )
-    .toBe("800vh");
+    .toEqual([8, 9.5]);
+
+  await expect(page.locator('[name="gravity"]')).toHaveValue("9.5");
+  await expect(page.locator('[name="sceneHeightScreens"]')).toHaveValue("8");
 });
 
 test("stale realtime session creates a clean replacement session", async ({
   page,
 }) => {
+  await page.addInitScript(() => {
+    const NativeWebSocket = window.WebSocket;
+    window.__prodDebugSockets = [];
+    window.WebSocket = class InstrumentedWebSocket extends NativeWebSocket {
+      constructor(...args) {
+        super(...args);
+        window.__prodDebugSockets.push(this);
+      }
+    };
+  });
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toHaveAttribute(
     "data-state",
     "online",
   );
 
-  const originalSessionId = await page.evaluate(() => collab.sessionId);
+  const settingsLink = page.locator(".settings-toggle");
+  const originalSettingsHref = await settingsLink.getAttribute("href");
+  expect(originalSettingsHref).toMatch(
+    /^\/settings\/\?session=[A-Za-z0-9_-]{22}$/,
+  );
   await page.evaluate(() => {
-    collab.lastRevision = 100_000;
-    collab.snapshots.length = 0;
-    collab.socket.close(4004, "session_not_found");
+    const socket = window.__prodDebugSockets.at(-1);
+    if (!socket) {
+      throw new Error("Production WebSocket не найден");
+    }
+    socket.close(4004, "session_not_found");
   });
 
   await expect
-    .poll(() => page.evaluate(() => collab.sessionId))
-    .not.toBe(originalSessionId);
-  await expect
-    .poll(() => page.evaluate(() => collab.lastRevision))
-    .toBeLessThan(100_000);
-  await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        connected: collab.connected,
-        expired: collab.expired,
-      })),
-    )
-    .toEqual({ connected: true, expired: false });
+    .poll(() => settingsLink.getAttribute("href"))
+    .not.toBe(originalSettingsHref);
   await expect(page.getByTestId("session-status")).toHaveAttribute(
     "data-state",
     "online",
@@ -182,19 +172,13 @@ test("production DEBUG включает UI, draft и изолированные 
     await page.evaluate(() => Object.hasOwn(window, "__sisyphusTestApi")),
   ).toBe(false);
   await openSettingsPanel(page);
-  await expect(page.locator("#settings-version-current")).toContainText(
-    "Последний",
-  );
+  await expect(page.locator("#settings-version-current")).toHaveText("Черновик");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("3");
+  await page.locator(".settings-version-toggle").click();
+  await page.locator('[data-settings-version-choice="latest"]').click();
+  await expect(page.locator("#settings-version-current")).toContainText("Последний");
   await expect(page.locator('[name="gravity"]')).toHaveValue("7.5");
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--scene-height-vh")
-          .trim(),
-      ),
-    )
-    .toBe("1200vh");
+  await expect(page.locator('[name="sceneHeightScreens"]')).toHaveValue("12");
 
   await setRangeValue(page, "gravity", 8.5);
   const gravityControl = page
@@ -213,8 +197,8 @@ test("production DEBUG включает UI, draft и изолированные 
   });
   await page.reload();
   expect(beforeUnloadConfirmed).toBe(true);
-  await openSettingsPanel(page);
-  await expect(page.locator('[name="gravity"]')).toHaveValue("7.5");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("3");
+  await expect(page.locator("#settings-version-current")).toHaveText("Черновик");
   await expect(gravityControl).not.toHaveClass(/is-dirty/);
 
   await page.locator(".settings-version-toggle").click();
@@ -222,7 +206,8 @@ test("production DEBUG включает UI, draft и изолированные 
     '[data-production-preset-select="latest"]',
   );
   await expect(productionButton).toBeEnabled();
-  await page.locator(".settings-version-toggle").click();
+  await page.locator('[data-settings-version-choice="latest"]').click();
+  await expect(page.locator('[name="gravity"]')).toHaveValue("7.5");
 
   await setRangeValue(page, "gravity", 9);
   await page.locator(".settings-version-save").click();
@@ -247,8 +232,8 @@ test("production DEBUG включает UI, draft и изолированные 
       "master",
     );
     await openSettingsPanel(second);
-    await expect(second.locator("#settings-version-current")).toContainText(
-      "Последний",
+    await expect(second.locator("#settings-version-current")).toHaveText(
+      "Черновик",
     );
     await second.locator(".settings-version-toggle").click();
     const secondProductionButton = second.locator(

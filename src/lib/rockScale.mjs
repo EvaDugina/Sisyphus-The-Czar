@@ -185,6 +185,17 @@ export function rockActivationScaleFactor(currentScale, options = {}) {
   return targetWidthPx / currentWidthPx;
 }
 
+export function rockSceneTwoGrabScaleFactor(
+  physicsActivated,
+  activationScaleFactor,
+) {
+  const factor = finiteNumber(activationScaleFactor, 1);
+  if (!physicsActivated || factor >= 1) {
+    return factor;
+  }
+  return 1;
+}
+
 export function rockPressScaleFactor(percent) {
   const value = Number(percent);
   const safePercent = Number.isFinite(value) ? clamp(value, 0, 100) : 0;

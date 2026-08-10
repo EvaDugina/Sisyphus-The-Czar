@@ -9,6 +9,7 @@ import {
 import { createClientId } from "../../src/lib/clientId.mjs";
 import {
   cameraFollowScrollY,
+  cameraFollowScrollUpY,
   cameraTargetScrollY,
 } from "../../src/lib/cameraFollow.mjs";
 import {
@@ -38,14 +39,17 @@ import {
   rockLocalXForVisualGrab,
   rockPressScaleFactor,
   rockScaleForY,
+  rockSceneTwoGrabScaleFactor,
   rockWallPenetrationPixels,
 } from "../../src/lib/rockScale.mjs";
 import {
   calculatePreclickHopTarget,
   preclickDirectionalViewportSpan,
   preclickHopDistance,
+  preclickHopDurationMs,
   preclickHopPathIsSafe,
   preclickPointerSpeed,
+  preclickRadiusHopDecision,
   preclickToroidalDistance,
   wrapPreclickHopCenter,
 } from "../../src/lib/preclickHop.mjs";
@@ -138,6 +142,12 @@ const DEFAULT_PRECLICK_HOP_SETTINGS = Object.freeze({
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusPercent,
   preclickHopMaxDistancePercent:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMaxDistancePercent,
+  preclickHopMissProbabilityPercent:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent,
+  preclickHopSpeedPxPerSecond:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopSpeedPxPerSecond,
+  preclickHopSpeedEasing:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopSpeedEasing,
 });
 const DEFAULT_CUSTOM_CURSOR_SETTINGS = Object.freeze({
   customCursorEnabled:
@@ -447,8 +457,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "rockWallPenetrationPercent"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v41");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v40");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v42");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v41");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -554,7 +564,29 @@ test("UI классифицирует параметры по сценам бе�
       "preclickHopGuardClickCount",
       "preclickHopActivationRadiusPercent",
       "preclickHopMaxDistancePercent",
+      "preclickHopMissProbabilityPercent",
+      "preclickHopSpeedPxPerSecond",
+      "preclickHopSpeedEasing",
     ]
+  );
+  assert.deepEqual(settingsControlScenes("rockMinWidthVw"), [
+    SETTINGS_SCENES.TURNIP,
+  ]);
+  assert.deepEqual(settingsControlScenes("rockActivatedWidthVw"), [
+    SETTINGS_SCENES.TURNIP,
+  ]);
+  assert.deepEqual(settingsControlScenes("rockMaxWidthVw"), [
+    SETTINGS_SCENES.TURNIP,
+  ]);
+  assert.deepEqual(
+    rockGroup.controls
+      .filter((control) =>
+        ["rockMinWidthVw", "rockActivatedWidthVw", "rockMaxWidthVw"].includes(
+          control.name,
+        ),
+      )
+      .map((control) => control.name),
+    ["rockMinWidthVw", "rockActivatedWidthVw", "rockMaxWidthVw"],
   );
   ["themeMode", "rockImageId", "handVisibilityMode"].forEach((name) => {
     const control = controls.find((candidate) => candidate.name === name);
@@ -629,7 +661,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 41);
+  assert.equal(productionSettingsSchemaVersion, 42);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -922,6 +954,8 @@ test("камера вычисляет ограниченную цель и пр�
   assert.equal(cameraFollowScrollY(1000, 2000, 1), 2000);
   assert.equal(cameraFollowScrollY(1000, 1000.05, 0.1), 1000.05);
   assert.equal(cameraFollowScrollY(1000, 2000, 0), 1010);
+  assert.equal(cameraFollowScrollUpY(2000, 1000, 0.1), 1900);
+  assert.equal(cameraFollowScrollUpY(1000, 2000, 0.1), 1000);
 });
 
 test("точка траектории задаётся по высоте масштабированного камня", () => {
@@ -972,6 +1006,14 @@ test("громкость капели зависит от физической �
 
 test("preclick hop зависит от скорости, сохраняет длину и переносится через края", () => {
   assert.equal(
+    preclickHopDurationMs({ distancePx: 600, speedPxPerSecond: 1200 }),
+    500,
+  );
+  assert.equal(
+    preclickHopDurationMs({ distancePx: 600, speedPxPerSecond: 0 }),
+    0,
+  );
+  assert.equal(
     preclickPointerSpeed({
       previousX: 0,
       previousY: 0,
@@ -989,6 +1031,47 @@ test("preclick hop зависит от скорости, сохраняет дл
   assert.equal(
     preclickHopDistance({ speedPxPerSecond: 2000, maxDistance: 100 }),
     100,
+  );
+
+  const first = preclickRadiusHopDecision({
+    successfulHopCount: 0,
+    forcedMissConsumed: false,
+    missProbabilityPercent: 100,
+  });
+  const second = preclickRadiusHopDecision({
+    successfulHopCount: 1,
+    forcedMissConsumed: false,
+    missProbabilityPercent: 100,
+  });
+  const third = preclickRadiusHopDecision({
+    successfulHopCount: 2,
+    forcedMissConsumed: false,
+    missProbabilityPercent: 0,
+  });
+  assert.equal(first.shouldHop, true);
+  assert.equal(second.shouldHop, true);
+  assert.deepEqual(third, {
+    forcedMissConsumed: true,
+    reason: "forced-miss",
+    shouldHop: false,
+  });
+  assert.equal(
+    preclickRadiusHopDecision({
+      successfulHopCount: 2,
+      forcedMissConsumed: true,
+      missProbabilityPercent: 0,
+      random: () => 0,
+    }).shouldHop,
+    true,
+  );
+  assert.equal(
+    preclickRadiusHopDecision({
+      successfulHopCount: 2,
+      forcedMissConsumed: true,
+      missProbabilityPercent: 100,
+      random: () => 0.999,
+    }).shouldHop,
+    false,
   );
 
   const slow = calculatePreclickHopTarget({
@@ -1164,6 +1247,15 @@ test("настройки размера камня есть в UI и получ�
   const preclickHopActivationRadiusPercent = controls.find(
     (control) => control.name === "preclickHopActivationRadiusPercent",
   );
+  const preclickHopMissProbabilityPercent = controls.find(
+    (control) => control.name === "preclickHopMissProbabilityPercent",
+  );
+  const preclickHopSpeedPxPerSecond = controls.find(
+    (control) => control.name === "preclickHopSpeedPxPerSecond",
+  );
+  const preclickHopSpeedEasing = controls.find(
+    (control) => control.name === "preclickHopSpeedEasing",
+  );
   const rockMinWidthVw = controls.find(
     (control) => control.name === "rockMinWidthVw",
   );
@@ -1205,7 +1297,6 @@ test("настройки размера камня есть в UI и получ�
       "rockImageId",
       "foldRockImageId",
       "rockScaleEasing",
-      "rockActivatedWidthVw",
       "rockPressShrinkPercent",
       "rockWallPenetrationPercent",
       "rockPulseEnabled",
@@ -1214,7 +1305,11 @@ test("настройки размера камня есть в UI и получ�
       "preclickHopGuardClickCount",
       "preclickHopActivationRadiusPercent",
       "preclickHopMaxDistancePercent",
+      "preclickHopMissProbabilityPercent",
+      "preclickHopSpeedPxPerSecond",
+      "preclickHopSpeedEasing",
       "rockMinWidthVw",
+      "rockActivatedWidthVw",
       "rockMaxWidthVw",
     ],
   );
@@ -1244,6 +1339,47 @@ test("настройки размера камня есть в UI и получ�
       ],
       defaultValue: "rock-03",
     },
+  );
+  assert.deepEqual(
+    {
+      label: preclickHopMissProbabilityPercent.label,
+      type: preclickHopMissProbabilityPercent.type,
+      min: preclickHopMissProbabilityPercent.min,
+      max: preclickHopMissProbabilityPercent.max,
+      step: preclickHopMissProbabilityPercent.step,
+      defaultValue: preclickHopMissProbabilityPercent.defaultValue,
+    },
+    {
+      label: "Несрабатывание отскока, %",
+      type: "range",
+      min: 0,
+      max: 100,
+      step: 1,
+      defaultValue: 10,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickHopSpeedPxPerSecond.label,
+      type: preclickHopSpeedPxPerSecond.type,
+      min: preclickHopSpeedPxPerSecond.min,
+      max: preclickHopSpeedPxPerSecond.max,
+      step: preclickHopSpeedPxPerSecond.step,
+      defaultValue: preclickHopSpeedPxPerSecond.defaultValue,
+    },
+    {
+      label: "Скорость камня при отскоке, px/s",
+      type: "range",
+      min: 100,
+      max: 5000,
+      step: 50,
+      defaultValue: 1200,
+    },
+  );
+  assert.equal(preclickHopSpeedEasing.type, "cubic-bezier");
+  assert.equal(
+    preclickHopSpeedEasing.defaultValue,
+    "cubic-bezier(0.22, 1, 0.36, 1)",
   );
   assert.deepEqual(
     {
@@ -1447,6 +1583,13 @@ test("коэффициент активации приводит камень к
     }),
     1,
   );
+});
+
+test("захват сцены 2 возвращает уменьшенный камень к начальному масштабу", () => {
+  assert.equal(rockSceneTwoGrabScaleFactor(false, 0.25), 0.25);
+  assert.equal(rockSceneTwoGrabScaleFactor(true, 0.25), 1);
+  assert.equal(rockSceneTwoGrabScaleFactor(true, 1), 1);
+  assert.equal(rockSceneTwoGrabScaleFactor(true, 1.5), 1.5);
 });
 
 test("масштабированный камень касается обеих боковых границ", () => {
@@ -2296,7 +2439,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 41);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 42);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2312,6 +2455,9 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopGuardClickCount: 999,
     preclickHopActivationRadiusPercent: -1,
     preclickHopMaxDistancePercent: -5,
+    preclickHopMissProbabilityPercent: 999,
+    preclickHopSpeedPxPerSecond: 99999,
+    preclickHopSpeedEasing: "invalid",
     preclickParallaxActivationRadiusVw: 80,
     preclickParallaxStartDelayMs: 9999,
     preclickParallaxEndDelayMs: -1,
@@ -2342,6 +2488,12 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.preclickHopGuardClickCount, 10);
   assert.equal(visualSettings.preclickHopActivationRadiusPercent, 0);
   assert.equal(visualSettings.preclickHopMaxDistancePercent, 0);
+  assert.equal(visualSettings.preclickHopMissProbabilityPercent, 100);
+  assert.equal(visualSettings.preclickHopSpeedPxPerSecond, 5000);
+  assert.equal(
+    visualSettings.preclickHopSpeedEasing,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopSpeedEasing,
+  );
   for (const legacyKey of LEGACY_PRECLICK_PARALLAX_SETTING_KEYS) {
     assert.equal(Object.hasOwn(visualSettings, legacyKey), false);
   }
@@ -2371,6 +2523,11 @@ test("группа дождя содержит общий toggle и blur тём�
         legacyV17.preclickHopActivationRadiusPercent,
       preclickHopMaxDistancePercent:
         legacyV17.preclickHopMaxDistancePercent,
+      preclickHopMissProbabilityPercent:
+        legacyV17.preclickHopMissProbabilityPercent,
+      preclickHopSpeedPxPerSecond:
+        legacyV17.preclickHopSpeedPxPerSecond,
+      preclickHopSpeedEasing: legacyV17.preclickHopSpeedEasing,
     },
     DEFAULT_PRECLICK_HOP_SETTINGS,
   );
@@ -2409,7 +2566,9 @@ test("группа дождя содержит общий toggle и blur тём�
       foldZoneSize: 12,
       foldBlendEnabled: false,
       foldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
-      ...DEFAULT_PRECLICK_HOP_SETTINGS,
+      preclickHopGuardClickCount: 1,
+      preclickHopActivationRadiusPercent: 50,
+      preclickHopMaxDistancePercent: 62.5,
     },
   );
 
@@ -2440,6 +2599,9 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopActivationRadiusPercent: 11,
     preclickHopMaxDistancePercent: 150,
     preclickHopGuardClickCount: 1,
+    preclickHopMissProbabilityPercent: 10,
+    preclickHopSpeedPxPerSecond: 1200,
+    preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
   });
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({ foldZoneSize: 32 }, 35),

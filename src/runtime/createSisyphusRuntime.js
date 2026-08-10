@@ -6,11 +6,12 @@ import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
 import groundImpactAudioUrl from "../../assets/audio/СимуляцияОргазма.mov?url";
 import preclickHopAudioUrl from "../../assets/audio/Смех.mp3?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
+import preclickWindowImageUrl from "../../assets/ВЗГЛЯД.jpg?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import { rockImageUrl } from "../config/rockImages.mjs";
 import { createClientId } from "../lib/clientId.mjs";
 import {
-  cameraFollowScrollY,
+  cameraFollowScrollUpY,
   cameraTargetScrollY,
 } from "../lib/cameraFollow.mjs";
 import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
@@ -34,7 +35,9 @@ import {
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import {
   calculatePreclickHopTarget,
+  preclickHopDurationMs,
   preclickPointerSpeed,
+  preclickRadiusHopDecision,
   wrapPreclickHopCenter,
 } from "../lib/preclickHop.mjs";
 import { cursorCircleIntersectsRect } from "../lib/rockGrab.mjs";
@@ -52,6 +55,7 @@ import {
   rockLocalXForVisualGrab,
   rockPressScaleFactor,
   rockScaleForY,
+  rockSceneTwoGrabScaleFactor,
   rockWallPenetrationPixels,
 } from "../lib/rockScale.mjs";
 import { trailAnchorPoint } from "../lib/trailAnchor.mjs";
@@ -88,7 +92,6 @@ const AUDIO_TOGGLE_FADE_OUT_MS = 250;
 const TRAIL_NETWORK_BATCH_POINTS = 16;
 const TRAIL_NETWORK_FLUSH_MS = 50;
 const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
-const PRECLICK_HOP_DURATION_MS = 400;
 const PRECLICK_HOP_EASING_CURVE = Object.freeze([0.22, 1, 0.36, 1]);
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
 const THEME_BACKGROUND_SETTING_KEYS = [
@@ -385,6 +388,13 @@ export function createSisyphusRuntime(elements = {}) {
         .preclickHopActivationRadiusPercent,
     preclickHopMaxDistancePercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMaxDistancePercent,
+    preclickHopMissProbabilityPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+        .preclickHopMissProbabilityPercent,
+    preclickHopSpeedPxPerSecond:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopSpeedPxPerSecond,
+    preclickHopSpeedEasing:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopSpeedEasing,
     customCursorEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorEnabled,
     customCursorSizePx:
@@ -524,6 +534,9 @@ export function createSisyphusRuntime(elements = {}) {
     insideRadius: false,
     outsideRadius: false,
     hopCount: 0,
+    radiusHopCount: 0,
+    forcedRadiusMissConsumed: false,
+    lastRadiusDecision: null,
     guardClicksUsed: 0,
     hopAnimationId: null,
     hopSampleAtMs: null,
@@ -2938,6 +2951,9 @@ export function createSisyphusRuntime(elements = {}) {
       insideRadius: false,
       outsideRadius: false,
       hopCount: 0,
+      radiusHopCount: 0,
+      forcedRadiusMissConsumed: false,
+      lastRadiusDecision: null,
       guardClicksUsed: 0,
       hopAnimationId: null,
       hopSampleAtMs: null,
@@ -2987,6 +3003,10 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.directionX = target.directionX;
     preclickRockGuidance.directionY = target.directionY;
     preclickRockGuidance.hopCount += 1;
+    const hopDurationMs = preclickHopDurationMs({
+      distancePx: Math.hypot(target.deltaX, target.deltaY),
+      speedPxPerSecond: params.preclickHopSpeedPxPerSecond,
+    });
     rock.classList.add("is-preclick-hop");
     playPreclickHopSound();
     let lastTrailSampleAt = performance.now();
@@ -3017,7 +3037,7 @@ export function createSisyphusRuntime(elements = {}) {
       );
     };
 
-    if (reducedMotion.matches || PRECLICK_HOP_DURATION_MS <= 0) {
+    if (reducedMotion.matches || hopDurationMs <= 0) {
       applyHopProgress(1);
       return;
     }
@@ -3025,12 +3045,15 @@ export function createSisyphusRuntime(elements = {}) {
     const startedAt = performance.now();
     const renderHop = (now) => {
       const progress = clamp(
-        (now - startedAt) / PRECLICK_HOP_DURATION_MS,
+        (now - startedAt) / hopDurationMs,
         0,
         1,
       );
       applyHopProgress(
-        cubicBezierYForX(progress, PRECLICK_HOP_EASING_CURVE),
+        cubicBezierYForX(
+          progress,
+          params.preclickHopSpeedEasing || PRECLICK_HOP_EASING_CURVE,
+        ),
         now,
       );
       if (progress < 1) {
@@ -3084,6 +3107,18 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.insideRadius = true;
     preclickRockGuidance.outsideRadius = false;
     if (enteredRadius) {
+      const decision = preclickRadiusHopDecision({
+        successfulHopCount: preclickRockGuidance.radiusHopCount,
+        forcedMissConsumed: preclickRockGuidance.forcedRadiusMissConsumed,
+        missProbabilityPercent: params.preclickHopMissProbabilityPercent,
+      });
+      preclickRockGuidance.forcedRadiusMissConsumed =
+        decision.forcedMissConsumed;
+      preclickRockGuidance.lastRadiusDecision = decision.reason;
+      if (!decision.shouldHop) {
+        return;
+      }
+      preclickRockGuidance.radiusHopCount += 1;
       performPreclickRockHop({
         centerX,
         centerY,
@@ -3179,6 +3214,11 @@ export function createSisyphusRuntime(elements = {}) {
       params.preclickHopActivationRadiusPercent > 0;
     preclickRockGuidance.outsideRadius = false;
     syncHandCursorForPointer(event);
+    windowObstacleController.openPreclickImageWindow({
+      clientX: pointerX,
+      clientY: pointerY,
+      imageUrl: preclickWindowImageUrl,
+    });
     performPreclickRockHop({
       centerX,
       centerY,
@@ -3427,6 +3467,30 @@ export function createSisyphusRuntime(elements = {}) {
     return true;
   }
 
+  function restoreRockInitialScaleOnSceneTwoGrab() {
+    const nextScaleFactor = rockSceneTwoGrabScaleFactor(
+      motion.physicsActivated,
+      motion.rockActivationScaleFactor,
+    );
+    if (nextScaleFactor === motion.rockActivationScaleFactor) {
+      return false;
+    }
+    clearRockActivationScaleTransition();
+    if (!reducedMotion.matches) {
+      rock.classList.add("is-activation-scaling");
+      void rock.offsetWidth;
+    }
+    motion.rockActivationScaleFactor = nextScaleFactor;
+    applyRockScale();
+    if (!reducedMotion.matches) {
+      motion.rockActivationScaleTimerId = window.setTimeout(() => {
+        motion.rockActivationScaleTimerId = null;
+        rock.classList.remove("is-activation-scaling");
+      }, ROCK_ACTIVATION_SCALE_DURATION_MS);
+    }
+    return true;
+  }
+
   function applyRockScale() {
     updateBounds();
     const baseScale = scaleForLocalY(motion.y);
@@ -3642,7 +3706,7 @@ export function createSisyphusRuntime(elements = {}) {
     });
     const nextScrollY = immediate
       ? targetScrollY
-      : cameraFollowScrollY(
+      : cameraFollowScrollUpY(
           window.scrollY,
           targetScrollY,
           params.cameraFollowLerp,
@@ -4337,7 +4401,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 41,
+      settingsSchemaVersion: SharedRoomSettings.ROOM_SETTINGS_VERSION,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -6766,6 +6830,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     completePreclickRockGuidance({ preserveHopPosition: true });
+    restoreRockInitialScaleOnSceneTwoGrab();
 
     playDrizzleLoopSound();
     playRockPointerDownSound();
@@ -7100,6 +7165,10 @@ export function createSisyphusRuntime(elements = {}) {
         completed: preclickRockGuidance.completed,
         finePointer: finePointer.matches,
         hopCount: preclickRockGuidance.hopCount,
+        radiusHopCount: preclickRockGuidance.radiusHopCount,
+        forcedRadiusMissConsumed:
+          preclickRockGuidance.forcedRadiusMissConsumed,
+        lastRadiusDecision: preclickRockGuidance.lastRadiusDecision,
         guardClicksUsed: preclickRockGuidance.guardClicksUsed,
         guardClickCount: params.preclickHopGuardClickCount,
         animating: preclickRockGuidance.hopAnimationId !== null,

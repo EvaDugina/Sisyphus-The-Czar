@@ -18,6 +18,7 @@ export const PRECLICK_MOVEMENT_MAX_SAMPLE_GAP_MS = 120;
 export const PRECLICK_HOP_MAX_SPEED_PX_PER_SECOND = 2000;
 export const PRECLICK_HOP_MIN_DISTANCE_FACTOR = 0.28;
 export const PRECLICK_HOP_MAX_DISTANCE_FACTOR = 1;
+export const PRECLICK_FORCED_MISS_AFTER_SUCCESSFUL_HOPS = 2;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -155,6 +156,51 @@ export function preclickPointerSpeed({
     Number(y) - Number(previousY),
   );
   return Number.isFinite(distance) ? distance / (elapsedMs / 1000) : 0;
+}
+
+export function preclickRadiusHopDecision({
+  successfulHopCount,
+  forcedMissConsumed,
+  missProbabilityPercent,
+  random = Math.random,
+}) {
+  const completedHops = Math.max(
+    0,
+    Math.floor(finiteNumber(successfulHopCount, 0)),
+  );
+  const forcedMissAlreadyConsumed = Boolean(forcedMissConsumed);
+  if (completedHops < PRECLICK_FORCED_MISS_AFTER_SUCCESSFUL_HOPS) {
+    return {
+      forcedMissConsumed: forcedMissAlreadyConsumed,
+      reason: "required-hop",
+      shouldHop: true,
+    };
+  }
+  if (!forcedMissAlreadyConsumed) {
+    return {
+      forcedMissConsumed: true,
+      reason: "forced-miss",
+      shouldHop: false,
+    };
+  }
+
+  const missProbability =
+    clamp(finiteNumber(missProbabilityPercent, 0), 0, 100) / 100;
+  const sample = clamp(finiteNumber(random(), 1), 0, 1);
+  return {
+    forcedMissConsumed: true,
+    reason: sample < missProbability ? "random-miss" : "random-hop",
+    shouldHop: sample >= missProbability,
+  };
+}
+
+export function preclickHopDurationMs({ distancePx, speedPxPerSecond }) {
+  const distance = Math.max(0, finiteNumber(distancePx, 0));
+  const speed = Math.max(0, finiteNumber(speedPxPerSecond, 0));
+  if (distance <= 0 || speed <= 0) {
+    return 0;
+  }
+  return (distance / speed) * 1000;
 }
 
 export function preclickHopDistance({
