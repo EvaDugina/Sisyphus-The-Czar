@@ -328,6 +328,17 @@ test("панель показывает параметры и разделы в�
   const themeControl = theme.locator(
     "xpath=ancestor::*[@data-setting-control]",
   );
+  const trailEnabled = page.locator('[name="trailEnabled"]');
+  const trailGroup = trailEnabled.locator(
+    "xpath=ancestor::details[contains(@class, 'control-group')]",
+  );
+  const trailStyleGroup = page
+    .locator('[name="lineColor"]')
+    .locator("xpath=ancestor::details[contains(@class, 'control-subgroup')]");
+  const trailLineWidth = page.locator('[name="lineWidth"]');
+  const clearTrail = page.getByRole("button", {
+    name: "Очистить траекторию",
+  });
   const obstacleGroup = page
     .locator('[name="windowObstacleEnabled"]')
     .locator("xpath=ancestor::details[contains(@class, 'control-group')]");
@@ -338,7 +349,12 @@ test("панель показывает параметры и разделы в�
   await expect(gravityControl).toHaveAttribute("hidden", "");
   await expect(obstacleGroup).toHaveAttribute("hidden", "");
   await expect(themeControl).not.toHaveAttribute("hidden", "");
+  await expect(trailGroup).not.toHaveAttribute("hidden", "");
+  await expect(trailStyleGroup).not.toHaveAttribute("hidden", "");
+  await trailGroup.locator(":scope > summary").click();
+  await expect(clearTrail).toBeVisible();
   await setSettingValue(page, "themeMode", "dark");
+  await setSettingValue(page, "lineWidth", 27);
 
   await sceneTwo.click();
   await expect(sceneOne).toHaveAttribute("aria-pressed", "false");
@@ -347,12 +363,18 @@ test("панель показывает параметры и разделы в�
   await expect(gravityControl).not.toHaveAttribute("hidden", "");
   await expect(obstacleGroup).not.toHaveAttribute("hidden", "");
   await expect(themeControl).not.toHaveAttribute("hidden", "");
+  await expect(trailGroup).not.toHaveAttribute("hidden", "");
+  await expect(trailStyleGroup).not.toHaveAttribute("hidden", "");
+  await expect(clearTrail).toBeVisible();
   await expect(theme).toHaveValue("dark");
+  await expect(trailLineWidth).toHaveValue("27");
 
   await sceneOne.click();
   await expect(fakeClicksControl).not.toHaveAttribute("hidden", "");
   await expect(gravityControl).toHaveAttribute("hidden", "");
   await expect(theme).toHaveValue("dark");
+  await expect(trailGroup).not.toHaveAttribute("hidden", "");
+  await expect(trailLineWidth).toHaveValue("27");
 });
 
 test("изображения камня и сжатие пульса настраиваются независимо", async ({

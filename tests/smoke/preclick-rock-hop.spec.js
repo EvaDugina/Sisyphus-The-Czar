@@ -90,6 +90,10 @@ function hopState(page) {
   return page.evaluate(() => window.__sisyphusTestApi.getPreclickHopState());
 }
 
+function trailState(page) {
+  return page.evaluate(() => window.__sisyphusTestApi.getTrailState());
+}
+
 function rockGeometry(page) {
   return page.locator(SOURCE_ROCK).evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
@@ -641,4 +645,47 @@ test("N фейковых кликов отталкивают камень, а к
     guardClicksUsed: 0,
     hopCount: 0,
   });
+});
+
+test("фейковый отскок первой сцены создаёт общий след траектории", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await watchLaughPlayCalls(page);
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await scrollToRock(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      trailEnabled: true,
+      trailSampleDist: 1,
+      lineDelay: 0,
+      preclickHopActivationRadiusPercent: 100,
+      preclickHopMaxDistancePercent: 25,
+      rockWallPenetrationPercent: 0,
+    });
+    window.__sisyphusTestApi.resetTrail();
+  });
+  await expect.poll(() => trailState(page)).toMatchObject({
+    enabled: true,
+    pointCount: 0,
+    canonicalPointCount: 0,
+  });
+
+  const rock = page.locator(SOURCE_ROCK);
+  const radius = await rock.evaluate(
+    (element) => element.getBoundingClientRect().width,
+  );
+  await enterFromLeft(page, radius, 20);
+
+  await expect.poll(() => hopState(page)).toMatchObject({
+    completed: false,
+    hopCount: 1,
+    animating: false,
+  });
+  await expect
+    .poll(() => trailState(page))
+    .toMatchObject({ enabled: true });
+  expect((await trailState(page)).pointCount).toBeGreaterThan(1);
+  expect((await trailState(page)).canonicalPointCount).toBeGreaterThan(1);
 });

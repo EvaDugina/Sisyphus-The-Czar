@@ -520,6 +520,9 @@ test("UI классифицирует параметры по сценам бе�
   const obstacleGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Препятствия"
   );
+  const trailGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Траектория"
+  );
 
   assert.deepEqual(SETTINGS_SCENE_OPTIONS, [
     {
@@ -551,6 +554,12 @@ test("UI классифицирует параметры по сценам бе�
       SETTINGS_SCENES.TURNIP,
     ]);
   });
+  settingsGroupControls(trailGroup).forEach((control) => {
+    assert.deepEqual(settingsControlScenes(control), [
+      SETTINGS_SCENES.CATS_AND_MICE,
+      SETTINGS_SCENES.TURNIP,
+    ]);
+  });
   assert.equal(
     settingsControlVisibleInScene("gravity", SETTINGS_SCENES.CATS_AND_MICE),
     false
@@ -573,6 +582,14 @@ test("UI классифицирует параметры по сценам бе�
   );
   assert.equal(
     settingsGroupVisibleInScene(rockGroup, SETTINGS_SCENES.TURNIP),
+    true
+  );
+  assert.equal(
+    settingsGroupVisibleInScene(trailGroup, SETTINGS_SCENES.CATS_AND_MICE),
+    true
+  );
+  assert.equal(
+    settingsGroupVisibleInScene(trailGroup, SETTINGS_SCENES.TURNIP),
     true
   );
   assert.equal(

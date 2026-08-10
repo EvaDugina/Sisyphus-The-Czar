@@ -2909,6 +2909,7 @@ export function createSisyphusRuntime(elements = {}) {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     };
+    const worldRect = world.getBoundingClientRect();
     const baseCenter = preclickRockBaseCenter(currentOffset);
     const target = calculatePreclickHopTarget({
       pointerX: preclickRockGuidance.pointerX,
@@ -2932,8 +2933,10 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.hopCount += 1;
     rock.classList.add("is-preclick-hop");
     playPreclickHopSound();
+    let lastTrailSampleAt = performance.now();
+    recordPreclickTrailPoint(startCenter, rect.height, worldRect, 0);
 
-    const applyHopProgress = (progress) => {
+    const applyHopProgress = (progress, sampleAt = performance.now()) => {
       const wrappedCenter = wrapPreclickHopCenter({
         x: startCenter.x + target.deltaX * progress,
         y: startCenter.y + target.deltaY * progress,
@@ -2944,6 +2947,19 @@ export function createSisyphusRuntime(elements = {}) {
         wrappedCenter.x - baseCenter.x,
         wrappedCenter.y - baseCenter.y,
       );
+      const deltaSeconds = clamp(
+        (sampleAt - lastTrailSampleAt) / 1000,
+        0,
+        MAX_FRAME_SECONDS,
+      );
+      lastTrailSampleAt = sampleAt;
+      recordPreclickTrailPoint(
+        wrappedCenter,
+        rect.height,
+        worldRect,
+        deltaSeconds,
+      );
+      drawTrail();
     };
 
     if (reducedMotion.matches || PRECLICK_HOP_DURATION_MS <= 0) {
@@ -2958,10 +2974,10 @@ export function createSisyphusRuntime(elements = {}) {
         0,
         1,
       );
-      applyHopProgress(cubicBezierYForX(
-        progress,
-        PRECLICK_HOP_EASING_CURVE,
-      ));
+      applyHopProgress(
+        cubicBezierYForX(progress, PRECLICK_HOP_EASING_CURVE),
+        now,
+      );
       if (progress < 1) {
         preclickRockGuidance.hopAnimationId =
           window.requestAnimationFrame(renderHop);
@@ -5473,8 +5489,41 @@ export function createSisyphusRuntime(elements = {}) {
       scale: motion.rockScale,
       heightPercent: params.trailAnchorHeightPercent,
     });
-    const rockX = anchor.x;
-    const rockY = anchor.y;
+    recordTrailAnchorPoint(anchor, deltaSeconds);
+  }
+
+  function preclickTrailAnchorPoint(center, rockHeight, worldRect) {
+    const heightProgress =
+      clamp(Number(params.trailAnchorHeightPercent) || 0, 0, 100) / 100;
+    return {
+      x: center.x - worldRect.left,
+      y:
+        center.y - worldRect.top +
+        rockHeight * (heightProgress - 0.5),
+    };
+  }
+
+  function recordPreclickTrailPoint(
+    center,
+    rockHeight,
+    worldRect,
+    deltaSeconds,
+  ) {
+    if (preclickRockGuidance.completed) {
+      return;
+    }
+    recordTrailAnchorPoint(
+      preclickTrailAnchorPoint(center, rockHeight, worldRect),
+      deltaSeconds,
+    );
+  }
+
+  function recordTrailAnchorPoint(anchor, deltaSeconds) {
+    const rockX = Number(anchor?.x);
+    const rockY = Number(anchor?.y);
+    if (!Number.isFinite(rockX) || !Number.isFinite(rockY)) {
+      return;
+    }
 
     // Ведомая точка инерционно догоняет камень — линия параллельно следует
     // за путём камня с задержкой, плавно подтягиваясь и сглаживая траекторию.
@@ -6587,6 +6636,12 @@ export function createSisyphusRuntime(elements = {}) {
         audioStopCount: preclickHopAudio.stopCount,
         lastFilename: preclickHopAudio.lastFilename,
         offset: preclickRockHopOffset(),
+      }),
+      getTrailState: () => ({
+        enabled: params.trailEnabled,
+        pointCount: trail.points.length,
+        canonicalPointCount: trail.canonicalPoints.length,
+        lastPoint: trail.points.at(-1) || null,
       }),
       getDrizzleAudioState: () => {
         const loopState = drizzleLoopController.getState();

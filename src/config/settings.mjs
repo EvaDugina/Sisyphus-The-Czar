@@ -426,6 +426,18 @@ const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickHopMaxDistancePercent",
 ]);
 
+const TRAIL_SCENE_SETTING_NAMES = [
+  "trailEnabled",
+  "trailAnchorHeightPercent",
+  "lineDelay",
+  "lineWidth",
+  "trailReset",
+  "trailMaxPoints",
+  "trailUnlimited",
+  "trailSampleDist",
+  ...TRAIL_STYLE_CONTROLS.map((control) => control.name),
+];
+
 const SHARED_SCENE_SETTING_NAMES = new Set([
   "themeMode",
   "lightBackgroundColor",
@@ -455,6 +467,7 @@ const SHARED_SCENE_SETTING_NAMES = new Set([
   "rockGrabRadiusVh",
   "handAudioEnabled",
   "handWidthVw",
+  ...TRAIL_SCENE_SETTING_NAMES,
 ]);
 
 const CATS_AND_MICE_SCENES = Object.freeze([
