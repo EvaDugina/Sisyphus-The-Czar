@@ -65,6 +65,27 @@ function rockCenter(page) {
   });
 }
 
+function visibleRockPoint(page) {
+  return page.locator(SOURCE_ROCK).evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    const left = Math.max(0, rect.left);
+    const right = Math.min(innerWidth, rect.right);
+    const top = Math.max(0, rect.top);
+    const bottom = Math.min(innerHeight, rect.bottom);
+    for (const yRatio of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+      for (const xRatio of [0.5, 0.35, 0.65, 0.2, 0.8]) {
+        const x = left + (right - left) * xRatio;
+        const y = top + (bottom - top) * yRatio;
+        const hit = document.elementFromPoint(x, y);
+        if (hit === rock || rock.contains(hit)) {
+          return { x, y };
+        }
+      }
+    }
+    throw new Error("Не найдена кликабельная точка камня");
+  });
+}
+
 function hopState(page) {
   return page.evaluate(() => window.__sisyphusTestApi.getPreclickHopState());
 }
@@ -162,13 +183,13 @@ async function enterFromBottomRight(page, radius, delayMs) {
   return { center, initialCenter, inside, outside };
 }
 
-function wrap(value, span) {
-  return ((value % span) + span) % span;
-}
-
-function hopDistance(maxDistancePx, speedPxPerSecond) {
-  const speedProgress = Math.min(Math.max(speedPxPerSecond / 2000, 0), 1);
-  return maxDistancePx * (0.28 + 0.72 * speedProgress);
+function toroidalDistance(first, second, viewport) {
+  const deltaX = Math.abs(first.x - second.x);
+  const deltaY = Math.abs(first.y - second.y);
+  return Math.hypot(
+    Math.min(deltaX, viewport.width - deltaX),
+    Math.min(deltaY, viewport.height - deltaY),
+  );
 }
 
 test("камень прыгает накопительно, сохраняет guidance и завершается первым захватом", async ({
@@ -198,10 +219,15 @@ test("камень прыгает накопительно, сохраняет g
   const rock = page.locator(SOURCE_ROCK);
   await expect(rock).toHaveClass(/is-preclick-hop/);
   await page.evaluate(() => {
-    params.preclickHopActivationRadiusVw = 5;
-    params.preclickHopMaxDistanceVw = 10;
+    params.preclickHopGuardClickCount = 0;
+    params.preclickHopActivationRadiusPercent = 50;
+    params.preclickHopMaxDistancePercent = 10;
+    params.rockPressShrinkPercent = 0;
+    params.rockWallPenetrationPercent = 0;
   });
-  const radius = 100;
+  const radius = await rock.evaluate(
+    (element) => element.getBoundingClientRect().width * 0.5,
+  );
   expect(await hopState(page)).toMatchObject({
     enabled: true,
     completed: false,
@@ -289,7 +315,10 @@ test("камень прыгает накопительно, сохраняет g
 
   await page.emulateMedia({ reducedMotion: "reduce" });
   const beforeReducedHop = await hopState(page);
-  await enterFromLeft(page, 45, 20);
+  const reducedRadius = await rock.evaluate(
+    (element) => element.getBoundingClientRect().width * 0.5,
+  );
+  await enterFromLeft(page, reducedRadius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: beforeReducedHop.hopCount + 1,
     animating: false,
@@ -382,6 +411,7 @@ test("камень прыгает накопительно, сохраняет g
   await expect(rock).toHaveClass(/is-preclick-hop/);
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: false,
+    guardClicksUsed: 0,
     hopCount: 0,
     offset: { x: 0, y: 0 },
   });
@@ -397,28 +427,31 @@ test("камень бесшовно переносится по обеим ос�
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await scrollToRock(page);
   await page.evaluate(() => {
-    params.preclickHopActivationRadiusVw = 5;
-    params.preclickHopMaxDistanceVw = 200;
+    params.preclickHopGuardClickCount = 0;
+    params.preclickHopActivationRadiusPercent = 50;
+    params.preclickHopMaxDistancePercent = 150;
+    params.rockPressShrinkPercent = 0;
+    params.rockWallPenetrationPercent = 0;
   });
 
-  const radius = 50;
+  const rock = page.locator(SOURCE_ROCK);
+  const radius = await rock.evaluate(
+    (element) => element.getBoundingClientRect().width * 0.5,
+  );
+  const viewport = page.viewportSize();
   const horizontalEntry = await enterFromLeft(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: 1,
     audioPlayCount: 1,
     animating: false,
   });
-  const horizontalState = await hopState(page);
-  const horizontalDistance = hopDistance(
-    2000,
-    horizontalState.speedPxPerSecond,
-  );
   const horizontalCenter = await rockCenter(page);
-  expect(horizontalCenter.x).toBeCloseTo(
-    wrap(horizontalEntry.center.x + horizontalDistance, 1000),
-    0,
-  );
-  expect(horizontalCenter.y).toBeCloseTo(horizontalEntry.center.y, 0);
+  expect(
+    toroidalDistance(horizontalEntry.center, horizontalCenter, viewport),
+  ).toBeGreaterThan(2);
+  expect(
+    toroidalDistance(horizontalEntry.inside, horizontalCenter, viewport),
+  ).toBeGreaterThanOrEqual(radius - 1);
 
   const verticalEntry = await enterFromTop(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
@@ -426,17 +459,13 @@ test("камень бесшовно переносится по обеим ос�
     audioPlayCount: 2,
     animating: false,
   });
-  const verticalState = await hopState(page);
-  const verticalDistance = hopDistance(
-    2000,
-    verticalState.speedPxPerSecond,
-  );
   const verticalCenter = await rockCenter(page);
-  expect(verticalCenter.x).toBeCloseTo(verticalEntry.center.x, 0);
-  expect(verticalCenter.y).toBeCloseTo(
-    wrap(verticalEntry.center.y + verticalDistance, 700),
-    0,
-  );
+  expect(
+    toroidalDistance(verticalEntry.center, verticalCenter, viewport),
+  ).toBeGreaterThan(2);
+  expect(
+    toroidalDistance(verticalEntry.inside, verticalCenter, viewport),
+  ).toBeGreaterThanOrEqual(radius - 1);
 
   const cornerEntry = await enterFromBottomRight(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
@@ -444,20 +473,13 @@ test("камень бесшовно переносится по обеим ос�
     audioPlayCount: 3,
     animating: false,
   });
-  const cornerState = await hopState(page);
   const cornerCenter = await rockCenter(page);
-  const cornerComponent = hopDistance(
-    2000,
-    cornerState.speedPxPerSecond,
-  ) / Math.sqrt(2);
-  expect(cornerCenter.x).toBeCloseTo(
-    wrap(cornerEntry.center.x - cornerComponent, 1000),
-    0,
-  );
-  expect(cornerCenter.y).toBeCloseTo(
-    wrap(cornerEntry.center.y - cornerComponent, 700),
-    0,
-  );
+  expect(
+    toroidalDistance(cornerEntry.center, cornerCenter, viewport),
+  ).toBeGreaterThan(2);
+  expect(
+    toroidalDistance(cornerEntry.inside, cornerCenter, viewport),
+  ).toBeGreaterThanOrEqual(radius - 1);
   expect(cornerCenter.x).toBeGreaterThanOrEqual(0);
   expect(cornerCenter.x).toBeLessThan(1000);
   expect(cornerCenter.y).toBeGreaterThanOrEqual(0);
@@ -497,4 +519,78 @@ test("камень бесшовно переносится по обеим ос�
     clickCount: 1,
   });
   await cdp.detach();
+});
+
+test("N защитных кликов отталкивают камень, а клик N+1 включает физику", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await watchLaughPlayCalls(page);
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await page.getByTestId("restart-session").click();
+  await expect.poll(() => page.evaluate(() => motion.phase)).toBe("play");
+  await scrollToRock(page);
+  const rock = page.locator(SOURCE_ROCK);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopGuardClickCount: 3,
+      preclickHopActivationRadiusPercent: 50,
+      preclickHopMaxDistancePercent: 25,
+      rockPressShrinkPercent: 0,
+      rockWallPenetrationPercent: 0,
+    });
+  });
+
+  const radius = await rock.evaluate(
+    (element) => element.getBoundingClientRect().width * 0.5,
+  );
+  await enterFromLeft(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    completed: false,
+    guardClickCount: 3,
+    guardClicksUsed: 0,
+    hopCount: 1,
+  });
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopActivationRadiusPercent: 0,
+    });
+  });
+  for (let click = 1; click <= 3; click += 1) {
+    const point = await visibleRockPoint(page);
+    await page.mouse.click(point.x, point.y);
+    await expect.poll(() => hopState(page)).toMatchObject({
+      completed: false,
+      guardClickCount: 3,
+      guardClicksUsed: click,
+      hopCount: click + 1,
+    });
+    expect(await page.evaluate(() => window.__controlAcquireMessages.length)).toBe(0);
+    expect(await page.evaluate(() => window.__sisyphusTestApi.motion.dragging)).toBe(false);
+  }
+
+  const realClickPoint = await visibleRockPoint(page);
+  await page.mouse.move(realClickPoint.x, realClickPoint.y);
+  await page.mouse.down();
+  await expect.poll(() => hopState(page)).toMatchObject({
+    completed: true,
+    guardClickCount: 3,
+    guardClicksUsed: 3,
+    hopCount: 4,
+    offset: { x: 0, y: 0 },
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__controlAcquireMessages.length))
+    .toBe(1);
+  await page.mouse.up();
+
+  await page.getByTestId("restart-session").click();
+  await expect.poll(() => hopState(page)).toMatchObject({
+    completed: false,
+    guardClicksUsed: 0,
+    hopCount: 0,
+  });
 });

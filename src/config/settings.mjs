@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v39";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v40";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v39",
   "sisyphus-czar-settings-v38",
   "sisyphus-czar-settings-v37",
   "sisyphus-czar-settings-v36",
@@ -827,33 +828,46 @@ export const SETTINGS_GROUPS = [
         hint: "Количество ударов в минуту. 60 BPM — один полный пульс в секунду.",
       },
       {
-        name: "preclickHopActivationRadiusVw",
-        label: "Радиус срабатывания, vw",
+        name: "preclickHopGuardClickCount",
+        label: "Кликов до включения физики",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickHopActivationRadiusVw[0],
+          .preclickHopGuardClickCount[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickHopActivationRadiusVw[1],
+          .preclickHopGuardClickCount[1],
         step: 1,
-        defaultValue:
-          DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw,
-        output:
-          `${DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw}vw`,
-        hint: "Радиус круглой зоны вокруг текущего центра камня. Каждый новый вход курсора в эту зону запускает один отскок; ноль отключает срабатывание.",
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount}`,
+        hint: "Первые N кликов по камню вызывают только защитный отскок. Следующий клик включает физику и переводит игру в сцену «репка»; ноль отключает защитные клики.",
       },
       {
-        name: "preclickHopMaxDistanceVw",
-        label: "Максимальная длина отскока, vw",
+        name: "preclickHopActivationRadiusPercent",
+        label: "Радиус срабатывания, % камня",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickHopMaxDistanceVw[0],
+          .preclickHopActivationRadiusPercent[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickHopMaxDistanceVw[1],
-        step: 0.1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw,
+          .preclickHopActivationRadiusPercent[1],
+        step: 1,
+        defaultValue:
+          DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusPercent,
         output:
-          `${DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw.toFixed(1)}vw`,
-        hint: "Максимальная дальность одного отскока. Скорость входа руки в радиус линейно задаёт от 28% до 100% этого значения; радиус срабатывания настраивается отдельно.",
+          `${DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusPercent}%`,
+        hint: "Радиус круглой зоны вокруг текущего центра камня в процентах от его текущей визуальной ширины. Каждый новый вход курсора запускает один отскок; ноль отключает срабатывание.",
+      },
+      {
+        name: "preclickHopMaxDistancePercent",
+        label: "Максимальный отскок, %",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickHopMaxDistancePercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickHopMaxDistancePercent[1],
+        step: 0.1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopMaxDistancePercent,
+        output:
+          `${DEFAULT_ROOM_SETTINGS.preclickHopMaxDistancePercent.toFixed(1)}%`,
+        hint: "Верхняя граница отскока относительно размера viewport по направлению движения. Скорость руки задаёт от 28% до 100%; небезопасная траектория сокращается или отклоняется от руки.",
       },
       {
         name: "rockMinWidthVw",

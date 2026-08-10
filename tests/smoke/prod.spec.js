@@ -235,6 +235,14 @@ test("production build creates one personal session per user, keeps a clean URL 
       /cursor-grab-02(?:-[A-Za-z0-9_-]+)?\.png/,
     );
 
+    const guardPoint = await moveToVisibleRock(second);
+    await second.mouse.click(guardPoint.x, guardPoint.y);
+    await expect(second.locator("body")).toHaveClass(/preclick-rock-guidance/);
+    await expect(second.locator(SOURCE_ROCK)).not.toHaveClass(/is-dragging/);
+    expect(
+      secondSocketMessages.some(({ type }) => type === "control.granted"),
+    ).toBe(false);
+
     const secondPoint = await moveToVisibleRock(second);
     await second.mouse.down();
     await expect(secondHand).toHaveClass(/is-grabbing/);

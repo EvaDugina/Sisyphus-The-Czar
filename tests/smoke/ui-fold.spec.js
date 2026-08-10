@@ -70,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v39", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v40", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v39");
+    localStorage.removeItem("sisyphus-czar-settings-v40");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,14 +91,14 @@ test("Fold-настройки мигрируют из localStorage v32 в v39", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
           foldZoneSize: stored.foldZoneSize,
           foldBlendEnabled: stored.foldBlendEnabled,
           foldBlendCurve: stored.foldBlendCurve,
-          preclickHopMaxDistanceVw: stored.preclickHopMaxDistanceVw,
+          preclickHopMaxDistancePercent: stored.preclickHopMaxDistancePercent,
           hasLegacy: Object.keys(stored).some((key) => key.startsWith("draftFold")),
         };
       }),
@@ -108,7 +108,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v39", 
       foldZoneSize: 13,
       foldBlendEnabled: false,
       foldBlendCurve: "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
-      preclickHopMaxDistanceVw: 62.5,
+      preclickHopMaxDistancePercent: 62.5,
       hasLegacy: false,
     });
   await page.reload();
@@ -117,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v39", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,15 +125,15 @@ test("Fold-настройки мигрируют из localStorage v32 в v39", 
     .toEqual([47, 13]);
 });
 
-test("hop-настройки мигрируют из localStorage v35 в v39 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v39 в v40 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v39");
+    localStorage.removeItem("sisyphus-czar-settings-v40");
     localStorage.setItem(
-      "sisyphus-czar-settings-v35",
+      "sisyphus-czar-settings-v39",
       JSON.stringify({
-        preclickParallaxActivationRadiusVw: 12,
+        preclickHopActivationRadiusVw: 12,
         preclickHopMaxDistanceVw: 184.3,
         preclickParallaxMaxOffsetVw: 8,
         preclickParallaxStartDelayMs: 320,
@@ -149,31 +149,35 @@ test("hop-настройки мигрируют из localStorage v35 в v39 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
         );
         return {
-          radius: stored.preclickHopActivationRadiusVw,
-          distance: stored.preclickHopMaxDistanceVw,
+          guardClicks: stored.preclickHopGuardClickCount,
+          radius: stored.preclickHopActivationRadiusPercent,
+          distance: stored.preclickHopMaxDistancePercent,
           cameraFollowLerp: stored.cameraFollowLerp,
           hasLegacy: Object.keys(stored).some((key) =>
-            key.startsWith("preclickParallax"),
+            key.startsWith("preclickParallax") ||
+            key === "preclickHopActivationRadiusVw" ||
+            key === "preclickHopMaxDistanceVw",
           ),
         };
       }),
     )
     .toEqual({
+      guardClicks: 1,
       radius: 12,
-      distance: 184.3,
+      distance: 150,
       cameraFollowLerp: 0.25,
       hasLegacy: false,
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v39", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v40", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v39");
+    localStorage.removeItem("sisyphus-czar-settings-v40");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -186,7 +190,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -204,9 +208,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v39", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v40", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v39");
+    localStorage.removeItem("sisyphus-czar-settings-v40");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -219,7 +223,7 @@ test("настройки руки мигрируют из localStorage v36 в v3
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -235,9 +239,9 @@ test("настройки руки мигрируют из localStorage v36 в v3
     });
 });
 
-test("раскладка Fold мигрирует из localStorage v37 в v39", async ({ page }) => {
+test("раскладка Fold мигрирует из localStorage v37 в v40", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v39");
+    localStorage.removeItem("sisyphus-czar-settings-v40");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -250,7 +254,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v39", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -261,36 +265,41 @@ test("раскладка Fold мигрирует из localStorage v37 в v39", 
     .toEqual({ foldPanelHeightVh: 14, foldPositionPercent: 0 });
 });
 
-test("группа Камень показывает только два hop-контрола", async ({
+test("группа Камень показывает три hop-контрола", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v39");
+    localStorage.removeItem("sisyphus-czar-settings-v40");
   });
 
   await page.goto("/");
   await waitForFoldReady(page);
   await navigateToSettings(page);
 
-  const radius = page.locator('[name="preclickHopActivationRadiusVw"]');
-  const distance = page.locator('[name="preclickHopMaxDistanceVw"]');
+  const guardClicks = page.locator('[name="preclickHopGuardClickCount"]');
+  const radius = page.locator('[name="preclickHopActivationRadiusPercent"]');
+  const distance = page.locator('[name="preclickHopMaxDistancePercent"]');
   const distanceOutput = page.locator(
-    '[data-output="preclickHopMaxDistanceVw"]',
+    '[data-output="preclickHopMaxDistancePercent"]',
   );
+  await expect(guardClicks).toHaveValue("1");
+  await expect(guardClicks).toHaveAttribute("min", "0");
+  await expect(guardClicks).toHaveAttribute("max", "10");
+  await expect(guardClicks).toHaveAttribute("step", "1");
   await expect(radius).toHaveValue("50");
   await expect(radius).toHaveAttribute("min", "0");
-  await expect(radius).toHaveAttribute("max", "200");
+  await expect(radius).toHaveAttribute("max", "300");
   await expect(radius).toHaveAttribute("step", "1");
   await expect(distance).toHaveValue("62.5");
   await expect(distance).toHaveAttribute("min", "0");
-  await expect(distance).toHaveAttribute("max", "200");
+  await expect(distance).toHaveAttribute("max", "150");
   await expect(distance).toHaveAttribute("step", "0.1");
   await expect(page.locator('[name^="preclickParallax"]')).toHaveCount(0);
 
-  await setSettingValue(page, "preclickHopMaxDistanceVw", 184.3);
+  await setSettingValue(page, "preclickHopMaxDistancePercent", 149.3);
 
-  await expect(distance).toHaveValue("184.3");
-  await expect(distanceOutput).toHaveText("184.3vw");
+  await expect(distance).toHaveValue("149.3");
+  await expect(distanceOutput).toHaveText("149.3%");
 });
 
 test("изображения камня и сжатие пульса настраиваются независимо", async ({
@@ -497,8 +506,9 @@ test("UI переключает три режима руки и задержив
   await waitForFoldReady(page);
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
-      preclickHopActivationRadiusVw: 0,
-      preclickHopMaxDistanceVw: 0,
+      preclickHopGuardClickCount: 0,
+      preclickHopActivationRadiusPercent: 0,
+      preclickHopMaxDistancePercent: 0,
       rockJumpEnabled: false,
     });
   });
@@ -617,6 +627,11 @@ test("общая настройка показывает SVG-курсор и м�
   );
   await page.locator(".settings-page__back").click();
   await waitForFoldReady(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopGuardClickCount: 0,
+    });
+  });
   await expect(body).toHaveClass(/custom-cursor-enabled/);
 
   const openCursor = await hand.evaluate((element) => {
@@ -726,7 +741,8 @@ test("mouse захватывает камень внутри расширенн�
   await waitForFoldReady(page);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await page.evaluate(() => {
-    window.__sisyphusTestApi.params.preclickHopActivationRadiusVw = 0;
+    window.__sisyphusTestApi.params.preclickHopGuardClickCount = 0;
+    window.__sisyphusTestApi.params.preclickHopActivationRadiusPercent = 0;
     window.__sisyphusTestApi.params.rockGrabRadiusVh = 4;
   });
 
@@ -894,7 +910,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,
@@ -1188,7 +1204,8 @@ test("первое падение анимирует размер камня, с
     window.__sisyphusTestApi.applyTestSettings({
       gravity: 0.1,
       pointerInfluence: 0,
-      preclickHopActivationRadiusVw: 0,
+      preclickHopGuardClickCount: 0,
+      preclickHopActivationRadiusPercent: 0,
       rockActivatedWidthVw: 10,
       rockMaxWidthVw: 10,
       rockMinWidthVw: 10,

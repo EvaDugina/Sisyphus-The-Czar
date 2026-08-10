@@ -9,7 +9,7 @@ export function createSettingsController() {
     getLoadedSettingsVersionEntry: () => null,
     getSettingsVersions: () => [],
     hasLocalSettings: () => false,
-    load() {},
+    load: () => [],
     markSettingsVersionDraft() {},
     readPhysicsControls: () => EMPTY_SETTINGS,
     readRoomSettingsControls: () => EMPTY_SETTINGS,

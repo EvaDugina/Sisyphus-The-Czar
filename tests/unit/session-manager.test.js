@@ -586,8 +586,9 @@ test("persisted session мигрирует Fold, отскок, камень и �
     Object.keys(session.roomSettings).some((key) => key.startsWith("draftFold")),
     false,
   );
-  assert.equal(session.roomSettings.preclickHopMaxDistanceVw, 45);
-  assert.equal(session.roomSettings.preclickHopActivationRadiusVw, 36);
+  assert.equal(session.roomSettings.preclickHopMaxDistancePercent, 45);
+  assert.equal(session.roomSettings.preclickHopActivationRadiusPercent, 36);
+  assert.equal(session.roomSettings.preclickHopGuardClickCount, 1);
   assert.equal(
     Object.hasOwn(session.roomSettings, "preclickParallaxActivationRadiusVw"),
     false,
@@ -705,8 +706,9 @@ test("roomSettings.update синхронизирует размер руки и 
     sceneHeightScreens: 50,
     handWidthVw: 42.5,
     handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
-    preclickHopActivationRadiusVw: 36,
-    preclickHopMaxDistanceVw: 72,
+    preclickHopGuardClickCount: 3,
+    preclickHopActivationRadiusPercent: 36,
+    preclickHopMaxDistancePercent: 72,
     handVisibilityMode: "hidden",
     handImageChangeDelayMs: 375,
     rockGrabRadiusVh: 4.5,
@@ -730,8 +732,9 @@ test("roomSettings.update синхронизирует размер руки и 
       sceneHeightScreens: 50,
       handWidthVw: 42.5,
       handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
-      preclickHopActivationRadiusVw: 36,
-      preclickHopMaxDistanceVw: 72,
+      preclickHopGuardClickCount: 3,
+      preclickHopActivationRadiusPercent: 36,
+      preclickHopMaxDistancePercent: 72,
       handVisibilityMode: "hidden",
       handImageChangeDelayMs: 375,
       rockGrabRadiusVh: 4.5,
@@ -1769,13 +1772,13 @@ test("debug settings.update принимает любого участника �
         ...RoomSettings.DEFAULT_ROOM_SETTINGS,
         ...Physics.DEFAULT_PHYSICS,
         gravity: 8,
-        preclickHopActivationRadiusVw: 20,
+        preclickHopActivationRadiusPercent: 20,
       },
     },
   });
 
   assert.equal(session.physics.gravity, 8);
-  assert.equal(session.roomSettings.preclickHopActivationRadiusVw, 20);
+  assert.equal(session.roomSettings.preclickHopActivationRadiusPercent, 20);
   assert.equal(session.settingsRevision, 2);
   assert.equal(
     second.socket.messages.findLast(

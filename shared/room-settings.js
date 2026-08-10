@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 37;
+  const ROOM_SETTINGS_VERSION = 38;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -88,8 +88,9 @@
     windowObstacleWidthPx: [100, 1920],
     windowObstacleHeightPx: [100, 1080],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
-    preclickHopActivationRadiusVw: [0, 200],
-    preclickHopMaxDistanceVw: [0, 200],
+    preclickHopGuardClickCount: [0, 10],
+    preclickHopActivationRadiusPercent: [0, 300],
+    preclickHopMaxDistancePercent: [0, 150],
     rockGrabRadiusVh: [0, 10],
     rockPressShrinkPercent: [0, 50],
     rockWallPenetrationPercent: [0, 50],
@@ -155,8 +156,9 @@
     rockPulseBpm: 60,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
-    preclickHopActivationRadiusVw: 50,
-    preclickHopMaxDistanceVw: 62.5,
+    preclickHopGuardClickCount: 1,
+    preclickHopActivationRadiusPercent: 50,
+    preclickHopMaxDistancePercent: 62.5,
     customCursorEnabled: false,
     customCursorSizePx: 32,
     handVisibilityMode: "always",
@@ -443,10 +445,12 @@
       ROOM_SETTINGS_LIMITS.rockJumpAngleSpreadDegrees;
     const [rockJumpSpreadMin, rockJumpSpreadMax] =
       ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent;
+    const [preclickHopGuardClickMin, preclickHopGuardClickMax] =
+      ROOM_SETTINGS_LIMITS.preclickHopGuardClickCount;
     const [preclickHopRadiusMin, preclickHopRadiusMax] =
-      ROOM_SETTINGS_LIMITS.preclickHopActivationRadiusVw;
+      ROOM_SETTINGS_LIMITS.preclickHopActivationRadiusPercent;
     const [preclickHopDistanceMin, preclickHopDistanceMax] =
-      ROOM_SETTINGS_LIMITS.preclickHopMaxDistanceVw;
+      ROOM_SETTINGS_LIMITS.preclickHopMaxDistancePercent;
     const [drizzleVolumeMin, drizzleVolumeMax] =
       ROOM_SETTINGS_LIMITS.drizzleVolume;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
@@ -515,23 +519,26 @@
     const rockWidths = normalizeRockWidthRange(source, fallbackSource);
     const preclickHopRadiusSource = migratePreclickHopSettings(source);
     const preclickHopFallbackSource = migratePreclickHopSettings(fallbackSource);
-    const preclickHopActivationRadiusVw = finiteSetting(
+    const preclickHopActivationRadiusPercent = finiteSetting(
       preclickHopRadiusSource,
       preclickHopFallbackSource,
-      "preclickHopActivationRadiusVw",
+      "preclickHopActivationRadiusPercent",
       preclickHopRadiusMin,
       preclickHopRadiusMax
     );
     const preclickHopDistanceSource = Object.hasOwn(
       preclickHopRadiusSource,
-      "preclickHopMaxDistanceVw"
+      "preclickHopMaxDistancePercent"
     )
       ? preclickHopRadiusSource
-      : Object.hasOwn(preclickHopRadiusSource, "preclickHopActivationRadiusVw")
+      : Object.hasOwn(
+          preclickHopRadiusSource,
+          "preclickHopActivationRadiusPercent"
+        )
         ? {
             ...preclickHopRadiusSource,
-            preclickHopMaxDistanceVw:
-              preclickHopActivationRadiusVw * 1.25,
+            preclickHopMaxDistancePercent:
+              preclickHopActivationRadiusPercent * 1.25,
           }
         : preclickHopRadiusSource;
 
@@ -736,11 +743,18 @@
         ROOM_SETTINGS_LIMITS.rockPulseBpm[0],
         ROOM_SETTINGS_LIMITS.rockPulseBpm[1]
       ),
-      preclickHopActivationRadiusVw,
-      preclickHopMaxDistanceVw: finiteSetting(
+      preclickHopGuardClickCount: integerSetting(
+        preclickHopRadiusSource,
+        preclickHopFallbackSource,
+        "preclickHopGuardClickCount",
+        preclickHopGuardClickMin,
+        preclickHopGuardClickMax
+      ),
+      preclickHopActivationRadiusPercent,
+      preclickHopMaxDistancePercent: finiteSetting(
         preclickHopDistanceSource,
         preclickHopFallbackSource,
-        "preclickHopMaxDistanceVw",
+        "preclickHopMaxDistancePercent",
         preclickHopDistanceMin,
         preclickHopDistanceMax
       ),
@@ -1025,27 +1039,44 @@
 
   function migratePreclickHopSettings(input) {
     const source = input && typeof input === "object" ? { ...input } : {};
-    if (!Object.hasOwn(source, "preclickHopActivationRadiusVw")) {
+    if (!Object.hasOwn(source, "preclickHopActivationRadiusPercent")) {
+      const previousHopRadius = Number(source.preclickHopActivationRadiusVw);
       const previousRadiusVw = Number(source.preclickParallaxActivationRadiusVw);
       const previousRadiusPx = Number(source.preclickParallaxActivationRadiusPx);
-      source.preclickHopActivationRadiusVw = Number.isFinite(previousRadiusVw)
-        ? previousRadiusVw
-        : Number.isFinite(previousRadiusPx)
-          ? previousRadiusPx / PRECLICK_PARALLAX_RADIUS_PX_PER_VW
-          : DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw;
+      source.preclickHopActivationRadiusPercent = Number.isFinite(
+        previousHopRadius
+      )
+        ? previousHopRadius
+        : Number.isFinite(previousRadiusVw)
+          ? previousRadiusVw
+          : Number.isFinite(previousRadiusPx)
+            ? previousRadiusPx / PRECLICK_PARALLAX_RADIUS_PX_PER_VW
+            : DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusPercent;
     }
-    if (!Object.hasOwn(source, "preclickHopMaxDistanceVw")) {
-      const radiusVw = Number(source.preclickHopActivationRadiusVw);
+    if (!Object.hasOwn(source, "preclickHopMaxDistancePercent")) {
+      const previousHopDistance = Number(source.preclickHopMaxDistanceVw);
+      const radiusPercent = Number(source.preclickHopActivationRadiusPercent);
       const [minDistance, maxDistance] =
-        ROOM_SETTINGS_LIMITS.preclickHopMaxDistanceVw;
-      source.preclickHopMaxDistanceVw = clamp(
-        (Number.isFinite(radiusVw)
-          ? radiusVw
-          : DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw) * 1.25,
-        minDistance,
-        maxDistance
-      );
+        ROOM_SETTINGS_LIMITS.preclickHopMaxDistancePercent;
+      source.preclickHopMaxDistancePercent = Number.isFinite(
+        previousHopDistance
+      )
+        ? clamp(previousHopDistance, minDistance, maxDistance)
+        : clamp(
+            (Number.isFinite(radiusPercent)
+              ? radiusPercent
+              : DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusPercent) *
+              1.25,
+            minDistance,
+            maxDistance
+          );
     }
+    if (!Object.hasOwn(source, "preclickHopGuardClickCount")) {
+      source.preclickHopGuardClickCount =
+        DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount;
+    }
+    delete source.preclickHopActivationRadiusVw;
+    delete source.preclickHopMaxDistanceVw;
     LEGACY_PRECLICK_PARALLAX_SETTING_KEYS.forEach((key) => {
       delete source[key];
     });
@@ -1194,9 +1225,12 @@
     const handDisplayMigrated = finiteNumber(version, 1) < 35
       ? migrateHandDisplaySettings(hopMigrated)
       : hopMigrated;
-    return finiteNumber(version, 1) < 36
+    const foldLayoutMigrated = finiteNumber(version, 1) < 36
       ? migrateFoldLayoutSettings(handDisplayMigrated)
       : handDisplayMigrated;
+    return finiteNumber(version, 1) < 38
+      ? migratePreclickHopSettings(foldLayoutMigrated)
+      : foldLayoutMigrated;
   }
 
   function sceneMotionMultiplier(settings) {
