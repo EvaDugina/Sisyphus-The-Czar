@@ -6217,18 +6217,21 @@ export function createSisyphusRuntime(elements = {}) {
       stopGachiClickSound();
       return;
     }
-    playGachiClickSound();
 
     if (motion.phase !== PHASES.PLAY) {
+      playGachiClickSound();
       return;
     }
 
-    if (windowObstacleController.isControlBlocked()) {
+    const controlBlocked = windowObstacleController.isControlBlocked();
+    if (!controlBlocked && consumePreclickGuardClick(event)) {
+      return;
+    }
+
+    playGachiClickSound();
+
+    if (controlBlocked) {
       event.preventDefault();
-      return;
-    }
-
-    if (consumePreclickGuardClick(event)) {
       return;
     }
 

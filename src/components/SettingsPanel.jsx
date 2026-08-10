@@ -1,5 +1,10 @@
+import { useState } from "react";
 import {
   SETTINGS_GROUPS,
+  SETTINGS_SCENES,
+  SETTINGS_SCENE_OPTIONS,
+  settingsControlVisibleInScene,
+  settingsGroupVisibleInScene,
   settingsGroupControls,
 } from "../config/settings.mjs";
 import { SettingsControl } from "./SettingsControl";
@@ -11,6 +16,10 @@ export function SettingsPanel({
   isOpen,
   settingsAvailable,
 }) {
+  const [activeScene, setActiveScene] = useState(
+    SETTINGS_SCENES.CATS_AND_MICE,
+  );
+
   return (
     <aside
       ref={panelRef}
@@ -18,7 +27,26 @@ export function SettingsPanel({
       id="settings-panel"
       aria-hidden={String(!settingsAvailable || !isOpen)}
       hidden={!settingsAvailable}
+      data-settings-scene={activeScene}
     >
+      <div
+        className="settings-scene-switcher"
+        role="group"
+        aria-label="Игровая сцена настроек"
+      >
+        {SETTINGS_SCENE_OPTIONS.map((scene) => (
+          <button
+            className="settings-scene-switcher__button"
+            type="button"
+            key={scene.id}
+            aria-pressed={String(activeScene === scene.id)}
+            onClick={() => setActiveScene(scene.id)}
+          >
+            {scene.label}
+          </button>
+        ))}
+      </div>
+
       <section className="settings-versions" aria-label="Версии настроек">
         <div
           className="settings-versions__field"
@@ -92,41 +120,67 @@ export function SettingsPanel({
         </div>
       </section>
 
-      {SETTINGS_GROUPS.map((group) => (
-        <details className="control-group" key={group.title}>
-          <summary>{group.title}</summary>
-          {group.controls?.length ? (
-            group.controls.map((control) => (
-              <SettingsControl control={control} key={control.name} />
-            ))
-          ) : null}
-          {group.subgroups?.map((subgroup) => (
-            <details
-              className="control-subgroup"
-              key={subgroup.title}
-              aria-label={`${group.title}: ${subgroup.title}`}
-              open
-            >
-              <summary>{subgroup.title}</summary>
-              {subgroup.permissionControl === "window-obstacle" && (
-                <WindowObstaclePermissionControl />
-              )}
-              {settingsGroupControls(subgroup).map((control) => (
-                <SettingsControl control={control} key={control.name} />
-              ))}
-            </details>
-          ))}
-          {group.action && (
-            <button
-              className={group.action.className}
-              type="button"
-              data-hint={group.action.hint}
-            >
-              {group.action.label}
-            </button>
-          )}
-        </details>
-      ))}
+      {SETTINGS_GROUPS.map((group) => {
+        const groupVisible = settingsGroupVisibleInScene(group, activeScene);
+        return (
+          <details
+            className="control-group"
+            key={group.title}
+            hidden={!groupVisible}
+          >
+            <summary>{group.title}</summary>
+            {group.controls?.length
+              ? group.controls.map((control) => (
+                  <SettingsControl
+                    control={control}
+                    key={control.name}
+                    hidden={
+                      !settingsControlVisibleInScene(control, activeScene)
+                    }
+                  />
+                ))
+              : null}
+            {group.subgroups?.map((subgroup) => {
+              const subgroupVisible = settingsGroupVisibleInScene(
+                subgroup,
+                activeScene,
+              );
+              return (
+                <details
+                  className="control-subgroup"
+                  key={subgroup.title}
+                  aria-label={`${group.title}: ${subgroup.title}`}
+                  open
+                  hidden={!subgroupVisible}
+                >
+                  <summary>{subgroup.title}</summary>
+                  {subgroup.permissionControl === "window-obstacle" && (
+                    <WindowObstaclePermissionControl />
+                  )}
+                  {settingsGroupControls(subgroup).map((control) => (
+                    <SettingsControl
+                      control={control}
+                      key={control.name}
+                      hidden={
+                        !settingsControlVisibleInScene(control, activeScene)
+                      }
+                    />
+                  ))}
+                </details>
+              );
+            })}
+            {group.action && (
+              <button
+                className={group.action.className}
+                type="button"
+                data-hint={group.action.hint}
+              >
+                {group.action.label}
+              </button>
+            )}
+          </details>
+        );
+      })}
     </aside>
   );
 }

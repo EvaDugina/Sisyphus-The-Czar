@@ -32,7 +32,7 @@ function nextFreeHeight(gates) {
   );
 }
 
-export function HeightGatesControl({ control }) {
+export function HeightGatesControl({ control, hidden = false }) {
   const { defaultValue, hint, label, name } = control;
   const inputRef = useRef(null);
   const [gates, setGates] = useState(() => parseHeightGates(defaultValue));
@@ -88,6 +88,7 @@ export function HeightGatesControl({ control }) {
       data-hint={hint}
       data-setting-control
       data-structured-setting-control
+      hidden={hidden}
     >
       <div className="control-label">
         <span>{label}</span>

@@ -93,8 +93,13 @@ import {
 import {
   LEGACY_SETTINGS_STORAGE_KEYS,
   SETTINGS_GROUPS,
+  SETTINGS_SCENES,
+  SETTINGS_SCENE_OPTIONS,
   SETTINGS_STORAGE_KEY,
   SETTINGS_VERSIONS_STORAGE_KEY,
+  settingsControlScenes,
+  settingsControlVisibleInScene,
+  settingsGroupVisibleInScene,
   settingsGroupControls,
 } from "../../src/config/settings.mjs";
 import {
@@ -457,6 +462,10 @@ test("настройки инерции и hop отображают актуал
     },
     { min: 0, max: 10, step: 1, defaultValue: 1 }
   );
+  assert.equal(
+    preclickHopGuardClickCount.label,
+    "Количество фейковых кликов"
+  );
   assert.deepEqual(
     {
       min: rockWallPenetration.min,
@@ -499,6 +508,76 @@ test("настройки инерции и hop отображают актуал
       step: 0.1,
       defaultValue: 62.5,
     },
+  );
+});
+
+test("UI классифицирует параметры по сценам без копирования значений", () => {
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const physicsGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Физика"
+  );
+  const rockGroup = SETTINGS_GROUPS.find((group) => group.title === "Камень");
+  const obstacleGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Препятствия"
+  );
+
+  assert.deepEqual(SETTINGS_SCENE_OPTIONS, [
+    {
+      id: SETTINGS_SCENES.CATS_AND_MICE,
+      label: "Сцена 1. Кошки-мышки",
+    },
+    { id: SETTINGS_SCENES.TURNIP, label: "Сцена 2. Репка" },
+  ]);
+  assert.deepEqual(
+    controls
+      .filter((control) => {
+        const scenes = settingsControlScenes(control);
+        return (
+          scenes.length === 1 &&
+          scenes.includes(SETTINGS_SCENES.CATS_AND_MICE)
+        );
+      })
+      .map((control) => control.name),
+    [
+      "preclickHopGuardClickCount",
+      "preclickHopActivationRadiusPercent",
+      "preclickHopMaxDistancePercent",
+    ]
+  );
+  ["themeMode", "rockImageId", "handVisibilityMode"].forEach((name) => {
+    const control = controls.find((candidate) => candidate.name === name);
+    assert.deepEqual(settingsControlScenes(control), [
+      SETTINGS_SCENES.CATS_AND_MICE,
+      SETTINGS_SCENES.TURNIP,
+    ]);
+  });
+  assert.equal(
+    settingsControlVisibleInScene("gravity", SETTINGS_SCENES.CATS_AND_MICE),
+    false
+  );
+  assert.equal(
+    settingsControlVisibleInScene("gravity", SETTINGS_SCENES.TURNIP),
+    true
+  );
+  assert.equal(
+    settingsGroupVisibleInScene(physicsGroup, SETTINGS_SCENES.CATS_AND_MICE),
+    false
+  );
+  assert.equal(
+    settingsGroupVisibleInScene(obstacleGroup, SETTINGS_SCENES.CATS_AND_MICE),
+    false
+  );
+  assert.equal(
+    settingsGroupVisibleInScene(rockGroup, SETTINGS_SCENES.CATS_AND_MICE),
+    true
+  );
+  assert.equal(
+    settingsGroupVisibleInScene(rockGroup, SETTINGS_SCENES.TURNIP),
+    true
+  );
+  assert.equal(
+    controls.every((control) => settingsControlScenes(control).length > 0),
+    true
   );
 });
 
@@ -1230,7 +1309,7 @@ test("настройки размера камня есть в UI и получ�
       defaultValue: preclickHopGuardClickCount.defaultValue,
     },
     {
-      label: "Кликов до включения физики",
+      label: "Количество фейковых кликов",
       type: "range",
       min: 0,
       max: 10,

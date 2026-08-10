@@ -66,7 +66,7 @@ function CurvePreview({ curve, previewKey }) {
   );
 }
 
-export function CubicBezierControl({ control }) {
+export function CubicBezierControl({ control, hidden = false }) {
   const {
     defaultValue,
     enabledWhen,
@@ -257,6 +257,7 @@ export function CubicBezierControl({ control }) {
       data-setting-control
       data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
       data-setting-scope={scope}
+      hidden={hidden}
     >
       <label className="control-label" htmlFor={`setting-${name}`}>
         <span>{label}</span>

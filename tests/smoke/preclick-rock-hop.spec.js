@@ -521,7 +521,7 @@ test("камень бесшовно переносится по обеим ос�
   await cdp.detach();
 });
 
-test("N защитных кликов отталкивают камень, а клик N+1 включает физику", async ({
+test("N фейковых кликов отталкивают камень, а клик N+1 включает физику", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -538,6 +538,7 @@ test("N защитных кликов отталкивают камень, а к
       preclickHopGuardClickCount: 3,
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
+      handAudioEnabled: true,
       rockPressShrinkPercent: 0,
       rockWallPenetrationPercent: 0,
     });
@@ -552,29 +553,62 @@ test("N защитных кликов отталкивают камень, а к
     guardClickCount: 3,
     guardClicksUsed: 0,
     hopCount: 1,
+    animating: false,
   });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+      ),
+    )
+    .toBe(0);
 
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
       preclickHopActivationRadiusPercent: 0,
     });
   });
+  const cdp = await page.context().newCDPSession(page);
   for (let click = 1; click <= 3; click += 1) {
     const point = await visibleRockPoint(page);
-    await page.mouse.click(point.x, point.y);
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: point.x,
+      y: point.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: point.x,
+      y: point.y,
+      button: "left",
+      clickCount: 1,
+    });
     await expect.poll(() => hopState(page)).toMatchObject({
       completed: false,
       guardClickCount: 3,
       guardClicksUsed: click,
       hopCount: click + 1,
+      animating: false,
     });
     expect(await page.evaluate(() => window.__controlAcquireMessages.length)).toBe(0);
     expect(await page.evaluate(() => window.__sisyphusTestApi.motion.dragging)).toBe(false);
+    expect(
+      await page.evaluate(
+        () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+      ),
+    ).toBe(0);
   }
 
   const realClickPoint = await visibleRockPoint(page);
-  await page.mouse.move(realClickPoint.x, realClickPoint.y);
-  await page.mouse.down();
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: realClickPoint.x,
+    y: realClickPoint.y,
+    button: "left",
+    clickCount: 1,
+  });
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,
     guardClickCount: 3,
@@ -585,7 +619,21 @@ test("N защитных кликов отталкивают камень, а к
   await expect
     .poll(() => page.evaluate(() => window.__controlAcquireMessages.length))
     .toBe(1);
-  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+      ),
+    )
+    .toBe(1);
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: realClickPoint.x,
+    y: realClickPoint.y,
+    button: "left",
+    clickCount: 1,
+  });
+  await cdp.detach();
 
   await page.getByTestId("restart-session").click();
   await expect.poll(() => hopState(page)).toMatchObject({

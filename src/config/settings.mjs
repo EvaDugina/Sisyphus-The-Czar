@@ -12,6 +12,20 @@ const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
 export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v40";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
+export const SETTINGS_SCENES = Object.freeze({
+  CATS_AND_MICE: "cats-and-mice",
+  TURNIP: "turnip",
+});
+export const SETTINGS_SCENE_OPTIONS = Object.freeze([
+  Object.freeze({
+    id: SETTINGS_SCENES.CATS_AND_MICE,
+    label: "Сцена 1. Кошки-мышки",
+  }),
+  Object.freeze({
+    id: SETTINGS_SCENES.TURNIP,
+    label: "Сцена 2. Репка",
+  }),
+]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
   "sisyphus-czar-settings-v39",
   "sisyphus-czar-settings-v38",
@@ -404,6 +418,73 @@ export function settingsGroupControls(group) {
       ? group.subgroups.flatMap(settingsGroupControls)
       : []),
   ];
+}
+
+const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
+  "preclickHopGuardClickCount",
+  "preclickHopActivationRadiusPercent",
+  "preclickHopMaxDistancePercent",
+]);
+
+const SHARED_SCENE_SETTING_NAMES = new Set([
+  "themeMode",
+  "lightBackgroundColor",
+  "lightBackgroundDeepColor",
+  "lightBackgroundLowColor",
+  "darkBackgroundColor",
+  "darkBackgroundDeepColor",
+  "darkBackgroundLowColor",
+  "sceneHeightScreens",
+  "foldPositionPercent",
+  "foldPanelHeightVh",
+  "foldAngle",
+  "foldZoneSize",
+  "foldBlendEnabled",
+  "foldBlendCurve",
+  "rockImageId",
+  "foldRockImageId",
+  "rockPulseEnabled",
+  "rockPulseShrinkPercent",
+  "rockPulseBpm",
+  "rockMinWidthVw",
+  "rockMaxWidthVw",
+  "customCursorEnabled",
+  "customCursorSizePx",
+  "handVisibilityMode",
+  "handImageChangeDelayMs",
+  "rockGrabRadiusVh",
+  "handAudioEnabled",
+  "handWidthVw",
+]);
+
+const CATS_AND_MICE_SCENES = Object.freeze([
+  SETTINGS_SCENES.CATS_AND_MICE,
+]);
+const TURNIP_SCENES = Object.freeze([SETTINGS_SCENES.TURNIP]);
+const SHARED_SCENES = Object.freeze([
+  SETTINGS_SCENES.CATS_AND_MICE,
+  SETTINGS_SCENES.TURNIP,
+]);
+
+export function settingsControlScenes(control) {
+  const name = typeof control === "string" ? control : control?.name;
+  if (CATS_AND_MICE_ONLY_SETTING_NAMES.has(name)) {
+    return CATS_AND_MICE_SCENES;
+  }
+  if (SHARED_SCENE_SETTING_NAMES.has(name)) {
+    return SHARED_SCENES;
+  }
+  return TURNIP_SCENES;
+}
+
+export function settingsControlVisibleInScene(control, sceneId) {
+  return settingsControlScenes(control).includes(sceneId);
+}
+
+export function settingsGroupVisibleInScene(group, sceneId) {
+  return settingsGroupControls(group).some((control) =>
+    settingsControlVisibleInScene(control, sceneId),
+  );
 }
 
 export const SETTINGS_GROUPS = [
@@ -829,7 +910,7 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "preclickHopGuardClickCount",
-        label: "Кликов до включения физики",
+        label: "Количество фейковых кликов",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
           .preclickHopGuardClickCount[0],
@@ -838,7 +919,7 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
         output: `${DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount}`,
-        hint: "Первые N кликов по камню вызывают только защитный отскок. Следующий клик включает физику и переводит игру в сцену «репка»; ноль отключает защитные клики.",
+        hint: "Первые N кликов по камню вызывают только бесшумный фейковый отскок. Следующий клик включает физику и переводит игру в сцену «Репка»; ноль отключает фейковые клики.",
       },
       {
         name: "preclickHopActivationRadiusPercent",

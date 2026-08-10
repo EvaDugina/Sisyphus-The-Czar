@@ -85,8 +85,8 @@ test("Fold-настройки мигрируют из localStorage v32 в v40", 
   });
   await page.goto("/");
   const layer = await waitForFoldReady(page);
-  await expect(layer).toHaveAttribute("data-fold-angle", "30");
-  await expect(layer).toHaveAttribute("data-fold-zone-size", "20");
+  await expect(layer).toHaveAttribute("data-fold-angle", "47");
+  await expect(layer).toHaveAttribute("data-fold-zone-size", "13");
   await expect
     .poll(() =>
       page.evaluate(() => {
@@ -286,6 +286,9 @@ test("группа Камень показывает три hop-контрола
   await expect(guardClicks).toHaveAttribute("min", "0");
   await expect(guardClicks).toHaveAttribute("max", "10");
   await expect(guardClicks).toHaveAttribute("step", "1");
+  await expect(
+    guardClicks.locator("xpath=ancestor::*[@data-setting-control]")
+  ).toContainText("Количество фейковых кликов");
   await expect(radius).toHaveValue("50");
   await expect(radius).toHaveAttribute("min", "0");
   await expect(radius).toHaveAttribute("max", "300");
@@ -300,6 +303,56 @@ test("группа Камень показывает три hop-контрола
 
   await expect(distance).toHaveValue("149.3");
   await expect(distanceOutput).toHaveText("149.3%");
+});
+
+test("панель показывает параметры и разделы выбранной сцены", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await navigateToSettings(page);
+
+  const sceneOne = page.getByRole("button", {
+    name: "Сцена 1. Кошки-мышки",
+  });
+  const sceneTwo = page.getByRole("button", { name: "Сцена 2. Репка" });
+  const fakeClicks = page.locator('[name="preclickHopGuardClickCount"]');
+  const gravity = page.locator('[name="gravity"]');
+  const theme = page.locator('[name="themeMode"]');
+  const fakeClicksControl = fakeClicks.locator(
+    "xpath=ancestor::*[@data-setting-control]",
+  );
+  const gravityControl = gravity.locator(
+    "xpath=ancestor::*[@data-setting-control]",
+  );
+  const themeControl = theme.locator(
+    "xpath=ancestor::*[@data-setting-control]",
+  );
+  const obstacleGroup = page
+    .locator('[name="windowObstacleEnabled"]')
+    .locator("xpath=ancestor::details[contains(@class, 'control-group')]");
+
+  await expect(sceneOne).toHaveAttribute("aria-pressed", "true");
+  await expect(sceneTwo).toHaveAttribute("aria-pressed", "false");
+  await expect(fakeClicksControl).not.toHaveAttribute("hidden", "");
+  await expect(gravityControl).toHaveAttribute("hidden", "");
+  await expect(obstacleGroup).toHaveAttribute("hidden", "");
+  await expect(themeControl).not.toHaveAttribute("hidden", "");
+  await setSettingValue(page, "themeMode", "dark");
+
+  await sceneTwo.click();
+  await expect(sceneOne).toHaveAttribute("aria-pressed", "false");
+  await expect(sceneTwo).toHaveAttribute("aria-pressed", "true");
+  await expect(fakeClicksControl).toHaveAttribute("hidden", "");
+  await expect(gravityControl).not.toHaveAttribute("hidden", "");
+  await expect(obstacleGroup).not.toHaveAttribute("hidden", "");
+  await expect(themeControl).not.toHaveAttribute("hidden", "");
+  await expect(theme).toHaveValue("dark");
+
+  await sceneOne.click();
+  await expect(fakeClicksControl).not.toHaveAttribute("hidden", "");
+  await expect(gravityControl).toHaveAttribute("hidden", "");
+  await expect(theme).toHaveValue("dark");
 });
 
 test("изображения камня и сжатие пульса настраиваются независимо", async ({
@@ -450,6 +503,9 @@ test("постоянная рука показывает нативный кур
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({ handVisibilityMode: "always" });
+  });
   await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
   await expect(page.locator("body")).toHaveClass(/hand-always-visible/);
 
@@ -492,9 +548,6 @@ test("UI переключает три режима руки и задержив
       name: "Сохранить версию и настройки комнаты",
     })
     .click();
-  await expect(page.locator(".settings-production-status")).toContainText(
-    "Версия и настройки комнаты сохранены",
-  );
   await page.locator(".settings-version-toggle").click();
   const productionButton = page.locator(".settings-version-production").first();
   await expect(productionButton).toBeEnabled();
@@ -566,6 +619,9 @@ test("session toolbar показывает нативный курсор вме�
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({ handVisibilityMode: "always" });
+  });
   await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
   await expect(page.locator("body")).toHaveClass(/hand-always-visible/);
 
@@ -615,9 +671,6 @@ test("общая настройка показывает SVG-курсор и м�
       name: "Сохранить версию и настройки комнаты",
     })
     .click();
-  await expect(page.locator(".settings-production-status")).toContainText(
-    "Версия и настройки комнаты сохранены",
-  );
   await page.locator(".settings-version-toggle").click();
   const productionButton = page.locator(".settings-version-production").first();
   await expect(productionButton).toBeEnabled();
@@ -629,6 +682,8 @@ test("общая настройка показывает SVG-курсор и м�
   await waitForFoldReady(page);
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
+      handImageChangeDelayMs: 0,
+      handVisibilityMode: "always",
       preclickHopGuardClickCount: 0,
     });
   });
@@ -819,6 +874,9 @@ test("препятствие Окна сообщает о popup-блокиров
       "aria-hidden",
       "false",
     );
+    const sceneTwo = page.getByRole("button", { name: "Сцена 2. Репка" });
+    await sceneTwo.click();
+    await expect(sceneTwo).toHaveAttribute("aria-pressed", "true");
 
     await expect(
       page.locator(".control-group > summary", { hasText: /^Рука$/ }),

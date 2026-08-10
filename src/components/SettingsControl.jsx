@@ -2,7 +2,7 @@ import { CubicBezierControl } from "./CubicBezierControl";
 import { HeightGatesControl } from "./HeightGatesControl";
 import { serializeSettingDependency } from "../lib/settingsDependencies.mjs";
 
-export function SettingsControl({ control }) {
+export function SettingsControl({ control, hidden = false }) {
   const {
     activeLabel,
     defaultChecked,
@@ -25,11 +25,11 @@ export function SettingsControl({ control }) {
       : undefined;
 
   if (type === "cubic-bezier") {
-    return <CubicBezierControl control={control} />;
+    return <CubicBezierControl control={control} hidden={hidden} />;
   }
 
   if (type === "height-gates") {
-    return <HeightGatesControl control={control} />;
+    return <HeightGatesControl control={control} hidden={hidden} />;
   }
 
   if (type === "checkbox") {
@@ -41,6 +41,7 @@ export function SettingsControl({ control }) {
         data-setting-control
         data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
         data-setting-scope={scope}
+        hidden={hidden}
       >
         <input
           data-setting-input
@@ -82,6 +83,7 @@ export function SettingsControl({ control }) {
         data-setting-control
         data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
         data-setting-scope={scope}
+        hidden={hidden}
       >
         <span className="control-label">
           <span>{label}</span>
@@ -135,6 +137,7 @@ export function SettingsControl({ control }) {
       data-setting-control
       data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
       data-setting-scope={scope}
+      hidden={hidden}
     >
       <span className="control-label">
         <span>{label}</span>
