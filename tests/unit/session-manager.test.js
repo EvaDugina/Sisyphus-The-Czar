@@ -550,7 +550,7 @@ test("старая сессия внутри вершины получает н�
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 });
 
-test("persisted session мигрирует Fold, отскок и камень в room schema 33", () => {
+test("persisted session мигрирует Fold, отскок и камень в room schema 34", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
     {
@@ -585,6 +585,11 @@ test("persisted session мигрирует Fold, отскок и камень в
     false,
   );
   assert.equal(session.roomSettings.preclickHopMaxDistanceVw, 45);
+  assert.equal(session.roomSettings.preclickHopActivationRadiusVw, 36);
+  assert.equal(
+    Object.hasOwn(session.roomSettings, "preclickParallaxActivationRadiusVw"),
+    false,
+  );
   assert.equal(session.roomSettings.rockImageId, "rock-03");
   assert.equal(session.roomSettings.foldRockImageId, "rock-03");
   assert.equal(session.roomSettings.rockPulseShrinkPercent, 17);
@@ -698,16 +703,11 @@ test("roomSettings.update синхронизирует размер руки и 
     sceneHeightScreens: 50,
     handWidthVw: 42.5,
     handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
-    preclickParallaxMaxOffsetVw: 36,
-    preclickParallaxActivationRadiusVw: 36,
+    preclickHopActivationRadiusVw: 36,
     preclickHopMaxDistanceVw: 72,
-    preclickParallaxStartDelayMs: 320,
-    preclickParallaxInverted: true,
     handAlwaysVisible: false,
     rockGrabRadiusVh: 4.5,
     cameraFollowLerp: 0.25,
-    preclickParallaxReturnDurationMs: 650,
-    preclickParallaxReturnEasing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
     rainMaxVolume: 2.5,
     rainDropColor: "#123456",
     rainHighlightColor: "#fedcba",
@@ -727,16 +727,11 @@ test("roomSettings.update синхронизирует размер руки и 
       sceneHeightScreens: 50,
       handWidthVw: 42.5,
       handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
-      preclickParallaxMaxOffsetVw: 36,
-      preclickParallaxActivationRadiusVw: 36,
+      preclickHopActivationRadiusVw: 36,
       preclickHopMaxDistanceVw: 72,
-      preclickParallaxStartDelayMs: 320,
-      preclickParallaxInverted: true,
       handAlwaysVisible: false,
       rockGrabRadiusVh: 4.5,
       cameraFollowLerp: 0.25,
-      preclickParallaxReturnDurationMs: 650,
-      preclickParallaxReturnEasing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
       rainMaxVolume: 2.5,
       rainDropColor: "#123456",
       rainHighlightColor: "#fedcba",
@@ -1770,13 +1765,13 @@ test("debug settings.update принимает любого участника �
         ...RoomSettings.DEFAULT_ROOM_SETTINGS,
         ...Physics.DEFAULT_PHYSICS,
         gravity: 8,
-        preclickParallaxMaxOffsetVw: 20,
+        preclickHopActivationRadiusVw: 20,
       },
     },
   });
 
   assert.equal(session.physics.gravity, 8);
-  assert.equal(session.roomSettings.preclickParallaxMaxOffsetVw, 20);
+  assert.equal(session.roomSettings.preclickHopActivationRadiusVw, 20);
   assert.equal(session.settingsRevision, 2);
   assert.equal(
     second.socket.messages.findLast(

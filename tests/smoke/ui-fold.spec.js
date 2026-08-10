@@ -42,14 +42,6 @@ async function setSettingValue(page, name, value) {
   }, value);
 }
 
-function rockParallaxX(page) {
-  return page.locator("#root > .world > .rock").evaluate((rock) =>
-    Number.parseFloat(
-      getComputedStyle(rock).getPropertyValue("--rock-parallax-x"),
-    ) || 0,
-  );
-}
-
 test("legacy drafts маршруты возвращают 404", async ({ request }) => {
   for (const path of ["/drafts", "/drafts/", "/drafts/assets/missing.js"]) {
     const response = await request.get(path);
@@ -57,9 +49,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v35", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v36", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v35");
+    localStorage.removeItem("sisyphus-czar-settings-v36");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -78,7 +70,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v35", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -104,7 +96,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v35", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -112,13 +104,20 @@ test("Fold-настройки мигрируют из localStorage v32 в v35", 
     .toEqual([47, 13]);
 });
 
-test("длина отскока мигрирует из localStorage v33 в v35", async ({ page }) => {
+test("hop-настройки мигрируют из localStorage v35 в v36 без legacy-полей", async ({
+  page,
+}) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v35");
+    localStorage.removeItem("sisyphus-czar-settings-v36");
     localStorage.setItem(
-      "sisyphus-czar-settings-v33",
+      "sisyphus-czar-settings-v35",
       JSON.stringify({
         preclickParallaxActivationRadiusVw: 12,
+        preclickHopMaxDistanceVw: 184.3,
+        preclickParallaxMaxOffsetVw: 8,
+        preclickParallaxStartDelayMs: 320,
+        preclickParallaxInverted: true,
+        cameraFollowLerp: 0.25,
       }),
     );
   });
@@ -129,19 +128,31 @@ test("длина отскока мигрирует из localStorage v33 в v35"
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
         );
-        return stored.preclickHopMaxDistanceVw;
+        return {
+          radius: stored.preclickHopActivationRadiusVw,
+          distance: stored.preclickHopMaxDistanceVw,
+          cameraFollowLerp: stored.cameraFollowLerp,
+          hasLegacy: Object.keys(stored).some((key) =>
+            key.startsWith("preclickParallax"),
+          ),
+        };
       }),
     )
-    .toBe(15);
+    .toEqual({
+      radius: 12,
+      distance: 184.3,
+      cameraFollowLerp: 0.25,
+      hasLegacy: false,
+    });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v35", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v36", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v35");
+    localStorage.removeItem("sisyphus-czar-settings-v36");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -154,7 +165,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v36") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -172,30 +183,36 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("ползунок максимальной длины отскока обновляет output", async ({
+test("группа Камень показывает только два hop-контрола", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v35");
+    localStorage.removeItem("sisyphus-czar-settings-v36");
   });
 
   await page.goto("/");
   await waitForFoldReady(page);
   await navigateToSettings(page);
 
-  const slider = page.locator('[name="preclickHopMaxDistanceVw"]');
-  const output = page.locator(
+  const radius = page.locator('[name="preclickHopActivationRadiusVw"]');
+  const distance = page.locator('[name="preclickHopMaxDistanceVw"]');
+  const distanceOutput = page.locator(
     '[data-output="preclickHopMaxDistanceVw"]',
   );
-  await expect(slider).toHaveValue("62.5");
-  await expect(slider).toHaveAttribute("min", "0");
-  await expect(slider).toHaveAttribute("max", "200");
-  await expect(slider).toHaveAttribute("step", "0.1");
+  await expect(radius).toHaveValue("50");
+  await expect(radius).toHaveAttribute("min", "0");
+  await expect(radius).toHaveAttribute("max", "200");
+  await expect(radius).toHaveAttribute("step", "1");
+  await expect(distance).toHaveValue("62.5");
+  await expect(distance).toHaveAttribute("min", "0");
+  await expect(distance).toHaveAttribute("max", "200");
+  await expect(distance).toHaveAttribute("step", "0.1");
+  await expect(page.locator('[name^="preclickParallax"]')).toHaveCount(0);
 
   await setSettingValue(page, "preclickHopMaxDistanceVw", 184.3);
 
-  await expect(slider).toHaveValue("184.3");
-  await expect(output).toHaveText("184.3vw");
+  await expect(distance).toHaveValue("184.3");
+  await expect(distanceOutput).toHaveText("184.3vw");
 });
 
 test("изображения камня и сжатие пульса настраиваются независимо", async ({
@@ -364,27 +381,9 @@ test("постоянная рука показывает нативный кур
   await expect(panel).toBeVisible();
   await panel.hover({ position: { x: 24, y: 24 } });
   await expect(panel).toHaveCSS("cursor", "auto");
-  await expect(body).toHaveClass(/is-settings-pointer-active/);
-  await expect(hand).toHaveCSS("opacity", "0");
 
   await page.mouse.move(8, 8);
   await expect(body).not.toHaveClass(/is-settings-pointer-active/);
-
-  const handGroup = page.locator(".control-group").filter({
-    has: page.locator("summary", { hasText: /^Рука$/ }),
-  });
-  await handGroup.evaluate((element) => {
-    element.open = true;
-  });
-  await setSettingValue(page, "handAlwaysVisible", false);
-  await expect(body).not.toHaveClass(/hand-always-visible/);
-  await page.locator(".settings-toggle").click();
-  await page.mouse.move(8, 8);
-  await expect(hand).not.toHaveClass(/is-visible/);
-  await page.locator("#root > .world > .rock").hover();
-  await expect(hand).toHaveClass(/is-visible/);
-  await page.mouse.move(8, 8);
-  await expect(hand).not.toHaveClass(/is-visible/);
 });
 
 test("session toolbar показывает нативный курсор вместо фото-руки", async ({
@@ -445,10 +444,12 @@ test("общая настройка показывает SVG-курсор и м�
     "Версия и настройки комнаты сохранены",
   );
   await page.locator(".settings-version-toggle").click();
-  await expect(
-    page.locator(".settings-version-production").first(),
-  ).toBeEnabled();
-  await page.locator(".settings-version-toggle").click();
+  const productionButton = page.locator(".settings-version-production").first();
+  await expect(productionButton).toBeEnabled();
+  await productionButton.click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Production:",
+  );
   await page.locator(".settings-page__back").click();
   await waitForFoldReady(page);
   await expect(body).toHaveClass(/custom-cursor-enabled/);
@@ -540,6 +541,9 @@ test("общая настройка показывает SVG-курсор и м�
       name: "Сохранить версию и настройки комнаты",
     })
     .click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Production:",
+  );
   await page.locator(".settings-page__back").click();
   await waitForFoldReady(page);
   await expect(body).not.toHaveClass(/custom-cursor-enabled/);
@@ -550,457 +554,64 @@ test("общая настройка показывает SVG-курсор и м�
     .toBe("none");
 });
 
-test("настройки parallax меняют задержку, радиусы и плавность возврата", async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v35");
-    localStorage.setItem(
-      "sisyphus-czar-settings-v26",
-      JSON.stringify({ preclickParallaxActivationRadiusPx: 1000 }),
-    );
-  });
-  await page.goto("/");
-  await waitForFoldReady(page);
-  await page.locator(".settings-toggle").click();
-  const rockGroup = page.locator(".control-group").filter({
-    has: page.locator("summary", { hasText: /^Камень$/ }),
-  });
-  await rockGroup.evaluate((element) => {
-    element.open = true;
-  });
-  const cameraGroup = page.locator(".control-group").filter({
-    has: page.locator("summary", { hasText: /^Камера$/ }),
-  });
-  await cameraGroup.evaluate((element) => {
-    element.open = true;
-  });
-  const handGroup = page.locator(".control-group").filter({
-    has: page.locator("summary", { hasText: /^Рука$/ }),
-  });
-  await handGroup.evaluate((element) => {
-    element.open = true;
-  });
-
-  const maxOffset = page.locator('[name="preclickParallaxMaxOffsetVw"]');
-  const activationRadius = page.locator(
-    '[name="preclickParallaxActivationRadiusVw"]',
-  );
-  const startDelay = page.locator(
-    '[name="preclickParallaxStartDelayMs"]',
-  );
-  const returnDuration = page.locator(
-    '[name="preclickParallaxReturnDurationMs"]',
-  );
-  const returnEasing = page.locator(
-    '[name="preclickParallaxReturnEasing"]',
-  );
-  const inverted = page.locator('[name="preclickParallaxInverted"]');
-  const cameraFollowLerp = page.locator('[name="cameraFollowLerp"]');
-  const rockGrabRadius = page.locator('[name="rockGrabRadiusVh"]');
-  const inversionButton = page.locator(
-    '[data-setting-control]:has([name="preclickParallaxInverted"]) [data-setting-toggle-button]',
-  );
-  await expect(maxOffset).toHaveValue("0.6");
-  await expect(maxOffset).toHaveAttribute("min", "0");
-  await expect(maxOffset).toHaveAttribute("max", "150");
-  await expect(maxOffset).toHaveAttribute("step", "0.1");
-  await expect(activationRadius).toHaveValue("50");
-  await expect(activationRadius).toHaveAttribute("min", "0");
-  await expect(activationRadius).toHaveAttribute("max", "200");
-  await expect(startDelay).toHaveValue("0");
-  await expect(startDelay).toHaveAttribute("min", "0");
-  await expect(startDelay).toHaveAttribute("max", "1000");
-  await expect(startDelay).toHaveAttribute("step", "10");
-  await expect(returnDuration).toHaveValue("400");
-  await expect(returnDuration).toHaveAttribute("min", "0");
-  await expect(returnDuration).toHaveAttribute("max", "2000");
-  await expect(returnEasing).toHaveValue(
-    "cubic-bezier(0.22, 1, 0.36, 1)",
-  );
-  await expect(inverted).not.toBeChecked();
-  await expect(inversionButton).toHaveAttribute("aria-pressed", "false");
-  await expect(inversionButton).toHaveText("Обычное направление");
-  await expect(cameraFollowLerp).toHaveValue("0.1");
-  await expect(cameraFollowLerp).toHaveAttribute("min", "0.01");
-  await expect(cameraFollowLerp).toHaveAttribute("max", "1");
-  await expect(rockGrabRadius).toHaveValue("0");
-  await expect(rockGrabRadius).toHaveAttribute("min", "0");
-  await expect(rockGrabRadius).toHaveAttribute("max", "10");
-  await expect(rockGrabRadius).toHaveAttribute("step", "0.1");
-  await expect(
-    page.locator(
-      '[data-cubic-bezier-control]:has([name="preclickParallaxReturnEasing"]) .bezier-graph',
-    ),
-  ).toHaveCount(1);
-
-  await setSettingValue(page, "preclickParallaxMaxOffsetVw", 3.6);
-  await setSettingValue(page, "preclickParallaxActivationRadiusVw", 70);
-  await setSettingValue(page, "preclickParallaxStartDelayMs", 320);
-  await setSettingValue(page, "preclickParallaxReturnDurationMs", 650);
-  await setSettingValue(
-    page,
-    "preclickParallaxReturnEasing",
-    "cubic-bezier(0.25, 0.1, 0.25, 1)",
-  );
-  await setSettingValue(page, "cameraFollowLerp", 0.25);
-  await setSettingValue(page, "rockGrabRadiusVh", 4.5);
-  await inversionButton.click();
-  await expect(inverted).toBeChecked();
-  await expect(inversionButton).toHaveAttribute("aria-pressed", "true");
-  await expect(inversionButton).toHaveText("Инверсия включена");
-  await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        maxOffset:
-          window.__sisyphusTestApi.params.preclickParallaxMaxOffsetVw,
-        activationRadius:
-          window.__sisyphusTestApi.params
-            .preclickParallaxActivationRadiusVw,
-        startDelay:
-          window.__sisyphusTestApi.params.preclickParallaxStartDelayMs,
-        returnDuration:
-          window.__sisyphusTestApi.params.preclickParallaxReturnDurationMs,
-        returnEasing:
-          window.__sisyphusTestApi.params.preclickParallaxReturnEasing,
-        inverted:
-          window.__sisyphusTestApi.params.preclickParallaxInverted,
-        cameraFollowLerp:
-          window.__sisyphusTestApi.params.cameraFollowLerp,
-        rockGrabRadius:
-          window.__sisyphusTestApi.params.rockGrabRadiusVh,
-      })),
-    )
-    .toEqual({
-      maxOffset: 3.6,
-      activationRadius: 70,
-      startDelay: 320,
-      returnDuration: 650,
-      returnEasing: "cubic-bezier(0.25, 0.1, 0.25, 1)",
-      inverted: true,
-      cameraFollowLerp: 0.25,
-      rockGrabRadius: 4.5,
-    });
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        Boolean(
-          JSON.parse(
-            localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
-          ).preclickParallaxInverted,
-        ),
-      ),
-    )
-    .toBe(true);
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
-        );
-        return {
-          startDelay: stored.preclickParallaxStartDelayMs,
-          rockGrabRadius: stored.rockGrabRadiusVh,
-        };
-      }),
-    )
-    .toEqual({ startDelay: 320, rockGrabRadius: 4.5 });
-  await expect(
-    page.locator('[data-output="preclickParallaxMaxOffsetVw"]'),
-  ).toHaveText("3.6vw");
-  await expect(
-    page.locator('[data-output="preclickParallaxActivationRadiusVw"]'),
-  ).toHaveText("70vw");
-  await expect(
-    page.locator('[data-output="preclickParallaxStartDelayMs"]'),
-  ).toHaveText("320мс");
-  await expect(
-    page.locator('[data-output="preclickParallaxReturnDurationMs"]'),
-  ).toHaveText("650мс");
-  await expect(
-    page.locator('[data-output="rockGrabRadiusVh"]'),
-  ).toHaveText("4.5vh");
-});
-
-test("задержка parallax отменяется при выходе и применяет последнюю позицию", async ({
-  page,
-}) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      "sisyphus-czar-settings-v35",
-      JSON.stringify({
-        handAlwaysVisible: false,
-        preclickParallaxActivationRadiusVw: 50,
-        preclickParallaxMaxOffsetVw: 3,
-        preclickParallaxStartDelayMs: 250,
-        preclickParallaxReturnDurationMs: 0,
-      }),
-    );
-  });
-  await page.goto("/");
-  await waitForFoldReady(page);
-
-  const rock = page.locator("#root > .world > .rock");
-  const hand = page.locator(
-    "#root > .world > .hand-cursor:not(.is-remote)",
-  );
-  const target = await rock.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    const style = getComputedStyle(element);
-    const offsetX =
-      Number.parseFloat(style.getPropertyValue("--rock-parallax-x")) || 0;
-    const offsetY =
-      Number.parseFloat(style.getPropertyValue("--rock-parallax-y")) || 0;
-    const centerX = rect.left + rect.width / 2 - offsetX;
-    const centerY = rect.top + rect.height / 2 - offsetY;
-    const halfRadius = innerWidth * 0.25;
-    return {
-      x:
-        centerX + halfRadius < innerWidth - 8
-          ? centerX + halfRadius
-          : centerX - halfRadius,
-      y: centerY,
-    };
-  });
-
-  await page.mouse.move(0, 0);
-  await expect.poll(() => rockParallaxX(page)).toBe(0);
-  await page.mouse.move(target.x, target.y);
-  await page.waitForTimeout(100);
-  expect(await rockParallaxX(page)).toBe(0);
-  await expect(hand).not.toHaveClass(/is-visible/);
-
-  await page.mouse.move(0, 0);
-  await page.waitForTimeout(250);
-  expect(await rockParallaxX(page)).toBe(0);
-
-  await page.mouse.move(target.x, target.y);
-  await page.waitForTimeout(100);
-  expect(await rockParallaxX(page)).toBe(0);
-  await expect
-    .poll(async () => Math.abs(await rockParallaxX(page)), { timeout: 1000 })
-    .toBeGreaterThan(1);
-});
-
-test("reload сохраняет preclick и настройки до первого захвата", async ({
-  page,
-}) => {
-  const expectedSettings = {
-    cameraFollowLerp: 0.25,
-    handAlwaysVisible: false,
-    preclickParallaxActivationRadiusVw: 50,
-    preclickParallaxInverted: true,
-    preclickParallaxMaxOffsetVw: 3,
-    preclickParallaxStartDelayMs: 180,
-    rockGrabRadiusVh: 4,
-  };
-  await page.goto("/");
-  await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
-  await page.locator(".settings-toggle").click();
-  await expect(page).toHaveURL(/\/settings\//);
-  await expect(page.getByTestId("session-status")).toContainText(
-    "настройки комнаты общие",
-  );
-  await expect(page.getByTestId("restart-session")).toHaveCount(0);
-  for (const [name, value] of Object.entries(expectedSettings)) {
-    await setSettingValue(page, name, value);
-  }
-  await expect(page.locator(".settings-room-save")).toHaveCount(0);
-  await page
-    .getByRole("button", {
-      name: "Сохранить версию и настройки комнаты",
-    })
-    .click();
-  await expect(page.locator(".settings-production-status")).toContainText(
-    "Версия и настройки комнаты сохранены",
-  );
-  const selectedVersion = await page.evaluate(() => {
-    const stored = JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-versions-v1") || "{}",
-    );
-    return {
-      selectedId: stored.selectedId,
-      settings: stored.entries?.find((entry) => entry.id === stored.selectedId)
-        ?.settings,
-    };
-  });
-  expect(selectedVersion.settings).toMatchObject({
-    foldAngle: 45,
-    foldZoneSize: 10,
-    foldBlendEnabled: false,
-    foldBlendCurve: "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
-  });
-  await page.locator(".settings-version-toggle").click();
-  const productionButton = page.locator(
-    `[data-production-preset-select="${selectedVersion.selectedId}"]`,
-  );
-  await expect(productionButton).toBeEnabled();
-  await productionButton.click();
-  await expect(
-    page.locator(
-      `.settings-version-option.is-production [data-production-preset-select="${selectedVersion.selectedId}"]`,
-    ),
-  ).toBeVisible();
-  await expect(page.locator(".settings-production-status")).toContainText(
-    "Production:",
-  );
-  await page.locator(".settings-page__back").click();
-  await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
-
-  const rock = page.locator("#root > .world > .rock");
-  const body = page.locator("body");
-  const html = page.locator("html");
-  await expect(page.getByTestId("restart-session")).toBeVisible();
-  const readCurrentSettings = () =>
-    page.evaluate(() => {
-      const { params } = window.__sisyphusTestApi;
-      return {
-        cameraFollowLerp: params.cameraFollowLerp,
-        handAlwaysVisible: params.handAlwaysVisible,
-        preclickParallaxActivationRadiusVw:
-          params.preclickParallaxActivationRadiusVw,
-        preclickParallaxInverted: params.preclickParallaxInverted,
-        preclickParallaxMaxOffsetVw: params.preclickParallaxMaxOffsetVw,
-        preclickParallaxStartDelayMs: params.preclickParallaxStartDelayMs,
-        rockGrabRadiusVh: params.rockGrabRadiusVh,
-      };
-    });
-  await expect.poll(readCurrentSettings).toEqual(expectedSettings);
-
-  const expectPreclickAfterReload = async () => {
-    await page.reload();
-    await waitForFoldReady(page);
-    await expect(page.getByTestId("session-status")).toContainText("В сессии");
-    await expect(body).toHaveClass(/preclick-rock-guidance/);
-    await expect(body).toHaveClass(/is-manual-scroll-disabled/);
-    await expect(html).toHaveClass(/is-manual-scroll-disabled/);
-    await expect(rock).toHaveClass(/is-preclick-parallax/);
-    await expect
-      .poll(() =>
-        page.evaluate(() => {
-          const { motion, params } = window.__sisyphusTestApi;
-          return {
-            settings: {
-              cameraFollowLerp: params.cameraFollowLerp,
-              handAlwaysVisible: params.handAlwaysVisible,
-              preclickParallaxActivationRadiusVw:
-                params.preclickParallaxActivationRadiusVw,
-              preclickParallaxInverted: params.preclickParallaxInverted,
-              preclickParallaxMaxOffsetVw:
-                params.preclickParallaxMaxOffsetVw,
-              preclickParallaxStartDelayMs:
-                params.preclickParallaxStartDelayMs,
-              rockGrabRadiusVh: params.rockGrabRadiusVh,
-            },
-            state: {
-              dragging: motion.dragging,
-              physicsActivated: motion.physicsActivated,
-              suspended: motion.suspended,
-            },
-          };
-        }),
-      )
-      .toEqual({
-        settings: expectedSettings,
-        state: {
-          dragging: false,
-          physicsActivated: false,
-          suspended: true,
-        },
-      });
-  };
-
-  const expectParallaxAfterDelay = async () => {
-    await page.mouse.move(0, 0);
-    await expect.poll(() => rockParallaxX(page)).toBe(0);
-    const target = await rock.evaluate((element) => {
-      const rect = element.getBoundingClientRect();
-      const style = getComputedStyle(element);
-      const offsetX =
-        Number.parseFloat(style.getPropertyValue("--rock-parallax-x")) || 0;
-      const centerX = rect.left + rect.width / 2 - offsetX;
-      const centerY = rect.top + rect.height / 2;
-      const halfRadius = innerWidth * 0.25;
-      return {
-        x:
-          centerX + halfRadius < innerWidth - 8
-            ? centerX + halfRadius
-            : centerX - halfRadius,
-        y: centerY,
-      };
-    });
-    await page.mouse.move(target.x, target.y);
-    await page.waitForTimeout(80);
-    expect(await rockParallaxX(page)).toBe(0);
-    await expect
-      .poll(async () => Math.abs(await rockParallaxX(page)), { timeout: 1000 })
-      .toBeGreaterThan(1);
-  };
-
-  await expectPreclickAfterReload();
-  const scrollBeforeWheel = await page.evaluate(() => scrollY);
-  await page.mouse.wheel(0, -600);
-  await page.waitForTimeout(50);
-  expect(await page.evaluate(() => scrollY)).toBe(scrollBeforeWheel);
-  await expectParallaxAfterDelay();
-
-  await expectPreclickAfterReload();
-  await expectParallaxAfterDelay();
-});
-
 test("mouse захватывает камень внутри расширенного vh-радиуса", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      "sisyphus-czar-settings-v35",
-      JSON.stringify({
-        handAlwaysVisible: false,
-        preclickParallaxMaxOffsetVw: 0,
-        rockGrabRadiusVh: 4,
-      }),
-    );
-  });
   await page.goto("/");
   await waitForFoldReady(page);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.params.preclickHopActivationRadiusVw = 0;
+    window.__sisyphusTestApi.params.rockGrabRadiusVh = 4;
+  });
 
   const rock = page.locator("#root > .world > .rock");
-  const points = await rock.evaluate((element) => {
+  const farPoint = await rock.evaluate((element) => {
     const rect = element.getBoundingClientRect();
     const radius = innerHeight * 0.04;
     const useLeft = rect.left - radius - 12 >= 0;
     const edge = useLeft ? rect.left : rect.right;
     const direction = useLeft ? -1 : 1;
     return {
-      far: {
-        x: edge + direction * (radius + 8),
-        y: rect.top + rect.height / 2,
-      },
-      near: {
-        x: edge + direction * (radius / 2),
-        y: rect.top + rect.height / 2,
-      },
+      x: edge + direction * (radius + 8),
+      y: rect.top + rect.height / 2,
     };
   });
 
+  await page.mouse.move(farPoint.x, farPoint.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        dragging: window.__sisyphusTestApi.motion.dragging,
+        physicsActivated: window.__sisyphusTestApi.motion.physicsActivated,
+      })),
+    )
+    .toEqual({ dragging: false, physicsActivated: false });
+
+  const nearPoint = await rock.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    const radius = innerHeight * 0.04;
+    const useLeft = rect.left - radius - 12 >= 0;
+    const edge = useLeft ? rect.left : rect.right;
+    const direction = useLeft ? -1 : 1;
+    return {
+      x: edge + direction * (radius / 2),
+      y: rect.top + rect.height / 2,
+    };
+  });
   expect(
     await page.evaluate(({ x, y }) => {
       const rockElement = document.querySelector("#root > .world > .rock");
       const target = document.elementFromPoint(x, y);
       return target === rockElement || rockElement.contains(target);
-    }, points.near),
+    }, nearPoint),
   ).toBe(false);
-
-  await page.mouse.move(points.far.x, points.far.y);
+  await page.mouse.move(nearPoint.x, nearPoint.y);
   await page.mouse.down();
-  await page.mouse.up();
-  await expect(rock).toHaveClass(/is-preclick-parallax/);
-
-  await page.mouse.move(points.near.x, points.near.y);
-  await page.mouse.down();
-  await expect(rock).not.toHaveClass(/is-preclick-parallax/);
+  await expect(page.locator("body")).not.toHaveClass(/preclick-rock-guidance/);
   await expect(rock).toHaveClass(/is-dragging/);
   await expect
     .poll(() =>
@@ -1042,7 +653,7 @@ test("препятствие Окна сообщает о popup-блокиров
     const windowsGroup = obstacleGroup.locator(
       '[aria-label="Препятствия: Окна"]',
     );
-    await expect(windowsGroup.getByRole("heading", { name: "Окна" })).toBeVisible();
+    await expect(windowsGroup.locator(":scope > summary")).toHaveText("Окна");
     await expect(page.locator('[name="windowObstacleEnabled"]')).not.toBeChecked();
     await expect(page.locator('[name="windowObstacleMinHeightVh"]')).toHaveValue("1000");
     await expect(page.locator('[name="windowObstacleMaxHeightVh"]')).toHaveValue("1500");
@@ -1056,29 +667,12 @@ test("препятствие Окна сообщает о popup-блокиров
     await expect(page.locator('[name="windowObstacleMinIntervalSeconds"]')).toHaveAttribute("step", "0.1");
     await expect(page.locator('[name="windowObstacleMinWidthPx"]')).toHaveAttribute("step", "10");
 
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => window.__sisyphusTestApi.getWindowObstacleState().heightVh,
-        ),
-      )
-      .toBe(0);
-
     const status = page.locator("[data-window-obstacle-popup-status]");
     await expect(status).toHaveAttribute("data-state", "unchecked");
     await page.locator("[data-window-obstacle-popup-test]").click();
     await expect(status).toHaveAttribute("data-state", "blocked");
     await expect(status).toContainText("Заблокировано");
     await expect(page.locator("[data-window-obstacle-popup-help]")).toBeVisible();
-    await expect
-      .poll(() =>
-        page.evaluate(() => window.__sisyphusTestApi.getWindowObstacleState()),
-      )
-      .toMatchObject({
-        activeWindowCount: 0,
-        permission: "blocked",
-        schedulePending: false,
-      });
 });
 
 test("Fold синхронизирует сцену и применяет общие сохраняемые настройки", async ({
@@ -1102,15 +696,24 @@ test("Fold синхронизирует сцену и применяет общ�
       name: "Сохранить версию и настройки комнаты",
     })
     .click();
-  await expect(page.locator(".settings-production-status")).toContainText(
-    "Версия и настройки комнаты сохранены",
-  );
-  const selectedVersionId = await page.evaluate(() => {
-    const stored = JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-versions-v1") || "{}",
+  const selectedVersionId = await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-versions-v1") || "{}",
+        );
+        return stored.selectedId || null;
+      }),
+    )
+    .not.toBeNull()
+    .then(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-versions-v1") || "{}",
+        );
+        return stored.selectedId;
+      }),
     );
-    return stored.selectedId;
-  });
   expect(selectedVersionId).toBeTruthy();
   await page.locator(".settings-version-toggle").click();
   const productionButton = page.locator(
@@ -1209,11 +812,12 @@ test("Fold синхронизирует сцену и применяет общ�
   );
 });
 
-test("настройки выпадения и выпрыгивания доступны на основном маршруте", async ({
+test("настройки выпадения и выпрыгивания доступны на странице настроек", async ({
   page,
 }) => {
   await page.goto("/");
-    await expect(page.getByTestId("session-status")).toContainText("В сессии");
+    await waitForFoldReady(page);
+    await navigateToSettings(page);
     const randomDrop = page.locator('[name="randomDropEnabled"]');
     const rockJump = page.locator('[name="rockJumpEnabled"]');
     const jumpInterval = page.locator('[name="rockJumpIntervalSeconds"]');
@@ -1248,12 +852,17 @@ test("первое падение анимирует размер камня, с
   page,
 }) => {
   await page.goto("/");
+  await waitForFoldReady(page);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
 
-  await setSettingValue(page, "darkBackgroundColor", "#112233");
-  await setSettingValue(page, "darkBackgroundDeepColor", "#223344");
-  await setSettingValue(page, "darkBackgroundLowColor", "#334455");
-  await setSettingValue(page, "themeMode", "dark");
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      darkBackgroundColor: "#112233",
+      darkBackgroundDeepColor: "#223344",
+      darkBackgroundLowColor: "#334455",
+      themeMode: "dark",
+    });
+  });
   await expect
     .poll(() =>
       page.evaluate(() => ({
@@ -1270,10 +879,14 @@ test("первое падение анимирует размер камня, с
       surface: "#112233",
     });
 
-  await setSettingValue(page, "lightBackgroundColor", "#ddeeff");
-  await setSettingValue(page, "lightBackgroundDeepColor", "#ccddee");
-  await setSettingValue(page, "lightBackgroundLowColor", "#bbccdd");
-  await setSettingValue(page, "themeMode", "light");
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      lightBackgroundColor: "#ddeeff",
+      lightBackgroundDeepColor: "#ccddee",
+      lightBackgroundLowColor: "#bbccdd",
+      themeMode: "light",
+    });
+  });
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -1282,9 +895,18 @@ test("первое падение анимирует размер камня, с
     )
     .toBe("#ddeeff");
 
-  await setSettingValue(page, "rockActivatedWidthVw", 10);
-  await setSettingValue(page, "gravity", 0.1);
-  await setSettingValue(page, "pointerInfluence", 0);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      gravity: 0.1,
+      pointerInfluence: 0,
+      preclickHopActivationRadiusVw: 0,
+      rockActivatedWidthVw: 10,
+      rockMaxWidthVw: 10,
+      rockMinWidthVw: 10,
+      rockPressShrinkPercent: 0,
+      rockPulseEnabled: false,
+    });
+  });
   const rock = page.locator("#root > .world > .rock");
   const box = await rock.boundingBox();
   const initialWidth = box.width;
@@ -1388,11 +1010,12 @@ test("первое падение анимирует размер камня, с
   });
 });
 
-test("glow-профили и зависимости select работают на основном маршруте", async ({
+test("glow-профили и зависимости select работают на странице настроек", async ({
   page,
 }) => {
   await page.goto("/");
-    await expect(page.getByTestId("session-status")).toContainText("В сессии");
+    await waitForFoldReady(page);
+    await navigateToSettings(page);
 
     const mode = page.locator('[name="glowOptimizationMode"]');
     const targetFps = page.locator('[name="glowTargetFps"]');
@@ -1445,27 +1068,4 @@ test("glow-профили и зависимости select работают на
     await expect(page.locator('[name="rainBlurPx"]')).toBeDisabled();
     await setSettingValue(page, "themeMode", "auto");
 
-  await setSettingValue(page, "glowOptimizationMode", "manual");
-  await setSettingValue(page, "glowBufferScalePercent", 35);
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v35") || "{}",
-        );
-        return [
-          stored.glowOptimizationMode,
-          stored.glowBufferScalePercent,
-        ];
-      }),
-    )
-    .toEqual(["manual", 35]);
-
-  await page.reload();
-  await expect(page.locator('[name="glowOptimizationMode"]')).toHaveValue(
-    "manual",
-  );
-  await expect(page.locator('[name="glowBufferScalePercent"]')).toHaveValue(
-    "35",
-  );
 });

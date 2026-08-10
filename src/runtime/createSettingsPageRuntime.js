@@ -10,8 +10,12 @@ import {
   resolveProductionPresetMessage,
 } from "../lib/productionPresetMessages.mjs";
 import { createSettingsController } from "./createSettingsController.js";
+import {
+  createWindowObstacleController,
+  WINDOW_OBSTACLE_PERMISSION,
+} from "./createWindowObstacleController.js";
 
-const SETTINGS_SCHEMA_VERSION = 35;
+const SETTINGS_SCHEMA_VERSION = 36;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 function randomRequestId() {
@@ -463,6 +467,35 @@ export function createSettingsPageRuntime(elements = {}) {
   settingsController.syncLocalSettingControls();
   settingsController.updateControlOutputs();
   settingsController.bind();
+  const windowObstaclePopupTest = document.querySelector(
+    "[data-window-obstacle-popup-test]",
+  );
+  const windowObstaclePopupStatus = document.querySelector(
+    "[data-window-obstacle-popup-status]",
+  );
+  const windowObstaclePopupHelp = document.querySelector(
+    "[data-window-obstacle-popup-help]",
+  );
+  const windowObstacleController = createWindowObstacleController({
+    getSettings: () => SharedRoomSettings.sanitizeRoomSettings(params),
+    onPermissionChange: (permission, label) => {
+      if (windowObstaclePopupStatus) {
+        windowObstaclePopupStatus.dataset.state = permission;
+        windowObstaclePopupStatus.textContent = label;
+      }
+      if (windowObstaclePopupHelp) {
+        windowObstaclePopupHelp.hidden =
+          permission !== WINDOW_OBSTACLE_PERMISSION.BLOCKED;
+      }
+      if (windowObstaclePopupTest) {
+        windowObstaclePopupTest.disabled =
+          permission === WINDOW_OBSTACLE_PERMISSION.TEST_OPENED;
+      }
+    },
+  });
+  listen(windowObstaclePopupTest, "click", () => {
+    windowObstacleController.testPopupPermission();
+  });
   void ensureSessionAndConnect();
 
   return {
@@ -473,6 +506,7 @@ export function createSettingsPageRuntime(elements = {}) {
       disposed = true;
       clearReconnectTimer();
       settingsController.dispose?.();
+      windowObstacleController.dispose();
       listenerDisposers.splice(0).forEach((dispose) => dispose());
       if (socket && socket.readyState < WebSocket.CLOSING) {
         socket.close(1000, "settings_page_unmount");

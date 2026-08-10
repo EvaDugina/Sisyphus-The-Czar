@@ -39,14 +39,11 @@ import {
   rockScaleForY,
 } from "../../src/lib/rockScale.mjs";
 import {
-  activePreclickMovementDeltaMs,
   calculatePreclickHopTarget,
-  calculatePreclickParallaxOffset,
-  calculatePreclickParallaxTransition,
   preclickHopDistance,
   preclickPointerSpeed,
   wrapPreclickHopCenter,
-} from "../../src/lib/preclickParallax.mjs";
+} from "../../src/lib/preclickHop.mjs";
 import { cursorCircleIntersectsRect } from "../../src/lib/rockGrab.mjs";
 import {
   rockPulseProgress,
@@ -96,26 +93,32 @@ import {
 } from "../../src/config/settings.mjs";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
-const DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS = Object.freeze({
-  preclickParallaxEndMaxOffsetVw:
-    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxEndMaxOffsetVw,
-  preclickParallaxMaxOffsetEasing:
-    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetEasing,
-  preclickParallaxEndDelayMs:
-    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxEndDelayMs,
-  preclickParallaxDelayEasing:
-    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxDelayEasing,
-  preclickParallaxTransitionDurationSeconds:
-    SharedRoomSettings.DEFAULT_ROOM_SETTINGS
-      .preclickParallaxTransitionDurationSeconds,
+const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
+  "preclickParallaxActivationRadiusVw",
+  "preclickParallaxActivationRadiusPx",
+  "preclickParallaxMaxOffsetPx",
+  "preclickParallaxMaxOffsetVw",
+  "preclickParallaxEndMaxOffsetVw",
+  "preclickParallaxMaxOffsetEasing",
+  "preclickParallaxStartDelayMs",
+  "preclickParallaxEndDelayMs",
+  "preclickParallaxDelayEasing",
+  "preclickParallaxTransitionDurationSeconds",
+  "preclickParallaxInverted",
+  "preclickParallaxReturnDurationMs",
+  "preclickParallaxReturnEasing",
+]);
+const DEFAULT_PRECLICK_HOP_SETTINGS = Object.freeze({
+  preclickHopActivationRadiusVw:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw,
+  preclickHopMaxDistanceVw:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw,
 });
 const DEFAULT_CUSTOM_CURSOR_SETTINGS = Object.freeze({
   customCursorEnabled:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorEnabled,
   customCursorSizePx:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorSizePx,
-  preclickHopMaxDistanceVw:
-    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw,
 });
 const DEFAULT_ROCK_VISUAL_MIGRATION = Object.freeze({
   rockImageId: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockImageId,
@@ -392,7 +395,7 @@ test("повторный hide не перезапускает таймер ис�
   );
 });
 
-test("настройки инерции отображают шкалу 0–5", () => {
+test("настройки инерции и hop отображают актуальные шкалы", () => {
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const inertia = controls.find(
     (control) => control.name === "inertia"
@@ -403,11 +406,23 @@ test("настройки инерции отображают шкалу 0–5", 
   const preclickHopMaxDistance = controls.find(
     (control) => control.name === "preclickHopMaxDistanceVw"
   );
+  const preclickHopActivationRadius = controls.find(
+    (control) => control.name === "preclickHopActivationRadiusVw"
+  );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v35");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v36");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
+  );
+  assert.deepEqual(
+    {
+      min: preclickHopActivationRadius.min,
+      max: preclickHopActivationRadius.max,
+      step: preclickHopActivationRadius.step,
+      defaultValue: preclickHopActivationRadius.defaultValue,
+    },
+    { min: 0, max: 200, step: 1, defaultValue: 50 }
   );
   assert.deepEqual(
     {
@@ -467,7 +482,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 35);
+  assert.equal(productionSettingsSchemaVersion, 36);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -808,131 +823,6 @@ test("громкость капели зависит от физической �
   );
 });
 
-test("preclick parallax растёт к центру и меняет радиальное направление", () => {
-  const atBoundary = calculatePreclickParallaxOffset({
-    deltaX: 100,
-    deltaY: 0,
-    activationRadius: 100,
-    maxOffset: 20,
-  });
-  const halfwayRight = calculatePreclickParallaxOffset({
-    deltaX: 50,
-    deltaY: 0,
-    activationRadius: 100,
-    maxOffset: 20,
-  });
-  const nearRight = calculatePreclickParallaxOffset({
-    deltaX: 10,
-    deltaY: 0,
-    activationRadius: 100,
-    maxOffset: 20,
-  });
-  const halfwayLeft = calculatePreclickParallaxOffset({
-    deltaX: -50,
-    deltaY: 0,
-    activationRadius: 100,
-    maxOffset: 20,
-  });
-  const inverted = calculatePreclickParallaxOffset({
-    deltaX: 50,
-    deltaY: 0,
-    activationRadius: 100,
-    maxOffset: 20,
-    inverted: true,
-  });
-  const exactCenter = calculatePreclickParallaxOffset({
-    deltaX: 0,
-    deltaY: 0,
-    activationRadius: 100,
-    maxOffset: 20,
-    lastDirectionX: -1,
-    lastDirectionY: 0,
-  });
-
-  assert.deepEqual(atBoundary, {
-    insideRadius: true,
-    x: 0,
-    y: 0,
-    directionX: 1,
-    directionY: 0,
-  });
-  assert.equal(halfwayRight.x, 10);
-  assert.equal(nearRight.x, 18);
-  assert.equal(halfwayLeft.x, -10);
-  assert.equal(inverted.x, -10);
-  assert.equal(exactCenter.x, -20);
-  assert.equal(Math.hypot(exactCenter.x, exactCenter.y), 20);
-  assert.deepEqual(
-    calculatePreclickParallaxOffset({
-      deltaX: 20,
-      deltaY: 0,
-      activationRadius: 100,
-      maxOffset: 0,
-    }),
-    {
-      insideRadius: true,
-      x: 0,
-      y: 0,
-      directionX: 1,
-      directionY: 0,
-    },
-  );
-});
-
-test("preclick transition считает только непрерывное движение выше порога", () => {
-  assert.equal(
-    activePreclickMovementDeltaMs({
-      previousX: 10,
-      previousY: 10,
-      previousAtMs: 100,
-      x: 10.1,
-      y: 10,
-      atMs: 116,
-    }),
-    0,
-  );
-  assert.equal(
-    activePreclickMovementDeltaMs({
-      previousX: 10,
-      previousY: 10,
-      previousAtMs: 100,
-      x: 11,
-      y: 10,
-      atMs: 116,
-    }),
-    16,
-  );
-  assert.equal(
-    activePreclickMovementDeltaMs({
-      previousX: 10,
-      previousY: 10,
-      previousAtMs: 100,
-      x: 30,
-      y: 10,
-      atMs: 500,
-    }),
-    0,
-  );
-
-  assert.deepEqual(
-    calculatePreclickParallaxTransition({
-      activeMovementTimeMs: 15_000,
-      durationSeconds: 30,
-      startDelayMs: 0,
-      endDelayMs: 1000,
-      delayEasing: "cubic-bezier(0, 0, 1, 1)",
-      startMaxOffset: 50,
-      endMaxOffset: 0,
-      maxOffsetEasing: "cubic-bezier(0, 0, 1, 1)",
-    }),
-    {
-      progress: 0.5,
-      delayMs: 500,
-      maxOffset: 25,
-    },
-  );
-});
-
 test("preclick hop зависит от скорости, сохраняет длину и переносится через края", () => {
   assert.equal(
     preclickPointerSpeed({
@@ -1055,39 +945,8 @@ test("настройки размера камня есть в UI и получ�
   const foldRockImageId = controls.find(
     (control) => control.name === "foldRockImageId",
   );
-  const preclickParallaxMaxOffsetVw = controls.find(
-    (control) => control.name === "preclickParallaxMaxOffsetVw",
-  );
-  const preclickParallaxActivationRadiusVw = controls.find(
-    (control) => control.name === "preclickParallaxActivationRadiusVw",
-  );
-  const preclickParallaxStartDelayMs = controls.find(
-    (control) => control.name === "preclickParallaxStartDelayMs",
-  );
-  const preclickParallaxEndMaxOffsetVw = controls.find(
-    (control) => control.name === "preclickParallaxEndMaxOffsetVw",
-  );
-  const preclickParallaxMaxOffsetEasing = controls.find(
-    (control) => control.name === "preclickParallaxMaxOffsetEasing",
-  );
-  const preclickParallaxEndDelayMs = controls.find(
-    (control) => control.name === "preclickParallaxEndDelayMs",
-  );
-  const preclickParallaxDelayEasing = controls.find(
-    (control) => control.name === "preclickParallaxDelayEasing",
-  );
-  const preclickParallaxTransitionDurationSeconds = controls.find(
-    (control) =>
-      control.name === "preclickParallaxTransitionDurationSeconds",
-  );
-  const preclickParallaxInverted = controls.find(
-    (control) => control.name === "preclickParallaxInverted",
-  );
-  const preclickParallaxReturnDurationMs = controls.find(
-    (control) => control.name === "preclickParallaxReturnDurationMs",
-  );
-  const preclickParallaxReturnEasing = controls.find(
-    (control) => control.name === "preclickParallaxReturnEasing",
+  const preclickHopActivationRadiusVw = controls.find(
+    (control) => control.name === "preclickHopActivationRadiusVw",
   );
   const rockMinWidthVw = controls.find(
     (control) => control.name === "rockMinWidthVw",
@@ -1135,18 +994,8 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseEnabled",
       "rockPulseShrinkPercent",
       "rockPulseBpm",
-      "preclickParallaxMaxOffsetVw",
-      "preclickParallaxEndMaxOffsetVw",
-      "preclickParallaxActivationRadiusVw",
+      "preclickHopActivationRadiusVw",
       "preclickHopMaxDistanceVw",
-      "preclickParallaxStartDelayMs",
-      "preclickParallaxEndDelayMs",
-      "preclickParallaxTransitionDurationSeconds",
-      "preclickParallaxMaxOffsetEasing",
-      "preclickParallaxDelayEasing",
-      "preclickParallaxInverted",
-      "preclickParallaxReturnDurationMs",
-      "preclickParallaxReturnEasing",
       "rockMinWidthVw",
       "rockMaxWidthVw",
     ],
@@ -1260,88 +1109,15 @@ test("настройки размера камня есть в UI и получ�
   );
   assert.deepEqual(
     {
-      label: preclickParallaxMaxOffsetVw.label,
-      type: preclickParallaxMaxOffsetVw.type,
-      min: preclickParallaxMaxOffsetVw.min,
-      max: preclickParallaxMaxOffsetVw.max,
-      step: preclickParallaxMaxOffsetVw.step,
-      defaultValue: preclickParallaxMaxOffsetVw.defaultValue,
+      label: preclickHopActivationRadiusVw.label,
+      type: preclickHopActivationRadiusVw.type,
+      min: preclickHopActivationRadiusVw.min,
+      max: preclickHopActivationRadiusVw.max,
+      step: preclickHopActivationRadiusVw.step,
+      defaultValue: preclickHopActivationRadiusVw.defaultValue,
     },
     {
-      label: "Начальный максимум parallax, vw",
-      type: "range",
-      min: 0,
-      max: 150,
-      step: 0.1,
-      defaultValue: 0.6,
-    },
-  );
-  assert.deepEqual(
-    {
-      min: preclickParallaxEndMaxOffsetVw.min,
-      max: preclickParallaxEndMaxOffsetVw.max,
-      defaultValue: preclickParallaxEndMaxOffsetVw.defaultValue,
-      graph: preclickParallaxMaxOffsetEasing.graph,
-    },
-    {
-      min: 0,
-      max: 50,
-      defaultValue: 0,
-      graph: {
-        startSetting: "preclickParallaxMaxOffsetVw",
-        endSetting: "preclickParallaxEndMaxOffsetVw",
-        durationSetting: "preclickParallaxTransitionDurationSeconds",
-        startDefault: 0.6,
-        endDefault: 0,
-        durationDefault: 30,
-        unit: "vw",
-        precision: 1,
-      },
-    },
-  );
-  assert.deepEqual(
-    {
-      label: preclickParallaxReturnDurationMs.label,
-      type: preclickParallaxReturnDurationMs.type,
-      min: preclickParallaxReturnDurationMs.min,
-      max: preclickParallaxReturnDurationMs.max,
-      step: preclickParallaxReturnDurationMs.step,
-      defaultValue: preclickParallaxReturnDurationMs.defaultValue,
-    },
-    {
-      label: "Возврат камня, мс",
-      type: "range",
-      min: 0,
-      max: 2000,
-      step: 10,
-      defaultValue: 400,
-    },
-  );
-  assert.deepEqual(
-    {
-      label: preclickParallaxReturnEasing.label,
-      type: preclickParallaxReturnEasing.type,
-      defaultValue: preclickParallaxReturnEasing.defaultValue,
-      spellCheck: preclickParallaxReturnEasing.spellCheck,
-    },
-    {
-      label: "Кривая возврата камня",
-      type: "cubic-bezier",
-      defaultValue: "cubic-bezier(0.22, 1, 0.36, 1)",
-      spellCheck: false,
-    },
-  );
-  assert.deepEqual(
-    {
-      label: preclickParallaxActivationRadiusVw.label,
-      type: preclickParallaxActivationRadiusVw.type,
-      min: preclickParallaxActivationRadiusVw.min,
-      max: preclickParallaxActivationRadiusVw.max,
-      step: preclickParallaxActivationRadiusVw.step,
-      defaultValue: preclickParallaxActivationRadiusVw.defaultValue,
-    },
-    {
-      label: "Радиус parallax, vw",
+      label: "Радиус срабатывания, vw",
       type: "range",
       min: 0,
       max: 200,
@@ -1349,66 +1125,11 @@ test("настройки размера камня есть в UI и получ�
       defaultValue: 50,
     },
   );
-  assert.deepEqual(
-    {
-      label: preclickParallaxStartDelayMs.label,
-      type: preclickParallaxStartDelayMs.type,
-      min: preclickParallaxStartDelayMs.min,
-      max: preclickParallaxStartDelayMs.max,
-      step: preclickParallaxStartDelayMs.step,
-      defaultValue: preclickParallaxStartDelayMs.defaultValue,
-    },
-    {
-      label: "Начальная задержка parallax, мс",
-      type: "range",
-      min: 0,
-      max: 1000,
-      step: 10,
-      defaultValue: 0,
-    },
-  );
-  assert.deepEqual(
-    {
-      endDelayDefault: preclickParallaxEndDelayMs.defaultValue,
-      durationMin: preclickParallaxTransitionDurationSeconds.min,
-      durationMax: preclickParallaxTransitionDurationSeconds.max,
-      durationDefault: preclickParallaxTransitionDurationSeconds.defaultValue,
-      curveDefault: preclickParallaxDelayEasing.defaultValue,
-      graph: preclickParallaxDelayEasing.graph,
-    },
-    {
-      endDelayDefault: 1000,
-      durationMin: 1,
-      durationMax: 30,
-      durationDefault: 30,
-      curveDefault: "cubic-bezier(0, 0, 1, 1)",
-      graph: {
-        startSetting: "preclickParallaxStartDelayMs",
-        endSetting: "preclickParallaxEndDelayMs",
-        durationSetting: "preclickParallaxTransitionDurationSeconds",
-        startDefault: 0,
-        endDefault: 1000,
-        durationDefault: 30,
-        unit: "ms",
-        precision: 0,
-      },
-    },
-  );
-  assert.deepEqual(
-    {
-      label: preclickParallaxInverted.label,
-      type: preclickParallaxInverted.type,
-      defaultChecked: preclickParallaxInverted.defaultChecked,
-      activeLabel: preclickParallaxInverted.activeLabel,
-      inactiveLabel: preclickParallaxInverted.inactiveLabel,
-    },
-    {
-      label: "Направление parallax",
-      type: "toggle-button",
-      defaultChecked: false,
-      activeLabel: "Инверсия включена",
-      inactiveLabel: "Обычное направление",
-    },
+  assert.equal(
+    controls.some((control) =>
+      LEGACY_PRECLICK_PARALLAX_SETTING_KEYS.includes(control.name)
+    ),
+    false,
   );
   assert.equal(rockMinWidthVw.type, "number");
   assert.equal(rockMinWidthVw.label, "Начальный размер, %");
@@ -2070,16 +1791,10 @@ test("настройки препятствия Окна нормализуют 
       rockActivatedWidthVw: 10,
       handAudioEnabled: true,
       drizzleEnabled: true,
-      preclickParallaxMaxOffsetVw: 0.6,
-      preclickParallaxActivationRadiusVw: 50,
-      preclickParallaxInverted: false,
-      preclickParallaxReturnDurationMs: 400,
-      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
       handAlwaysVisible: true,
       cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
       rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
+      ...DEFAULT_PRECLICK_HOP_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
       ...DEFAULT_ROCK_VISUAL_MIGRATION,
     },
@@ -2224,7 +1939,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 33);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 34);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2236,7 +1951,9 @@ test("группа дождя содержит общий toggle и blur тём�
     rockPulseEnabled: "true",
     rockPulseBpm: 999,
     preclickParallaxMaxOffsetPx: 9999,
-    preclickParallaxActivationRadiusVw: -1,
+    preclickHopActivationRadiusVw: -1,
+    preclickHopMaxDistanceVw: -5,
+    preclickParallaxActivationRadiusVw: 80,
     preclickParallaxStartDelayMs: 9999,
     preclickParallaxEndDelayMs: -1,
     preclickParallaxEndMaxOffsetVw: 999,
@@ -2260,15 +1977,11 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.foldRockImageId, "rock");
   assert.equal(visualSettings.rockPulseEnabled, true);
   assert.equal(visualSettings.rockPulseBpm, 240);
-  assert.equal(visualSettings.preclickParallaxMaxOffsetVw, 150);
-  assert.equal(visualSettings.preclickParallaxActivationRadiusVw, 0);
+  assert.equal(visualSettings.preclickHopActivationRadiusVw, 0);
   assert.equal(visualSettings.preclickHopMaxDistanceVw, 0);
-  assert.equal(visualSettings.preclickParallaxStartDelayMs, 1000);
-  assert.equal(visualSettings.preclickParallaxEndDelayMs, 1000);
-  assert.equal(visualSettings.preclickParallaxEndMaxOffsetVw, 50);
-  assert.equal(visualSettings.preclickParallaxTransitionDurationSeconds, 30);
-  assert.equal(visualSettings.preclickParallaxInverted, true);
-  assert.equal(visualSettings.preclickParallaxReturnDurationMs, 2000);
+  for (const legacyKey of LEGACY_PRECLICK_PARALLAX_SETTING_KEYS) {
+    assert.equal(Object.hasOwn(visualSettings, legacyKey), false);
+  }
   assert.equal(visualSettings.customCursorEnabled, true);
   assert.equal(visualSettings.customCursorSizePx, 128);
   assert.equal(visualSettings.rockGrabRadiusVh, 10);
@@ -2283,240 +1996,79 @@ test("группа дождя содержит общий toggle и blur тём�
       foldRockImageId: "rock-03",
     },
   );
-  assert.equal(
-    visualSettings.preclickParallaxReturnEasing,
-    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickParallaxReturnEasing,
-  );
+  const legacyV17 = SharedRoomSettings.migrateRoomSettings({}, 17);
+  assert.equal(legacyV17.lightBackgroundColor, "#f8f8f5");
+  assert.equal(legacyV17.handAudioEnabled, true);
   assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 17),
     {
-      lightBackgroundColor: "#f8f8f5",
-      lightBackgroundDeepColor: "#e9e8e2",
-      lightBackgroundLowColor: "#d9d8d1",
-      darkBackgroundColor: "#101211",
-      darkBackgroundDeepColor: "#191a16",
-      darkBackgroundLowColor: "#070807",
-      rockActivatedWidthVw: 10,
-      handAudioEnabled: true,
-      drizzleEnabled: true,
-      preclickParallaxMaxOffsetVw: 0.6,
-      preclickParallaxActivationRadiusVw: 50,
-      preclickParallaxInverted: false,
-      preclickParallaxReturnDurationMs: 400,
-      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
-      handAlwaysVisible: true,
-      cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
+      preclickHopActivationRadiusVw: legacyV17.preclickHopActivationRadiusVw,
+      preclickHopMaxDistanceVw: legacyV17.preclickHopMaxDistanceVw,
     },
+    DEFAULT_PRECLICK_HOP_SETTINGS,
   );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 18),
+
+  const legacyPx = SharedRoomSettings.migrateRoomSettings(
+    { preclickParallaxActivationRadiusPx: 480 },
+    21,
+  );
+  assert.equal(legacyPx.preclickHopActivationRadiusVw, 24);
+  assert.equal(legacyPx.preclickHopMaxDistanceVw, 30);
+
+  const migratedFold = SharedRoomSettings.migrateRoomSettings(
     {
-      handAudioEnabled: true,
-      drizzleEnabled: true,
-      preclickParallaxMaxOffsetVw: 0.6,
-      preclickParallaxActivationRadiusVw: 50,
-      preclickParallaxInverted: false,
-      preclickParallaxReturnDurationMs: 400,
-      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
-      handAlwaysVisible: true,
-      cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
+      draftFoldAngle: 15,
+      draftFoldZoneSize: 12,
+      draftFoldBlendEnabled: false,
+      draftFoldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
+      foldAngle: 45,
     },
+    30,
   );
   assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 19),
     {
-      preclickParallaxMaxOffsetVw: 0.6,
-      preclickParallaxActivationRadiusVw: 50,
-      preclickParallaxInverted: false,
-      preclickParallaxReturnDurationMs: 400,
-      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
-      handAlwaysVisible: true,
-      cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
+      foldAngle: migratedFold.foldAngle,
+      foldZoneSize: migratedFold.foldZoneSize,
+      foldBlendEnabled: migratedFold.foldBlendEnabled,
+      foldBlendCurve: migratedFold.foldBlendCurve,
+      preclickHopActivationRadiusVw: migratedFold.preclickHopActivationRadiusVw,
+      preclickHopMaxDistanceVw: migratedFold.preclickHopMaxDistanceVw,
     },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 20),
-    {
-      preclickParallaxMaxOffsetVw: 0.6,
-      preclickParallaxActivationRadiusVw: 50,
-      preclickParallaxInverted: false,
-      preclickParallaxReturnDurationMs: 400,
-      preclickParallaxReturnEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
-      handAlwaysVisible: true,
-      cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings(
-      { preclickParallaxActivationRadiusPx: 480 },
-      21,
-    ),
-    {
-      preclickParallaxMaxOffsetVw: 0.6,
-      preclickParallaxActivationRadiusVw: 24,
-      preclickParallaxInverted: false,
-      handAlwaysVisible: true,
-      cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      preclickHopMaxDistanceVw: 30,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings(
-      { preclickParallaxActivationRadiusPx: 480 },
-      22,
-    ),
-    {
-      preclickParallaxMaxOffsetVw: 0.6,
-      preclickParallaxActivationRadiusVw: 24,
-      preclickParallaxInverted: false,
-      handAlwaysVisible: true,
-      cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      preclickHopMaxDistanceVw: 30,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 23),
-    {
-      preclickParallaxInverted: false,
-      preclickParallaxMaxOffsetVw: 0.6,
-      handAlwaysVisible: true,
-      cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 24),
-    {
-      preclickParallaxMaxOffsetVw: 0.6,
-      handAlwaysVisible: true,
-      cameraFollowLerp: 0.1,
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 25),
-    {
-      preclickParallaxStartDelayMs: 0,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 26),
-    {
-      ...DEFAULT_PRECLICK_PARALLAX_TRANSITION_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 27),
-    {
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings({}, 29),
-    {
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
-  );
-  assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 30), {
-    preclickHopMaxDistanceVw: 62.5,
-    ...DEFAULT_ROCK_VISUAL_MIGRATION,
-  });
-  assert.deepEqual(SharedRoomSettings.migrateRoomSettings({}, 31), {
-    preclickHopMaxDistanceVw: 62.5,
-    ...DEFAULT_ROCK_VISUAL_MIGRATION,
-  });
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings(
-      {
-        draftFoldAngle: 15,
-        draftFoldZoneSize: 12,
-        draftFoldBlendEnabled: false,
-        draftFoldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
-        foldAngle: 45,
-      },
-      30,
-    ),
     {
       foldAngle: 45,
       foldZoneSize: 12,
       foldBlendEnabled: false,
       foldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
-      preclickHopMaxDistanceVw: 62.5,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
+      ...DEFAULT_PRECLICK_HOP_SETTINGS,
     },
   );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings(
-      {
-        preclickParallaxActivationRadiusVw: 80,
-        preclickHopMaxDistanceVw: 45,
-      },
-      31,
-    ),
+
+  const migratedV33 = SharedRoomSettings.migrateRoomSettings(
     {
       preclickParallaxActivationRadiusVw: 80,
       preclickHopMaxDistanceVw: 45,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
+      preclickParallaxMaxOffsetVw: 12,
+      preclickParallaxStartDelayMs: 320,
+      preclickParallaxInverted: true,
     },
+    33,
   );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings(
-      { rockPressShrinkPercent: 17 },
-      32,
-    ),
+  assert.equal(migratedV33.preclickHopActivationRadiusVw, 80);
+  assert.equal(migratedV33.preclickHopMaxDistanceVw, 45);
+  for (const legacyKey of LEGACY_PRECLICK_PARALLAX_SETTING_KEYS) {
+    assert.equal(Object.hasOwn(migratedV33, legacyKey), false);
+  }
+
+  const currentV34 = SharedRoomSettings.migrateRoomSettings(
     {
-      rockPressShrinkPercent: 17,
-      rockPulseShrinkPercent: 17,
-      rockImageId: "rock-03",
-      foldRockImageId: "rock-03",
+      preclickHopActivationRadiusVw: 11,
+      preclickHopMaxDistanceVw: 184.3,
     },
+    34,
   );
+  assert.deepEqual(currentV34, {
+    preclickHopActivationRadiusVw: 11,
+    preclickHopMaxDistanceVw: 184.3,
+  });
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings({
       handAudioEnabled: "false",

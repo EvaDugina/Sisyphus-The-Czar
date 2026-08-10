@@ -145,7 +145,7 @@ test("debug startup применяет помеченный preset вместо 
       source: {
         id: "flagged-debug",
         name: "Помеченный шаблон",
-        settingsSchemaVersion: 35,
+        settingsSchemaVersion: 36,
         updatedAt: "2026-08-09T09:59:00.000Z",
       },
     }),

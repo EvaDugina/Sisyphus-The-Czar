@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v35";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v36";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v35",
   "sisyphus-czar-settings-v34",
   "sisyphus-czar-settings-v33",
   "sisyphus-czar-settings-v32",
@@ -788,46 +789,19 @@ export const SETTINGS_GROUPS = [
         hint: "Количество ударов в минуту. 60 BPM — один полный пульс в секунду.",
       },
       {
-        name: "preclickParallaxMaxOffsetVw",
-        label: "Начальный максимум parallax, vw",
+        name: "preclickHopActivationRadiusVw",
+        label: "Радиус срабатывания, vw",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxMaxOffsetVw[0],
+          .preclickHopActivationRadiusVw[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxMaxOffsetVw[1],
-        step: 0.1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
-        output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
-        hint: "Максимальное радиальное смещение в начале нового входа руки в радиус. У границы радиуса смещение равно нулю; ноль отключает движение parallax.",
-      },
-      {
-        name: "preclickParallaxEndMaxOffsetVw",
-        label: "Конечный максимум parallax, vw",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxEndMaxOffsetVw[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxEndMaxOffsetVw[1],
-        step: 0.1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxEndMaxOffsetVw,
-        output:
-          `${DEFAULT_ROOM_SETTINGS.preclickParallaxEndMaxOffsetVw.toFixed(1)}vw`,
-        hint: "Максимальное радиальное смещение после накопления всей продолжительности активного движения. Значение не может превышать начальный максимум.",
-      },
-      {
-        name: "preclickParallaxActivationRadiusVw",
-        label: "Радиус parallax, vw",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxActivationRadiusVw[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxActivationRadiusVw[1],
+          .preclickHopActivationRadiusVw[1],
         step: 1,
         defaultValue:
-          DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw,
+          DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw,
         output:
-          `${DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw}vw`,
-        hint: "Радиус круглой активной зоны вокруг исходного центра камня в процентах ширины viewport. При приближении к центру смещение растёт; за пределами зоны камень плавно возвращается в исходную позицию.",
+          `${DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw}vw`,
+        hint: "Радиус круглой зоны вокруг текущего центра камня. Каждый новый вход курсора в эту зону запускает один отскок; ноль отключает срабатывание.",
       },
       {
         name: "preclickHopMaxDistanceVw",
@@ -842,117 +816,6 @@ export const SETTINGS_GROUPS = [
         output:
           `${DEFAULT_ROOM_SETTINGS.preclickHopMaxDistanceVw.toFixed(1)}vw`,
         hint: "Максимальная дальность одного отскока. Скорость входа руки в радиус линейно задаёт от 28% до 100% этого значения; радиус срабатывания настраивается отдельно.",
-      },
-      {
-        name: "preclickParallaxStartDelayMs",
-        label: "Начальная задержка parallax, мс",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxStartDelayMs[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxStartDelayMs[1],
-        step: 10,
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs,
-        output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs}мс`,
-        hint: "Задержка запуска parallax в начале каждого нового входа руки в радиус.",
-      },
-      {
-        name: "preclickParallaxEndDelayMs",
-        label: "Конечная задержка parallax, мс",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxEndDelayMs[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxEndDelayMs[1],
-        step: 10,
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxEndDelayMs,
-        output: `${DEFAULT_ROOM_SETTINGS.preclickParallaxEndDelayMs}мс`,
-        hint: "Задержка после накопления всей продолжительности активного движения. Значение не может быть меньше начальной задержки.",
-      },
-      {
-        name: "preclickParallaxTransitionDurationSeconds",
-        label: "Время изменения parallax, с",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxTransitionDurationSeconds[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxTransitionDurationSeconds[1],
-        step: 1,
-        defaultValue:
-          DEFAULT_ROOM_SETTINGS.preclickParallaxTransitionDurationSeconds,
-        output:
-          `${DEFAULT_ROOM_SETTINGS.preclickParallaxTransitionDurationSeconds} s`,
-        hint: "Сколько секунд активного движения внутри радиуса нужно для достижения обоих конечных значений. Статичное время не учитывается.",
-      },
-      {
-        name: "preclickParallaxMaxOffsetEasing",
-        label: "Кривая уменьшения максимума parallax",
-        type: "cubic-bezier",
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetEasing,
-        spellCheck: false,
-        graph: {
-          startSetting: "preclickParallaxMaxOffsetVw",
-          endSetting: "preclickParallaxEndMaxOffsetVw",
-          durationSetting: "preclickParallaxTransitionDurationSeconds",
-          startDefault: DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw,
-          endDefault: DEFAULT_ROOM_SETTINGS.preclickParallaxEndMaxOffsetVw,
-          durationDefault:
-            DEFAULT_ROOM_SETTINGS.preclickParallaxTransitionDurationSeconds,
-          unit: "vw",
-          precision: 1,
-        },
-        hint: "cubic-bezier-кривая уменьшения максимального смещения по активному времени внутри радиуса.",
-      },
-      {
-        name: "preclickParallaxDelayEasing",
-        label: "Кривая роста задержки parallax",
-        type: "cubic-bezier",
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxDelayEasing,
-        spellCheck: false,
-        graph: {
-          startSetting: "preclickParallaxStartDelayMs",
-          endSetting: "preclickParallaxEndDelayMs",
-          durationSetting: "preclickParallaxTransitionDurationSeconds",
-          startDefault: DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs,
-          endDefault: DEFAULT_ROOM_SETTINGS.preclickParallaxEndDelayMs,
-          durationDefault:
-            DEFAULT_ROOM_SETTINGS.preclickParallaxTransitionDurationSeconds,
-          unit: "ms",
-          precision: 0,
-        },
-        hint: "cubic-bezier-кривая роста задержки запуска по активному времени внутри радиуса.",
-      },
-      {
-        name: "preclickParallaxInverted",
-        label: "Направление parallax",
-        type: "toggle-button",
-        defaultChecked: DEFAULT_ROOM_SETTINGS.preclickParallaxInverted,
-        inactiveLabel: "Обычное направление",
-        activeLabel: "Инверсия включена",
-        hint: "В обычном режиме камень смещается в сторону курсора относительно исходного центра. Инверсия направляет его в противоположную сторону.",
-      },
-      {
-        name: "preclickParallaxReturnDurationMs",
-        label: "Возврат камня, мс",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxReturnDurationMs[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickParallaxReturnDurationMs[1],
-        step: 10,
-        defaultValue:
-          DEFAULT_ROOM_SETTINGS.preclickParallaxReturnDurationMs,
-        output:
-          `${DEFAULT_ROOM_SETTINGS.preclickParallaxReturnDurationMs}мс`,
-        hint: "Длительность плавного возврата камня к исходной позиции после выхода указателя за радиус parallax. Ноль возвращает камень сразу.",
-      },
-      {
-        name: "preclickParallaxReturnEasing",
-        label: "Кривая возврата камня",
-        type: "cubic-bezier",
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickParallaxReturnEasing,
-        spellCheck: false,
-        hint: "cubic-bezier-кривая плавности возврата смещения parallax к исходной позиции камня.",
       },
       {
         name: "rockMinWidthVw",

@@ -125,14 +125,14 @@ test("production кнопка Начать сначала возвращает p
     );
     document.documentElement.classList.remove("is-manual-scroll-disabled");
     document.querySelector("#root > .world > .rock")
-      ?.classList.remove("is-preclick-parallax");
+      ?.classList.remove("is-preclick-hop");
   });
   await expect(page.locator("body")).not.toHaveClass(/preclick-rock-guidance/);
 
   await restartButton.press("Enter");
   await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
   await expect(page.locator("body")).toHaveClass(/is-manual-scroll-disabled/);
-  await expect(page.locator(SOURCE_ROCK)).toHaveClass(/is-preclick-parallax/);
+  await expect(page.locator(SOURCE_ROCK)).toHaveClass(/is-preclick-hop/);
 });
 
 test("production build creates one personal session per user, keeps a clean URL and keeps the hand visible", async ({
@@ -200,7 +200,6 @@ test("production build creates one personal session per user, keeps a clean URL 
     );
     const secondHand = second.locator(SOURCE_HAND);
 
-    const secondPoint = await moveToVisibleRock(second);
     await expect(secondHand).toHaveClass(/is-visible/);
     await expect(secondHand).not.toHaveClass(/is-grabbing/);
     await expect(secondHand).toHaveCSS(
@@ -208,6 +207,7 @@ test("production build creates one personal session per user, keeps a clean URL 
       /cursor-grab-02(?:-[A-Za-z0-9_-]+)?\.png/,
     );
 
+    const secondPoint = await moveToVisibleRock(second);
     await second.mouse.down();
     await expect(secondHand).toHaveClass(/is-grabbing/);
     await expect

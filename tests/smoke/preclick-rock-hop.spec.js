@@ -60,6 +60,7 @@ function rockCenter(page) {
     return {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
+      worldY: rect.top + rect.height / 2 + scrollY,
     };
   });
 }
@@ -78,9 +79,9 @@ function rockGeometry(page) {
       center: { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 },
       className: rock.className,
       motion: { x: motion.x, y: motion.y },
-      parallax: {
-        x: Number.parseFloat(style.getPropertyValue("--rock-parallax-x")) || 0,
-        y: Number.parseFloat(style.getPropertyValue("--rock-parallax-y")) || 0,
+      hopOffset: {
+        x: Number.parseFloat(style.getPropertyValue("--rock-hop-x")) || 0,
+        y: Number.parseFloat(style.getPropertyValue("--rock-hop-y")) || 0,
       },
       rect: {
         height: rect.height,
@@ -170,7 +171,7 @@ function hopDistance(maxDistancePx, speedPxPerSecond) {
   return maxDistancePx * (0.28 + 0.72 * speedProgress);
 }
 
-test("экспериментальный камень прыгает накопительно и смеётся один раз на вход", async ({
+test("камень прыгает накопительно, сохраняет guidance и завершается первым захватом", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 2000, height: 1200 });
@@ -178,13 +179,26 @@ test("экспериментальный камень прыгает накоп�
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await page.waitForTimeout(250);
-  await expect(page.locator("body")).toHaveClass(/preclick-rock-guidance/);
+  const body = page.locator("body");
+  const html = page.locator("html");
+  await expect(body).toHaveClass(/preclick-rock-guidance/);
+  await expect(body).toHaveClass(/is-manual-scroll-disabled/);
+  await expect(html).toHaveClass(/is-manual-scroll-disabled/);
+  const scrollBeforeWheel = await page.evaluate(() => scrollY);
+  await page.mouse.wheel(0, -600);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => scrollY)).toBe(scrollBeforeWheel);
+
+  await page.reload();
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(body).toHaveClass(/preclick-rock-guidance/);
+  await expect(html).toHaveClass(/is-manual-scroll-disabled/);
   await scrollToRock(page);
 
   const rock = page.locator(SOURCE_ROCK);
   await expect(rock).toHaveClass(/is-preclick-hop/);
   await page.evaluate(() => {
-    params.preclickParallaxActivationRadiusVw = 5;
+    params.preclickHopActivationRadiusVw = 5;
     params.preclickHopMaxDistanceVw = 10;
   });
   const radius = 100;
@@ -327,6 +341,9 @@ test("экспериментальный камень прыгает накоп�
     hopCount: beforeGrab.hopCount,
     offset: { x: 0, y: 0 },
   });
+  await expect(body).not.toHaveClass(/preclick-rock-guidance/);
+  await expect(body).not.toHaveClass(/is-manual-scroll-disabled/);
+  await expect(html).not.toHaveClass(/is-manual-scroll-disabled/);
   await expect
     .poll(() =>
       page.evaluate(() => window.__controlAcquireMessages.at(-1) || null),
@@ -338,6 +355,19 @@ test("экспериментальный камень прыгает накоп�
   });
   expect(acquiredLocalPosition.x).toBeCloseTo(afterGrabMotion.x, 5);
   expect(acquiredLocalPosition.y).toBeCloseTo(afterGrabMotion.y, 5);
+  const scrollAtActivation = await page.evaluate(() => scrollY);
+  await page.mouse.move(
+    afterGrabCenter.x,
+    Math.max(50, afterGrabCenter.y - 300),
+    { steps: 8 },
+  );
+  if (scrollAtActivation > 0) {
+    await expect
+      .poll(() => page.evaluate(() => scrollY))
+      .toBeLessThan(scrollAtActivation);
+  } else {
+    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
+  }
   await page.mouse.up();
   await page.mouse.move(10, 10);
   await page.mouse.move(point.x, point.y);
@@ -345,9 +375,19 @@ test("экспериментальный камень прыгает накоп�
     audioPlayCount: beforeGrab.audioPlayCount,
     hopCount: beforeGrab.hopCount,
   });
+
+  await page.getByTestId("restart-session").click();
+  await expect(body).toHaveClass(/preclick-rock-guidance/);
+  await expect(html).toHaveClass(/is-manual-scroll-disabled/);
+  await expect(rock).toHaveClass(/is-preclick-hop/);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    completed: false,
+    hopCount: 0,
+    offset: { x: 0, y: 0 },
+  });
 });
 
-test("экспериментальный камень бесшовно переносится по обеим осям и остаётся кликабельным", async ({
+test("камень бесшовно переносится по обеим осям и остаётся кликабельным", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1000, height: 700 });
@@ -357,7 +397,7 @@ test("экспериментальный камень бесшовно пере�
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await scrollToRock(page);
   await page.evaluate(() => {
-    params.preclickParallaxActivationRadiusVw = 5;
+    params.preclickHopActivationRadiusVw = 5;
     params.preclickHopMaxDistanceVw = 200;
   });
 
@@ -424,17 +464,37 @@ test("экспериментальный камень бесшовно пере�
   expect(cornerCenter.y).toBeLessThan(700);
   expect(await page.evaluate(() => window.__laughPlayCount)).toBe(3);
 
-  await page.mouse.move(cornerCenter.x, cornerCenter.y);
+  expect(
+    await page.evaluate(
+      ({ x, y }) =>
+        document.elementFromPoint(x, y)?.closest(".rock") !== null,
+      cornerCenter,
+    ),
+  ).toBe(true);
   const beforeGrabCenter = await rockCenter(page);
-  await page.mouse.down();
+  const cdp = await page.context().newCDPSession(page);
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mousePressed",
+    x: cornerCenter.x,
+    y: cornerCenter.y,
+    button: "left",
+    clickCount: 1,
+  });
   const afterGrabCenter = await rockCenter(page);
   expect(afterGrabCenter.x).toBeCloseTo(beforeGrabCenter.x, 0);
-  expect(afterGrabCenter.y).toBeCloseTo(beforeGrabCenter.y, 0);
+  expect(afterGrabCenter.worldY).toBeCloseTo(beforeGrabCenter.worldY, 0);
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,
     hopCount: 3,
     audioPlayCount: 3,
     offset: { x: 0, y: 0 },
   });
-  await page.mouse.up();
+  await cdp.send("Input.dispatchMouseEvent", {
+    type: "mouseReleased",
+    x: cornerCenter.x,
+    y: cornerCenter.y,
+    button: "left",
+    clickCount: 1,
+  });
+  await cdp.detach();
 });

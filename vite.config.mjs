@@ -80,17 +80,10 @@ export default defineConfig(({ command }) => {
   const isProductionBuild = command === "build";
   const debugUiEnabled =
     !isProductionBuild || process.env.VITE_DEBUG_UI === "true";
-  const preclickRockHopEnabled =
-    process.env.EXPERIMENT_PRECLICK_ROCK_HOP !== "false";
 
   return {
     appType: "mpa",
     base: "./",
-    define: {
-      "import.meta.env.EXPERIMENT_PRECLICK_ROCK_HOP": JSON.stringify(
-        preclickRockHopEnabled,
-      ),
-    },
     plugins: [react(), serveSettingsPage(), reloadSharedPhysics()],
     resolve: {
       alias: isProductionBuild && !debugUiEnabled

@@ -1,29 +1,22 @@
 flowchart LR
   u["Курсор входит в радиус камня"]
-  cur["Текущий preclick parallax"]
-  rt["src/runtime/createSisyphusRuntime.js"]
-  flag{"EXPERIMENT_PRECLICK_ROCK_HOP"}
-  base["Непрерывное смещение<br/>и возврат в центр"]
-  speed["Скорость входа<br/>задаёт дальность"]
-  hop["Прыжок от руки<br/>позиция накапливается"]
-  sound["Звук «Смех»<br/>на каждый отскок"]
-  asset["Предположение:<br/>ассет Смех будет указан"]
-  evidence["Evidence: направление,<br/>дальность, без возврата, звук"]
+  speed["Скорость входа"]
+  distance["Расчёт дальности"]
+  hop["Отскок от курсора<br/>400 ms"]
+  wrap["Бесшовный wrap<br/>в границах viewport"]
+  sound["Один звук «Смех»<br/>на новый вход"]
+  reentry["Выход и повторный вход"]
+  grab["Первый успешный захват"]
+  materialize["Материализация<br/>видимой позиции"]
+  physics["Основная физика<br/>и camera-follow"]
 
-  u --> cur
-  cur --> rt
-  rt --> flag
-  flag -- "off" --> base
-  flag -- "on" --> speed
-  speed --> hop
+  u --> speed --> distance --> hop
+  hop --> wrap
   hop --> sound
-  sound --> asset
-  hop --> evidence
-  flag -. "выключение" .-> base
+  wrap --> reentry --> u
+  wrap --> grab --> materialize --> physics
 
   classDef card fill:#f8fafc,stroke:#334155,color:#000,rx:10,ry:10;
-  classDef decision fill:#fef3c7,stroke:#92400e,color:#000,rx:10,ry:10;
-  classDef evidence fill:#dcfce7,stroke:#166534,color:#000,rx:10,ry:10;
-  class u,cur,rt,base,speed,hop,sound,asset card;
-  class flag decision;
-  class evidence evidence;
+  classDef outcome fill:#dcfce7,stroke:#166534,color:#000,rx:10,ry:10;
+  class u,speed,distance,hop,wrap,sound,reentry,grab,materialize card;
+  class physics outcome;

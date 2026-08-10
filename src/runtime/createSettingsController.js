@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 35;
+const SETTINGS_SCHEMA_VERSION = 36;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -383,45 +383,12 @@ export function createSettingsController(options) {
     if (Number(settingsSchemaVersion) < 33) {
       migrated = SharedRoomSettings.migrateFoldSettings(migrated);
     }
-    if (Number(settingsSchemaVersion) < 34) {
-      migrated = SharedRoomSettings.migratePreclickHopSettings(migrated);
-    }
     if (Number(settingsSchemaVersion) < 35) {
       migrated = SharedRoomSettings.migrateRockVisualSettings(migrated);
     }
-    if (!Object.hasOwn(migrated, "preclickParallaxActivationRadiusVw")) {
-      const radiusPx = Number(migrated.preclickParallaxActivationRadiusPx);
-      if (Number.isFinite(radiusPx)) {
-        const [minRadiusVw, maxRadiusVw] =
-          SharedRoomSettings.ROOM_SETTINGS_LIMITS
-            .preclickParallaxActivationRadiusVw;
-        migrated.preclickParallaxActivationRadiusVw = Math.min(
-          maxRadiusVw,
-          Math.max(
-            minRadiusVw,
-            radiusPx /
-              SharedRoomSettings.PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
-          ),
-        );
-      }
+    if (Number(settingsSchemaVersion) < 36) {
+      migrated = SharedRoomSettings.migratePreclickHopSettings(migrated);
     }
-    if (!Object.hasOwn(migrated, "preclickParallaxMaxOffsetVw")) {
-      const offsetPx = Number(migrated.preclickParallaxMaxOffsetPx);
-      if (Number.isFinite(offsetPx)) {
-        const [minOffsetVw, maxOffsetVw] =
-          SharedRoomSettings.ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetVw;
-        migrated.preclickParallaxMaxOffsetVw = Math.min(
-          maxOffsetVw,
-          Math.max(
-            minOffsetVw,
-            offsetPx /
-              SharedRoomSettings.PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
-          ),
-        );
-      }
-    }
-    delete migrated.preclickParallaxActivationRadiusPx;
-    delete migrated.preclickParallaxMaxOffsetPx;
     delete migrated.positionScrollEnabled;
     delete migrated.positionScrollZonePercent;
     delete migrated.positionScrollStartSpeedVh;
@@ -1310,22 +1277,10 @@ export function createSettingsController(options) {
       rockPressShrinkPercent: `${params.rockPressShrinkPercent.toFixed(0)}%`,
       rockPulseShrinkPercent: `${params.rockPulseShrinkPercent.toFixed(0)}%`,
       rockPulseBpm: `${params.rockPulseBpm.toFixed(0)} BPM`,
-      preclickParallaxMaxOffsetVw:
-        `${params.preclickParallaxMaxOffsetVw.toFixed(1)}vw`,
-      preclickParallaxEndMaxOffsetVw:
-        `${params.preclickParallaxEndMaxOffsetVw.toFixed(1)}vw`,
-      preclickParallaxActivationRadiusVw:
-        `${params.preclickParallaxActivationRadiusVw.toFixed(0)}vw`,
+      preclickHopActivationRadiusVw:
+        `${params.preclickHopActivationRadiusVw.toFixed(0)}vw`,
       preclickHopMaxDistanceVw:
         `${params.preclickHopMaxDistanceVw.toFixed(1)}vw`,
-      preclickParallaxStartDelayMs:
-        `${params.preclickParallaxStartDelayMs.toFixed(0)}мс`,
-      preclickParallaxEndDelayMs:
-        `${params.preclickParallaxEndDelayMs.toFixed(0)}мс`,
-      preclickParallaxTransitionDurationSeconds:
-        secondsOutput(params.preclickParallaxTransitionDurationSeconds),
-      preclickParallaxReturnDurationMs:
-        `${params.preclickParallaxReturnDurationMs.toFixed(0)}мс`,
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,

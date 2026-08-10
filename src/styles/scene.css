@@ -110,8 +110,8 @@
   --rock-x: 0px;
   --rock-y: 0px;
   --rock-scale: 1;
-  --rock-parallax-x: 0px;
-  --rock-parallax-y: 0px;
+  --rock-hop-x: 0px;
+  --rock-hop-y: 0px;
   --rock-wall-compensation: 0px;
 
   position: absolute;
@@ -141,20 +141,17 @@
   will-change: transform;
 }
 
-.rock.is-preclick-parallax {
+.rock.is-preclick-hop {
   transform:
     translate3d(
       calc(
         var(--rock-x) + var(--rock-wall-compensation) +
-          var(--rock-parallax-x)
+          var(--rock-hop-x)
       ),
-      calc(var(--rock-y) + var(--rock-parallax-y)),
+      calc(var(--rock-y) + var(--rock-hop-y)),
       0
     )
     scale(var(--rock-scale));
-}
-
-.rock.is-preclick-hop {
   transition:
     --rock-scale 0ms ease-out,
     --rock-wall-compensation 0ms ease-out,
@@ -533,16 +530,6 @@ body.state-fallingToBottom .hand-cursor {
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .rock.is-preclick-parallax:not(.is-preclick-hop) {
-    transform:
-      translate3d(
-        calc(var(--rock-x) + var(--rock-wall-compensation)),
-        var(--rock-y),
-        0
-      )
-      scale(var(--rock-scale));
-  }
-
   .weather-rain,
   .weather-rain__canvas {
     transition-delay: 0s !important;

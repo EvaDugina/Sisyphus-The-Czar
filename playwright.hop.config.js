@@ -17,7 +17,6 @@ module.exports = defineConfig({
     timeout: 45_000,
     reuseExistingServer: false,
     env: {
-      EXPERIMENT_PRECLICK_ROCK_HOP: "true",
       ALLOWED_ORIGIN: "http://127.0.0.1:8080",
       SESSION_TTL_SECONDS: "86400",
       EMPTY_SESSION_GRACE_SECONDS: "2",

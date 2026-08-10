@@ -2,7 +2,7 @@ const { defineConfig } = require("@playwright/test");
 
 module.exports = defineConfig({
   testDir: "./tests/smoke",
-  testMatch: /(prod-debug|preclick-rock-guidance)\.spec\.js/,
+  testMatch: /prod-debug\.spec\.js/,
   timeout: 35_000,
   expect: { timeout: 10_000 },
   workers: 1,
@@ -12,8 +12,7 @@ module.exports = defineConfig({
     trace: "retain-on-failure",
   },
   webServer: {
-    command:
-      "cross-env VITE_DEBUG_UI=true EXPERIMENT_PRECLICK_ROCK_HOP=false npm run build && node server/index.js",
+    command: "cross-env VITE_DEBUG_UI=true npm run build && node server/index.js",
     url: "http://127.0.0.1:4174/healthz",
     timeout: 45_000,
     reuseExistingServer: false,

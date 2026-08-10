@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Гипотеза: камень ускакивает от руки</title>
+  <title>Основной preclick-hop: камень ускакивает от руки</title>
   <style>
     :root { color-scheme: light; font-family: Inter, Arial, sans-serif; }
     * { box-sizing: border-box; }
@@ -25,72 +25,58 @@
 <body>
   <main>
     <header>
-      <h1>Гипотеза: камень ускакивает от руки</h1>
-      <p class="summary">Скорость входа курсора в радиус задаёт дальность дискретного отскока; камень не возвращается в исходный центр.</p>
+      <h1>Основной preclick-hop</h1>
+      <p class="summary">Скорость входа курсора задаёт дальность отскока; wrap сохраняет камень в viewport, а первый захват бесшовно передаёт позицию основной физике.</p>
     </header>
-    <ul class="legend"><li>Baseline: непрерывный parallax с возвратом</li><li>Эксперимент: накопительный прыжок от курсора включён по умолчанию</li><li>Evidence: направление, зависимость дальности от скорости, отсутствие возврата, звук</li></ul>
-    <section class="canvas" aria-label="Mermaid-визуализация гипотезы">
+    <ul class="legend"><li>Вход: радиус и скорость курсора</li><li>Hop: 400 ms, накопление и wrap</li><li>Выход: materialization, first grab и camera-follow</li></ul>
+    <section class="canvas" aria-label="Mermaid-визуализация основного preclick-hop">
       <pre class="mermaid">flowchart LR
   u["Курсор входит в радиус камня"]
-  cur["Текущий preclick parallax"]
-  rt["src/runtime/createSisyphusRuntime.js"]
-  flag{"EXPERIMENT_PRECLICK_ROCK_HOP"}
-  base["Непрерывное смещение&lt;br/&gt;и возврат в центр"]
-  speed["Скорость входа&lt;br/&gt;задаёт дальность"]
-  hop["Прыжок от руки&lt;br/&gt;позиция накапливается"]
-  sound["Звук «Смех»&lt;br/&gt;на каждый отскок"]
-  asset["Предположение:&lt;br/&gt;ассет Смех будет указан"]
-  evidence["Evidence: направление,&lt;br/&gt;дальность, без возврата, звук"]
+  speed["Скорость входа"]
+  distance["Расчёт дальности"]
+  hop["Отскок от курсора&lt;br/&gt;400 ms"]
+  wrap["Бесшовный wrap&lt;br/&gt;в границах viewport"]
+  sound["Один звук «Смех»&lt;br/&gt;на новый вход"]
+  reentry["Выход и повторный вход"]
+  grab["Первый успешный захват"]
+  materialize["Материализация&lt;br/&gt;видимой позиции"]
+  physics["Основная физика&lt;br/&gt;и camera-follow"]
 
-  u --&gt; cur
-  cur --&gt; rt
-  rt --&gt; flag
-  flag -- "off" --&gt; base
-  flag -- "on" --&gt; speed
-  speed --&gt; hop
+  u --&gt; speed --&gt; distance --&gt; hop
+  hop --&gt; wrap
   hop --&gt; sound
-  sound --&gt; asset
-  hop --&gt; evidence
-  flag -. "выключение" .-&gt; base
+  wrap --&gt; reentry --&gt; u
+  wrap --&gt; grab --&gt; materialize --&gt; physics
 
   classDef card fill:#f8fafc,stroke:#334155,color:#000,rx:10,ry:10;
-  classDef decision fill:#fef3c7,stroke:#92400e,color:#000,rx:10,ry:10;
-  classDef evidence fill:#dcfce7,stroke:#166534,color:#000,rx:10,ry:10;
-  class u,cur,rt,base,speed,hop,sound,asset card;
-  class flag decision;
-  class evidence evidence;
+  classDef outcome fill:#dcfce7,stroke:#166534,color:#000,rx:10,ry:10;
+  class u,speed,distance,hop,wrap,sound,reentry,grab,materialize card;
+  class physics outcome;
 </pre>
       <section class="fallback" id="fallback" role="alert">
         <p class="error">Не удалось отрисовать Mermaid. Исходный код сохранён ниже.</p>
         <pre>flowchart LR
   u["Курсор входит в радиус камня"]
-  cur["Текущий preclick parallax"]
-  rt["src/runtime/createSisyphusRuntime.js"]
-  flag{"EXPERIMENT_PRECLICK_ROCK_HOP"}
-  base["Непрерывное смещение&lt;br/&gt;и возврат в центр"]
-  speed["Скорость входа&lt;br/&gt;задаёт дальность"]
-  hop["Прыжок от руки&lt;br/&gt;позиция накапливается"]
-  sound["Звук «Смех»&lt;br/&gt;на каждый отскок"]
-  asset["Предположение:&lt;br/&gt;ассет Смех будет указан"]
-  evidence["Evidence: направление,&lt;br/&gt;дальность, без возврата, звук"]
+  speed["Скорость входа"]
+  distance["Расчёт дальности"]
+  hop["Отскок от курсора&lt;br/&gt;400 ms"]
+  wrap["Бесшовный wrap&lt;br/&gt;в границах viewport"]
+  sound["Один звук «Смех»&lt;br/&gt;на новый вход"]
+  reentry["Выход и повторный вход"]
+  grab["Первый успешный захват"]
+  materialize["Материализация&lt;br/&gt;видимой позиции"]
+  physics["Основная физика&lt;br/&gt;и camera-follow"]
 
-  u --&gt; cur
-  cur --&gt; rt
-  rt --&gt; flag
-  flag -- "off" --&gt; base
-  flag -- "on" --&gt; speed
-  speed --&gt; hop
+  u --&gt; speed --&gt; distance --&gt; hop
+  hop --&gt; wrap
   hop --&gt; sound
-  sound --&gt; asset
-  hop --&gt; evidence
-  flag -. "выключение" .-&gt; base
+  wrap --&gt; reentry --&gt; u
+  wrap --&gt; grab --&gt; materialize --&gt; physics
 
   classDef card fill:#f8fafc,stroke:#334155,color:#000,rx:10,ry:10;
-  classDef decision fill:#fef3c7,stroke:#92400e,color:#000,rx:10,ry:10;
-  classDef evidence fill:#dcfce7,stroke:#166534,color:#000,rx:10,ry:10;
-  class u,cur,rt,base,speed,hop,sound,asset card;
-  class flag decision;
-  class evidence evidence;
+  classDef outcome fill:#dcfce7,stroke:#166534,color:#000,rx:10,ry:10;
+  class u,speed,distance,hop,wrap,sound,reentry,grab,materialize card;
+  class physics outcome;
 </pre>
       </section>
     </section>

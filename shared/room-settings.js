@@ -12,10 +12,24 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 33;
+  const ROOM_SETTINGS_VERSION = 34;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
-  const PRECLICK_PARALLAX_OFFSET_PX_PER_VW = 20;
+  const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
+    "preclickParallaxMaxOffsetVw",
+    "preclickParallaxMaxOffsetPx",
+    "preclickParallaxEndMaxOffsetVw",
+    "preclickParallaxMaxOffsetEasing",
+    "preclickParallaxActivationRadiusVw",
+    "preclickParallaxActivationRadiusPx",
+    "preclickParallaxStartDelayMs",
+    "preclickParallaxEndDelayMs",
+    "preclickParallaxDelayEasing",
+    "preclickParallaxTransitionDurationSeconds",
+    "preclickParallaxInverted",
+    "preclickParallaxReturnDurationMs",
+    "preclickParallaxReturnEasing",
+  ]);
 
   const DEFAULT_ROCK_MIN_WIDTH_VW = 8;
   const DEFAULT_ROCK_MAX_WIDTH_VW = 35;
@@ -24,10 +38,6 @@
   const DEFAULT_HAND_FORCE_DEFICIT_EASING =
     "cubic-bezier(0.42, 0, 1, 1)";
   const DEFAULT_RETURN_SCROLL_EASING = "cubic-bezier(0.4, 0, 0.2, 1)";
-  const DEFAULT_PRECLICK_PARALLAX_RETURN_EASING =
-    "cubic-bezier(0.22, 1, 0.36, 1)";
-  const DEFAULT_PRECLICK_PARALLAX_TRANSITION_EASING =
-    "cubic-bezier(0, 0, 1, 1)";
   const DEFAULT_FOLD_BLEND_CURVE =
     "cubic-bezier(0.333, 0, 0.667, 1)";
   const DEFAULT_DRIZZLE_VOLUME_EASING =
@@ -74,14 +84,8 @@
     windowObstacleWidthPx: [100, 1920],
     windowObstacleHeightPx: [100, 1080],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
-    preclickParallaxMaxOffsetVw: [0, 150],
-    preclickParallaxEndMaxOffsetVw: [0, 50],
-    preclickParallaxActivationRadiusVw: [0, 200],
+    preclickHopActivationRadiusVw: [0, 200],
     preclickHopMaxDistanceVw: [0, 200],
-    preclickParallaxStartDelayMs: [0, 1000],
-    preclickParallaxEndDelayMs: [0, 1000],
-    preclickParallaxTransitionDurationSeconds: [1, 30],
-    preclickParallaxReturnDurationMs: [0, 2000],
     rockGrabRadiusVh: [0, 10],
     rockPressShrinkPercent: [0, 50],
     rockPulseShrinkPercent: [0, 50],
@@ -143,20 +147,8 @@
     rockPulseBpm: 60,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
-    preclickParallaxMaxOffsetVw: 0.6,
-    preclickParallaxEndMaxOffsetVw: 0,
-    preclickParallaxMaxOffsetEasing:
-      DEFAULT_PRECLICK_PARALLAX_TRANSITION_EASING,
-    preclickParallaxActivationRadiusVw: 50,
+    preclickHopActivationRadiusVw: 50,
     preclickHopMaxDistanceVw: 62.5,
-    preclickParallaxStartDelayMs: 0,
-    preclickParallaxEndDelayMs: 1000,
-    preclickParallaxDelayEasing:
-      DEFAULT_PRECLICK_PARALLAX_TRANSITION_EASING,
-    preclickParallaxTransitionDurationSeconds: 30,
-    preclickParallaxInverted: false,
-    preclickParallaxReturnDurationMs: 400,
-    preclickParallaxReturnEasing: DEFAULT_PRECLICK_PARALLAX_RETURN_EASING,
     customCursorEnabled: false,
     customCursorSizePx: 32,
     handAlwaysVisible: true,
@@ -438,22 +430,10 @@
       ROOM_SETTINGS_LIMITS.rockJumpAngleSpreadDegrees;
     const [rockJumpSpreadMin, rockJumpSpreadMax] =
       ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent;
-    const [parallaxOffsetMin, parallaxOffsetMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxMaxOffsetVw;
-    const [parallaxEndOffsetMin, parallaxEndOffsetMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxEndMaxOffsetVw;
-    const [parallaxRadiusMin, parallaxRadiusMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxActivationRadiusVw;
+    const [preclickHopRadiusMin, preclickHopRadiusMax] =
+      ROOM_SETTINGS_LIMITS.preclickHopActivationRadiusVw;
     const [preclickHopDistanceMin, preclickHopDistanceMax] =
       ROOM_SETTINGS_LIMITS.preclickHopMaxDistanceVw;
-    const [parallaxStartDelayMin, parallaxStartDelayMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxStartDelayMs;
-    const [parallaxEndDelayMin, parallaxEndDelayMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxEndDelayMs;
-    const [parallaxTransitionDurationMin, parallaxTransitionDurationMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxTransitionDurationSeconds;
-    const [parallaxReturnDurationMin, parallaxReturnDurationMax] =
-      ROOM_SETTINGS_LIMITS.preclickParallaxReturnDurationMs;
     const [drizzleVolumeMin, drizzleVolumeMax] =
       ROOM_SETTINGS_LIMITS.drizzleVolume;
     const [handMin, handMax] = ROOM_SETTINGS_LIMITS.handWidthVw;
@@ -518,80 +498,27 @@
     const [dashGapMin, dashGapMax] = ROOM_SETTINGS_LIMITS.dashGap;
     const [glowMin, glowMax] = ROOM_SETTINGS_LIMITS.glow;
     const rockWidths = normalizeRockWidthRange(source, fallbackSource);
-    const parallaxOffsetSource =
-      !Object.hasOwn(source, "preclickParallaxMaxOffsetVw") &&
-      Number.isFinite(Number(source.preclickParallaxMaxOffsetPx))
-        ? {
-            ...source,
-            preclickParallaxMaxOffsetVw:
-              Number(source.preclickParallaxMaxOffsetPx) /
-              PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
-          }
-        : source;
-    const preclickParallaxMaxOffsetVw = finiteSetting(
-      parallaxOffsetSource,
-      fallbackSource,
-      "preclickParallaxMaxOffsetVw",
-      parallaxOffsetMin,
-      parallaxOffsetMax
-    );
-    const preclickParallaxEndMaxOffsetVw = Math.min(
-      preclickParallaxMaxOffsetVw,
-      finiteSetting(
-        source,
-        fallbackSource,
-        "preclickParallaxEndMaxOffsetVw",
-        parallaxEndOffsetMin,
-        parallaxEndOffsetMax
-      )
-    );
-    const parallaxRadiusSource =
-      !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
-      Number.isFinite(Number(source.preclickParallaxActivationRadiusPx))
-        ? {
-            ...source,
-            preclickParallaxActivationRadiusVw:
-              Number(source.preclickParallaxActivationRadiusPx) /
-              PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
-          }
-        : source;
-    const preclickParallaxActivationRadiusVw = finiteSetting(
-      parallaxRadiusSource,
-      fallbackSource,
-      "preclickParallaxActivationRadiusVw",
-      parallaxRadiusMin,
-      parallaxRadiusMax
+    const preclickHopRadiusSource = migratePreclickHopSettings(source);
+    const preclickHopFallbackSource = migratePreclickHopSettings(fallbackSource);
+    const preclickHopActivationRadiusVw = finiteSetting(
+      preclickHopRadiusSource,
+      preclickHopFallbackSource,
+      "preclickHopActivationRadiusVw",
+      preclickHopRadiusMin,
+      preclickHopRadiusMax
     );
     const preclickHopDistanceSource = Object.hasOwn(
-      source,
+      preclickHopRadiusSource,
       "preclickHopMaxDistanceVw"
     )
-      ? source
-      : Object.hasOwn(source, "preclickParallaxActivationRadiusVw") ||
-          Object.hasOwn(source, "preclickParallaxActivationRadiusPx")
+      ? preclickHopRadiusSource
+      : Object.hasOwn(preclickHopRadiusSource, "preclickHopActivationRadiusVw")
         ? {
-            ...source,
+            ...preclickHopRadiusSource,
             preclickHopMaxDistanceVw:
-              preclickParallaxActivationRadiusVw * 1.25,
+              preclickHopActivationRadiusVw * 1.25,
           }
-        : source;
-    const preclickParallaxStartDelayMs = finiteSetting(
-      source,
-      fallbackSource,
-      "preclickParallaxStartDelayMs",
-      parallaxStartDelayMin,
-      parallaxStartDelayMax
-    );
-    const preclickParallaxEndDelayMs = Math.max(
-      preclickParallaxStartDelayMs,
-      finiteSetting(
-        source,
-        fallbackSource,
-        "preclickParallaxEndDelayMs",
-        parallaxEndDelayMin,
-        parallaxEndDelayMax
-      )
-    );
+        : preclickHopRadiusSource;
 
     return {
       themeMode: enumSetting(source, fallbackSource, "themeMode", THEME_MODES),
@@ -773,51 +700,13 @@
         ROOM_SETTINGS_LIMITS.rockPulseBpm[0],
         ROOM_SETTINGS_LIMITS.rockPulseBpm[1]
       ),
-      preclickParallaxMaxOffsetVw,
-      preclickParallaxEndMaxOffsetVw,
-      preclickParallaxMaxOffsetEasing: cubicBezierSetting(
-        source,
-        fallbackSource,
-        "preclickParallaxMaxOffsetEasing"
-      ),
-      preclickParallaxActivationRadiusVw,
+      preclickHopActivationRadiusVw,
       preclickHopMaxDistanceVw: finiteSetting(
         preclickHopDistanceSource,
-        fallbackSource,
+        preclickHopFallbackSource,
         "preclickHopMaxDistanceVw",
         preclickHopDistanceMin,
         preclickHopDistanceMax
-      ),
-      preclickParallaxStartDelayMs,
-      preclickParallaxEndDelayMs,
-      preclickParallaxDelayEasing: cubicBezierSetting(
-        source,
-        fallbackSource,
-        "preclickParallaxDelayEasing"
-      ),
-      preclickParallaxTransitionDurationSeconds: finiteSetting(
-        source,
-        fallbackSource,
-        "preclickParallaxTransitionDurationSeconds",
-        parallaxTransitionDurationMin,
-        parallaxTransitionDurationMax
-      ),
-      preclickParallaxInverted: boolSetting(
-        source,
-        fallbackSource,
-        "preclickParallaxInverted"
-      ),
-      preclickParallaxReturnDurationMs: finiteSetting(
-        source,
-        fallbackSource,
-        "preclickParallaxReturnDurationMs",
-        parallaxReturnDurationMin,
-        parallaxReturnDurationMax
-      ),
-      preclickParallaxReturnEasing: cubicBezierSetting(
-        source,
-        fallbackSource,
-        "preclickParallaxReturnEasing"
       ),
       customCursorEnabled: boolSetting(
         source,
@@ -1092,23 +981,30 @@
 
   function migratePreclickHopSettings(input) {
     const source = input && typeof input === "object" ? { ...input } : {};
-    if (Object.hasOwn(source, "preclickHopMaxDistanceVw")) {
-      return source;
+    if (!Object.hasOwn(source, "preclickHopActivationRadiusVw")) {
+      const previousRadiusVw = Number(source.preclickParallaxActivationRadiusVw);
+      const previousRadiusPx = Number(source.preclickParallaxActivationRadiusPx);
+      source.preclickHopActivationRadiusVw = Number.isFinite(previousRadiusVw)
+        ? previousRadiusVw
+        : Number.isFinite(previousRadiusPx)
+          ? previousRadiusPx / PRECLICK_PARALLAX_RADIUS_PX_PER_VW
+          : DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw;
     }
-    const previousRadiusVw = Number(source.preclickParallaxActivationRadiusVw);
-    const previousRadiusPx = Number(source.preclickParallaxActivationRadiusPx);
-    const radiusVw = Number.isFinite(previousRadiusVw)
-      ? previousRadiusVw
-      : Number.isFinite(previousRadiusPx)
-        ? previousRadiusPx / PRECLICK_PARALLAX_RADIUS_PX_PER_VW
-        : DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw;
-    const [minDistance, maxDistance] =
-      ROOM_SETTINGS_LIMITS.preclickHopMaxDistanceVw;
-    source.preclickHopMaxDistanceVw = clamp(
-      radiusVw * 1.25,
-      minDistance,
-      maxDistance
-    );
+    if (!Object.hasOwn(source, "preclickHopMaxDistanceVw")) {
+      const radiusVw = Number(source.preclickHopActivationRadiusVw);
+      const [minDistance, maxDistance] =
+        ROOM_SETTINGS_LIMITS.preclickHopMaxDistanceVw;
+      source.preclickHopMaxDistanceVw = clamp(
+        (Number.isFinite(radiusVw)
+          ? radiusVw
+          : DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusVw) * 1.25,
+        minDistance,
+        maxDistance
+      );
+    }
+    LEGACY_PRECLICK_PARALLAX_SETTING_KEYS.forEach((key) => {
+      delete source[key];
+    });
     return source;
   }
 
@@ -1184,74 +1080,13 @@
         }
       });
     }
-    if (finiteNumber(version, 1) < 20) {
-      if (
-        !Object.hasOwn(source, "preclickParallaxMaxOffsetVw") &&
-        !Object.hasOwn(source, "preclickParallaxMaxOffsetPx")
-      ) {
-        source.preclickParallaxMaxOffsetPx =
-          DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw *
-          PRECLICK_PARALLAX_OFFSET_PX_PER_VW;
-      }
-      if (
-        !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
-        !Object.hasOwn(source, "preclickParallaxActivationRadiusPx")
-      ) {
-        source.preclickParallaxActivationRadiusVw =
-          DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw;
-      }
-    }
-    if (finiteNumber(version, 1) < 21) {
-      [
-        "preclickParallaxReturnDurationMs",
-        "preclickParallaxReturnEasing",
-      ].forEach((key) => {
-        if (!Object.hasOwn(source, key)) {
-          source[key] = DEFAULT_ROOM_SETTINGS[key];
-        }
-      });
-    }
-    if (finiteNumber(version, 1) < 22) {
-      if (
-        !Object.hasOwn(source, "preclickParallaxActivationRadiusVw") &&
-        !Object.hasOwn(source, "preclickParallaxActivationRadiusPx")
-      ) {
-        source.preclickParallaxActivationRadiusPx = 1000;
-      }
-    }
-    if (finiteNumber(version, 1) < 23) {
-      if (!Object.hasOwn(source, "preclickParallaxActivationRadiusVw")) {
-        const previousRadiusPx = Number(
-          source.preclickParallaxActivationRadiusPx
-        );
-        source.preclickParallaxActivationRadiusVw = Number.isFinite(
-          previousRadiusPx
-        )
-          ? previousRadiusPx / PRECLICK_PARALLAX_RADIUS_PX_PER_VW
-          : DEFAULT_ROOM_SETTINGS.preclickParallaxActivationRadiusVw;
-      }
-      delete source.preclickParallaxActivationRadiusPx;
-    }
-    if (finiteNumber(version, 1) < 24) {
-      if (!Object.hasOwn(source, "preclickParallaxInverted")) {
-        source.preclickParallaxInverted =
-          DEFAULT_ROOM_SETTINGS.preclickParallaxInverted;
-      }
-    }
     if (finiteNumber(version, 1) < 25) {
-      if (!Object.hasOwn(source, "preclickParallaxMaxOffsetVw")) {
-        const previousOffsetPx = Number(source.preclickParallaxMaxOffsetPx);
-        source.preclickParallaxMaxOffsetVw = Number.isFinite(previousOffsetPx)
-          ? previousOffsetPx / PRECLICK_PARALLAX_OFFSET_PX_PER_VW
-          : DEFAULT_ROOM_SETTINGS.preclickParallaxMaxOffsetVw;
-      }
       if (!Object.hasOwn(source, "handAlwaysVisible")) {
         source.handAlwaysVisible = DEFAULT_ROOM_SETTINGS.handAlwaysVisible;
       }
       if (!Object.hasOwn(source, "cameraFollowLerp")) {
         source.cameraFollowLerp = DEFAULT_ROOM_SETTINGS.cameraFollowLerp;
       }
-      delete source.preclickParallaxMaxOffsetPx;
       delete source.positionScrollEnabled;
       delete source.positionScrollZonePercent;
       delete source.positionScrollStartSpeedVh;
@@ -1260,26 +1095,9 @@
       delete source.manualVerticalScrollEnabled;
     }
     if (finiteNumber(version, 1) < 26) {
-      if (!Object.hasOwn(source, "preclickParallaxStartDelayMs")) {
-        source.preclickParallaxStartDelayMs =
-          DEFAULT_ROOM_SETTINGS.preclickParallaxStartDelayMs;
-      }
       if (!Object.hasOwn(source, "rockGrabRadiusVh")) {
         source.rockGrabRadiusVh = DEFAULT_ROOM_SETTINGS.rockGrabRadiusVh;
       }
-    }
-    if (finiteNumber(version, 1) < 27) {
-      [
-        "preclickParallaxEndMaxOffsetVw",
-        "preclickParallaxMaxOffsetEasing",
-        "preclickParallaxEndDelayMs",
-        "preclickParallaxDelayEasing",
-        "preclickParallaxTransitionDurationSeconds",
-      ].forEach((key) => {
-        if (!Object.hasOwn(source, key)) {
-          source[key] = DEFAULT_ROOM_SETTINGS[key];
-        }
-      });
     }
     if (finiteNumber(version, 1) < 30) {
       ["customCursorEnabled", "customCursorSizePx"].forEach((key) => {
@@ -1291,12 +1109,12 @@
     const foldMigrated = finiteNumber(version, 1) < 31
       ? migrateFoldSettings(source)
       : source;
-    const hopMigrated = finiteNumber(version, 1) < 32
-      ? migratePreclickHopSettings(foldMigrated)
+    const rockMigrated = finiteNumber(version, 1) < 33
+      ? migrateRockVisualSettings(foldMigrated)
       : foldMigrated;
-    return finiteNumber(version, 1) < 33
-      ? migrateRockVisualSettings(hopMigrated)
-      : hopMigrated;
+    return finiteNumber(version, 1) < 34
+      ? migratePreclickHopSettings(rockMigrated)
+      : rockMigrated;
   }
 
   function sceneMotionMultiplier(settings) {
@@ -1313,7 +1131,6 @@
     SCENE_MOTION_COMPENSATION_BOOST,
     MAX_HEIGHT_GATES,
     PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
-    PRECLICK_PARALLAX_OFFSET_PX_PER_VW,
     ROCK_IMAGE_IDS,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
