@@ -2,9 +2,12 @@
   --fold-perspective: 250px;
   --fold-seam-scale: 1.002004008016032;
 
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  top: var(--fold-document-top, 0px);
+  left: 0;
   z-index: 18;
+  width: 100%;
+  height: var(--fold-panel-height, 20vh);
   overflow: hidden;
   pointer-events: none;
   user-select: none;
@@ -19,7 +22,7 @@
   position: absolute;
   left: 0;
   width: 100%;
-  height: var(--fold-zone-height);
+  height: 100%;
   overflow: hidden;
   background: var(--surface);
   -webkit-mask-image: var(--fold-mask-image, none);
@@ -47,7 +50,7 @@
   position: absolute;
   left: 0;
   width: 100%;
-  height: calc(var(--fold-zone-height) + var(--fold-zone-height));
+  height: calc(var(--fold-zone-height) + var(--fold-panel-height));
   overflow: visible;
   backface-visibility: visible;
   transform-style: preserve-3d;
@@ -70,6 +73,7 @@
 }
 
 .fold-track {
+  --fold-document-offset: 0px;
   --fold-scroll-offset: 0px;
 
   position: absolute;
@@ -78,7 +82,7 @@
   height: var(--scene-height-vh, 1000vh);
   transform: translate3d(
     0,
-    calc(var(--fold-zone-height) - var(--fold-scroll-offset)),
+    calc(var(--fold-zone-height) - var(--fold-document-offset)),
     0
   );
   will-change: transform;

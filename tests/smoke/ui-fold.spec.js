@@ -70,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v37", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v38", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v37");
+    localStorage.removeItem("sisyphus-czar-settings-v38");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,7 +91,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v37", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -117,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v37", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,11 +125,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v37", 
     .toEqual([47, 13]);
 });
 
-test("hop-настройки мигрируют из localStorage v35 в v37 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v35 в v38 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v37");
+    localStorage.removeItem("sisyphus-czar-settings-v38");
     localStorage.setItem(
       "sisyphus-czar-settings-v35",
       JSON.stringify({
@@ -149,7 +149,7 @@ test("hop-настройки мигрируют из localStorage v35 в v37 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
         );
         return {
           radius: stored.preclickHopActivationRadiusVw,
@@ -169,11 +169,11 @@ test("hop-настройки мигрируют из localStorage v35 в v37 б�
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v37", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v38", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v37");
+    localStorage.removeItem("sisyphus-czar-settings-v38");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -186,7 +186,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -204,9 +204,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v37", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v38", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v37");
+    localStorage.removeItem("sisyphus-czar-settings-v38");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -219,7 +219,7 @@ test("настройки руки мигрируют из localStorage v36 в v3
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v37") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -235,11 +235,37 @@ test("настройки руки мигрируют из localStorage v36 в v3
     });
 });
 
+test("раскладка Fold мигрирует из localStorage v37 в v38", async ({ page }) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem("sisyphus-czar-settings-v38");
+    localStorage.setItem(
+      "sisyphus-czar-settings-v37",
+      JSON.stringify({ foldZoneSize: 14 }),
+    );
+  });
+
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+        );
+        return {
+          foldPanelHeightVh: stored.foldPanelHeightVh,
+          foldPositionPercent: stored.foldPositionPercent,
+        };
+      }),
+    )
+    .toEqual({ foldPanelHeightVh: 14, foldPositionPercent: 0 });
+});
+
 test("группа Камень показывает только два hop-контрола", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v37");
+    localStorage.removeItem("sisyphus-czar-settings-v38");
   });
 
   await page.goto("/");
@@ -820,7 +846,11 @@ test("Fold синхронизирует сцену и применяет общ�
   await page.goto("/");
   await waitForFoldReady(page);
   await navigateToSettings(page);
+  await expect(page.locator('[name="foldPositionPercent"]')).toHaveValue("0");
+  await expect(page.locator('[name="foldPanelHeightVh"]')).toHaveValue("20");
   await expect(page.locator('[name="foldAngle"]')).toHaveValue("30");
+  await setSettingValue(page, "foldPositionPercent", 60);
+  await setSettingValue(page, "foldPanelHeightVh", 35);
   await setSettingValue(page, "foldAngle", 45);
   await setSettingValue(page, "foldZoneSize", 10);
   await setSettingValue(
@@ -871,6 +901,8 @@ test("Fold синхронизирует сцену и применяет общ�
   await page.goto("/");
 
   let layer = await waitForFoldReady(page);
+  await expect(layer).toHaveAttribute("data-fold-position-percent", "60");
+  await expect(layer).toHaveAttribute("data-fold-panel-height-vh", "35");
   await expect(layer).toHaveAttribute("data-fold-angle", "45");
   await expect(layer).toHaveAttribute("data-fold-zone-size", "10");
   await expect(layer).toHaveAttribute("data-fold-blend-enabled", "false");
@@ -887,14 +919,75 @@ test("Fold синхронизирует сцену и применяет общ�
     .toBe("45deg");
   await expect
     .poll(() =>
+      layer.evaluate((element) =>
+        element.style.getPropertyValue("--fold-panel-height"),
+      ),
+    )
+    .toBe("35vh");
+  await expect
+    .poll(() =>
       page
         .locator('[data-fold-zone="top"]')
         .evaluate((element) => getComputedStyle(element).maskImage),
     )
     .toBe("none");
 
+  await page.evaluate(() => window.scrollTo(0, 0));
+  const documentLayoutBeforeScroll = await page.evaluate(() => {
+    const foldLayer = document.querySelector("[data-fold-layer]");
+    const world = document.querySelector("#root > .world");
+    const rect = foldLayer.getBoundingClientRect();
+    return {
+      dataTop: Number(foldLayer.dataset.foldDocumentTopPx),
+      documentTop: rect.top + window.scrollY,
+      expectedTop: (world.offsetHeight - window.innerHeight * 0.35) * 0.6,
+      height: rect.height,
+      position: getComputedStyle(foldLayer).position,
+      scrollHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight,
+    };
+  });
+  expect(documentLayoutBeforeScroll.position).toBe("absolute");
+  expect(documentLayoutBeforeScroll.height).toBeCloseTo(
+    documentLayoutBeforeScroll.viewportHeight * 0.35,
+    1,
+  );
+  expect(documentLayoutBeforeScroll.dataTop).toBeCloseTo(
+    documentLayoutBeforeScroll.expectedTop,
+    1,
+  );
+  expect(documentLayoutBeforeScroll.documentTop).toBeCloseTo(
+    documentLayoutBeforeScroll.expectedTop,
+    1,
+  );
+
+  await page.evaluate(() => window.scrollTo(0, 600));
+  const documentLayoutAfterScroll = await page.evaluate(() => {
+    const foldLayer = document.querySelector("[data-fold-layer]");
+    const rect = foldLayer.getBoundingClientRect();
+    return {
+      documentTop: rect.top + window.scrollY,
+      scrollHeight: document.documentElement.scrollHeight,
+      scrollY: window.scrollY,
+      viewportTop: rect.top,
+    };
+  });
+  expect(documentLayoutAfterScroll.documentTop).toBeCloseTo(
+    documentLayoutBeforeScroll.documentTop,
+    1,
+  );
+  expect(documentLayoutAfterScroll.viewportTop).toBeCloseTo(
+    documentLayoutBeforeScroll.documentTop - documentLayoutAfterScroll.scrollY,
+    1,
+  );
+  expect(documentLayoutAfterScroll.scrollHeight).toBe(
+    documentLayoutBeforeScroll.scrollHeight,
+  );
+
   await page.reload();
   layer = await waitForFoldReady(page);
+  await expect(layer).toHaveAttribute("data-fold-position-percent", "60");
+  await expect(layer).toHaveAttribute("data-fold-panel-height-vh", "35");
   await expect(layer).toHaveAttribute("data-fold-angle", "45");
   await expect(layer).toHaveAttribute("data-fold-zone-size", "10");
   await expect(layer).toHaveAttribute("data-fold-blend-enabled", "false");
@@ -915,6 +1008,9 @@ test("Fold синхронизирует сцену и применяет общ�
     const trackMatrix = new DOMMatrix(getComputedStyle(track).transform);
     return {
       cropHeight: Number.parseFloat(getComputedStyle(cropWindow).height),
+      documentTop: Number(
+        document.querySelector("[data-fold-layer]").dataset.foldDocumentTopPx,
+      ),
       mirrorFrame: Number(
         document.querySelector("[data-fold-layer]").dataset.mirrorFrame || 0,
       ),
@@ -928,6 +1024,7 @@ test("Fold синхронизирует сцену и применяет общ�
       surfaceHeight: Number.parseFloat(getComputedStyle(surface).height),
       surfaceTop: Number.parseFloat(getComputedStyle(surface).top),
       trackTranslateY: trackMatrix.m42,
+      viewportHeight: window.innerHeight,
       zoneHeight: zone.getBoundingClientRect().height,
     };
   });
@@ -937,16 +1034,19 @@ test("Fold синхронизирует сцену и применяет общ�
   expect(presentation.mirrorRockStyle).toBe(presentation.sourceRockStyle);
   expect(presentation.mirrorTrailSize).toEqual(presentation.sourceTrailSize);
   expect(presentation.cropHeight).toBeCloseTo(
-    presentation.zoneHeight * 2,
+    presentation.surfaceHeight,
     1,
   );
   expect(presentation.surfaceHeight).toBeCloseTo(
-    presentation.zoneHeight * 2,
+    presentation.zoneHeight + presentation.viewportHeight * 0.1,
     1,
   );
-  expect(presentation.surfaceTop).toBeCloseTo(-presentation.zoneHeight, 1);
+  expect(presentation.surfaceTop).toBeCloseTo(
+    -presentation.viewportHeight * 0.1,
+    1,
+  );
   expect(presentation.trackTranslateY).toBeCloseTo(
-    presentation.zoneHeight - (await page.evaluate(() => window.scrollY)),
+    presentation.viewportHeight * 0.1 - presentation.documentTop,
     1,
   );
 });

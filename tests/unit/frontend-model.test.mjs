@@ -18,6 +18,7 @@ import {
 import { getRainVisualProfile } from "../../src/lib/rainProfile.mjs";
 import {
   buildFoldBlendMask,
+  calculateFoldDocumentLayout,
   foldEffectEnabled,
   normalizeFoldSettings,
 } from "../../src/lib/fold.mjs";
@@ -410,7 +411,7 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "preclickHopActivationRadiusVw"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v37");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v38");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -482,7 +483,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 37);
+  assert.equal(productionSettingsSchemaVersion, 38);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1353,11 +1354,29 @@ test("3D Fold входит в общую схему настроек с утве
   assert.deepEqual(
     foldGroup.controls.map((control) => control.name),
     [
+      "foldPositionPercent",
+      "foldPanelHeightVh",
       "foldAngle",
       "foldZoneSize",
       "foldBlendEnabled",
       "foldBlendCurve",
     ],
+  );
+  assert.deepEqual(
+    {
+      min: byName("foldPositionPercent").min,
+      max: byName("foldPositionPercent").max,
+      defaultValue: byName("foldPositionPercent").defaultValue,
+    },
+    { min: 0, max: 100, defaultValue: 0 },
+  );
+  assert.deepEqual(
+    {
+      min: byName("foldPanelHeightVh").min,
+      max: byName("foldPanelHeightVh").max,
+      defaultValue: byName("foldPanelHeightVh").defaultValue,
+    },
+    { min: 1, max: 100, defaultValue: 20 },
   );
   assert.deepEqual(
     {
@@ -1387,16 +1406,36 @@ test("3D Fold входит в общую схему настроек с утве
 
   assert.deepEqual(
     normalizeFoldSettings({
+      foldPositionPercent: 120,
+      foldPanelHeightVh: 0,
       foldAngle: 200,
       foldZoneSize: -10,
       foldBlendCurve: "invalid",
     }),
     {
+      foldPositionPercent: 100,
+      foldPanelHeightVh: 1,
       foldAngle: 180,
       foldZoneSize: 0,
       foldBlendEnabled: true,
       foldBlendCurve: "cubic-bezier(0.333, 0, 0.667, 1)",
     },
+  );
+  assert.deepEqual(
+    calculateFoldDocumentLayout(
+      { foldPositionPercent: 50, foldPanelHeightVh: 25 },
+      5000,
+      1000,
+    ),
+    { panelHeightPx: 250, maxTopPx: 4750, topPx: 2375 },
+  );
+  assert.deepEqual(
+    calculateFoldDocumentLayout(
+      { foldPositionPercent: 100, foldPanelHeightVh: 100 },
+      800,
+      1000,
+    ),
+    { panelHeightPx: 1000, maxTopPx: 0, topPx: 0 },
   );
   assert.equal(foldEffectEnabled({ foldZoneSize: 0 }), false);
   assert.equal(
@@ -1819,6 +1858,8 @@ test("настройки препятствия Окна нормализуют 
       handVisibilityMode: "always",
       handImageChangeDelayMs: 0,
       cameraFollowLerp: 0.1,
+      foldPositionPercent: 0,
+      foldPanelHeightVh: 20,
       rockGrabRadiusVh: 0,
       ...DEFAULT_PRECLICK_HOP_SETTINGS,
       ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
@@ -1965,7 +2006,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 35);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 36);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2100,7 +2141,17 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopMaxDistanceVw: 184.3,
     handVisibilityMode: "always",
     handImageChangeDelayMs: 0,
+    foldPositionPercent: 0,
+    foldPanelHeightVh: 20,
   });
+  assert.deepEqual(
+    SharedRoomSettings.migrateRoomSettings({ foldZoneSize: 32 }, 35),
+    {
+      foldZoneSize: 32,
+      foldPositionPercent: 0,
+      foldPanelHeightVh: 32,
+    },
+  );
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings({
       handAudioEnabled: "false",

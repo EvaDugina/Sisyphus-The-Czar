@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 35;
+  const ROOM_SETTINGS_VERSION = 36;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -71,6 +71,8 @@
     sceneHeightScreens: [1, 100],
     returnScrollDurationSeconds: [0, 10],
     cameraFollowLerp: [0.01, 1],
+    foldPositionPercent: [0, 100],
+    foldPanelHeightVh: [1, 100],
     foldAngle: [0, 180],
     foldZoneSize: [0, 50],
     finalFallDelaySeconds: [0, 10],
@@ -128,6 +130,8 @@
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     stationaryAutoSlipEnabled: true,
     cameraFollowLerp: 0.1,
+    foldPositionPercent: 0,
+    foldPanelHeightVh: 20,
     foldAngle: 30,
     foldZoneSize: 20,
     foldBlendEnabled: true,
@@ -421,6 +425,10 @@
       ROOM_SETTINGS_LIMITS.returnScrollDurationSeconds;
     const [cameraFollowLerpMin, cameraFollowLerpMax] =
       ROOM_SETTINGS_LIMITS.cameraFollowLerp;
+    const [foldPositionMin, foldPositionMax] =
+      ROOM_SETTINGS_LIMITS.foldPositionPercent;
+    const [foldPanelHeightMin, foldPanelHeightMax] =
+      ROOM_SETTINGS_LIMITS.foldPanelHeightVh;
     const [foldAngleMin, foldAngleMax] =
       ROOM_SETTINGS_LIMITS.foldAngle;
     const [foldZoneMin, foldZoneMax] =
@@ -585,6 +593,20 @@
         "cameraFollowLerp",
         cameraFollowLerpMin,
         cameraFollowLerpMax
+      ),
+      foldPositionPercent: integerSetting(
+        source,
+        fallbackSource,
+        "foldPositionPercent",
+        foldPositionMin,
+        foldPositionMax
+      ),
+      foldPanelHeightVh: integerSetting(
+        source,
+        fallbackSource,
+        "foldPanelHeightVh",
+        foldPanelHeightMin,
+        foldPanelHeightMax
       ),
       foldAngle: integerSetting(
         source,
@@ -1055,6 +1077,21 @@
     return source;
   }
 
+  function migrateFoldLayoutSettings(input) {
+    const source = input && typeof input === "object" ? { ...input } : {};
+    if (!Object.hasOwn(source, "foldPositionPercent")) {
+      source.foldPositionPercent = DEFAULT_ROOM_SETTINGS.foldPositionPercent;
+    }
+    if (!Object.hasOwn(source, "foldPanelHeightVh")) {
+      const previousZoneSize = Number(source.foldZoneSize);
+      const [minHeight, maxHeight] = ROOM_SETTINGS_LIMITS.foldPanelHeightVh;
+      source.foldPanelHeightVh = Number.isFinite(previousZoneSize)
+        ? clamp(previousZoneSize, minHeight, maxHeight)
+        : DEFAULT_ROOM_SETTINGS.foldPanelHeightVh;
+    }
+    return source;
+  }
+
   function migrateRoomSettings(input, version = 1) {
     const source = input && typeof input === "object" ? { ...input } : {};
     if (finiteNumber(version, 1) < 4) {
@@ -1143,9 +1180,12 @@
     const hopMigrated = finiteNumber(version, 1) < 34
       ? migratePreclickHopSettings(rockMigrated)
       : rockMigrated;
-    return finiteNumber(version, 1) < 35
+    const handDisplayMigrated = finiteNumber(version, 1) < 35
       ? migrateHandDisplaySettings(hopMigrated)
       : hopMigrated;
+    return finiteNumber(version, 1) < 36
+      ? migrateFoldLayoutSettings(handDisplayMigrated)
+      : handDisplayMigrated;
   }
 
   function sceneMotionMultiplier(settings) {
@@ -1175,6 +1215,7 @@
     migratePreclickHopSettings,
     migrateRockVisualSettings,
     migrateHandDisplaySettings,
+    migrateFoldLayoutSettings,
     migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,

@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 37;
+const SETTINGS_SCHEMA_VERSION = 38;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -391,6 +391,9 @@ export function createSettingsController(options) {
     }
     if (Number(settingsSchemaVersion) < 37) {
       migrated = SharedRoomSettings.migrateHandDisplaySettings(migrated);
+    }
+    if (Number(settingsSchemaVersion) < 38) {
+      migrated = SharedRoomSettings.migrateFoldLayoutSettings(migrated);
     }
     delete migrated.positionScrollEnabled;
     delete migrated.positionScrollZonePercent;
@@ -1288,6 +1291,8 @@ export function createSettingsController(options) {
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
       cameraFollowLerp: params.cameraFollowLerp.toFixed(2),
+      foldPositionPercent: `${params.foldPositionPercent.toFixed(0)}%`,
+      foldPanelHeightVh: `${params.foldPanelHeightVh.toFixed(0)} vh`,
       foldAngle: `${params.foldAngle.toFixed(0)}°`,
       foldZoneSize: `${params.foldZoneSize.toFixed(0)} vh`,
       finalFallDelaySeconds: secondsOutput(params.finalFallDelaySeconds),

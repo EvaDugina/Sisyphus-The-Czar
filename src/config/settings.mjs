@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v37";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v38";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v37",
   "sisyphus-czar-settings-v36",
   "sisyphus-czar-settings-v35",
   "sisyphus-czar-settings-v34",
@@ -494,6 +495,28 @@ export const SETTINGS_GROUPS = [
   {
     title: "3D Fold",
     controls: [
+      {
+        name: "foldPositionPercent",
+        label: "Положение на странице",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.foldPositionPercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.foldPositionPercent[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.foldPositionPercent,
+        output: `${DEFAULT_ROOM_SETTINGS.foldPositionPercent}%`,
+        hint: "Вертикальное положение Fold относительно полной высоты сцены: 0% — верх, 100% — самое нижнее положение без выхода за границу.",
+      },
+      {
+        name: "foldPanelHeightVh",
+        label: "Высота панели",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.foldPanelHeightVh[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.foldPanelHeightVh[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.foldPanelHeightVh,
+        output: `${DEFAULT_ROOM_SETTINGS.foldPanelHeightVh} vh`,
+        hint: "Высота видимой Fold-панели относительно viewport. Не изменяет внутренний размер перспективной линзы.",
+      },
       {
         name: "foldAngle",
         label: "Угол линзы",

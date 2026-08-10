@@ -550,7 +550,7 @@ test("старая сессия внутри вершины получает н�
   assert.equal(manager.snapshot(session).summitTimerRunning, true);
 });
 
-test("persisted session мигрирует Fold, отскок, камень и руку в room schema 35", () => {
+test("persisted session мигрирует Fold, отскок, камень и руку в room schema 36", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
     {
@@ -575,6 +575,8 @@ test("persisted session мигрирует Fold, отскок, камень и �
   const session = manager.getSession("legacyfold000000000000");
   assert.equal(session.roomSettings.foldAngle, 54);
   assert.equal(session.roomSettings.foldZoneSize, 19);
+  assert.equal(session.roomSettings.foldPositionPercent, 0);
+  assert.equal(session.roomSettings.foldPanelHeightVh, 19);
   assert.equal(session.roomSettings.foldBlendEnabled, false);
   assert.equal(
     session.roomSettings.foldBlendCurve,

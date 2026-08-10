@@ -13,6 +13,11 @@
   box-sizing: border-box;
 }
 
+#root {
+  position: relative;
+  min-height: var(--scene-height-vh, 1000vh);
+}
+
 html {
   min-height: 100%;
   margin: 0;

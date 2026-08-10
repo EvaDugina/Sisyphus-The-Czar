@@ -1,6 +1,8 @@
 import { cubicBezierYForX, parseCubicBezier } from "./rockScale.mjs";
 
 export const DEFAULT_FOLD_SETTINGS = Object.freeze({
+  foldPositionPercent: 0,
+  foldPanelHeightVh: 20,
   foldAngle: 30,
   foldZoneSize: 20,
   foldBlendEnabled: true,
@@ -34,6 +36,28 @@ export function normalizeFoldSettings(
   const curve = String(source.foldBlendCurve || "").trim();
 
   return {
+    foldPositionPercent: finiteSetting(
+      source.foldPositionPercent,
+      finiteSetting(
+        fallbackSource.foldPositionPercent,
+        DEFAULT_FOLD_SETTINGS.foldPositionPercent,
+        0,
+        100,
+      ),
+      0,
+      100,
+    ),
+    foldPanelHeightVh: finiteSetting(
+      source.foldPanelHeightVh,
+      finiteSetting(
+        fallbackSource.foldPanelHeightVh,
+        DEFAULT_FOLD_SETTINGS.foldPanelHeightVh,
+        1,
+        100,
+      ),
+      1,
+      100,
+    ),
     foldAngle: finiteSetting(
       source.foldAngle,
       fallbackSource.foldAngle,
@@ -51,6 +75,25 @@ export function normalizeFoldSettings(
         ? source.foldBlendEnabled
         : Boolean(fallbackSource.foldBlendEnabled),
     foldBlendCurve: parseCubicBezier(curve) ? curve : fallbackCurve,
+  };
+}
+
+export function calculateFoldDocumentLayout(
+  settings,
+  sceneHeightPx,
+  viewportHeightPx,
+) {
+  const clean = normalizeFoldSettings(settings);
+  const cleanViewportHeight = Math.max(0, Number(viewportHeightPx) || 0);
+  const panelHeightPx =
+    (cleanViewportHeight * clean.foldPanelHeightVh) / 100;
+  const cleanSceneHeight = Math.max(0, Number(sceneHeightPx) || 0);
+  const maxTopPx = Math.max(0, cleanSceneHeight - panelHeightPx);
+
+  return {
+    panelHeightPx,
+    maxTopPx,
+    topPx: (maxTopPx * clean.foldPositionPercent) / 100,
   };
 }
 

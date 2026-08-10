@@ -281,6 +281,10 @@ export function createSisyphusRuntime(elements = {}) {
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     cameraFollowLerp:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.cameraFollowLerp,
+    foldPositionPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldPositionPercent,
+    foldPanelHeightVh:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldPanelHeightVh,
     foldAngle:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldAngle,
     foldZoneSize:
@@ -4163,7 +4167,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 37,
+      settingsSchemaVersion: 38,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;

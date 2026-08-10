@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 
 import {
   buildFoldBlendMask,
+  calculateFoldDocumentLayout,
   DEFAULT_FOLD_SETTINGS,
   foldEffectEnabled,
   normalizeFoldSettings,
@@ -199,14 +200,33 @@ function applyFoldSettings(layer, settings) {
   layer.dataset.foldBlendCurve = clean.foldBlendCurve;
   layer.dataset.foldBlendEnabled = String(clean.foldBlendEnabled);
   layer.dataset.foldEnabled = String(foldEffectEnabled(clean));
+  layer.dataset.foldPanelHeightVh = String(clean.foldPanelHeightVh);
+  layer.dataset.foldPositionPercent = String(clean.foldPositionPercent);
   layer.dataset.foldZoneSize = String(clean.foldZoneSize);
   layer.style.setProperty("--fold-angle", `${clean.foldAngle}deg`);
   layer.style.setProperty("--fold-mask-image", mask);
+  layer.style.setProperty(
+    "--fold-panel-height",
+    `${clean.foldPanelHeightVh}vh`,
+  );
   layer.style.setProperty(
     "--fold-zone-height",
     `${clean.foldZoneSize}vh`,
   );
   return clean;
+}
+
+function applyFoldDocumentLayout(layer, track, settings, sourceWorld) {
+  const sceneHeightPx = sourceWorld.offsetHeight;
+  const layout = calculateFoldDocumentLayout(
+    settings,
+    sceneHeightPx,
+    window.innerHeight,
+  );
+  const documentTop = `${layout.topPx}px`;
+  layer.dataset.foldDocumentTopPx = String(layout.topPx);
+  layer.style.setProperty("--fold-document-top", documentTop);
+  track.style.setProperty("--fold-document-offset", documentTop);
 }
 
 export function FoldLayer({ settingsRef, worldRef }) {
@@ -226,6 +246,7 @@ export function FoldLayer({ settingsRef, worldRef }) {
     let animationFrame = null;
     let frameNumber = 0;
     let lastSettingsSignature = "";
+    let lastLayoutSignature = "";
 
     const syncFrame = () => {
       animationFrame = null;
@@ -236,6 +257,8 @@ export function FoldLayer({ settingsRef, worldRef }) {
       const currentSettings = settingsRef.current || DEFAULT_FOLD_SETTINGS;
       const clean = normalizeFoldSettings(currentSettings);
       const signature = [
+        clean.foldPositionPercent,
+        clean.foldPanelHeightVh,
         clean.foldAngle,
         clean.foldZoneSize,
         clean.foldBlendEnabled,
@@ -244,6 +267,17 @@ export function FoldLayer({ settingsRef, worldRef }) {
       if (signature !== lastSettingsSignature) {
         applyFoldSettings(layer, clean);
         lastSettingsSignature = signature;
+      }
+
+      const layoutSignature = [
+        clean.foldPositionPercent,
+        clean.foldPanelHeightVh,
+        sourceWorld.offsetHeight,
+        window.innerHeight,
+      ].join(":");
+      if (layoutSignature !== lastLayoutSignature) {
+        applyFoldDocumentLayout(layer, track, clean, sourceWorld);
+        lastLayoutSignature = layoutSignature;
       }
 
       const scrollOffset = `${window.scrollY}px`;
@@ -296,6 +330,8 @@ export function FoldLayer({ settingsRef, worldRef }) {
       data-fold-blend-curve={DEFAULT_FOLD_SETTINGS.foldBlendCurve}
       data-fold-blend-enabled="true"
       data-fold-enabled="false"
+      data-fold-panel-height-vh={DEFAULT_FOLD_SETTINGS.foldPanelHeightVh}
+      data-fold-position-percent={DEFAULT_FOLD_SETTINGS.foldPositionPercent}
       data-fold-ready="false"
       data-fold-zone-size={DEFAULT_FOLD_SETTINGS.foldZoneSize}
       aria-hidden="true"
@@ -304,6 +340,8 @@ export function FoldLayer({ settingsRef, worldRef }) {
         "--fold-mask-image": buildFoldBlendMask(
           DEFAULT_FOLD_SETTINGS.foldBlendCurve,
         ),
+        "--fold-document-top": "0px",
+        "--fold-panel-height": `${DEFAULT_FOLD_SETTINGS.foldPanelHeightVh}vh`,
         "--fold-zone-height": `${DEFAULT_FOLD_SETTINGS.foldZoneSize}vh`,
       }}
     >
