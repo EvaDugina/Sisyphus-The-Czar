@@ -444,7 +444,7 @@ body.hand-hidden .hand-cursor {
   display: none !important;
 }
 
-:is(.trail-glow, .trail) {
+:is(.trail-glow, .trail-session) {
   position: fixed;
   inset: 0;
   z-index: 0;
@@ -454,8 +454,23 @@ body.hand-hidden .hand-cursor {
   mix-blend-mode: normal;
 }
 
+.trail-history {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 1;
+  width: 100vw;
+  height: var(--trail-history-height, 300vh);
+  pointer-events: none;
+  mix-blend-mode: normal;
+}
+
 .trail-glow {
   z-index: 0;
+}
+
+.trail-session {
+  z-index: 2;
 }
 
 .trail {

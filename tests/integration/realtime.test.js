@@ -315,7 +315,7 @@ test("debug-каталог шаблонов общий для разных ли�
   await Promise.all([first.closed, second.closed, third.closed]);
 });
 
-test("последнее сохранение помеченного preset применяется к новым и перезагруженным сессиям", async (context) => {
+test("последнее сохранение помеченного preset применяется только к новым сессиям", async (context) => {
   const directory = fs.mkdtempSync(
     path.join(os.tmpdir(), "sisyphus-selected-preset-")
   );
@@ -333,6 +333,15 @@ test("последнее сохранение помеченного preset пр
   await first.opened;
   const current = await first.waitFor("productionPreset.current");
   assert.equal(current.payload.canSelect, true);
+  const firstBaselineSession = service.manager.getSession(
+    firstCreated.sessionId,
+  );
+  const firstBaseline = {
+    gravity: firstBaselineSession.physics.gravity,
+    handAudioEnabled: firstBaselineSession.roomSettings.handAudioEnabled,
+    rainEnabled: firstBaselineSession.roomSettings.rainEnabled,
+    sceneHeightScreens: firstBaselineSession.roomSettings.sceneHeightScreens,
+  };
 
   const entry = {
     id: "hand-audio-disabled",
@@ -422,10 +431,19 @@ test("последнее сохранение помеченного preset пр
   );
   await reloaded.opened;
   const reloadedSnapshot = await reloaded.waitFor("session.snapshot");
-  assert.equal(reloadedSnapshot.payload.physics.gravity, 5.75);
-  assert.equal(reloadedSnapshot.payload.roomSettings.sceneHeightScreens, 12);
-  assert.equal(reloadedSnapshot.payload.roomSettings.handAudioEnabled, false);
-  assert.equal(reloadedSnapshot.payload.roomSettings.rainEnabled, true);
+  assert.equal(reloadedSnapshot.payload.physics.gravity, firstBaseline.gravity);
+  assert.equal(
+    reloadedSnapshot.payload.roomSettings.sceneHeightScreens,
+    firstBaseline.sceneHeightScreens,
+  );
+  assert.equal(
+    reloadedSnapshot.payload.roomSettings.handAudioEnabled,
+    firstBaseline.handAudioEnabled,
+  );
+  assert.equal(
+    reloadedSnapshot.payload.roomSettings.rainEnabled,
+    firstBaseline.rainEnabled,
+  );
   await first.closed;
 
   reloaded.socket.close();
@@ -536,7 +554,7 @@ test("между комнатами передаются только подтв
   newcomer.socket.close();
 });
 
-test("визуальная trail-история длиннее 1000 точек восстанавливается при reconnect", async (context) => {
+test("визуальная trail-история хранит последние 10000 точек при reconnect", async (context) => {
   const { service, base, wsBase } = await startService(context);
   const created = await createSession(base, "integration-trail-writer01");
   const writer = connect(
@@ -546,16 +564,11 @@ test("визуальная trail-история длиннее 1000 точек �
   await writer.waitFor("session.snapshot");
   await writer.waitFor("trail.history");
 
-  writer.send("roomSettings.update", { trailUnlimited: true });
-  await writer.waitFor(
-    "session.snapshot",
-    (payload) => payload.roomSettings?.trailUnlimited === true,
-  );
   writer.send("control.acquire", { x: 500, y: 1000 });
   const granted = await writer.waitFor("control.granted");
   assert.equal(granted.payload.trailWriterId, "integration-trail-writer01");
 
-  const points = Array.from({ length: 1005 }, (_, index) => [
+  const points = Array.from({ length: 10_005 }, (_, index) => [
     index % 1001,
     (index * 2) % 2001,
     2,
@@ -569,8 +582,8 @@ test("визуальная trail-история длиннее 1000 точек �
   const writerSession = service.manager.getSession(created.sessionId);
   await waitUntil(
     () =>
-      writerSession.trail.length === points.length &&
-      service.manager.sharedTrailHub.trail.length === points.length,
+      writerSession.trail.length === 10_000 &&
+      service.manager.sharedTrailHub.trail.length === 10_000,
   );
 
   const newcomerCreated = await createSession(
@@ -583,8 +596,8 @@ test("визуальная trail-история длиннее 1000 точек �
   await newcomer.opened;
   const history = await newcomer.waitFor("trail.history");
 
-  assert.equal(history.payload.points.length, points.length);
-  assert.deepEqual(history.payload.points[0], [0, 0, 2]);
+  assert.equal(history.payload.points.length, 10_000);
+  assert.deepEqual(history.payload.points[0], points[5]);
   assert.equal(history.payload.points.at(-1)[2], 2);
 
   writer.socket.close();

@@ -65,6 +65,14 @@ import {
   normalizeStoredTrailPoint,
 } from "../lib/trailPersistence.mjs";
 import {
+  DEFAULT_TRAIL_RENDER_SETTINGS,
+  HARD_TRAIL_LIMIT,
+  calculateTrailHistoryWindow,
+  effectiveCanvasPixelRatio,
+  resolveTrailRenderProfile,
+  sampleTrailRuns,
+} from "../lib/trailOptimization.mjs";
+import {
   settings as productionSettings,
 } from "../config/production-preset.mjs";
 import { createSettingsController } from "./createSettingsController.js";
@@ -77,6 +85,8 @@ import {
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
 const AUDIO_TOGGLE_FADE_OUT_MS = 250;
+const TRAIL_NETWORK_BATCH_POINTS = 16;
+const TRAIL_NETWORK_FLUSH_MS = 50;
 const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
 const PRECLICK_HOP_DURATION_MS = 400;
 const PRECLICK_HOP_EASING_CURVE = Object.freeze([0.22, 1, 0.36, 1]);
@@ -164,6 +174,9 @@ export function createSisyphusRuntime(elements = {}) {
   const remoteCursorLayer = elements.remoteCursorLayer || document.querySelector(".remote-cursors");
   const trailCanvas = elements.trailCanvas || document.querySelector(".trail");
   const trailCtx = trailCanvas.getContext("2d");
+  const trailSessionCanvas =
+    elements.trailSessionCanvas || document.querySelector(".trail-session");
+  const trailSessionCtx = trailSessionCanvas.getContext("2d");
   const trailGlowCanvas =
     elements.trailGlowCanvas || document.querySelector(".trail-glow");
   const trailGlowCtx = trailGlowCanvas.getContext("2d");
@@ -191,10 +204,21 @@ export function createSisyphusRuntime(elements = {}) {
   const listenerDisposers = [];
   let disposed = false;
   const productionRuntime = import.meta.env.PROD;
-  const navigationEntry = window.performance
-    ?.getEntriesByType?.("navigation")
-    ?.at(0);
-  let reloadViewportRestorePending = navigationEntry?.type === "reload";
+
+  function measureDebugRender(name, startedAt) {
+    if (productionRuntime || typeof performance?.measure !== "function") {
+      return;
+    }
+    try {
+      performance.measure(`sisyphus.${name}`, {
+        start: startedAt,
+        end: performance.now(),
+      });
+    } catch {
+      // User Timing is diagnostic only and must never affect rendering.
+    }
+  }
+  let reloadViewportRestorePending = true;
 
   function listen(target, type, listener, options) {
     if (!target || typeof target.addEventListener !== "function") {
@@ -206,19 +230,39 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
+  function requestFoldSync() {
+    window.dispatchEvent(new Event("sisyphus:fold-sync"));
+  }
+
   const trail = {
     points: [],
     canonicalPoints: [],
+    historyPoints: [],
+    historyCanonical: [],
+    sessionPoints: [],
+    sessionCanonical: [],
     lastX: null,
     lastY: null,
     followX: null,
     followY: null,
     pixelRatio: 1,
+    sessionPixelRatio: 1,
     glowPixelRatio: 1,
     dirty: true,
+    sessionDirty: true,
     glowDirty: true,
     baseRevision: 0,
+    sessionRevision: 0,
     glowRevision: 0,
+    historyWindowTop: 0,
+    historyWindowHeight: 0,
+    historyRenderPasses: 0,
+    historyStrokeBatches: 0,
+    sessionRenderPasses: 0,
+    sessionStrokeBatches: 0,
+    renderFrameId: null,
+    networkPoints: [],
+    networkTimerId: null,
     glowRendered: false,
     glowAnimationFrameId: null,
     glowTimerId: null,
@@ -393,7 +437,6 @@ export function createSisyphusRuntime(elements = {}) {
     trailAnchorHeightPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailAnchorHeightPercent,
     trailMaxPoints: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailMaxPoints,
-    trailUnlimited: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailUnlimited,
     trailSampleDist: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.trailSampleDist,
 
     // След — стиль
@@ -411,6 +454,7 @@ export function createSisyphusRuntime(elements = {}) {
     lineJoin: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.lineJoin,
     glow: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.glow,
     glowColor: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.glowColor,
+    ...DEFAULT_TRAIL_RENDER_SETTINGS,
     ...DEFAULT_GLOW_OPTIMIZATION_SETTINGS,
   };
   if (productionRuntime) {
@@ -526,6 +570,7 @@ export function createSisyphusRuntime(elements = {}) {
   );
   const TRAIL_BASE_RENDER_SETTING_KEYS = [
     "trailEnabled",
+    "trailMaxPoints",
     "lineColor",
     "lineColorTail",
     "useGradient",
@@ -536,6 +581,7 @@ export function createSisyphusRuntime(elements = {}) {
     "lineCap",
     "lineJoin",
     "lineWidth",
+    "trailRenderProfile",
   ];
   const TRAIL_GLOW_RENDER_SETTING_KEYS = [
     "trailEnabled",
@@ -622,6 +668,7 @@ export function createSisyphusRuntime(elements = {}) {
     hasControl: false,
     pendingControl: false,
     releasePending: false,
+    lastControlSlip: null,
     clientRole: "master",
     holderId: null,
     remoteControllerId: null,
@@ -640,6 +687,8 @@ export function createSisyphusRuntime(elements = {}) {
     settingsUpdateQueued: false,
     sessionCreateInFlight: false,
     sessionCreateAbortController: null,
+    restoringStoredSession: false,
+    lastRoomSettingsSnapshotHeight: null,
     trailCursor: 0,
     trailWriterId: null,
     firstFallRequestSent: false,
@@ -1907,7 +1956,9 @@ export function createSisyphusRuntime(elements = {}) {
     applyHandSize();
     applyRainSettings();
     trail.dirty = true;
-    drawTrail();
+    trail.sessionDirty = true;
+    trail.glowDirty = true;
+    scheduleTrailRender();
   }
 
   function applySceneHeight() {
@@ -2230,7 +2281,7 @@ export function createSisyphusRuntime(elements = {}) {
     body.classList.toggle("theme-light", theme === "light");
     body.classList.toggle("theme-dark", theme === "dark");
     applyTrailBlendMode();
-    trail.dirty = true;
+    requestFoldSync();
     if (currentRainTheme() !== previousRainTheme) {
       syncActiveRainProfile({ updateBackground: true });
     }
@@ -2482,17 +2533,12 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     if (updateUi) {
-      const trailLengthInput =
-        settingsController.roomSettingControlElement("trailMaxPoints");
-      if (trailLengthInput) {
-        trailLengthInput.disabled = params.trailUnlimited;
-        trailLengthInput
-          .closest(".control")
-          ?.classList.toggle("is-disabled", params.trailUnlimited);
-      }
       settingsController.updateControlOutputs();
     }
     trimTrailToLimit();
+    if (shouldHandleChange("trailMaxPoints", "trailRenderProfile")) {
+      checkpointTrail({ force: true });
+    }
 
     if (persist) {
       settingsController.saveSettings();
@@ -2509,6 +2555,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (shouldHandleChange(...TRAIL_BASE_RENDER_SETTING_KEYS)) {
       trail.dirty = true;
+      trail.sessionDirty = true;
     }
     if (shouldHandleChange(...TRAIL_GLOW_RENDER_SETTING_KEYS)) {
       trail.glowDirty = true;
@@ -2560,8 +2607,8 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       reprojectTrail();
     }
-    if (trail.dirty || trail.glowDirty) {
-      drawTrail();
+    if (trail.dirty || trail.sessionDirty || trail.glowDirty) {
+      scheduleTrailRender();
     }
     if (preserveBottomScroll) {
       scrollToSceneBottom();
@@ -2569,7 +2616,8 @@ export function createSisyphusRuntime(elements = {}) {
     if (
       collab.enabled &&
       localCanEditSettings() &&
-      !collab.applyingRemotePhysics
+      !collab.applyingRemotePhysics &&
+      broadcastChanges
     ) {
       let hasPhysicsChanges = false;
       changedKeys.forEach((key) => {
@@ -2581,18 +2629,25 @@ export function createSisyphusRuntime(elements = {}) {
           hasPhysicsChanges = true;
         }
       });
-      if (broadcastChanges && hasPhysicsChanges) {
+      if (hasPhysicsChanges) {
         scheduleSharedPhysicsUpdate();
       }
     }
     if (
       collab.enabled &&
       localCanEditSettings() &&
-      !collab.applyingRemoteRoomSettings
+      !collab.applyingRemoteRoomSettings &&
+      broadcastChanges
     ) {
       let hasRoomSettingsChanges = false;
       changedKeys.forEach((key) => {
         if (SHARED_ROOM_SETTING_KEYS.includes(key)) {
+          if (
+            collab.restoringStoredSession &&
+            key === "sceneHeightScreens"
+          ) {
+            return;
+          }
           collab.pendingRoomSettingsChanges[key] = params[key];
           if (broadcastChanges) {
             collab.stagedRoomSettingsChangeKeys.delete(key);
@@ -2600,7 +2655,7 @@ export function createSisyphusRuntime(elements = {}) {
           hasRoomSettingsChanges = true;
         }
       });
-      if (broadcastChanges && hasRoomSettingsChanges) {
+      if (hasRoomSettingsChanges) {
         scheduleSharedRoomSettingsUpdate();
       }
     }
@@ -2667,7 +2722,7 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
-  function applyTestSettings(nextSettings = {}) {
+  function applyTestSettings(nextSettings = {}, options = {}) {
     const source =
       nextSettings && typeof nextSettings === "object" ? nextSettings : {};
     const changedKeys = Object.keys(source);
@@ -2684,6 +2739,7 @@ export function createSisyphusRuntime(elements = {}) {
       previousRoomSettings,
       preservedState,
       preserveBottomScroll: false,
+      broadcastChanges: Boolean(options.broadcastChanges),
     });
   }
 
@@ -2959,7 +3015,6 @@ export function createSisyphusRuntime(elements = {}) {
         worldRect,
         deltaSeconds,
       );
-      drawTrail();
     };
 
     if (reducedMotion.matches || PRECLICK_HOP_DURATION_MS <= 0) {
@@ -3398,6 +3453,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.y = clamp(y, 0, bounds.maxY);
     rock.style.setProperty("--rock-x", `${motion.x}px`);
     rock.style.setProperty("--rock-y", `${motion.y}px`);
+    requestFoldSync();
     applyRockScale();
     syncDrizzleLoopVolume();
     windowObstacleController.refresh();
@@ -3540,8 +3596,10 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function syncAfterScroll() {
-    trail.dirty = true;
-    drawTrail();
+    ensureTrailCanvasSize();
+    trail.sessionDirty = true;
+    trail.glowDirty = true;
+    scheduleTrailRender();
   }
 
   function scrollToSceneBottom() {
@@ -3562,8 +3620,8 @@ export function createSisyphusRuntime(elements = {}) {
     if (!snapshot?.suspended) {
       return;
     }
-    // Высота комнаты приходит с первым snapshot позже стартовой прокрутки.
-    // Следующий кадр читает уже пересчитанную геометрию сцены.
+    // Высота комнаты приходит с первым snapshot. Прокрутку выполняем один раз
+    // после применения настроек и пересчёта геометрии сцены.
     scrollToSceneBottom();
   }
 
@@ -4007,15 +4065,23 @@ export function createSisyphusRuntime(elements = {}) {
     trail.lastY = last ? last.y : null;
     trail.followX = trail.lastX;
     trail.followY = trail.lastY;
-    trail.dirty = true;
-    drawTrail();
   }
 
   function loadSharedTrail(points) {
-    trail.canonicalPoints = normalizeSharedTrailPoints(points);
-    trail.points = sharedTrailPointsToLocal(trail.canonicalPoints);
+    trail.historyCanonical = normalizeSharedTrailPoints(points).slice(
+      -effectiveTrailLimit(),
+    );
+    trail.historyPoints = sharedTrailPointsToLocal(trail.historyCanonical);
+    trail.sessionCanonical = [];
+    trail.sessionPoints = [];
+    trail.canonicalPoints = trail.historyCanonical.slice();
+    trail.points = trail.historyPoints.slice();
     trimTrailToLimit();
     syncTrailTail();
+    trail.dirty = true;
+    trail.sessionDirty = true;
+    trail.glowDirty = true;
+    scheduleTrailRender();
   }
 
   function appendSharedTrail(points) {
@@ -4024,19 +4090,31 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     const appended = sharedTrailPointsToLocal(canonicalPoints);
+    trail.sessionCanonical.push(...canonicalPoints);
+    trail.sessionPoints.push(...appended);
     trail.canonicalPoints.push(...canonicalPoints);
     trail.points.push(...appended);
     trimTrailToLimit();
     syncTrailTail();
+    trail.sessionDirty = true;
+    trail.glowDirty = true;
+    checkpointTrailIfNeeded();
+    scheduleTrailRender();
   }
 
   function reprojectTrail() {
     if (trail.canonicalPoints.length === 0) {
       return;
     }
-    trail.points = sharedTrailPointsToLocal(trail.canonicalPoints);
+    trail.historyPoints = sharedTrailPointsToLocal(trail.historyCanonical);
+    trail.sessionPoints = sharedTrailPointsToLocal(trail.sessionCanonical);
+    trail.points = [...trail.historyPoints, ...trail.sessionPoints];
     trimTrailToLimit();
     syncTrailTail();
+    trail.dirty = true;
+    trail.sessionDirty = true;
+    trail.glowDirty = true;
+    scheduleTrailRender();
   }
 
   function applySharedPhysics(physics) {
@@ -4060,12 +4138,17 @@ export function createSisyphusRuntime(elements = {}) {
         }
       });
       if (changedKeys.length > 0) {
-        applyCurrentSettings({
-          ...settingsChangeContext({ changedKeys }),
-          previousRoomSettings: null,
-          preservedState: null,
-          preserveBottomScroll: false,
-        });
+        collab.applyingRemotePhysics = true;
+        try {
+          applyCurrentSettings({
+            ...settingsChangeContext({ changedKeys }),
+            previousRoomSettings: null,
+            preservedState: null,
+            preserveBottomScroll: false,
+          });
+        } finally {
+          collab.applyingRemotePhysics = false;
+        }
       }
       return;
     }
@@ -4174,12 +4257,17 @@ export function createSisyphusRuntime(elements = {}) {
     });
     if (changedKeys.length > 0) {
       if (!settingsUiEnabled) {
-        applyCurrentSettings({
-          ...settingsChangeContext({ changedKeys }),
-          previousRoomSettings,
-          preservedState,
-          preserveBottomScroll: false,
-        });
+        collab.applyingRemoteRoomSettings = true;
+        try {
+          applyCurrentSettings({
+            ...settingsChangeContext({ changedKeys }),
+            previousRoomSettings,
+            preservedState,
+            preserveBottomScroll: false,
+          });
+        } finally {
+          collab.applyingRemoteRoomSettings = false;
+        }
         return;
       }
       collab.applyingRemoteRoomSettings = true;
@@ -4249,7 +4337,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 39,
+      settingsSchemaVersion: 41,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -4303,6 +4391,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     collab.expired = true;
+    collab.restoringStoredSession = false;
     collab.connected = false;
     collab.sessionId = "";
     collab.leaveToken = null;
@@ -4313,6 +4402,7 @@ export function createSisyphusRuntime(elements = {}) {
     collab.snapshots = [];
     collab.trailCursor = 0;
     collab.trailWriterId = null;
+    clearTrailNetworkQueue();
     collab.groundTouchSeq = null;
     collab.settingsRevision = 0;
     collab.settingsUpdateInFlight = null;
@@ -4367,6 +4457,7 @@ export function createSisyphusRuntime(elements = {}) {
         storedSessionId = "";
       }
       if (/^[A-Za-z0-9_-]{22}$/.test(storedSessionId)) {
+        collab.restoringStoredSession = true;
         collab.sessionId = storedSessionId;
         updateSettingsLink();
         connectSharedSession();
@@ -4393,6 +4484,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
       collab.enabled = true;
       collab.expired = false;
+      collab.restoringStoredSession = false;
       collab.sessionId = result.sessionId;
       try {
         sessionStorage.setItem("sisyphus-room-session-id", collab.sessionId);
@@ -4714,6 +4806,7 @@ export function createSisyphusRuntime(elements = {}) {
     } else if (message.type === "control.granted") {
       collab.pendingControl = false;
       collab.hasControl = true;
+      collab.lastControlSlip = null;
       collab.trailWriterId = normalizeHolderId(
         payload.trailWriterId || payload.holderId || collab.clientId,
       );
@@ -4725,6 +4818,8 @@ export function createSisyphusRuntime(elements = {}) {
       collab.pendingControl = false;
       collab.hasControl = false;
       collab.releasePending = false;
+      collab.lastControlSlip = { ...payload };
+      clearTrailNetworkQueue();
       updateSharedHolder(payload.holderId);
       cancelSharedLocalDrag();
     } else if (
@@ -4736,6 +4831,7 @@ export function createSisyphusRuntime(elements = {}) {
     } else if (message.type === "control.denied") {
       collab.pendingControl = false;
       collab.hasControl = false;
+      clearTrailNetworkQueue();
       cancelSharedLocalDrag();
       updateSessionStatus();
     } else if (message.type === "presence.update") {
@@ -4836,6 +4932,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function receiveSharedSnapshot(payload) {
+    if (payload.roomSettings && typeof payload.roomSettings === "object") {
+      const snapshotHeight = Number(payload.roomSettings.sceneHeightScreens);
+      collab.lastRoomSettingsSnapshotHeight = Number.isFinite(snapshotHeight)
+        ? snapshotHeight
+        : null;
+    }
     if (
       typeof payload.leaveToken === "string" &&
       /^[A-Za-z0-9_-]{22}$/.test(payload.leaveToken)
@@ -4862,17 +4964,34 @@ export function createSisyphusRuntime(elements = {}) {
     const initialSnapshot = collab.lastRevision < 0;
     collab.lastRevision = revision;
     collab.trailWriterId = normalizeHolderId(payload.trailWriterId);
+    if (collab.trailWriterId !== collab.clientId) {
+      clearTrailNetworkQueue();
+    }
     const offsetSample = Date.now() - Number(payload.serverTime || Date.now());
     collab.clockOffset = collab.clockOffsetReady
       ? collab.clockOffset * 0.8 + offsetSample * 0.2
       : offsetSample;
     collab.clockOffsetReady = true;
     applySummitTimerSnapshot(payload);
-    if (initialSnapshot && Object.hasOwn(payload, "physics")) {
+    if (Object.hasOwn(payload, "physics")) {
       applySharedPhysics(payload.physics);
     }
-    if (initialSnapshot && Object.hasOwn(payload, "roomSettings")) {
+    if (Object.hasOwn(payload, "roomSettings")) {
+      if (collab.restoringStoredSession) {
+        delete collab.pendingRoomSettingsChanges.sceneHeightScreens;
+        collab.stagedRoomSettingsChangeKeys.delete("sceneHeightScreens");
+      }
       applySharedRoomSettings(payload.roomSettings);
+    }
+    if (initialSnapshot) {
+      const flushRestoredSettings =
+        collab.restoringStoredSession &&
+        (Object.keys(collab.pendingPhysicsChanges).length > 0 ||
+          Object.keys(collab.pendingRoomSettingsChanges).length > 0);
+      collab.restoringStoredSession = false;
+      if (flushRestoredSettings) {
+        scheduleSharedSettingsUpdate();
+      }
     }
     syncHeightGateState(payload.heightGateState, payload.serverTime);
     if (collab.settingsUpdateQueued) {
@@ -5057,7 +5176,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function renderSharedFrame(now) {
-    collab.renderId = window.requestAnimationFrame(renderSharedFrame);
+    collab.renderId = null;
     const deltaSeconds = clamp(
       (now - (collab.lastRenderAt || now)) / 1000,
       0,
@@ -5066,9 +5185,9 @@ export function createSisyphusRuntime(elements = {}) {
     collab.lastRenderAt = now;
     observeGlowFrameTime(deltaSeconds, now);
 
+    const targetServerTime =
+      Date.now() - collab.clockOffset - SNAPSHOT_DELAY_MS;
     if (collab.snapshots.length > 0) {
-      const targetServerTime =
-        Date.now() - collab.clockOffset - SNAPSHOT_DELAY_MS;
       while (
         collab.snapshots.length > 2 &&
         collab.snapshots[1].serverTime <= targetServerTime
@@ -5095,15 +5214,40 @@ export function createSisyphusRuntime(elements = {}) {
       } else {
         applySharedFrame(second || first);
       }
+      if (
+        second &&
+        targetServerTime >= second.serverTime &&
+        collab.snapshots.length === 2
+      ) {
+        collab.snapshots.shift();
+      }
     }
 
     if (shouldRecordTrailPoint()) {
       recordTrailPoint(deltaSeconds);
     }
     updateCameraFollow();
-    drawTrail();
     renderRemotePointers();
     renderSummitTimer();
+
+    const latest = collab.snapshots.at(-1);
+    const needsNextFrame = Boolean(
+      collab.hasControl ||
+      collab.pendingControl ||
+      motion.dragging ||
+      collab.releaseHandoff.active ||
+      collab.snapshots.length > 1 ||
+      latest?.dragging ||
+      latest?.phase === PHASES.FALLING ||
+      (!latest?.suspended &&
+        (Math.abs(latest?.vx || 0) > 0.5 ||
+          Math.abs(latest?.vy || 0) > 0.5)),
+    );
+    if (needsNextFrame && collab.renderId === null) {
+      collab.renderId = window.requestAnimationFrame(renderSharedFrame);
+    } else if (!needsNextFrame) {
+      collab.lastRenderAt = null;
+    }
   }
 
   function startSharedRenderLoop() {
@@ -5250,6 +5394,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     collab.releasePending = true;
     collab.snapshots = [];
+    flushTrailNetworkQueue();
     sendShared("control.release", {
       ...position,
       ...velocity,
@@ -5286,6 +5431,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     collab.releasePending = true;
     collab.snapshots = [];
+    flushTrailNetworkQueue();
     sendShared("control.release", {
       ...position,
       ...velocity,
@@ -5311,11 +5457,14 @@ export function createSisyphusRuntime(elements = {}) {
   function bumpCanvasRevision(canvas, key) {
     trail[key] += 1;
     canvas.dataset.canvasRevision = String(trail[key]);
+    requestFoldSync();
   }
 
   function clearTrailCanvas() {
     clearCanvas(trailCtx, trailCanvas);
     bumpCanvasRevision(trailCanvas, "baseRevision");
+    clearCanvas(trailSessionCtx, trailSessionCanvas);
+    bumpCanvasRevision(trailSessionCanvas, "sessionRevision");
   }
 
   function clearGlowCanvas() {
@@ -5326,7 +5475,40 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function currentGlowProfile() {
-    return resolveGlowOptimizationProfile(params, trail.adaptiveQuality);
+    const glowProfile = resolveGlowOptimizationProfile(
+      params,
+      trail.adaptiveQuality,
+    );
+    if (params.glowOptimizationMode !== "auto") {
+      return glowProfile;
+    }
+    const profile = currentTrailProfile();
+    return {
+      ...glowProfile,
+      maxPoints: Math.min(glowProfile.maxPoints, profile.glowMaxPoints),
+      updateFps: Math.min(glowProfile.updateFps, profile.glowUpdateFps),
+    };
+  }
+
+  function trailDeviceCapabilities() {
+    return {
+      saveData: navigator.connection?.saveData === true,
+      deviceMemory: navigator.deviceMemory,
+      hardwareConcurrency: navigator.hardwareConcurrency,
+      coarsePointer: window.matchMedia("(pointer: coarse)").matches,
+    };
+  }
+
+  function currentTrailProfile() {
+    return resolveTrailRenderProfile(
+      params.trailRenderProfile,
+      trailDeviceCapabilities(),
+    );
+  }
+
+  function effectiveTrailLimit() {
+    const configured = Math.max(20, Number(params.trailMaxPoints) || 20);
+    return Math.min(HARD_TRAIL_LIMIT, Math.floor(configured));
   }
 
   function ensureTrailCanvasSize() {
@@ -5334,23 +5516,76 @@ export function createSisyphusRuntime(elements = {}) {
       1,
       Math.round(window.innerWidth || document.documentElement.clientWidth)
     );
-    const height = Math.max(
+    const viewportHeight = Math.max(
       1,
       Math.round(window.innerHeight || document.documentElement.clientHeight)
     );
-    const ratio = Math.min(window.devicePixelRatio || 1, 2);
+    const sceneHeight = Math.max(viewportHeight, world.offsetHeight);
+    const historyWindow = calculateTrailHistoryWindow(
+      window.scrollY,
+      viewportHeight,
+      sceneHeight,
+    );
+    const profile = currentTrailProfile();
+    const ratio = effectiveCanvasPixelRatio({
+      cssWidth: width,
+      cssHeight: historyWindow.height,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      dprCap: profile.dprCap,
+      maxPixels: profile.historyMaxPixels,
+    });
     const bufferWidth = Math.max(1, Math.round(width * ratio));
-    const bufferHeight = Math.max(1, Math.round(height * ratio));
+    const bufferHeight = Math.max(1, Math.round(historyWindow.height * ratio));
+    const windowChanged =
+      trail.historyWindowTop !== historyWindow.top ||
+      trail.historyWindowHeight !== historyWindow.height;
 
     if (
       trailCanvas.width !== bufferWidth ||
-      trailCanvas.height !== bufferHeight
+      trailCanvas.height !== bufferHeight ||
+      windowChanged
     ) {
       trail.pixelRatio = ratio;
       trailCanvas.width = bufferWidth;
       trailCanvas.height = bufferHeight;
+      trail.historyWindowTop = historyWindow.top;
+      trail.historyWindowHeight = historyWindow.height;
+      trailCanvas.style.top = `${historyWindow.top}px`;
+      trailCanvas.style.left = `${window.scrollX}px`;
+      trailCanvas.style.width = `${width}px`;
+      trailCanvas.style.height = `${historyWindow.height}px`;
+      trailCanvas.style.setProperty(
+        "--trail-history-height",
+        `${historyWindow.height}px`,
+      );
       trail.dirty = true;
     }
+    trail.pixelRatio = ratio;
+    return windowChanged;
+  }
+
+  function ensureSessionCanvasSize() {
+    const width = Math.max(1, Math.round(window.innerWidth || 1));
+    const height = Math.max(1, Math.round(window.innerHeight || 1));
+    const profile = currentTrailProfile();
+    const ratio = effectiveCanvasPixelRatio({
+      cssWidth: width,
+      cssHeight: height,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      dprCap: profile.dprCap,
+      maxPixels: profile.sessionMaxPixels,
+    });
+    const bufferWidth = Math.max(1, Math.round(width * ratio));
+    const bufferHeight = Math.max(1, Math.round(height * ratio));
+    if (
+      trailSessionCanvas.width !== bufferWidth ||
+      trailSessionCanvas.height !== bufferHeight
+    ) {
+      trailSessionCanvas.width = bufferWidth;
+      trailSessionCanvas.height = bufferHeight;
+      trail.sessionDirty = true;
+    }
+    trail.sessionPixelRatio = ratio;
   }
 
   function ensureGlowCanvasSize(profile = currentGlowProfile()) {
@@ -5362,8 +5597,15 @@ export function createSisyphusRuntime(elements = {}) {
       1,
       Math.round(window.innerHeight || document.documentElement.clientHeight),
     );
-    const deviceRatio = Math.min(window.devicePixelRatio || 1, 2);
-    const ratio = deviceRatio * profile.bufferScale;
+    const trailProfile = currentTrailProfile();
+    const baseRatio = effectiveCanvasPixelRatio({
+      cssWidth: width,
+      cssHeight: height,
+      devicePixelRatio: window.devicePixelRatio || 1,
+      dprCap: trailProfile.dprCap,
+      maxPixels: trailProfile.sessionMaxPixels,
+    });
+    const ratio = baseRatio * profile.bufferScale;
     const bufferWidth = Math.max(1, Math.round(width * ratio));
     const bufferHeight = Math.max(1, Math.round(height * ratio));
     if (
@@ -5382,15 +5624,16 @@ export function createSisyphusRuntime(elements = {}) {
 
   function resizeTrailCanvas() {
     trail.dirty = true;
+    trail.sessionDirty = true;
     trail.glowDirty = true;
-    drawTrail();
+    scheduleTrailRender();
   }
 
   function applyTrailBlendMode() {
     const blendMode = body.classList.contains("theme-dark")
       ? "normal"
       : params.blendMode;
-    [trailGlowCanvas, trailCanvas].forEach((canvas) => {
+    [trailGlowCanvas, trailCanvas, trailSessionCanvas].forEach((canvas) => {
       canvas.style.mixBlendMode = blendMode;
       canvas.style.opacity = String(params.lineOpacity);
     });
@@ -5410,6 +5653,10 @@ export function createSisyphusRuntime(elements = {}) {
   function resetTrail() {
     trail.points.length = 0;
     trail.canonicalPoints.length = 0;
+    trail.historyPoints.length = 0;
+    trail.historyCanonical.length = 0;
+    trail.sessionPoints.length = 0;
+    trail.sessionCanonical.length = 0;
     trail.lastX = null;
     trail.lastY = null;
     trail.followX = null;
@@ -5419,6 +5666,7 @@ export function createSisyphusRuntime(elements = {}) {
     clearTrailCanvas();
     clearGlowCanvas();
     trail.dirty = false;
+    trail.sessionDirty = false;
     trail.glowDirty = false;
   }
 
@@ -5452,15 +5700,91 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function trimTrailToLimit() {
-    if (params.trailUnlimited) {
-      return;
-    }
-    const overflow = trail.points.length - params.trailMaxPoints;
+    let overflow = trail.points.length - effectiveTrailLimit();
     if (overflow > 0) {
       trail.points.splice(0, overflow);
       trail.canonicalPoints.splice(0, overflow);
-      trail.dirty = true;
+      const historyOverflow = Math.min(overflow, trail.historyPoints.length);
+      if (historyOverflow > 0) {
+        trail.historyPoints.splice(0, historyOverflow);
+        trail.historyCanonical.splice(0, historyOverflow);
+        overflow -= historyOverflow;
+      }
+      if (overflow > 0) {
+        trail.sessionPoints.splice(0, overflow);
+        trail.sessionCanonical.splice(0, overflow);
+        trail.sessionDirty = true;
+      }
       trail.glowDirty = true;
+    }
+  }
+
+  function checkpointTrail({ force = false } = {}) {
+    if (!force && trail.sessionPoints.length === 0) {
+      return false;
+    }
+    trail.historyCanonical = trail.canonicalPoints.slice(-effectiveTrailLimit());
+    trail.historyPoints = trail.points.slice(-effectiveTrailLimit());
+    trail.sessionCanonical = [];
+    trail.sessionPoints = [];
+    trail.canonicalPoints = trail.historyCanonical.slice();
+    trail.points = trail.historyPoints.slice();
+    trail.dirty = true;
+    trail.sessionDirty = true;
+    trail.glowDirty = true;
+    return true;
+  }
+
+  function checkpointTrailIfNeeded() {
+    if (trail.sessionPoints.length >= currentTrailProfile().checkpointPoints) {
+      checkpointTrail({ force: true });
+    }
+  }
+
+  function clearTrailNetworkQueue() {
+    trail.networkPoints.length = 0;
+    if (trail.networkTimerId !== null) {
+      window.clearTimeout(trail.networkTimerId);
+      trail.networkTimerId = null;
+    }
+  }
+
+  function flushTrailNetworkQueue() {
+    if (trail.networkTimerId !== null) {
+      window.clearTimeout(trail.networkTimerId);
+      trail.networkTimerId = null;
+    }
+    if (
+      !collab.enabled ||
+      collab.trailWriterId !== collab.clientId
+    ) {
+      clearTrailNetworkQueue();
+      return;
+    }
+    while (trail.networkPoints.length > 0) {
+      sendShared("trail.append", {
+        points: trail.networkPoints.splice(0, TRAIL_NETWORK_BATCH_POINTS),
+      });
+    }
+  }
+
+  function queueSharedTrailPoint(point) {
+    if (
+      !collab.enabled ||
+      collab.trailWriterId !== collab.clientId
+    ) {
+      return;
+    }
+    trail.networkPoints.push(point);
+    if (trail.networkPoints.length >= TRAIL_NETWORK_BATCH_POINTS) {
+      flushTrailNetworkQueue();
+      return;
+    }
+    if (trail.networkTimerId === null) {
+      trail.networkTimerId = window.setTimeout(
+        flushTrailNetworkQueue,
+        TRAIL_NETWORK_FLUSH_MS,
+      );
     }
   }
 
@@ -5559,20 +5883,19 @@ export function createSisyphusRuntime(elements = {}) {
 
     trail.points.push({ x, y });
     trail.canonicalPoints.push(canonicalPoint);
+    trail.sessionPoints.push({ x, y });
+    trail.sessionCanonical.push(canonicalPoint);
     trail.lastX = x;
     trail.lastY = y;
-    if (
-      collab.enabled &&
-      collab.trailWriterId === collab.clientId
-    ) {
-      sendShared("trail.append", { points: [canonicalPoint] });
-    }
+    queueSharedTrailPoint(canonicalPoint);
     if (params.trailEnabled) {
-      trail.dirty = true;
+      trail.sessionDirty = true;
       trail.glowDirty = true;
     }
 
     trimTrailToLimit();
+    checkpointTrailIfNeeded();
+    scheduleTrailRender();
   }
 
   function shouldRecordTrailPoint() {
@@ -5604,12 +5927,10 @@ export function createSisyphusRuntime(elements = {}) {
     return [];
   }
 
-  function drawTrailStartPoint(point) {
-    trailCtx.fillStyle = params.useGradient
-      ? params.lineColorTail
-      : params.lineColor;
-    trailCtx.beginPath();
-    trailCtx.arc(
+  function drawTrailStartPoint(context, point, color) {
+    context.fillStyle = color;
+    context.beginPath();
+    context.arc(
       point.x,
       point.y,
       Math.max(
@@ -5619,7 +5940,7 @@ export function createSisyphusRuntime(elements = {}) {
       0,
       Math.PI * 2
     );
-    trailCtx.fill();
+    context.fill();
   }
 
   function quadraticSegmentLength(start, control, end) {
@@ -5644,19 +5965,94 @@ export function createSisyphusRuntime(elements = {}) {
     return length;
   }
 
-  function strokeTrailSegment(start, control, end, dashOffset) {
-    trailCtx.lineDashOffset = -dashOffset;
-    trailCtx.beginPath();
-    trailCtx.moveTo(start.x, start.y);
-    if (control) {
-      trailCtx.quadraticCurveTo(control.x, control.y, end.x, end.y);
-    } else {
-      trailCtx.lineTo(end.x, end.y);
+  function trailSegments(points) {
+    if (points.length < 2) {
+      return [];
     }
-    trailCtx.stroke();
-    return control
-      ? quadraticSegmentLength(start, control, end)
-      : Math.hypot(end.x - start.x, end.y - start.y);
+    const segments = [];
+    let start = points[0];
+    for (let index = 1; index < points.length - 1; index += 1) {
+      const control = points[index];
+      const end = {
+        x: (control.x + points[index + 1].x) / 2,
+        y: (control.y + points[index + 1].y) / 2,
+      };
+      segments.push({ start, control, end });
+      start = end;
+    }
+    segments.push({ start, control: null, end: points.at(-1) });
+    return segments;
+  }
+
+  function strokeTrailBatches(context, points, maxSegments = 256) {
+    const segments = trailSegments(points);
+    let dashOffset = 0;
+    let strokes = 0;
+    for (let offset = 0; offset < segments.length; offset += maxSegments) {
+      const batch = segments.slice(offset, offset + maxSegments);
+      context.lineDashOffset = -dashOffset;
+      context.beginPath();
+      context.moveTo(batch[0].start.x, batch[0].start.y);
+      batch.forEach((segment) => {
+        if (segment.control) {
+          context.quadraticCurveTo(
+            segment.control.x,
+            segment.control.y,
+            segment.end.x,
+            segment.end.y,
+          );
+          dashOffset += quadraticSegmentLength(
+            segment.start,
+            segment.control,
+            segment.end,
+          );
+        } else {
+          context.lineTo(segment.end.x, segment.end.y);
+          dashOffset += Math.hypot(
+            segment.end.x - segment.start.x,
+            segment.end.y - segment.start.y,
+          );
+        }
+      });
+      context.stroke();
+      strokes += 1;
+    }
+    context.setLineDash([]);
+    context.lineDashOffset = 0;
+    return strokes;
+  }
+
+  function visibleTrailRuns(points, top, height) {
+    if (points.length < 2) {
+      return points.length === 1 ? [points.slice()] : [];
+    }
+    const margin = Math.max(8, scaledVisualPixel(params.lineWidth) * 2);
+    const minY = top - margin;
+    const maxY = top + height + margin;
+    const runs = [];
+    let run = null;
+    for (let index = 0; index < points.length - 1; index += 1) {
+      const first = points[index];
+      const second = points[index + 1];
+      const visible =
+        Math.max(first.y, second.y) >= minY &&
+        Math.min(first.y, second.y) <= maxY;
+      if (!visible) {
+        run = null;
+        continue;
+      }
+      if (!run) {
+        run = [first, second];
+        runs.push(run);
+      } else {
+        run.push(second);
+      }
+    }
+    return runs;
+  }
+
+  function sampleVisibleTrailRuns(runs, maxPoints) {
+    return sampleTrailRuns(runs, maxPoints);
   }
 
   function traceGlowPath(context, points) {
@@ -5683,6 +6079,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function renderGlow(now = performance.now()) {
+    const startedAt = performance.now();
     trail.glowAnimationFrameId = null;
     const profile = currentGlowProfile();
     ensureGlowCanvasSize(profile);
@@ -5748,6 +6145,7 @@ export function createSisyphusRuntime(elements = {}) {
     trail.glowRendered = true;
     trail.glowRenderPasses += 1;
     bumpCanvasRevision(trailGlowCanvas, "glowRevision");
+    measureDebugRender("trail.glow", startedAt);
   }
 
   function scheduleGlowRender() {
@@ -5819,77 +6217,152 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function drawTrail() {
-    ensureTrailCanvasSize();
-    if (trail.dirty) {
-      trail.dirty = false;
-      clearCanvas(trailCtx, trailCanvas);
-      const points = trail.points;
-
-      if (params.trailEnabled && points.length > 0) {
-        trailCtx.save();
-        trailCtx.setTransform(
-          trail.pixelRatio,
-          0,
-          0,
-          trail.pixelRatio,
-          -window.scrollX * trail.pixelRatio,
-          -window.scrollY * trail.pixelRatio,
+  function renderHistoryTrail() {
+    const startedAt = performance.now();
+    trail.dirty = false;
+    clearCanvas(trailCtx, trailCanvas);
+    const points = trail.historyPoints;
+    trail.historyStrokeBatches = 0;
+    if (params.trailEnabled && points.length > 0) {
+      const profile = currentTrailProfile();
+      const visibleRuns = sampleVisibleTrailRuns(
+        visibleTrailRuns(
+          points,
+          trail.historyWindowTop,
+          trail.historyWindowHeight,
+        ),
+        profile.historyMaxPoints,
+      );
+      trailCtx.save();
+      trailCtx.setTransform(
+        trail.pixelRatio,
+        0,
+        0,
+        trail.pixelRatio,
+        -window.scrollX * trail.pixelRatio,
+        -trail.historyWindowTop * trail.pixelRatio,
+      );
+      trailCtx.globalAlpha = params.linePassOpacity;
+      trailCtx.globalCompositeOperation = "lighter";
+      trailCtx.lineCap = params.lineCap;
+      trailCtx.lineJoin = params.lineJoin;
+      trailCtx.lineWidth = scaledVisualPixel(params.lineWidth);
+      const first = points[0];
+      const last = points.at(-1);
+      if (params.useGradient && points.length > 1) {
+        const gradient = trailCtx.createLinearGradient(
+          first.x,
+          first.y,
+          last.x,
+          last.y,
         );
-        trailCtx.globalAlpha = params.linePassOpacity;
-        trailCtx.globalCompositeOperation = "lighter";
-        trailCtx.lineCap = params.lineCap;
-        trailCtx.lineJoin = params.lineJoin;
-        trailCtx.lineWidth = scaledVisualPixel(params.lineWidth);
-
-        if (points.length < 2) {
-          drawTrailStartPoint(points[0]);
-        } else {
-          const last = points.at(-1);
-          if (params.useGradient) {
-            const first = points[0];
-            const grad = trailCtx.createLinearGradient(
-              first.x,
-              first.y,
-              last.x,
-              last.y,
-            );
-            grad.addColorStop(0, params.lineColorTail);
-            grad.addColorStop(1, params.lineColor);
-            trailCtx.strokeStyle = grad;
-          } else {
-            trailCtx.strokeStyle = params.lineColor;
-          }
-
-          // Накопление альфы сохраняется у дешёвой базовой линии. Blur вынесен
-          // в отдельный одинарный glow-pass ниже.
-          trailCtx.setLineDash(trailDashArray());
-          let segmentStart = points[0];
-          let dashOffset = 0;
-          for (let index = 1; index < points.length - 1; index += 1) {
-            const segmentEnd = {
-              x: (points[index].x + points[index + 1].x) / 2,
-              y: (points[index].y + points[index + 1].y) / 2,
-            };
-            dashOffset += strokeTrailSegment(
-              segmentStart,
-              points[index],
-              segmentEnd,
-              dashOffset,
-            );
-            segmentStart = segmentEnd;
-          }
-          strokeTrailSegment(segmentStart, null, last, dashOffset);
-          trailCtx.setLineDash([]);
-          trailCtx.lineDashOffset = 0;
-          drawTrailStartPoint(points[0]);
-        }
-        trailCtx.restore();
+        gradient.addColorStop(0, params.lineColorTail);
+        gradient.addColorStop(1, params.lineColor);
+        trailCtx.strokeStyle = gradient;
+      } else {
+        trailCtx.strokeStyle = params.lineColor;
       }
-      bumpCanvasRevision(trailCanvas, "baseRevision");
+      trailCtx.setLineDash(trailDashArray());
+      visibleRuns.forEach((run) => {
+        if (run.length === 1) {
+          drawTrailStartPoint(
+            trailCtx,
+            run[0],
+            params.useGradient ? params.lineColorTail : params.lineColor,
+          );
+        } else {
+          trail.historyStrokeBatches += strokeTrailBatches(trailCtx, run, 256);
+        }
+      });
+      if (
+        first.y >= trail.historyWindowTop &&
+        first.y <= trail.historyWindowTop + trail.historyWindowHeight
+      ) {
+        drawTrailStartPoint(
+          trailCtx,
+          first,
+          params.useGradient ? params.lineColorTail : params.lineColor,
+        );
+      }
+      trailCtx.restore();
+    }
+    trail.historyRenderPasses += 1;
+    bumpCanvasRevision(trailCanvas, "baseRevision");
+    measureDebugRender("trail.history", startedAt);
+  }
+
+  function renderSessionTrail() {
+    const startedAt = performance.now();
+    trail.sessionDirty = false;
+    clearCanvas(trailSessionCtx, trailSessionCanvas);
+    trail.sessionStrokeBatches = 0;
+    const anchor = trail.historyPoints.at(-1);
+    const points = anchor
+      ? [anchor, ...trail.sessionPoints]
+      : trail.sessionPoints;
+    if (params.trailEnabled && points.length > 0) {
+      trailSessionCtx.save();
+      trailSessionCtx.setTransform(
+        trail.sessionPixelRatio,
+        0,
+        0,
+        trail.sessionPixelRatio,
+        -window.scrollX * trail.sessionPixelRatio,
+        -window.scrollY * trail.sessionPixelRatio,
+      );
+      trailSessionCtx.globalAlpha = params.linePassOpacity;
+      trailSessionCtx.globalCompositeOperation = "lighter";
+      trailSessionCtx.lineCap = params.lineCap;
+      trailSessionCtx.lineJoin = params.lineJoin;
+      trailSessionCtx.lineWidth = scaledVisualPixel(params.lineWidth);
+      trailSessionCtx.strokeStyle = params.lineColor;
+      trailSessionCtx.setLineDash(trailDashArray());
+      if (points.length === 1) {
+        drawTrailStartPoint(trailSessionCtx, points[0], params.lineColor);
+      } else {
+        trail.sessionStrokeBatches = strokeTrailBatches(
+          trailSessionCtx,
+          points,
+          256,
+        );
+      }
+      trailSessionCtx.restore();
+    }
+    trail.sessionRenderPasses += 1;
+    bumpCanvasRevision(trailSessionCanvas, "sessionRevision");
+    measureDebugRender("trail.session", startedAt);
+  }
+
+  function drawTrail() {
+    if (
+      trail.dirty &&
+      trail.historyPoints.length === 0 &&
+      trail.sessionPoints.length === 0 &&
+      trail.points.length > 0
+    ) {
+      trail.historyPoints = trail.points.slice(-effectiveTrailLimit());
+    }
+    ensureTrailCanvasSize();
+    ensureSessionCanvasSize();
+    if (trail.dirty) {
+      renderHistoryTrail();
+      trail.glowDirty = true;
+    }
+    if (trail.sessionDirty) {
+      renderSessionTrail();
       trail.glowDirty = true;
     }
     scheduleGlowRender();
+  }
+
+  function scheduleTrailRender() {
+    if (trail.renderFrameId !== null || disposed) {
+      return;
+    }
+    trail.renderFrameId = window.requestAnimationFrame(() => {
+      trail.renderFrameId = null;
+      drawTrail();
+    });
   }
 
  function startLoop() {
@@ -6159,12 +6632,20 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     updateCameraFollow();
-    drawTrail();
 
-    if (motion.phase !== PHASES.WON) {
+    const needsNextFrame =
+      motion.phase !== PHASES.WON &&
+      (motion.dragging ||
+        motion.phase === PHASES.FALLING ||
+        (!motion.suspended &&
+          (motion.y < bounds.maxY - 0.75 ||
+            Math.abs(motion.vx) > 0.5 ||
+            Math.abs(motion.vy) > 0.5)));
+    if (needsNextFrame) {
       motion.animationId = window.requestAnimationFrame(tick);
     } else {
       motion.animationId = null;
+      motion.lastFrameAt = null;
     }
   }
 
@@ -6463,6 +6944,7 @@ export function createSisyphusRuntime(elements = {}) {
   listen(sessionRestartButton, "click", restartExperience);
   listen(document, "visibilitychange", () => {
     if (document.hidden) {
+      flushTrailNetworkQueue();
       stopRockPulse();
     } else {
       syncRockPulse();
@@ -6504,10 +6986,7 @@ export function createSisyphusRuntime(elements = {}) {
   listen(
     window,
     "scroll",
-    () => {
-      trail.dirty = true;
-      drawTrail();
-    },
+    syncAfterScroll,
     { passive: true }
   );
   listen(window, "resize", () => {
@@ -6541,7 +7020,6 @@ export function createSisyphusRuntime(elements = {}) {
     motion.sceneReady = true;
     showInitialHandCursor();
     resizeTrailCanvas();
-    scrollToSceneBottom();
     updateSessionStatus();
     if (collab.enabled) {
       void createSharedSession();
@@ -6606,6 +7084,7 @@ export function createSisyphusRuntime(elements = {}) {
       }),
       playGachiClickSound,
       stopGachiClickSound,
+      completePreclickRockGuidance,
       getGroundImpactAudioState: () => ({
         armed: groundImpactAudio.armed,
         activeCount: groundImpactAudio.elements.size,
@@ -6641,7 +7120,41 @@ export function createSisyphusRuntime(elements = {}) {
         enabled: params.trailEnabled,
         pointCount: trail.points.length,
         canonicalPointCount: trail.canonicalPoints.length,
+        historyPointCount: trail.historyPoints.length,
+        sessionPointCount: trail.sessionPoints.length,
+        historyRevision: trail.baseRevision,
+        sessionRevision: trail.sessionRevision,
+        historyRenderPasses: trail.historyRenderPasses,
+        sessionRenderPasses: trail.sessionRenderPasses,
+        historyStrokeBatches: trail.historyStrokeBatches,
+        sessionStrokeBatches: trail.sessionStrokeBatches,
+        historyWindowTop: trail.historyWindowTop,
+        historyWindowHeight: trail.historyWindowHeight,
+        historyPixelRatio: trail.pixelRatio,
+        sessionPixelRatio: trail.sessionPixelRatio,
+        networkQueueLength: trail.networkPoints.length,
+        renderScheduled: trail.renderFrameId !== null,
+        sharedRenderScheduled: collab.renderId !== null,
+        profile: { ...currentTrailProfile() },
         lastPoint: trail.points.at(-1) || null,
+      }),
+      getCollaborationDebugState: () => ({
+        lastRevision: collab.lastRevision,
+        lastRoomSettingsSnapshotHeight:
+          collab.lastRoomSettingsSnapshotHeight,
+        lastControlSlip: collab.lastControlSlip
+          ? { ...collab.lastControlSlip }
+          : null,
+        pendingRoomSettingKeys: Object.keys(collab.pendingRoomSettingsChanges),
+        pendingPhysicsKeys: Object.keys(collab.pendingPhysicsChanges),
+        restoringStoredSession: collab.restoringStoredSession,
+        roomSettingsHeight: params.sceneHeightScreens,
+        sessionId: collab.sessionId,
+        settingsRevision: collab.settingsRevision,
+        settingsUpdateInFlight: Boolean(collab.settingsUpdateInFlight),
+        settingsUpdateQueued: collab.settingsUpdateQueued,
+        settingsUpdateTimerActive: collab.settingsUpdateTimerId !== null,
+        stagedRoomSettingKeys: [...collab.stagedRoomSettingsChangeKeys],
       }),
       getDrizzleAudioState: () => {
         const loopState = drizzleLoopController.getState();
@@ -6676,12 +7189,15 @@ export function createSisyphusRuntime(elements = {}) {
       drawTrail,
       getGlowRenderState: () => ({
         adaptiveQuality: trail.adaptiveQuality,
+        animationFrameId: trail.glowAnimationFrameId,
         baseRevision: trail.baseRevision,
+        sessionRevision: trail.sessionRevision,
         glowRevision: trail.glowRevision,
         profile: { ...currentGlowProfile() },
         renderPasses: trail.glowRenderPasses,
         rendered: trail.glowRendered,
         sampledPointCount: trail.glowSampledPointCount,
+        timerId: trail.glowTimerId,
       }),
       getRoomSettings: sharedRoomSettingsPayload,
       getRainAudioState: () => {
@@ -6711,6 +7227,13 @@ export function createSisyphusRuntime(elements = {}) {
       syncReturnTheme,
       trail,
       trailGlowCanvas,
+      trailSessionCanvas,
+      checkpointTrail,
+      flushTrailNetworkQueue,
+      queueSharedTrailPoint,
+      loadSharedTrail,
+      appendSharedTrail,
+      scheduleTrailRender,
       trimTrailToLimit,
       updateBounds,
     };
@@ -6721,12 +7244,24 @@ export function createSisyphusRuntime(elements = {}) {
     loadLatestVersion: false,
     loadVersionedSettings: true,
   });
+  let restoringPersistedSession = false;
+  try {
+    restoringPersistedSession = /^[A-Za-z0-9_-]{22}$/.test(
+      sessionStorage.getItem("sisyphus-room-session-id") || "",
+    );
+  } catch {
+    /* sessionStorage недоступен */
+  }
+  collab.restoringStoredSession = restoringPersistedSession;
   readControls();
   if (restoredSettingKeys.length > 0) {
     settingsController.saveSettings();
   }
   let restoredSharedSettings = false;
   restoredSettingKeys.forEach((key) => {
+    if (restoringPersistedSession && key === "sceneHeightScreens") {
+      return;
+    }
     if (
       SHARED_PHYSICS_KEYS.includes(key) ||
       SHARED_ROOM_SETTING_KEYS.includes(key)
@@ -6735,7 +7270,7 @@ export function createSisyphusRuntime(elements = {}) {
       restoredSharedSettings = true;
     }
   });
-  if (restoredSharedSettings) {
+  if (restoredSharedSettings && !restoringPersistedSession) {
     scheduleSharedSettingsUpdate();
   }
   settingsController.captureCurrentAsBaseline();
@@ -6765,6 +7300,11 @@ export function createSisyphusRuntime(elements = {}) {
       stopRockPulse();
       clearHandImageChangeTimer();
       cancelGlowRenderSchedule();
+      clearTrailNetworkQueue();
+      if (trail.renderFrameId !== null) {
+        window.cancelAnimationFrame(trail.renderFrameId);
+        trail.renderFrameId = null;
+      }
       settingsController.dispose?.();
       windowObstacleController.dispose();
       document.documentElement.classList.remove(

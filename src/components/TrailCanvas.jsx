@@ -1,4 +1,4 @@
-export function TrailCanvas({ canvasRef, glowCanvasRef }) {
+export function TrailCanvas({ historyCanvasRef, sessionCanvasRef, glowCanvasRef }) {
   return (
     <>
       <canvas
@@ -8,8 +8,14 @@ export function TrailCanvas({ canvasRef, glowCanvasRef }) {
         aria-hidden="true"
       />
       <canvas
-        ref={canvasRef}
-        className="trail"
+        ref={historyCanvasRef}
+        className="trail trail-history"
+        data-canvas-revision="0"
+        aria-hidden="true"
+      />
+      <canvas
+        ref={sessionCanvasRef}
+        className="trail-session"
         data-canvas-revision="0"
         aria-hidden="true"
       />

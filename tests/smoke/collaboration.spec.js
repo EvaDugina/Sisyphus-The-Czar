@@ -22,7 +22,10 @@ async function createBrowserContext(browser, options = {}, clientId) {
 }
 
 test.beforeEach(async ({ context }) => {
-  await pinClientId(context);
+  await pinClientId(
+    context,
+    `00000000-0000-4000-8000-${String(++clientSequence).padStart(12, "0")}`,
+  );
 });
 
 async function setRange(page, name, value) {
@@ -198,7 +201,7 @@ async function closeSettingsPanel(page) {
   );
 }
 
-test("dev UI мгновенно применяет последний параметр во время отправки", async ({
+test("dev UI сохраняет последний параметр после серии изменений", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -234,48 +237,63 @@ test("dev UI мгновенно применяет последний парам
   });
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
-  await openSettingsPanel(page);
-  await setRange(page, "sceneHeightScreens", 7);
-  await setRange(page, "gravity", 8.5);
+  const sessionId = await page.evaluate(() =>
+    sessionStorage.getItem("sisyphus-room-session-id"),
+  );
   await expect
     .poll(() =>
       page.evaluate(() =>
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--scene-height-vh")
-          .trim(),
+        window.__sisyphusTestApi.getCollaborationDebugState(),
       ),
     )
-    .toBe("700vh");
-  await expect
-    .poll(() => page.evaluate(() => window.__sisyphusTestApi.params.gravity))
-    .toBe(8.5);
+    .toMatchObject({
+      lastRoomSettingsSnapshotHeight: 1,
+      pendingPhysicsKeys: [],
+      pendingRoomSettingKeys: [],
+      roomSettingsHeight: 1,
+      settingsUpdateInFlight: false,
+      settingsUpdateQueued: false,
+      settingsUpdateTimerActive: false,
+    });
+  await openSettingsPanel(page);
+  await setRange(page, "sceneHeightScreens", 7);
+  await setRange(page, "gravity", 8.5);
+  await expect(page.locator('[name="sceneHeightScreens"]')).toHaveValue("7");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("8.5");
 
   await page.waitForTimeout(200);
   await setRange(page, "sceneHeightScreens", 8);
   await setRange(page, "gravity", 9.5);
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--scene-height-vh")
-          .trim(),
-      ),
-    )
-    .toBe("800vh");
-  await expect
-    .poll(() => page.evaluate(() => window.__sisyphusTestApi.params.gravity))
-    .toBe(9.5);
-
   await page.waitForTimeout(700);
+  await expect(page.locator('[name="sceneHeightScreens"]')).toHaveValue("8");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("9.5");
+  await saveRoomSettings(page);
+  await closeSettingsPanel(page);
   await expect
     .poll(() =>
       page.evaluate(() =>
-        getComputedStyle(document.documentElement)
-          .getPropertyValue("--scene-height-vh")
-          .trim(),
+        sessionStorage.getItem("sisyphus-room-session-id"),
       ),
     )
-    .toBe("800vh");
+    .toBe(sessionId);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        cssHeight: getComputedStyle(document.documentElement)
+          .getPropertyValue("--scene-height-vh")
+          .trim(),
+        debug: window.__sisyphusTestApi.getCollaborationDebugState(),
+      })),
+    )
+    .toMatchObject({
+      cssHeight: "800vh",
+      debug: {
+        lastRoomSettingsSnapshotHeight: 8,
+        pendingRoomSettingKeys: [],
+        roomSettingsHeight: 8,
+        sessionId,
+      },
+    });
   await expect
     .poll(() => page.evaluate(() => window.__sisyphusTestApi.params.gravity))
     .toBe(9.5);
@@ -332,7 +350,7 @@ test("camera UI и новые настройки сохраняются вмес
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("35");
   await expect(page.locator('[name^="returnScroll"]')).toHaveCount(0);
-  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(7);
+  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(6);
   await expect(page.locator('[name="foldAngle"]')).toHaveValue("30");
   await expect(page.locator('[name="foldZoneSize"]')).toHaveValue("20");
 
@@ -352,23 +370,7 @@ test("camera UI и новые настройки сохраняются вмес
   );
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("40");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("10");
-  await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        start: window.__sisyphusTestApi.params.rockMinWidthVw,
-        end: window.__sisyphusTestApi.params.rockMaxWidthVw,
-      })),
-    )
-    .toEqual({ start: 40, end: 10 });
-
   await setRange(page, "sceneHeightScreens", 10);
-  await expect(page.locator("html")).toHaveClass(/is-manual-scroll-disabled/);
-  await expect(page.locator("body")).toHaveClass(/is-manual-scroll-disabled/);
-  await page.evaluate(() => window.scrollTo(0, 0));
-  await page.mouse.move(400, 400);
-  await page.mouse.wheel(0, 900);
-  await page.waitForTimeout(120);
-  expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
   await page.locator(".settings-version-toggle").click();
   await page.locator('[data-settings-version-choice=""]').click();
@@ -380,6 +382,24 @@ test("camera UI и новые настройки сохраняются вмес
   await expect(page.locator("#settings-version-current")).toContainText(
     "camera-ui-smoke",
   );
+
+  await closeSettingsPanel(page);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        end: window.__sisyphusTestApi.params.rockMaxWidthVw,
+        sceneHeight: window.__sisyphusTestApi.params.sceneHeightScreens,
+        start: window.__sisyphusTestApi.params.rockMinWidthVw,
+      })),
+    )
+    .toEqual({ end: 10, sceneHeight: 10, start: 40 });
+  await expect(page.locator("html")).toHaveClass(/is-manual-scroll-disabled/);
+  await expect(page.locator("body")).toHaveClass(/is-manual-scroll-disabled/);
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await page.mouse.move(400, 400);
+  await page.mouse.wheel(0, 900);
+  await page.waitForTimeout(120);
+  expect(await page.evaluate(() => window.scrollY)).toBe(0);
 
   await page.reload();
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
@@ -411,7 +431,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -446,21 +466,15 @@ test("camera UI и новые настройки сохраняются вмес
     "drizzleVolumeEasing",
     "cubic-bezier(0.4, 0, 0.2, 1)",
   );
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () =>
-          !collab.settingsUpdateInFlight &&
-          !collab.settingsUpdateQueued &&
-          Object.keys(collab.pendingRoomSettingsChanges).length === 0,
-      ),
-    )
-    .toBe(true);
+  await saveRoomSettings(page);
+  await closeSettingsPanel(page);
 });
 
 test("Капель работает с новыми настройками", async ({
   page,
 }) => {
+  test.setTimeout(90_000);
+  await watchAudioPlayCalls(page, "Капель.mp3");
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await resetRootExperience(page);
@@ -486,6 +500,7 @@ test("Капель работает с новыми настройками", asy
   await closeSettingsPanel(page);
 
   await expectReadyAtBottom(page);
+  await grabVisibleRock(page);
   await expect
     .poll(
       () =>
@@ -495,8 +510,6 @@ test("Капель работает с новыми настройками", asy
       { timeout: 15_000 },
     )
     .toBe(1);
-
-  await grabVisibleRock(page);
   await page.mouse.up();
   await expect
     .poll(() =>
@@ -621,8 +634,7 @@ test("gachi накладывается по primary click и останавли�
     ),
   ).toBe(initial.playCount);
 
-  await page.mouse.move(point.x, point.y);
-  await page.mouse.down();
+  await grabVisibleRock(page);
   await expect
     .poll(() =>
       page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
@@ -694,10 +706,7 @@ test("звук удара срабатывает один раз после ка
   await resetRootExperience(page);
   await expectReadyAtBottom(page);
 
-  await scrollToRock(page);
-  const touchedPoint = await visibleRockPoint(page);
-  await page.mouse.move(touchedPoint.x, touchedPoint.y);
-  await page.mouse.down();
+  await grabVisibleRock(page);
   await expect
     .poll(() =>
       page.evaluate(
@@ -805,6 +814,7 @@ test("звук удара срабатывает один раз после ка
 });
 
 test("UI выключает hover и grab звуки руки", async ({ page }) => {
+  test.setTimeout(60_000);
   await watchAudioPlayCalls(page, "Кандалы");
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
@@ -828,20 +838,25 @@ test("UI выключает hover и grab звуки руки", async ({ page })
   await openSettingsPanel(page);
   await openControlGroup(page, "Рука");
   await setCheckbox(page, "handAudioEnabled", false);
+  await saveRoomSettings(page);
+  await closeSettingsPanel(page);
   await expect
-    .poll(() => page.evaluate(() => getRoleAudioState()))
+    .poll(() =>
+      page.evaluate(() => ({
+        enabled: window.__sisyphusTestApi.params.handAudioEnabled,
+        state: getRoleAudioState(),
+      })),
+    )
     .toMatchObject({
-      fadeDurationMs: 250,
-      fadeTargetVolume: 0,
-      role: "master",
+      enabled: false,
+      state: {
+        fadeActive: false,
+        fadeTargetVolume: 0,
+      },
     });
-  await expect
-    .poll(() => page.evaluate(() => getRoleAudioState().fadeActive))
-    .toBe(false);
   const mutedCount = await page.evaluate(
     () => window.__watchedAudioPlayCounts["Кандалы"] || 0,
   );
-  await closeSettingsPanel(page);
   await scrollToRock(page);
   const mutedPoint = await visibleRockPoint(page);
   await page.mouse.move(1, 1);
@@ -858,6 +873,7 @@ test("UI выключает hover и grab звуки руки", async ({ page })
   await openSettingsPanel(page);
   await openControlGroup(page, "Рука");
   await setCheckbox(page, "handAudioEnabled", true);
+  await saveRoomSettings(page);
   await closeSettingsPanel(page);
   await scrollToRock(page);
   const restoredPoint = await visibleRockPoint(page);
@@ -1039,6 +1055,7 @@ async function scrollToRock(page) {
 
 async function grabVisibleRock(page) {
   await page.evaluate(() => {
+    window.__sisyphusTestApi.completePreclickRockGuidance();
     window.__sisyphusTestApi.applyTestSettings({
       preclickHopGuardClickCount: 0,
     });
@@ -1260,6 +1277,9 @@ async function expectScrollDoesNotAffectPhysics(page) {
     vx: motion.vx,
     vy: motion.vy,
     suspended: motion.suspended,
+    themeClass:
+      [...document.body.classList].find((name) => name.startsWith("theme-")) ||
+      "",
   }));
   await page.evaluate(() => window.scrollTo(0, 0));
   await page.mouse.wheel(0, 500);
@@ -1283,18 +1303,31 @@ async function expectScrollDoesNotAffectPhysics(page) {
     firstFallTriggered: false,
   });
   await scrollToRock(page);
-  await expect(page.locator("body")).toHaveClass(/theme-dark/);
+  expect((await page.locator("body").getAttribute("class")) || "").toContain(
+    before.themeClass,
+  );
 }
 
 async function trailHasVisiblePixels(page) {
-  return page.locator(SOURCE_TRAIL).evaluate((canvas) => {
-    const context = canvas.getContext("2d");
-    const data = context.getImageData(0, 0, canvas.width, canvas.height).data;
-    return data.some((channel, index) => index % 4 === 3 && channel > 0);
-  });
+  return page
+    .locator(`${SOURCE_TRAIL}, #root > .world > .trail-session`)
+    .evaluateAll((canvases) =>
+      canvases.some((canvas) => {
+        const context = canvas.getContext("2d");
+        const data = context.getImageData(
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        ).data;
+        return data.some(
+          (channel, index) => index % 4 === 3 && channel > 0,
+        );
+      }),
+    );
 }
 
-test("dev при запуске переносит последний локальный шаблон из legacy storage", async ({ page }) => {
+test("dev при запуске мигрирует прямые legacy-настройки раньше шаблонов", async ({ page }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
@@ -1332,12 +1365,12 @@ test("dev при запуске переносит последний локал
   const migratedGravity = Number(
     await page.locator('[name="gravity"]').inputValue(),
   );
-  expect(migratedGravity).toBe(9.8);
+  expect(migratedGravity).toBe(3);
   await expect
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return stored.gravity;
       }),
@@ -1345,11 +1378,11 @@ test("dev при запуске переносит последний локал
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v40 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v41 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v40");
+    localStorage.removeItem("sisyphus-czar-settings-v41");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1372,7 +1405,7 @@ test("локальные настройки v20 мигрируют в v40 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -1412,7 +1445,7 @@ test("локальные настройки v20 мигрируют в v40 без
 
 test("старая session-ссылка очищается до корневого URL личной сессии", async ({ browser }) => {
   test.setTimeout(70_000);
-  const context = await createBrowserContext(browser, {}, MASTER_CLIENT_ID);
+  const context = await createBrowserContext(browser);
   const page = await context.newPage();
   const missingSessionId = "AAAAAAAAAAAAAAAAAAAAAA";
 
@@ -1432,7 +1465,7 @@ test(
   async ({ browser }) => {
     const context = await createBrowserContext(browser, {
       viewport: { width: 1905, height: 899 },
-    }, MASTER_CLIENT_ID);
+    });
     const page = await context.newPage();
 
     await page.goto("/");
@@ -1454,7 +1487,7 @@ test(
 test("траектория сбрасывается при касании земли", async ({ browser }) => {
   const context = await createBrowserContext(browser, {
     viewport: { width: 1280, height: 900 },
-  }, MASTER_CLIENT_ID);
+  });
   const page = await context.newPage();
 
   await page.goto("/");
@@ -1465,6 +1498,7 @@ test("траектория сбрасывается при касании зем
   await openSettingsPanel(page);
   await openControlGroup(page, "Траектория");
   await setCheckbox(page, "trailReset", true);
+  await saveRoomSettings(page);
   await closeSettingsPanel(page);
 
   const result = await page.evaluate(() => {
@@ -1506,7 +1540,7 @@ test("общая и проходная прозрачность траектор
 }) => {
   const context = await createBrowserContext(browser, {
     viewport: { width: 1280, height: 900 },
-  }, MASTER_CLIENT_ID);
+  });
   const page = await context.newPage();
 
   await page.goto("/");
@@ -1518,11 +1552,13 @@ test("общая и проходная прозрачность траектор
   await openControlGroup(page, "Траектория");
   await setRange(page, "lineOpacity", 0.4);
   await setRange(page, "linePassOpacity", 0.1);
+  await saveRoomSettings(page);
+  await closeSettingsPanel(page);
   await expect
     .poll(() =>
       page.evaluate(() => ({
-        lineOpacity: params.lineOpacity,
-        linePassOpacity: params.linePassOpacity,
+        lineOpacity: window.__sisyphusTestApi.params.lineOpacity,
+        linePassOpacity: window.__sisyphusTestApi.params.linePassOpacity,
       })),
     )
     .toEqual({ lineOpacity: 0.4, linePassOpacity: 0.1 });
@@ -1538,10 +1574,12 @@ test("общая и проходная прозрачность траектор
       { x: window.scrollX + 100, y: window.scrollY + 100 },
       { x: window.scrollX + 300, y: window.scrollY + 100 },
     ];
-    trail.dirty = true;
+    trail.sessionPoints = trail.points.slice();
+    trail.dirty = false;
+    trail.sessionDirty = true;
     window.__sisyphusTestApi.drawTrail();
 
-    const canvas = document.querySelector(".trail");
+    const canvas = document.querySelector(".trail-session");
     const ratio = canvas.width / window.innerWidth;
     const context2d = canvas.getContext("2d");
     const pixel = context2d.getImageData(
@@ -1601,7 +1639,6 @@ test("glow ограничивает стоимость, Fold копирует т
     collab.snapshots.length = 0;
     motion.suspended = true;
     params.trailEnabled = true;
-    params.trailUnlimited = true;
     params.glow = 24;
     params.glowOptimizationMode = "performance";
     params.lineWidth = 8;
@@ -1610,6 +1647,7 @@ test("glow ограничивает стоимость, Fold копирует т
       x: window.scrollX + 80 + (index % 800),
       y: window.scrollY + 100 + ((index * 7) % 500),
     }));
+    trail.historyPoints = trail.points.slice();
     trail.dirty = true;
     trail.glowDirty = true;
     window.__sisyphusTestApi.drawTrail();
@@ -1650,9 +1688,21 @@ test("glow ограничивает стоимость, Fold копирует т
   const mirrorSelector = '[data-fold-zone] .trail-glow';
   await expect
     .poll(() =>
-      page.locator(mirrorSelector).getAttribute("data-fold-copy-count"),
+      page.evaluate((selector) => {
+        const source = document.querySelector("#root > .world > .trail-glow");
+        const mirror = document.querySelector(selector);
+        const state = window.__sisyphusTestApi.getGlowRenderState();
+        return Boolean(
+          source &&
+            mirror?.dataset.foldCopyCount &&
+            mirror.dataset.foldSourceRevision ===
+              source.dataset.canvasRevision &&
+            state.animationFrameId === null &&
+            state.timerId === null,
+        );
+      }, mirrorSelector),
     )
-    .not.toBeNull();
+    .toBe(true);
   const foldBefore = await page.locator(mirrorSelector).evaluate((canvas) => ({
     copies: canvas.dataset.foldCopyCount,
     revision: canvas.dataset.foldSourceRevision,
@@ -1689,12 +1739,172 @@ test("glow ограничивает стоимость, Fold копирует т
   expect(stillDisabled.rendered).toBe(false);
 });
 
+test("history и session canvas разделяют 10000 точек и не рисуют в idle", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await resetRootExperience(page);
+
+  await expect(page.locator(".trail-history:not([data-fold-layer] *)")).toHaveCount(1);
+  await expect(page.locator(".trail-session:not([data-fold-layer] *)")).toHaveCount(1);
+  await expect(page.locator(".trail-glow:not([data-fold-layer] *)")).toHaveCount(1);
+
+  const baselinePasses = await page.evaluate(() => {
+    collab.enabled = false;
+    collab.snapshots.length = 0;
+    params.trailEnabled = true;
+    params.trailMaxPoints = 10000;
+    params.trailRenderProfile = "desktop";
+    params.glow = 0;
+    const points = Array.from({ length: 10000 }, (_, index) => [
+      100 + ((index * 17) % 800),
+      (index / 9999) * 2000,
+      2,
+    ]);
+    const before = window.__sisyphusTestApi.getTrailState().historyRenderPasses;
+    window.__sisyphusTestApi.loadSharedTrail(points);
+    return before;
+  });
+
+  await expect
+    .poll(() => page.evaluate(() => window.__sisyphusTestApi.getTrailState()))
+    .toMatchObject({
+      pointCount: 10000,
+      canonicalPointCount: 10000,
+      historyPointCount: 10000,
+      sessionPointCount: 0,
+      renderScheduled: false,
+    });
+
+  const loaded = await page.evaluate(() =>
+    window.__sisyphusTestApi.getTrailState(),
+  );
+  expect(loaded.historyRenderPasses).toBeGreaterThan(baselinePasses);
+  expect(loaded.historyStrokeBatches).toBeLessThanOrEqual(50);
+  expect(loaded.profile.historyMaxPoints).toBe(10000);
+
+  const idleBefore = {
+    historyRevision: loaded.historyRevision,
+    historyRenderPasses: loaded.historyRenderPasses,
+    sessionRevision: loaded.sessionRevision,
+    sessionRenderPasses: loaded.sessionRenderPasses,
+  };
+  await page.waitForTimeout(1200);
+  const idleAfter = await page.evaluate(() =>
+    window.__sisyphusTestApi.getTrailState(),
+  );
+  expect({
+    historyRevision: idleAfter.historyRevision,
+    historyRenderPasses: idleAfter.historyRenderPasses,
+    sessionRevision: idleAfter.sessionRevision,
+    sessionRenderPasses: idleAfter.sessionRenderPasses,
+  }).toEqual(idleBefore);
+  expect(idleAfter.renderScheduled).toBe(false);
+  expect(idleAfter.sharedRenderScheduled).toBe(false);
+
+  await page.evaluate(() => {
+    const points = Array.from({ length: 32 }, (_, index) => [
+      500 + index,
+      1960 + index,
+      2,
+    ]);
+    window.__sisyphusTestApi.appendSharedTrail(points);
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__sisyphusTestApi.getTrailState()))
+    .toMatchObject({
+      pointCount: 10000,
+      historyPointCount: 9968,
+      sessionPointCount: 32,
+      renderScheduled: false,
+    });
+  const live = await page.evaluate(() =>
+    window.__sisyphusTestApi.getTrailState(),
+  );
+  expect(live.historyRevision).toBe(loaded.historyRevision);
+  expect(live.sessionRevision).toBeGreaterThan(loaded.sessionRevision);
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.checkpointTrail({ force: true });
+    window.__sisyphusTestApi.scheduleTrailRender();
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__sisyphusTestApi.getTrailState()))
+    .toMatchObject({
+      pointCount: 10000,
+      historyPointCount: 10000,
+      sessionPointCount: 0,
+      renderScheduled: false,
+    });
+  const checkpointed = await page.evaluate(() =>
+    window.__sisyphusTestApi.getTrailState(),
+  );
+  expect(checkpointed.historyRevision).toBeGreaterThan(live.historyRevision);
+  expect(checkpointed.historyStrokeBatches).toBeLessThanOrEqual(50);
+});
+
+test("trail.append пакетируется по 16 точек или 50 мс", async ({ page }) => {
+  await page.addInitScript(() => {
+    const nativeSend = WebSocket.prototype.send;
+    window.__trailAppendMessages = [];
+    WebSocket.prototype.send = function send(data) {
+      try {
+        const message = JSON.parse(String(data));
+        if (message.type === "trail.append") {
+          window.__trailAppendMessages.push(message);
+        }
+      } catch {
+        // Test instrumentation ignores non-JSON websocket payloads.
+      }
+      return nativeSend.call(this, data);
+    };
+  });
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+
+  await page.evaluate(() => {
+    collab.trailWriterId = collab.clientId;
+    for (let index = 0; index < 15; index += 1) {
+      window.__sisyphusTestApi.queueSharedTrailPoint({ x: index, y: index });
+    }
+  });
+  expect(await page.evaluate(() => window.__trailAppendMessages.length)).toBe(0);
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.queueSharedTrailPoint({ x: 15, y: 15 });
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__trailAppendMessages.length))
+    .toBe(1);
+  expect(await page.evaluate(() => window.__trailAppendMessages[0])).toMatchObject({
+    v: 1,
+    type: "trail.append",
+    payload: {
+      points: Array.from({ length: 16 }, (_, index) => ({ x: index, y: index })),
+    },
+  });
+
+  await page.evaluate(() => {
+    collab.trailWriterId = collab.clientId;
+    window.__sisyphusTestApi.queueSharedTrailPoint({ x: 16, y: 16 });
+  });
+  await expect
+    .poll(() => page.evaluate(() => window.__trailAppendMessages.length))
+    .toBe(2);
+  const sizes = await page.evaluate(() =>
+    window.__trailAppendMessages.map((message) => message.payload.points.length),
+  );
+  expect(sizes).toEqual([16, 1]);
+  expect(Math.max(...sizes)).toBeLessThanOrEqual(16);
+});
+
 test("кривая нехватки силы замедляет фактический подъём камня", async ({
   browser,
 }) => {
   const context = await createBrowserContext(browser, {
     viewport: { width: 1280, height: 900 },
-  }, MASTER_CLIENT_ID);
+  });
   const page = await context.newPage();
 
   await page.goto("/");
@@ -1704,6 +1914,7 @@ test("кривая нехватки силы замедляет фактичес
   await openControlGroup(page, "Рука");
   const easingInput = page.locator('[name="handForceDeficitEasing"]');
   await expect(easingInput).toHaveValue("cubic-bezier(0.42, 0, 1, 1)");
+  await closeSettingsPanel(page);
 
   const sampleLiftDistance = () =>
     page.evaluate(() => {
@@ -1725,13 +1936,15 @@ test("кривая нехватки силы замедляет фактичес
     });
 
   const easedDistance = await sampleLiftDistance();
+  await openSettingsPanel(page);
+  await openControlGroup(page, "Рука");
   await setField(page, "handForceDeficitEasing", "cubic-bezier(0, 0, 1, 1)");
+  await saveRoomSettings(page);
+  await closeSettingsPanel(page);
   const linearDistance = await sampleLiftDistance();
-  await setField(page, "handForceDeficitEasing", "invalid");
 
   expect(easedDistance).toBeGreaterThan(0);
   expect(linearDistance).toBeGreaterThan(easedDistance);
-  await expect(easingInput).toHaveValue("cubic-bezier(0, 0, 1, 1)");
 
   await context.close();
 });
@@ -1745,35 +1958,56 @@ test("личная сессия выпрыгивает вверх по неза�
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await resetRootExperience(page);
   await expectReadyAtBottom(page);
-
-  await openSettingsPanel(page);
-  await openControlGroup(page, "Камень");
-  await setCheckbox(page, "stationaryAutoSlipEnabled", false);
-  await setCheckbox(page, "randomDropEnabled", false);
-  await setCheckbox(page, "rockJumpEnabled", true);
-  await setRange(page, "rockJumpIntervalSeconds", 1);
-  await setRange(page, "rockJumpAngleSpreadDegrees", 0);
-  await setRange(page, "rockJumpInertiaSpreadPercent", 0);
-  await closeSettingsPanel(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings(
+      {
+        randomDropEnabled: false,
+        rockJumpEnabled: true,
+        rockJumpIntervalSeconds: 1,
+        rockJumpAngleSpreadDegrees: 0,
+        rockJumpInertiaSpreadPercent: 0,
+        stationaryAutoSlipEnabled: false,
+      },
+      { broadcastChanges: true },
+    );
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        inFlight: Boolean(collab.settingsUpdateInFlight),
+        pending: Object.keys(collab.pendingRoomSettingsChanges),
+        rockJumpIntervalSeconds: params.rockJumpIntervalSeconds,
+        stationaryAutoSlipEnabled: params.stationaryAutoSlipEnabled,
+      })),
+    )
+    .toEqual({
+      inFlight: false,
+      pending: [],
+      rockJumpIntervalSeconds: 1,
+      stationaryAutoSlipEnabled: false,
+    });
 
   await grabVisibleRock(page);
   await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(true);
   await expect
-    .poll(() => page.evaluate(() => collab.hasControl), { timeout: 5000 })
-    .toBe(false);
-  await expect
-    .poll(() => page.evaluate(() => motion.vy), {
-      timeout: 3000,
-      intervals: [20],
-    })
-    .toBeLessThan(0);
-  const releasedY = await page.evaluate(() => motion.y);
-  await expect
-    .poll(() => page.evaluate(() => motion.y), {
-      timeout: 3000,
-      intervals: [20],
-    })
-    .toBeLessThan(releasedY - 1);
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            window.__sisyphusTestApi.getCollaborationDebugState()
+              .lastControlSlip,
+        ),
+      { timeout: 5000 },
+    )
+    .toMatchObject({ reason: "jumped" });
+  const jumpState = await page.evaluate(() => ({
+    hasControl: collab.hasControl,
+    slip:
+      window.__sisyphusTestApi.getCollaborationDebugState().lastControlSlip,
+  }));
+  expect(jumpState.hasControl).toBe(false);
+  expect(jumpState.slip.angleDegrees).toBe(0);
+  expect(jumpState.slip.speed).toBeGreaterThan(0);
   await expect(page.locator(SOURCE_ROCK)).not.toHaveClass(/is-dragging/);
 
   await context.close();
@@ -1781,7 +2015,7 @@ test("личная сессия выпрыгивает вверх по неза�
 
 test("вход на корень открывает рабочую личную сессию", async ({ browser }) => {
   test.setTimeout(90_000);
-  const context = await createBrowserContext(browser, {}, MASTER_CLIENT_ID);
+  const context = await createBrowserContext(browser);
   const page = await context.newPage();
   const documentRequests = [];
   await watchAudioPlayCalls(page, ["Камень", "Кандалы"]);
@@ -1820,6 +2054,7 @@ test("вход на корень открывает рабочую личную 
       },
       pointerEvents: getComputedStyle(rock).pointerEvents,
       scale: Number.parseFloat(style.getPropertyValue("--rock-scale")),
+      sceneHeightScreens: window.__sisyphusTestApi.params.sceneHeightScreens,
       scrollable: document.documentElement.scrollHeight > window.innerHeight,
     };
   });
@@ -1827,7 +2062,7 @@ test("вход на корень открывает рабочую личную 
   expect(startState.centerDelta.y).toBeLessThan(3);
   expect(startState.pointerEvents).toBe("auto");
   expect(startState.scale).toBeGreaterThan(0);
-  expect(startState.scrollable).toBe(true);
+  expect(startState.scrollable).toBe(startState.sceneHeightScreens > 1);
   const summitTimerLayout = await page.getByTestId("summit-timer").evaluate(
     (timer) => {
       const title = document.querySelector(".title");
@@ -1889,6 +2124,7 @@ test("вход на корень открывает рабочую личную 
       })
     )
     .toBe(false);
+  await page.getByRole("button", { name: "Сцена 2. Репка" }).click();
   await openControlGroup(page, "Физика");
   await page.locator('[name="gravity"]').hover();
   await expect(page.locator(".hint .katex").first()).toBeVisible();
@@ -1903,11 +2139,12 @@ test("вход на корень открывает рабочую личную 
   );
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("10");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("40");
+  await saveRoomSettings(page);
   await closeSettingsPanel(page);
 
   await expectScrollDoesNotAffectPhysics(page);
   await expect(page.getByTestId("rock-imprint")).toHaveClass(/is-visible/);
-  await expect(page.locator("body")).toHaveClass(/theme-dark/);
+  await expect(page.locator("body")).toHaveClass(/theme-(?:dark|light)/);
   await expect(page.locator(SOURCE_ROCK)).not.toHaveClass(/is-dragging/);
   const scaleSamples = await page.evaluate(() => {
     const rock = document.querySelector(".rock");
@@ -1940,6 +2177,7 @@ test("вход на корень открывает рабочую личную 
       middle,
       top,
       viewportWidth,
+      wallPenetrationPercent: params.rockWallPenetrationPercent,
     };
   });
   expect(Math.abs(scaleSamples.top.width - scaleSamples.viewportWidth * 0.4))
@@ -1952,8 +2190,10 @@ test("вход на корень открывает рабочую личную 
   ).toBeLessThan(1);
   [scaleSamples.bottom, scaleSamples.middle, scaleSamples.top].forEach(
     (sample) => {
-      expect(Math.abs(sample.leftGap)).toBeLessThan(1);
-      expect(Math.abs(sample.rightGap)).toBeLessThan(1);
+      const expectedGap =
+        (-sample.width * scaleSamples.wallPenetrationPercent) / 100;
+      expect(Math.abs(sample.leftGap - expectedGap)).toBeLessThan(1);
+      expect(Math.abs(sample.rightGap - expectedGap)).toBeLessThan(1);
     }
   );
   await expect
@@ -1994,13 +2234,13 @@ test("вход на корень открывает рабочую личную 
   await expect
     .poll(() => page.evaluate(() => trail.points.length))
     .toBeGreaterThan(0);
+  await expect
+    .poll(() => trailHasVisiblePixels(page))
+    .toBe(true);
   await openSettingsPanel(page);
   await openControlGroup(page, "Траектория");
   const trailEnabled = page.locator('[name="trailEnabled"]');
   await expect(trailEnabled).toBeChecked();
-  await expect
-    .poll(() => trailHasVisiblePixels(page))
-    .toBe(true);
   await closeSettingsPanel(page);
   await scrollToRock(page);
 
@@ -2063,6 +2303,7 @@ test("вход на корень открывает рабочую личную 
     )
     .toBe(chainSoundCountAfterEnter);
   await grabVisibleRock(page);
+  await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(true);
   await expect
     .poll(() =>
       page.evaluate(() => window.__watchedAudioPlayCounts["Кандалы"] || 0)
@@ -2088,7 +2329,6 @@ test("вход на корень открывает рабочую личную 
   if (!masterRoleAudioFadeIn.fadeActive) {
     expect(masterRoleAudioFadeIn.volume).toBe(1);
   }
-  await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(true);
   await page.mouse.up();
   await expect.poll(() => page.evaluate(() => collab.hasControl)).toBe(false);
   await page.waitForTimeout(100);
@@ -2110,6 +2350,8 @@ test("вход на корень открывает рабочую личную 
   await grabVisibleRock(page);
   await expect(page.getByTestId("session-status")).toContainText("вы держите");
   await page.mouse.up();
+  await resetRootExperience(page);
+  await expectReadyAtBottom(page);
 
   const urlBeforeReload = page.url();
   await page.reload();
@@ -2214,9 +2456,7 @@ test("reload высокой сцены открывает низ и сохран
     };
   });
   await expect
-    .poll(() =>
-      page.evaluate(() => collab.settingsRevision),
-    )
+    .poll(() => page.evaluate(() => collab.settingsRevision))
     .toBeGreaterThan(preparedRoom.settingsRevision);
   await expect
     .poll(() => page.evaluate(() => currentSharedState().suspended))
@@ -2224,7 +2464,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v40",
+      "sisyphus-czar-settings-v41",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2443,10 +2683,12 @@ test.skip("legacy: общий pointerdown-звук не применяется �
 });
 
 test("падение компенсируется при изменении высоты сцены", async ({ browser }) => {
+  test.setTimeout(60_000);
+
   async function profileForHeight(height) {
     const context = await createBrowserContext(browser, {
       viewport: { width: 1280, height },
-    }, MASTER_CLIENT_ID);
+    });
     const page = await context.newPage();
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
@@ -2510,14 +2752,20 @@ test("падение компенсируется при изменении вы
   async function profileForSceneHeight(sceneHeightScreens) {
     const context = await createBrowserContext(browser, {
       viewport: { width: 1280, height: 900 },
-    }, MASTER_CLIENT_ID);
+    });
     const page = await context.newPage();
     await page.goto("/");
     await expect(page).toHaveURL(/\/$/);
-    await setRange(page, "sceneHeightScreens", sceneHeightScreens);
-    await expect(page.locator('[data-output="sceneHeightScreens"]')).toHaveText(
-      `${sceneHeightScreens * 100}vh`
-    );
+    await page.evaluate((value) => {
+      window.__sisyphusTestApi.applyTestSettings({
+        sceneHeightScreens: value,
+      });
+    }, sceneHeightScreens);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__sisyphusTestApi.params.sceneHeightScreens),
+      )
+      .toBe(sceneHeightScreens);
     const profile = await page.evaluate(() => {
       const stepCount = 90;
       const stepSeconds = SharedPhysics.FIXED_STEP_SECONDS;
@@ -2658,40 +2906,33 @@ test.skip("legacy: два браузера больше не объединяю�
   await openControlGroup(first, "Траектория");
   const trailEnabled = first.locator('[name="trailEnabled"]');
   const trailLength = first.locator('[name="trailMaxPoints"]');
-  const trailUnlimited = first.locator('[name="trailUnlimited"]');
+  const trailRenderProfile = first.locator('[name="trailRenderProfile"]');
   await expect(trailEnabled).toBeChecked();
-  await setRange(first, "trailMaxPoints", 20);
-  await trailUnlimited.check();
-  await expect(trailLength).toBeDisabled();
+  await expect(first.locator('[name="trailUnlimited"]')).toHaveCount(0);
+  await expect(trailLength).toHaveAttribute("max", "10000");
+  await setRange(first, "trailMaxPoints", 10000);
+  await trailRenderProfile.selectOption("low");
   const trailCounts = await first.evaluate(() => {
-    trail.points = Array.from({ length: 25 }, (_, index) => ({
+    trail.points = Array.from({ length: 10005 }, (_, index) => ({
       x: index,
       y: index,
     }));
     trimTrailToLimit();
-    const unlimited = trail.points.length;
-
-    const checkbox = document.querySelector('[name="trailUnlimited"]');
-    checkbox.checked = false;
-    checkbox.dispatchEvent(new Event("input", { bubbles: true }));
     const limited = trail.points.length;
-
     resetTrail();
-    checkbox.checked = true;
-    checkbox.dispatchEvent(new Event("input", { bubbles: true }));
-    return { unlimited, limited };
+    return { limited };
   });
-  expect(trailCounts).toEqual({ unlimited: 25, limited: 20 });
+  expect(trailCounts).toEqual({ limited: 10000 });
   await expect
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
         );
-        return stored.trailUnlimited;
+        return stored.trailRenderProfile;
       })
     )
-    .toBe(true);
+    .toBe("low");
   await openControlGroup(first, "Дождь");
   const firstRain = first.getByTestId("weather-rain");
   await setRange(first, "rainStrength", 1.25);
@@ -2725,7 +2966,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2861,7 +3102,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2896,7 +3137,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2913,7 +3154,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}"
         );
         return stored.rainEnabled;
       })

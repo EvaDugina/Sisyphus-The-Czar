@@ -4,13 +4,17 @@ import {
   GLOW_OPTIMIZATION_LIMITS,
   GLOW_TARGET_FPS_VALUES,
 } from "../lib/glowOptimization.mjs";
+import {
+  DEFAULT_TRAIL_RENDER_SETTINGS,
+  TRAIL_RENDER_PROFILE_NAMES,
+} from "../lib/trailOptimization.mjs";
 import { MIX_BLEND_MODES } from "../lib/settingsModel.mjs";
 import "../../shared/room-settings.js";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v40";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v41";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -27,6 +31,7 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
   }),
 ]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v40",
   "sisyphus-czar-settings-v39",
   "sisyphus-czar-settings-v38",
   "sisyphus-czar-settings-v37",
@@ -433,7 +438,7 @@ const TRAIL_SCENE_SETTING_NAMES = [
   "lineWidth",
   "trailReset",
   "trailMaxPoints",
-  "trailUnlimited",
+  "trailRenderProfile",
   "trailSampleDist",
   ...TRAIL_STYLE_CONTROLS.map((control) => control.name),
 ];
@@ -1282,21 +1287,32 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "trailMaxPoints",
-        label: "Длина траектории",
+        label: "Хранимых точек",
         type: "range",
         min: 20,
-        max: 2000,
-        step: 10,
+        max: 10000,
+        step: 100,
         defaultValue: DEFAULT_ROOM_SETTINGS.trailMaxPoints,
         output: String(DEFAULT_ROOM_SETTINGS.trailMaxPoints),
-        hint: "Сколько последних точек пути хранить. Больше — длиннее видимая траектория.",
+        hint: "Сколько последних точек пути хранить. Жёсткий предел — 10 000.",
       },
       {
-        name: "trailUnlimited",
-        label: "Без ограничения длины",
-        type: "checkbox",
-        defaultChecked: DEFAULT_ROOM_SETTINGS.trailUnlimited,
-        hint: "Не удалять старые точки траектории и сохранять их после перезагрузки страницы. При долгой работе расход памяти и нагрузка на отрисовку будут расти.",
+        name: "trailRenderProfile",
+        label: "Профиль отрисовки",
+        type: "select",
+        defaultValue: DEFAULT_TRAIL_RENDER_SETTINGS.trailRenderProfile,
+        options: TRAIL_RENDER_PROFILE_NAMES.map((name) => [
+          name,
+          {
+            auto: "Авто",
+            low: "Слабое устройство",
+            mobile: "Телефон",
+            desktop: "Компьютер",
+            high: "Мощный компьютер",
+          }[name],
+        ]),
+        scope: "local",
+        hint: "Локальный бюджет history-canvas. Хранимый общий след не меняется.",
       },
       {
         name: "trailSampleDist",

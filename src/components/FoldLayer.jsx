@@ -20,7 +20,8 @@ const DYNAMIC_SELECTORS = [
 
 const CANVAS_SELECTORS = [
   ".trail-glow",
-  ".trail",
+  ".trail-history",
+  ".trail-session",
   ".weather-rain__canvas--fx",
   ".weather-rain__canvas--fallback",
 ];
@@ -244,11 +245,14 @@ export function FoldLayer({ settingsRef, worldRef }) {
     const mirror = createMirror(sourceWorld);
     track.replaceChildren(mirror);
     let animationFrame = null;
+    let syncTimer = null;
+    let lastSyncAt = -Infinity;
     let frameNumber = 0;
     let lastSettingsSignature = "";
     let lastLayoutSignature = "";
 
-    const syncFrame = () => {
+    const syncFrame = (now) => {
+      const startedAt = performance.now();
       animationFrame = null;
       if (document.hidden) {
         return;
@@ -282,22 +286,52 @@ export function FoldLayer({ settingsRef, worldRef }) {
 
       const scrollOffset = `${window.scrollY}px`;
       track.style.setProperty("--fold-scroll-offset", scrollOffset);
-      syncMirror(sourceWorld, mirror, currentSettings.foldRockImageId);
+      if (foldEffectEnabled(clean)) {
+        syncMirror(sourceWorld, mirror, currentSettings.foldRockImageId);
+      }
       frameNumber += 1;
+      lastSyncAt = now;
       layer.dataset.mirrorFrame = String(frameNumber);
       layer.dataset.foldReady = "true";
-      animationFrame = window.requestAnimationFrame(syncFrame);
+      if (import.meta.env.DEV && typeof performance.measure === "function") {
+        try {
+          performance.measure("sisyphus.fold", {
+            start: startedAt,
+            end: performance.now(),
+          });
+        } catch {
+          // Fold diagnostics must not affect the visible mirror.
+        }
+      }
     };
 
     const startSync = () => {
-      if (!document.hidden && animationFrame === null) {
+      if (
+        document.hidden ||
+        animationFrame !== null ||
+        syncTimer !== null
+      ) {
+        return;
+      }
+      const delay = Math.max(0, 1000 / 30 - (performance.now() - lastSyncAt));
+      const requestFrame = () => {
+        syncTimer = null;
         animationFrame = window.requestAnimationFrame(syncFrame);
+      };
+      if (delay <= 1) {
+        requestFrame();
+      } else {
+        syncTimer = window.setTimeout(requestFrame, delay);
       }
     };
     const stopSync = () => {
       if (animationFrame !== null) {
         window.cancelAnimationFrame(animationFrame);
         animationFrame = null;
+      }
+      if (syncTimer !== null) {
+        window.clearTimeout(syncTimer);
+        syncTimer = null;
       }
     };
     const handleVisibilityChange = () => {
@@ -309,6 +343,9 @@ export function FoldLayer({ settingsRef, worldRef }) {
     };
 
     document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("scroll", startSync, { passive: true });
+    window.addEventListener("resize", startSync);
+    window.addEventListener("sisyphus:fold-sync", startSync);
     startSync();
 
     return () => {
@@ -316,6 +353,9 @@ export function FoldLayer({ settingsRef, worldRef }) {
         "visibilitychange",
         handleVisibilityChange,
       );
+      window.removeEventListener("scroll", startSync);
+      window.removeEventListener("resize", startSync);
+      window.removeEventListener("sisyphus:fold-sync", startSync);
       stopSync();
       track.replaceChildren();
     };

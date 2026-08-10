@@ -1,6 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v40";
+const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v41";
 const VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 
 async function openSettingsPanel(page) {

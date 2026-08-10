@@ -2,6 +2,7 @@
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
+const WebSocket = require("ws");
 const {
   createService,
   securityHeaders,
@@ -226,4 +227,42 @@ test("debug-сессия сохраняет локальный черновик 
   assert.equal(session.physics.gravity, 8.5);
   assert.equal(session.roomSettings.foldAngle, 45);
   assert.equal(session.roomSettings.foldZoneSize, 10);
+});
+
+test("reconnect личной сессии не применяет production preset повторно", async (context) => {
+  const productionPresetStore = {
+    load: () => ({ settings: { sceneHeightScreens: 1 } }),
+    metadata: () => null,
+    save: () => null,
+  };
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    sessionStore: emptySessionStore(),
+    productionPresetStore,
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+
+  const response = await fetch(`http://127.0.0.1:${address.port}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  const payload = await response.json();
+  const session = service.manager.getSession(payload.sessionId);
+  service.manager.updateRoomSettings(session, { sceneHeightScreens: 8 });
+
+  const socket = new WebSocket(
+    `ws://127.0.0.1:${address.port}/realtime?session=${payload.sessionId}&client=reconnect-client-0001`,
+  );
+  context.after(() => socket.close());
+  await new Promise((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+
+  assert.equal(session.roomSettings.sceneHeightScreens, 8);
 });

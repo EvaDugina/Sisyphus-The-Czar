@@ -642,7 +642,7 @@ test("общие визуальные настройки комнаты норм
       handForceDeficitEasing: "not-a-curve",
       handAudioEnabled: false,
       drizzleEnabled: false,
-      trailUnlimited: true,
+      trailMaxPoints: 99_999,
       lineWidth: 99,
       rainDropColor: "bad",
       rainHighlightColor: "#ABCDEF",
@@ -663,7 +663,8 @@ test("общие визуальные настройки комнаты норм
     session.roomSettings.handForceDeficitEasing,
     RoomSettings.DEFAULT_ROOM_SETTINGS.handForceDeficitEasing
   );
-  assert.equal(session.roomSettings.trailUnlimited, true);
+  assert.equal(session.roomSettings.trailMaxPoints, 10_000);
+  assert.equal(Object.hasOwn(session.roomSettings, "trailUnlimited"), false);
   assert.equal(session.roomSettings.lineWidth, 60);
   assert.equal(session.roomSettings.rainEnterMs, 650);
   assert.equal(session.roomSettings.rainExitMs, 700);
@@ -717,7 +718,6 @@ test("roomSettings.update синхронизирует размер руки и 
     rainDropColor: "#123456",
     rainHighlightColor: "#fedcba",
     trailReset: true,
-    trailUnlimited: true,
     trailMaxPoints: 1500,
     lineWidth: 3,
     lineOpacity: 0.8,
@@ -743,7 +743,6 @@ test("roomSettings.update синхронизирует размер руки и 
       rainDropColor: "#123456",
       rainHighlightColor: "#fedcba",
       trailReset: true,
-      trailUnlimited: true,
       trailMaxPoints: 1500,
       lineWidth: 3,
       lineOpacity: 0.8,
@@ -760,13 +759,13 @@ test("roomSettings.update синхронизирует размер руки и 
   );
 });
 
-test("trail writer сохраняет визуальную историю длиннее 1000 точек", () => {
+test("trail writer хранит последние 10000 визуальных точек по FIFO", () => {
   const { manager } = setup();
   const hub = manager.ensureDefaultSession({
-    roomSettings: { trailUnlimited: true },
+    roomSettings: { trailMaxPoints: 10_000 },
   });
   const session = manager.createSession({
-    roomSettings: { trailUnlimited: true },
+    roomSettings: { trailMaxPoints: 10_000 },
   });
   const writer = connect(manager, session, "trail-writer-client-01");
   const observer = connect(manager, session, "trail-observer-client-01");
@@ -780,7 +779,7 @@ test("trail writer сохраняет визуальную историю дли
     writer.client.id,
   );
 
-  const points = Array.from({ length: 1005 }, (_, index) => [
+  const points = Array.from({ length: 10_005 }, (_, index) => [
     index % (Physics.WORLD_WIDTH + 1),
     (index * 2) % (Physics.WORLD_HEIGHT + 1),
     2,
@@ -795,9 +794,10 @@ test("trail writer сохраняет визуальную историю дли
     });
   }
 
-  assert.equal(session.trail.length, 1005);
-  assert.equal(hub.trail.length, 1005);
-  assert.deepEqual(session.trail[0], [0, 0, 2]);
+  assert.equal(session.trail.length, 10_000);
+  assert.equal(hub.trail.length, 10_000);
+  assert.deepEqual(session.trail[0], points[5]);
+  assert.deepEqual(hub.trail[0], points[5]);
   assert.equal(session.trail.at(-1)[2], 2);
 
   manager.handleMessage(session, observer.client, {
@@ -806,14 +806,14 @@ test("trail writer сохраняет визуальную историю дли
     seq: 1,
     payload: { points: [[999, 1999, 2]] },
   });
-  assert.equal(session.trail.length, 1005);
+  assert.equal(session.trail.length, 10_000);
 
   manager.recordTrailPoint(session, 1000);
-  assert.equal(session.trail.length, 1005);
+  assert.equal(session.trail.length, 10_000);
 
   writer.socket.close();
   manager.recordTrailPoint(session, 2000);
-  assert.equal(session.trail.length, 1006);
+  assert.equal(session.trail.length, 10_000);
   assert.equal(session.trail.at(-1).length, 2);
 });
 

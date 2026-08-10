@@ -6,7 +6,7 @@
     {
       "id": "settings-version-mscz5hfd-c30065d5-639b-4c30-9b66-03f291160c20",
       "name": "v1",
-      "settingsSchemaVersion": 38,
+      "settingsSchemaVersion": 41,
       "createdAt": "2026-08-03T08:35:52.057Z",
       "updatedAt": "2026-08-10T12:48:49.006Z",
       "settings": {
@@ -89,8 +89,7 @@
         "trailReset": false,
         "lineDelay": 0.5,
         "trailAnchorHeightPercent": 50,
-        "trailMaxPoints": 1000,
-        "trailUnlimited": true,
+        "trailMaxPoints": 10000,
         "trailSampleDist": 1,
         "blendMode": "difference",
         "lineColor": "#ffffff",

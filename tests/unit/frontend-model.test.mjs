@@ -61,6 +61,15 @@ import {
   normalizeStoredTrailPoint,
   VISUAL_TRAIL_POINT_VERSION,
 } from "../../src/lib/trailPersistence.mjs";
+import {
+  HARD_TRAIL_LIMIT,
+  calculateTrailHistoryWindow,
+  detectTrailRenderProfile,
+  effectiveCanvasPixelRatio,
+  resolveTrailRenderProfile,
+  sampleTrailPoints,
+  sampleTrailRuns,
+} from "../../src/lib/trailOptimization.mjs";
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
 import { formatSummitElapsedMs } from "../../src/lib/summitTimer.mjs";
@@ -438,8 +447,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "rockWallPenetrationPercent"
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v40");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v39");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v41");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v40");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -620,7 +629,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 40);
+  assert.equal(productionSettingsSchemaVersion, 41);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -2151,6 +2160,9 @@ test("траектория включена по умолчанию и выкл�
   const trailMaxPoints = controls.find(
     (control) => control.name === "trailMaxPoints"
   );
+  const trailRenderProfile = controls.find(
+    (control) => control.name === "trailRenderProfile"
+  );
   const lineOpacity = controls.find(
     (control) => control.name === "lineOpacity"
   );
@@ -2170,7 +2182,13 @@ test("траектория включена по умолчанию и выкл�
   assert.equal(trailEnabled.label, "Показывать траекторию");
   assert.equal(trailEnabled.defaultChecked, true);
   assert.equal(trailReset.label, "Сбрасывать при касании земли");
-  assert.equal(trailMaxPoints.label, "Длина траектории");
+  assert.equal(trailMaxPoints.label, "Хранимых точек");
+  assert.equal(trailMaxPoints.max, HARD_TRAIL_LIMIT);
+  assert.equal(trailRenderProfile.scope, "local");
+  assert.equal(
+    controls.some((control) => control.name === "trailUnlimited"),
+    false,
+  );
   assert.equal(lineOpacity.label, "Общая непрозрачность");
   assert.equal(linePassOpacity.label, "Непрозрачность линии");
   assert.equal(linePassOpacity.defaultValue, 1);
@@ -2278,7 +2296,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 38);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 41);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2627,4 +2645,103 @@ test("сила дождя масштабирует тёмный профиль �
   assert.ok(strongProfile.spawnSize[0] > weakProfile.spawnSize[0]);
   assert.ok(strongProfile.fxOpacity > weakProfile.fxOpacity);
   assert.equal(strongProfile.fxOpacity, 0.5);
+});
+
+test("настройки trail v40 мигрируют в обязательный лимит 10000", () => {
+  const migratedUnlimited = SharedRoomSettings.migrateRoomSettings(
+    { trailMaxPoints: 1000, trailUnlimited: true },
+    40,
+  );
+  const migratedLimited = SharedRoomSettings.migrateRoomSettings(
+    { trailMaxPoints: 1500, trailUnlimited: false },
+    40,
+  );
+
+  assert.equal(migratedUnlimited.trailMaxPoints, HARD_TRAIL_LIMIT);
+  assert.equal(migratedLimited.trailMaxPoints, 1500);
+  assert.equal(Object.hasOwn(migratedUnlimited, "trailUnlimited"), false);
+  assert.equal(Object.hasOwn(migratedLimited, "trailUnlimited"), false);
+  assert.equal(
+    SharedRoomSettings.sanitizeRoomSettings({ trailMaxPoints: 99_999 })
+      .trailMaxPoints,
+    HARD_TRAIL_LIMIT,
+  );
+});
+
+test("auto trail-профиль учитывает устройство и допускает ручной override", () => {
+  assert.equal(detectTrailRenderProfile({ saveData: true }), "low");
+  assert.equal(
+    detectTrailRenderProfile({ deviceMemory: 4, hardwareConcurrency: 8 }),
+    "low",
+  );
+  assert.equal(
+    detectTrailRenderProfile({ coarsePointer: true, hardwareConcurrency: 8 }),
+    "mobile",
+  );
+  assert.equal(
+    detectTrailRenderProfile({
+      deviceMemory: 8,
+      hardwareConcurrency: 8,
+      coarsePointer: false,
+    }),
+    "high",
+  );
+  assert.equal(detectTrailRenderProfile({}), "desktop");
+  assert.equal(resolveTrailRenderProfile("low", {}).historyMaxPoints, 3000);
+  assert.equal(resolveTrailRenderProfile("mobile", {}).checkpointPoints, 192);
+  assert.equal(resolveTrailRenderProfile("desktop", {}).historyMaxPoints, 10000);
+});
+
+test("history window квантуется по viewport и sampling сохраняет края", () => {
+  assert.deepEqual(calculateTrailHistoryWindow(0, 1000, 100_000), {
+    top: 0,
+    height: 3000,
+    viewport: 1000,
+  });
+  assert.deepEqual(calculateTrailHistoryWindow(50_500, 1000, 100_000), {
+    top: 49_000,
+    height: 3000,
+    viewport: 1000,
+  });
+  assert.deepEqual(calculateTrailHistoryWindow(99_000, 1000, 100_000), {
+    top: 97_000,
+    height: 3000,
+    viewport: 1000,
+  });
+
+  const points = Array.from({ length: 10_001 }, (_, index) => ({
+    x: index,
+    y: index * 2,
+  }));
+  const sampled = sampleTrailPoints(points, 3000);
+  assert.equal(sampled.length, 3000);
+  assert.equal(sampled[0], points[0]);
+  assert.equal(sampled.at(-1), points.at(-1));
+
+  const ratio = effectiveCanvasPixelRatio({
+    cssWidth: 1920,
+    cssHeight: 3240,
+    devicePixelRatio: 2,
+    dprCap: 2,
+    maxPixels: 12_000_000,
+  });
+  assert.ok(ratio < 1.5);
+  assert.ok(1920 * 3240 * ratio * ratio <= 12_000_001);
+});
+
+test("sampling видимых trail-участков соблюдает общий бюджет без склейки", () => {
+  const runs = Array.from({ length: 2000 }, (_, runIndex) =>
+    Array.from({ length: 10 }, (_, pointIndex) => ({
+      runIndex,
+      pointIndex,
+    })),
+  );
+  const sampled = sampleTrailRuns(runs, 3000);
+
+  assert.ok(sampled.reduce((sum, run) => sum + run.length, 0) <= 3000);
+  assert.equal(sampled[0][0], runs[0][0]);
+  assert.equal(sampled[0].at(-1), runs[0].at(-1));
+  assert.equal(sampled.at(-1)[0], runs.at(-1)[0]);
+  assert.equal(sampled.at(-1).at(-1), runs.at(-1).at(-1));
+  assert.ok(sampled.every((run) => new Set(run.map((point) => point.runIndex)).size === 1));
 });

@@ -7,7 +7,8 @@ export function Scene({ scene, trail, rain }) {
   return (
     <main ref={scene.worldRef} className="world" aria-label="Сцена Пути Царей">
       <TrailCanvas
-        canvasRef={trail.trailCanvasRef}
+        historyCanvasRef={trail.trailCanvasRef}
+        sessionCanvasRef={trail.trailSessionCanvasRef}
         glowCanvasRef={trail.trailGlowCanvasRef}
       />
       <div

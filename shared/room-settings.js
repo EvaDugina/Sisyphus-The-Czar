@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 38;
+  const ROOM_SETTINGS_VERSION = 41;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -109,7 +109,7 @@
     rainTimingMs: [0, 20000],
     lineDelay: [0, 1],
     trailAnchorHeightPercent: [0, 100],
-    trailMaxPoints: [20, 2000],
+    trailMaxPoints: [20, 10000],
     trailSampleDist: [1, 40],
     lineWidth: [1, 60],
     lineOpacity: [0, 1],
@@ -201,8 +201,7 @@
     trailReset: false,
     lineDelay: 0.5,
     trailAnchorHeightPercent: 100,
-    trailMaxPoints: 1000,
-    trailUnlimited: false,
+    trailMaxPoints: 10000,
     trailSampleDist: 6,
     blendMode: "difference",
     lineColor: "#ffffff",
@@ -958,7 +957,6 @@
         trailPointsMin,
         trailPointsMax
       ),
-      trailUnlimited: boolSetting(source, fallbackSource, "trailUnlimited"),
       trailSampleDist: integerSetting(
         source,
         fallbackSource,
@@ -1228,9 +1226,16 @@
     const foldLayoutMigrated = finiteNumber(version, 1) < 36
       ? migrateFoldLayoutSettings(handDisplayMigrated)
       : handDisplayMigrated;
-    return finiteNumber(version, 1) < 38
+    const current = finiteNumber(version, 1) < 38
       ? migratePreclickHopSettings(foldLayoutMigrated)
       : foldLayoutMigrated;
+    if (finiteNumber(version, 1) < 41) {
+      if (current.trailUnlimited === true) {
+        current.trailMaxPoints = ROOM_SETTINGS_LIMITS.trailMaxPoints[1];
+      }
+      delete current.trailUnlimited;
+    }
+    return current;
   }
 
   function sceneMotionMultiplier(settings) {

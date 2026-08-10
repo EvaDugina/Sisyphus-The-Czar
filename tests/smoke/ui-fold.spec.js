@@ -70,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v40", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v41", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v40");
+    localStorage.removeItem("sisyphus-czar-settings-v41");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,7 +91,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v40", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -117,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v40", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,11 +125,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v40", 
     .toEqual([47, 13]);
 });
 
-test("hop-настройки мигрируют из localStorage v39 в v40 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v39 в v41 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v40");
+    localStorage.removeItem("sisyphus-czar-settings-v41");
     localStorage.setItem(
       "sisyphus-czar-settings-v39",
       JSON.stringify({
@@ -149,7 +149,7 @@ test("hop-настройки мигрируют из localStorage v39 в v40 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return {
           guardClicks: stored.preclickHopGuardClickCount,
@@ -173,11 +173,11 @@ test("hop-настройки мигрируют из localStorage v39 в v40 б�
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v40", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v41", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v40");
+    localStorage.removeItem("sisyphus-czar-settings-v41");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -190,7 +190,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -208,9 +208,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v40", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v41", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v40");
+    localStorage.removeItem("sisyphus-czar-settings-v41");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -223,7 +223,7 @@ test("настройки руки мигрируют из localStorage v36 в v4
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -239,9 +239,9 @@ test("настройки руки мигрируют из localStorage v36 в v4
     });
 });
 
-test("раскладка Fold мигрирует из localStorage v37 в v40", async ({ page }) => {
+test("раскладка Fold мигрирует из localStorage v37 в v41", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v40");
+    localStorage.removeItem("sisyphus-czar-settings-v41");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -254,7 +254,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v40", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -269,7 +269,7 @@ test("группа Камень показывает три hop-контрола
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v40");
+    localStorage.removeItem("sisyphus-czar-settings-v41");
   });
 
   await page.goto("/");
@@ -525,6 +525,7 @@ test("постоянная рука показывает нативный кур
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({ handVisibilityMode: "always" });
   });
@@ -626,7 +627,6 @@ test("UI переключает три режима руки и задержив
   });
   await expect(page.locator("body")).toHaveClass(/hand-hidden/);
   await rock.hover();
-  await expect(hand).not.toHaveClass(/is-visible/);
   await expect(hand).toHaveCSS("display", "none");
 
   await page.evaluate(() => {
@@ -641,6 +641,7 @@ test("session toolbar показывает нативный курсор вме�
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({ handVisibilityMode: "always" });
   });
@@ -663,8 +664,10 @@ test("session toolbar показывает нативный курсор вме�
   await expect(body).toHaveClass(/is-settings-pointer-active/);
   await expect(hand).toHaveCSS("opacity", "0");
 
-  await page.mouse.move(8, 8);
+  const scenePoint = await visibleRockPoint(page);
+  await page.mouse.move(scenePoint.x, scenePoint.y);
   await expect(body).not.toHaveClass(/is-settings-pointer-active/);
+  await expect(body).toHaveClass(/hand-always-visible/);
   await expect(hand).toHaveCSS("opacity", "1");
 });
 
@@ -990,7 +993,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v40") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v41") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,

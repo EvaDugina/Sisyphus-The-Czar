@@ -517,16 +517,6 @@ function createService(options = {}) {
       websocket.lastPongAt = Date.now();
     });
 
-    if (
-      session.singleClient &&
-      manager.connectedCountExcluding(session, context.clientId) === 0
-    ) {
-      const settingsPreset = settingsPresetForNewSession();
-      if (settingsPreset) {
-        manager.applySettingsPreset(session, settingsPreset);
-      }
-    }
-
     const client = manager.connectClient(session, context.clientId, websocket);
     if (!client) {
       return;

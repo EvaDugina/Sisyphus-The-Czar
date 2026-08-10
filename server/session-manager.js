@@ -10,7 +10,8 @@ const DISCONNECT_GRACE_MS = 500;
 const DISCONNECTED_CLIENT_TTL_MS = 60_000;
 const DEFAULT_EMPTY_SESSION_GRACE_MS = 10_000;
 const POINTER_VELOCITY_MAX_AGE_MS = 150;
-const MAX_TRAIL_POINTS = 1000;
+const HARD_TRAIL_LIMIT = 10_000;
+const MAX_TRAIL_POINTS = HARD_TRAIL_LIMIT;
 const MAX_TRAIL_EVENTS = 1000;
 const MAX_TRAIL_BATCH_POINTS = 64;
 const VISUAL_TRAIL_POINT_VERSION = 2;
@@ -96,18 +97,18 @@ function normalizeClientId(value) {
 }
 
 function trailPointLimit(roomSettings) {
-  if (roomSettings?.trailUnlimited) {
-    return Infinity;
-  }
   const configured = Number(roomSettings?.trailMaxPoints);
-  return Number.isSafeInteger(configured) && configured > 0
-    ? configured
-    : MAX_TRAIL_POINTS;
+  return Math.min(
+    HARD_TRAIL_LIMIT,
+    Number.isSafeInteger(configured) && configured > 0
+      ? configured
+      : HARD_TRAIL_LIMIT,
+  );
 }
 
 function trimTrailToRoomSettings(trail, roomSettings) {
   const limit = trailPointLimit(roomSettings);
-  const overflow = Number.isFinite(limit) ? trail.length - limit : 0;
+  const overflow = trail.length - limit;
   if (overflow > 0) {
     trail.splice(0, overflow);
   }
@@ -119,7 +120,7 @@ function sanitizeTrail(input, roomSettings) {
   }
 
   const limit = trailPointLimit(roomSettings);
-  const source = Number.isFinite(limit) ? input.slice(-limit) : input;
+  const source = input.slice(-limit);
   return source.flatMap((point) => {
     if (!Array.isArray(point) || point.length < 2) {
       return [];
@@ -1123,7 +1124,7 @@ class SessionManager {
     this.touch(session);
 
     this.sendTo(client, "session.snapshot", {
-      ...this.snapshot(session, true),
+      ...this.snapshot(session, { includeTrail: false, includeConfig: true }),
       leaveToken: client.leaveToken,
       clientRole: client.role,
     });
@@ -1937,7 +1938,7 @@ class SessionManager {
     const source = Array.isArray(payload.points)
       ? payload.points.slice(0, MAX_TRAIL_BATCH_POINTS)
       : [];
-    const points = sanitizeTrail(source, { trailUnlimited: true }).filter(
+    const points = sanitizeTrail(source, { trailMaxPoints: HARD_TRAIL_LIMIT }).filter(
       (point) => point[2] === VISUAL_TRAIL_POINT_VERSION,
     );
     if (points.length === 0) {
@@ -1977,11 +1978,17 @@ class SessionManager {
       return;
     }
 
-    const clean = sanitizeTrail([point], { trailUnlimited: true })[0];
+    const clean = sanitizeTrail([point], { trailMaxPoints: HARD_TRAIL_LIMIT })[0];
     if (!clean) {
       return;
     }
     hub.trail.push(clean);
+    trimTrailToRoomSettings(hub.trail, {
+      trailMaxPoints: Math.min(
+        trailPointLimit(hub.roomSettings),
+        HARD_TRAIL_LIMIT,
+      ),
+    });
     this.sharedTrailEvents.push({
       id: ++this.sharedTrailRevision,
       sourceSessionId: session.id,
@@ -1998,7 +2005,9 @@ class SessionManager {
 
   sendSharedTrailHistory(client) {
     const points = this.sharedTrailHub
-      ? this.sharedTrailHub.trail.map((point) => [...point])
+      ? this.sharedTrailHub.trail
+          .slice(-HARD_TRAIL_LIMIT)
+          .map((point) => [...point])
       : [];
     const cursor = this.sharedTrailRevision;
     client.trailHistoryCursor = cursor;
