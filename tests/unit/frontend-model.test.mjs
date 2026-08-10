@@ -38,6 +38,7 @@ import {
   rockLocalXForVisualGrab,
   rockPressScaleFactor,
   rockScaleForY,
+  rockWallPenetrationPixels,
 } from "../../src/lib/rockScale.mjs";
 import {
   calculatePreclickHopTarget,
@@ -87,6 +88,7 @@ import {
   resolveProductionPresetMessage,
 } from "../../src/lib/productionPresetMessages.mjs";
 import {
+  LEGACY_SETTINGS_STORAGE_KEYS,
   SETTINGS_GROUPS,
   SETTINGS_STORAGE_KEY,
   SETTINGS_VERSIONS_STORAGE_KEY,
@@ -410,8 +412,12 @@ test("настройки инерции и hop отображают актуал
   const preclickHopActivationRadius = controls.find(
     (control) => control.name === "preclickHopActivationRadiusVw"
   );
+  const rockWallPenetration = controls.find(
+    (control) => control.name === "rockWallPenetrationPercent"
+  );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v38");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v39");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v38");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -424,6 +430,15 @@ test("настройки инерции и hop отображают актуал
       defaultValue: preclickHopActivationRadius.defaultValue,
     },
     { min: 0, max: 200, step: 1, defaultValue: 50 }
+  );
+  assert.deepEqual(
+    {
+      min: rockWallPenetration.min,
+      max: rockWallPenetration.max,
+      step: rockWallPenetration.step,
+      defaultValue: rockWallPenetration.defaultValue,
+    },
+    { min: 0, max: 50, step: 1, defaultValue: 20 }
   );
   assert.deepEqual(
     {
@@ -483,7 +498,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 38);
+  assert.equal(productionSettingsSchemaVersion, 39);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -992,6 +1007,7 @@ test("настройки размера камня есть в UI и получ�
       "rockScaleEasing",
       "rockActivatedWidthVw",
       "rockPressShrinkPercent",
+      "rockWallPenetrationPercent",
       "rockPulseEnabled",
       "rockPulseShrinkPercent",
       "rockPulseBpm",
@@ -1253,6 +1269,52 @@ test("масштабированный камень касается обеих 
     rockLocalXForVisualGrab(500, baseWidth / 2, maxX, baseWidth, 0.5),
     maxX / 2,
   );
+});
+
+test("камень входит в боковые стены на заданную долю визуальной ширины", () => {
+  const baseWidth = 200;
+  const maxX = 800;
+  const worldWidth = maxX + baseWidth;
+
+  [0.5, 1, 2].forEach((scale) => {
+    const visualWidth = baseWidth * scale;
+    const visualOffset = (baseWidth * (1 - scale)) / 2;
+    const penetration = rockWallPenetrationPixels(visualWidth, 20);
+    const leftCompensation = rockHorizontalWallCompensation(
+      0,
+      maxX,
+      baseWidth,
+      scale,
+      20,
+    );
+    const rightCompensation = rockHorizontalWallCompensation(
+      maxX,
+      maxX,
+      baseWidth,
+      scale,
+      20,
+    );
+
+    assert.equal(leftCompensation + visualOffset, -penetration);
+    assert.equal(
+      maxX + rightCompensation + baseWidth - visualOffset,
+      worldWidth + penetration,
+    );
+    assert.equal(
+      rockHorizontalWallCompensation(
+        maxX / 2,
+        maxX,
+        baseWidth,
+        scale,
+        20,
+      ),
+      0,
+    );
+  });
+
+  assert.equal(rockWallPenetrationPixels(200, 20), 40);
+  assert.equal(rockWallPenetrationPixels(200, 150), 200);
+  assert.equal(rockWallPenetrationPixels(-200, 20), 0);
 });
 
 test("профили свечения ограничивают стоимость glow-слоя", () => {
@@ -2006,12 +2068,13 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 36);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 37);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
     rockActivatedWidthVw: 999,
     rockPressShrinkPercent: 999,
+    rockWallPenetrationPercent: 999,
     rockPulseShrinkPercent: 999,
     rockImageId: "unknown",
     foldRockImageId: "rock",
@@ -2041,6 +2104,7 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   assert.equal(visualSettings.rockActivatedWidthVw, 150);
   assert.equal(visualSettings.rockPressShrinkPercent, 50);
+  assert.equal(visualSettings.rockWallPenetrationPercent, 50);
   assert.equal(visualSettings.rockPulseShrinkPercent, 50);
   assert.equal(visualSettings.rockImageId, "rock-03");
   assert.equal(visualSettings.foldRockImageId, "rock");

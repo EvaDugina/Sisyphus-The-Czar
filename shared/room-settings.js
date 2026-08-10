@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 36;
+  const ROOM_SETTINGS_VERSION = 37;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -92,6 +92,7 @@
     preclickHopMaxDistanceVw: [0, 200],
     rockGrabRadiusVh: [0, 10],
     rockPressShrinkPercent: [0, 50],
+    rockWallPenetrationPercent: [0, 50],
     rockPulseShrinkPercent: [0, 50],
     rockPulseBpm: [20, 240],
     rockJumpIntervalSeconds: [1, 10],
@@ -148,6 +149,7 @@
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
     rockActivatedWidthVw: DEFAULT_ROCK_ACTIVATED_WIDTH_VW,
     rockPressShrinkPercent: 5,
+    rockWallPenetrationPercent: 20,
     rockPulseEnabled: false,
     rockPulseShrinkPercent: 5,
     rockPulseBpm: 60,
@@ -452,6 +454,8 @@
       ROOM_SETTINGS_LIMITS.rockGrabRadiusVh;
     const [rockPressShrinkMin, rockPressShrinkMax] =
       ROOM_SETTINGS_LIMITS.rockPressShrinkPercent;
+    const [rockWallPenetrationMin, rockWallPenetrationMax] =
+      ROOM_SETTINGS_LIMITS.rockWallPenetrationPercent;
     const [rockPulseShrinkMin, rockPulseShrinkMax] =
       ROOM_SETTINGS_LIMITS.rockPulseShrinkPercent;
     const windowObstacleHeightRange = normalizeNumericRange(
@@ -705,6 +709,13 @@
         "rockPressShrinkPercent",
         rockPressShrinkMin,
         rockPressShrinkMax
+      ),
+      rockWallPenetrationPercent: integerSetting(
+        source,
+        fallbackSource,
+        "rockWallPenetrationPercent",
+        rockWallPenetrationMin,
+        rockWallPenetrationMax
       ),
       rockPulseEnabled: boolSetting(
         source,

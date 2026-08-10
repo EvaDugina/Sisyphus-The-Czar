@@ -10,9 +10,10 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v38";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v39";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v38",
   "sisyphus-czar-settings-v37",
   "sisyphus-czar-settings-v36",
   "sisyphus-czar-settings-v35",
@@ -778,6 +779,19 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROOM_SETTINGS.rockPressShrinkPercent,
         output: `${DEFAULT_ROOM_SETTINGS.rockPressShrinkPercent}%`,
         hint: "Временно уменьшает текущий размер камня на заданный процент при pointerdown. Ноль отключает эффект.",
+      },
+      {
+        name: "rockWallPenetrationPercent",
+        label: "Вход в нижнюю и боковые стены, %",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockWallPenetrationPercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .rockWallPenetrationPercent[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockWallPenetrationPercent,
+        output: `${DEFAULT_ROOM_SETTINGS.rockWallPenetrationPercent}%`,
+        hint: "Разрешает камню входить в нижнюю, левую и правую стены на заданную долю своего текущего визуального размера. Верхняя граница не изменяется.",
       },
       {
         name: "rockPulseEnabled",

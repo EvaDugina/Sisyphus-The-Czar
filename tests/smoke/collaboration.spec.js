@@ -411,7 +411,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -1327,7 +1327,7 @@ test("dev при запуске переносит последний локал
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return stored.gravity;
       }),
@@ -1335,11 +1335,11 @@ test("dev при запуске переносит последний локал
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v38 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v39 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v38");
+    localStorage.removeItem("sisyphus-czar-settings-v39");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1361,7 +1361,7 @@ test("локальные настройки v20 мигрируют в v38 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2207,7 +2207,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v38",
+      "sisyphus-czar-settings-v39",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2669,7 +2669,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}"
         );
         return stored.trailUnlimited;
       })
@@ -2708,7 +2708,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -2844,7 +2844,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -2879,7 +2879,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -2896,7 +2896,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}"
         );
         return stored.rainEnabled;
       })

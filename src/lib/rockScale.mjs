@@ -191,11 +191,18 @@ export function rockPressScaleFactor(percent) {
   return 1 - safePercent / 100;
 }
 
+export function rockWallPenetrationPixels(sizePx, percent) {
+  const size = Math.max(0, finiteNumber(sizePx, 0));
+  const safePercent = clamp(finiteNumber(percent, 0), 0, 100);
+  return (size * safePercent) / 100;
+}
+
 export function rockHorizontalWallCompensation(
   localX,
   maxX,
   baseWidthPx,
   scale,
+  wallPenetrationPercent = 0,
 ) {
   const travel = Math.max(0, finiteNumber(maxX, 0));
   const width = Math.max(0, finiteNumber(baseWidthPx, 0));
@@ -212,7 +219,13 @@ export function rockHorizontalWallCompensation(
   }
 
   const compensation = (x / travel - 0.5) * (width - visualWidth);
-  return compensation === 0 ? 0 : compensation;
+  const penetration = rockWallPenetrationPixels(
+    visualWidth,
+    wallPenetrationPercent,
+  );
+  const penetrationOffset = (x / travel - 0.5) * penetration * 2;
+  const result = compensation + penetrationOffset;
+  return result === 0 ? 0 : result;
 }
 
 export function rockLocalXForVisualGrab(

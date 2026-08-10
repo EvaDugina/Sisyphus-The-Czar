@@ -70,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v38", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v39", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v38");
+    localStorage.removeItem("sisyphus-czar-settings-v39");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,7 +91,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v38", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -117,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v38", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,11 +125,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v38", 
     .toEqual([47, 13]);
 });
 
-test("hop-настройки мигрируют из localStorage v35 в v38 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v35 в v39 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v38");
+    localStorage.removeItem("sisyphus-czar-settings-v39");
     localStorage.setItem(
       "sisyphus-czar-settings-v35",
       JSON.stringify({
@@ -149,7 +149,7 @@ test("hop-настройки мигрируют из localStorage v35 в v38 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return {
           radius: stored.preclickHopActivationRadiusVw,
@@ -169,11 +169,11 @@ test("hop-настройки мигрируют из localStorage v35 в v38 б�
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v38", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v39", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v38");
+    localStorage.removeItem("sisyphus-czar-settings-v39");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -186,7 +186,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -204,9 +204,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v38", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v39", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v38");
+    localStorage.removeItem("sisyphus-czar-settings-v39");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -219,7 +219,7 @@ test("настройки руки мигрируют из localStorage v36 в v3
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -235,9 +235,9 @@ test("настройки руки мигрируют из localStorage v36 в v3
     });
 });
 
-test("раскладка Fold мигрирует из localStorage v37 в v38", async ({ page }) => {
+test("раскладка Fold мигрирует из localStorage v37 в v39", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v38");
+    localStorage.removeItem("sisyphus-czar-settings-v39");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -250,7 +250,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v38", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v38") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -265,7 +265,7 @@ test("группа Камень показывает только два hop-к�
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v38");
+    localStorage.removeItem("sisyphus-czar-settings-v39");
   });
 
   await page.goto("/");
@@ -849,10 +849,16 @@ test("Fold синхронизирует сцену и применяет общ�
   await expect(page.locator('[name="foldPositionPercent"]')).toHaveValue("0");
   await expect(page.locator('[name="foldPanelHeightVh"]')).toHaveValue("20");
   await expect(page.locator('[name="foldAngle"]')).toHaveValue("30");
+  await expect(page.locator('[name="rockWallPenetrationPercent"]')).toHaveValue(
+    "20",
+  );
   await setSettingValue(page, "foldPositionPercent", 60);
   await setSettingValue(page, "foldPanelHeightVh", 35);
   await setSettingValue(page, "foldAngle", 45);
   await setSettingValue(page, "foldZoneSize", 10);
+  await setSettingValue(page, "rockWallPenetrationPercent", 35);
+  await setSettingValue(page, "mass", 2.5);
+  await setSettingValue(page, "glowOptimizationMode", "balanced");
   await setSettingValue(
     page,
     "foldBlendCurve",
@@ -884,6 +890,24 @@ test("Fold синхронизирует сцену и применяет общ�
       }),
     );
   expect(selectedVersionId).toBeTruthy();
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const stored = JSON.parse(
+          localStorage.getItem("sisyphus-czar-settings-v39") || "{}",
+        );
+        return {
+          glowOptimizationMode: stored.glowOptimizationMode,
+          mass: stored.mass,
+          rockWallPenetrationPercent: stored.rockWallPenetrationPercent,
+        };
+      }),
+    )
+    .toEqual({
+      glowOptimizationMode: "balanced",
+      mass: 2.5,
+      rockWallPenetrationPercent: 35,
+    });
   await page.locator(".settings-version-toggle").click();
   const productionButton = page.locator(
     `[data-production-preset-select="${selectedVersionId}"]`,
@@ -906,6 +930,19 @@ test("Fold синхронизирует сцену и применяет общ�
   await expect(layer).toHaveAttribute("data-fold-angle", "45");
   await expect(layer).toHaveAttribute("data-fold-zone-size", "10");
   await expect(layer).toHaveAttribute("data-fold-blend-enabled", "false");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        glowOptimizationMode: params.glowOptimizationMode,
+        mass: params.mass,
+        rockWallPenetrationPercent: params.rockWallPenetrationPercent,
+      })),
+    )
+    .toEqual({
+      glowOptimizationMode: "balanced",
+      mass: 2.5,
+      rockWallPenetrationPercent: 35,
+    });
   await expect(layer).toHaveAttribute(
     "data-fold-blend-curve",
     "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
@@ -991,6 +1028,19 @@ test("Fold синхронизирует сцену и применяет общ�
   await expect(layer).toHaveAttribute("data-fold-angle", "45");
   await expect(layer).toHaveAttribute("data-fold-zone-size", "10");
   await expect(layer).toHaveAttribute("data-fold-blend-enabled", "false");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        glowOptimizationMode: params.glowOptimizationMode,
+        mass: params.mass,
+        rockWallPenetrationPercent: params.rockWallPenetrationPercent,
+      })),
+    )
+    .toEqual({
+      glowOptimizationMode: "balanced",
+      mass: 2.5,
+      rockWallPenetrationPercent: 35,
+    });
   await expect(layer).toHaveAttribute(
     "data-fold-blend-curve",
     "cubic-bezier(0.2, 0.1, 0.8, 0.9)",
@@ -1208,18 +1258,35 @@ test("первое падение анимирует размер камня, с
     const { bounds, motion, setPosition, updateBounds } =
       window.__sisyphusTestApi;
     updateBounds();
-    setPosition(bounds.maxX / 2, bounds.maxY);
+    setPosition(bounds.maxX, bounds.maxY);
     const rock = document.querySelector("#root > .world > .rock");
+    const rockRect = rock.getBoundingClientRect();
+    const worldRect = document
+      .querySelector("#root > .world")
+      .getBoundingClientRect();
+    const visualHeight = rock.offsetHeight * motion.rockScale;
+    const penetrationPercent =
+      window.__sisyphusTestApi.params.rockWallPenetrationPercent;
     const visualBottom =
       motion.y + (rock.offsetHeight * (1 + motion.rockScale)) / 2;
     return {
       gap: document.querySelector("#root > .world").offsetHeight - visualBottom,
+      expectedPenetration: (visualHeight * penetrationPercent) / 100,
+      sidePenetration: rockRect.right - worldRect.right,
+      expectedSidePenetration: (rockRect.width * penetrationPercent) / 100,
       y: motion.y,
       maxY: bounds.maxY,
     };
   });
   expect(floorContact.y).toBeCloseTo(floorContact.maxY, 5);
-  expect(Math.abs(floorContact.gap)).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(floorContact.gap + floorContact.expectedPenetration),
+  ).toBeLessThanOrEqual(2);
+  expect(
+    Math.abs(
+      floorContact.sidePenetration - floorContact.expectedSidePenetration,
+    ),
+  ).toBeLessThanOrEqual(1);
 
   const directionTrigger = await page.evaluate(() => {
     const api = window.__sisyphusTestApi;

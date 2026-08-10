@@ -15,7 +15,7 @@ import {
   WINDOW_OBSTACLE_PERMISSION,
 } from "./createWindowObstacleController.js";
 
-const SETTINGS_SCHEMA_VERSION = 38;
+const SETTINGS_SCHEMA_VERSION = 39;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 function randomRequestId() {
@@ -47,6 +47,7 @@ export function createSettingsPageRuntime(elements = {}) {
   let sessionCreateInFlight = false;
   let pendingRequestId = "";
   let combinedSave = null;
+  let restoredSettingsAtLaunch = null;
   let settingsController;
 
   const listen = (target, type, listener, options) => {
@@ -216,7 +217,20 @@ export function createSettingsPageRuntime(elements = {}) {
     return sent;
   }
 
-  function applySharedSettings(payload = {}) {
+  function applyRestoredRoomSettings() {
+    if (!socket || socket.readyState !== WebSocket.OPEN || settingsRevision < 1) {
+      return false;
+    }
+    pendingRequestId = randomRequestId();
+    return send("settings.update", {
+      requestId: pendingRequestId,
+      baseRevision: settingsRevision,
+      settingsSchemaVersion: SETTINGS_SCHEMA_VERSION,
+      settings: sharedSettingsPayload(),
+    });
+  }
+
+  function applySharedSettings(payload = {}, preservedSettings = null) {
     if (payload.physics && typeof payload.physics === "object") {
       Object.assign(params, SharedPhysics.sanitizePhysics(payload.physics, params));
     }
@@ -225,6 +239,9 @@ export function createSettingsPageRuntime(elements = {}) {
         params,
         SharedRoomSettings.sanitizeRoomSettings(payload.roomSettings, params),
       );
+    }
+    if (preservedSettings && typeof preservedSettings === "object") {
+      Object.assign(params, preservedSettings);
     }
     settingsController.syncPhysicsSettingControls();
     settingsController.syncRoomSettingControls();
@@ -256,8 +273,22 @@ export function createSettingsPageRuntime(elements = {}) {
       if (Number.isSafeInteger(revision) && revision > 0) {
         settingsRevision = revision;
       }
-      applySharedSettings(payload);
+      const restoredSettings = restoredSettingsAtLaunch;
+      restoredSettingsAtLaunch = null;
+      applySharedSettings(payload, restoredSettings);
       setSessionStatus("В сессии: настройки комнаты общие для всех", "online");
+      if (restoredSettings) {
+        settingsController.saveSettings();
+        const restoredKeys = Object.keys(restoredSettings);
+        const hasSharedSettings = restoredKeys.some(
+          (key) =>
+            Object.hasOwn(SharedPhysics.DEFAULT_PHYSICS, key) ||
+            SharedRoomSettings.ROOM_SETTINGS_KEYS.includes(key),
+        );
+        if (hasSharedSettings) {
+          applyRestoredRoomSettings();
+        }
+      }
       return;
     }
     if (message.type === "settings.applied") {
@@ -266,6 +297,7 @@ export function createSettingsPageRuntime(elements = {}) {
       }
       settingsRevision = Math.max(settingsRevision, Number(payload.settingsRevision) || 0);
       pendingRequestId = "";
+      settingsController.saveSettings();
       settingsController.markRoomSettingsSaved();
       if (combinedSave) {
         combinedSave.roomPending = false;
@@ -462,7 +494,17 @@ export function createSettingsPageRuntime(elements = {}) {
     stageControlChange: () => {},
   });
 
-  settingsController.load({ loadLocalSettings: false, loadLatestVersion: false });
+  const restoredSettingKeys = settingsController.load({
+    loadLocalSettings: true,
+    loadLatestVersion: false,
+    loadVersionedSettings: true,
+  });
+  readDraftControls();
+  if (restoredSettingKeys.length > 0) {
+    restoredSettingsAtLaunch = Object.fromEntries(
+      restoredSettingKeys.map((key) => [key, params[key]]),
+    );
+  }
   settingsController.syncRoomSettingControls();
   settingsController.syncLocalSettingControls();
   settingsController.updateControlOutputs();

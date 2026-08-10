@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 38;
+const SETTINGS_SCHEMA_VERSION = 39;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -422,7 +422,7 @@ export function createSettingsController(options) {
       stored = null;
     }
     if (!stored || typeof stored !== "object") {
-      return false;
+      return [];
     }
     const legacyKeyVersion = settingsStorageKeyVersion(legacyKey);
     stored = migrateStoredSettings(
@@ -488,23 +488,28 @@ export function createSettingsController(options) {
       }
     }
 
+    const availableSettingNames = includeVersioned
+      ? SETTINGS_CONTROLS.map((control) => control.name)
+      : LOCAL_SETTING_CONTROL_NAMES;
+    const loadedKeys = availableSettingNames.filter(
+      (key) => key && Object.hasOwn(stored, key),
+    );
+    loadedKeys.forEach((key) => {
+      params[key] = stored[key];
+    });
     settingsControlElements().forEach((element) => {
       const key = element.getAttribute("name");
-      if (
-        !key ||
-        !(key in stored) ||
-        (!includeVersioned && !LOCAL_SETTING_CONTROL_NAMES.includes(key))
-      ) {
+      if (!key || !loadedKeys.includes(key)) {
         return;
       }
       if (element.type === "checkbox") {
-        element.checked = Boolean(stored[key]);
+        element.checked = Boolean(params[key]);
       } else {
-        element.value = settingValueToControlValue(key, stored[key]);
+        element.value = settingValueToControlValue(key, params[key]);
         notifySettingControlSync(element);
       }
     });
-    return true;
+    return loadedKeys;
   }
 
   function normalizeSettingsVersionEntry(entry) {
@@ -1281,6 +1286,8 @@ export function createSettingsController(options) {
       turbulence: params.turbulence.toFixed(2),
       rockActivatedWidthVw: `${params.rockActivatedWidthVw.toFixed(0)}%`,
       rockPressShrinkPercent: `${params.rockPressShrinkPercent.toFixed(0)}%`,
+      rockWallPenetrationPercent:
+        `${params.rockWallPenetrationPercent.toFixed(0)}%`,
       rockPulseShrinkPercent: `${params.rockPulseShrinkPercent.toFixed(0)}%`,
       rockPulseBpm: `${params.rockPulseBpm.toFixed(0)} BPM`,
       preclickHopActivationRadiusVw:
@@ -1686,8 +1693,9 @@ export function createSettingsController(options) {
       const loadVersionedSettings = options.loadVersionedSettings !== false;
       const loadLatestVersion =
         options.loadLatestVersion !== false && loadVersionedSettings;
+      let loadedKeys = [];
       if (loadLocalSettings) {
-        loadSettings({ includeVersioned: loadVersionedSettings });
+        loadedKeys = loadSettings({ includeVersioned: loadVersionedSettings });
       }
       loadSettingsVersions();
       const latest = selectLatestSettingsVersionEntry(settingsVersions.entries);
@@ -1697,6 +1705,7 @@ export function createSettingsController(options) {
       }
       syncSettingDependencies();
       renderDraftState();
+      return loadedKeys;
     },
     captureCurrentAsBaseline,
     markRoomSettingsSaved,

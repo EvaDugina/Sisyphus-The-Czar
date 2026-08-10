@@ -52,6 +52,7 @@ import {
   rockLocalXForVisualGrab,
   rockPressScaleFactor,
   rockScaleForY,
+  rockWallPenetrationPixels,
 } from "../lib/rockScale.mjs";
 import { trailAnchorPoint } from "../lib/trailAnchor.mjs";
 import {
@@ -323,6 +324,8 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw,
     rockPressShrinkPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPressShrinkPercent,
+    rockWallPenetrationPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockWallPenetrationPercent,
     rockImageId: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockImageId,
     foldRockImageId:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldRockImageId,
@@ -2521,6 +2524,7 @@ export function createSisyphusRuntime(elements = {}) {
         "rockMaxWidthVw",
         "rockScaleEasing",
         "rockPressShrinkPercent",
+        "rockWallPenetrationPercent",
         "rockPulseShrinkPercent",
       )
     ) {
@@ -2535,6 +2539,7 @@ export function createSisyphusRuntime(elements = {}) {
         "rockMinWidthVw",
         "rockMaxWidthVw",
         "rockScaleEasing",
+        "rockWallPenetrationPercent",
       )
     ) {
       renderImprint();
@@ -2545,6 +2550,7 @@ export function createSisyphusRuntime(elements = {}) {
         "rockMinWidthVw",
         "rockMaxWidthVw",
         "rockScaleEasing",
+        "rockWallPenetrationPercent",
         "trailAnchorHeightPercent",
       )
     ) {
@@ -2605,11 +2611,15 @@ export function createSisyphusRuntime(elements = {}) {
       shouldHandleChange,
     } = settingsChangeContext(options);
     const sceneHeightChanging = shouldHandleChange("sceneHeightScreens");
+    const sceneBoundsChanging = shouldHandleChange(
+      "sceneHeightScreens",
+      "rockWallPenetrationPercent",
+    );
 
     const previousRoomSettings =
-      sceneHeightChanging ? sharedRoomSettingsPayload() : null;
+      sceneBoundsChanging ? sharedRoomSettingsPayload() : null;
     const preservedState =
-      sceneHeightChanging ? currentSharedState() : null;
+      sceneBoundsChanging ? currentSharedState() : null;
     const preserveBottomScroll =
       sceneHeightChanging &&
       Math.abs(
@@ -3118,13 +3128,20 @@ export function createSisyphusRuntime(elements = {}) {
     });
     const effectiveBottomScale =
       bottomScale * motion.rockActivationScaleFactor;
+    const bottomPenetration = rockWallPenetrationPixels(
+      bounds.rockHeight * effectiveBottomScale,
+      params.rockWallPenetrationPercent,
+    );
     const visualBottomOffset =
       (bounds.rockHeight * (1 + effectiveBottomScale)) / 2 + FLOOR_INSET;
     bounds.worldHeight = Math.max(
       window.innerHeight * params.sceneHeightScreens,
       visualBottomOffset
     );
-    bounds.maxY = Math.max(0, bounds.worldHeight - visualBottomOffset);
+    bounds.maxY = Math.max(
+      0,
+      bounds.worldHeight - visualBottomOffset + bottomPenetration,
+    );
   }
 
   function baseScaleForLocalY(y) {
@@ -3301,7 +3318,8 @@ export function createSisyphusRuntime(elements = {}) {
       motion.x,
       bounds.maxX,
       bounds.rockWidth,
-      scale
+      scale,
+      params.rockWallPenetrationPercent,
     );
     motion.rockScale = baseScale;
     rock.style.setProperty("--rock-scale", `${roundedScale}`);
@@ -3905,6 +3923,7 @@ export function createSisyphusRuntime(elements = {}) {
           bounds.maxX,
           bounds.rockWidth,
           scale,
+          params.rockWallPenetrationPercent,
         ),
       y: localY,
       width: bounds.rockWidth,
@@ -4167,7 +4186,7 @@ export function createSisyphusRuntime(elements = {}) {
     const payload = {
       requestId,
       baseRevision: collab.settingsRevision,
-      settingsSchemaVersion: 38,
+      settingsSchemaVersion: 39,
       settings: sharedSettingsPayload(),
     };
     collab.settingsUpdateQueued = false;
@@ -5396,7 +5415,8 @@ export function createSisyphusRuntime(elements = {}) {
       motion.x,
       bounds.maxX,
       bounds.rockWidth,
-      motion.rockScale
+      motion.rockScale,
+      params.rockWallPenetrationPercent,
     );
     const anchor = trailAnchorPoint({
       x: motion.x + wallCompensation,
@@ -6586,11 +6606,27 @@ export function createSisyphusRuntime(elements = {}) {
     window.__sisyphusTestApi = testApi;
     Object.assign(window, testApi);
   }
-  settingsController.load({
+  const restoredSettingKeys = settingsController.load({
     loadLatestVersion: false,
-    loadVersionedSettings: false,
+    loadVersionedSettings: true,
   });
   readControls();
+  if (restoredSettingKeys.length > 0) {
+    settingsController.saveSettings();
+  }
+  let restoredSharedSettings = false;
+  restoredSettingKeys.forEach((key) => {
+    if (
+      SHARED_PHYSICS_KEYS.includes(key) ||
+      SHARED_ROOM_SETTING_KEYS.includes(key)
+    ) {
+      stageControlChange(key, params[key]);
+      restoredSharedSettings = true;
+    }
+  });
+  if (restoredSharedSettings) {
+    scheduleSharedSettingsUpdate();
+  }
   settingsController.captureCurrentAsBaseline();
   document.fonts?.ready.then(() => {
     if (!disposed) {
