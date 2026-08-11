@@ -463,12 +463,15 @@ test("настройки инерции и hop отображают актуал
   const upperZoneAutoScroll = controls.find(
     (control) => control.name === "upperZoneAutoScrollEnabled",
   );
+  const sceneTwoOverflowY = controls.find(
+    (control) => control.name === "sceneTwoOverflowYVisible",
+  );
   const gachiClickSound = controls.find(
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v43");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v42");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v44");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v43");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -485,6 +488,20 @@ test("настройки инерции и hop отображают актуал
       defaultChecked: true,
       activeLabel: "Следовать",
       inactiveLabel: "Не следовать",
+    },
+  );
+  assert.deepEqual(
+    {
+      type: sceneTwoOverflowY.type,
+      defaultChecked: sceneTwoOverflowY.defaultChecked,
+      activeLabel: sceneTwoOverflowY.activeLabel,
+      inactiveLabel: sceneTwoOverflowY.inactiveLabel,
+    },
+    {
+      type: "toggle-button",
+      defaultChecked: false,
+      activeLabel: "Показать",
+      inactiveLabel: "Скрыть",
     },
   );
   assert.deepEqual(
@@ -625,6 +642,7 @@ test("UI классифицирует параметры по сценам бе�
   [
     "cameraFollowDownEnabled",
     "upperZoneAutoScrollEnabled",
+    "sceneTwoOverflowYVisible",
     "gachiClickSoundFilename",
   ].forEach((name) => {
     assert.deepEqual(settingsControlScenes(name), [SETTINGS_SCENES.TURNIP]);
@@ -712,7 +730,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 43);
+  assert.equal(productionSettingsSchemaVersion, 44);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1993,6 +2011,7 @@ test("UI содержит настройки камеры, физики, overflo
       "cameraFollowLerp",
       "cameraFollowDownEnabled",
       "upperZoneAutoScrollEnabled",
+      "sceneTwoOverflowYVisible",
     ],
   );
   assert.deepEqual(
@@ -2380,6 +2399,7 @@ test("настройки препятствия Окна нормализуют 
       cameraFollowLerp: 0.1,
       cameraFollowDownEnabled: true,
       upperZoneAutoScrollEnabled: false,
+      sceneTwoOverflowYVisible: false,
       gachiClickSoundFilename: "Camen.mp3",
       foldPositionPercent: 0,
       foldPanelHeightVh: 20,
@@ -2538,7 +2558,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 43);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 44);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2572,6 +2592,7 @@ test("группа дождя содержит общий toggle и blur тём�
     rockGrabRadiusVh: 999,
     cameraFollowDownEnabled: "false",
     upperZoneAutoScrollEnabled: "true",
+    sceneTwoOverflowYVisible: "true",
     gachiClickSoundFilename: "missing.mp3",
   });
   assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
@@ -2606,6 +2627,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockGrabRadiusVh, 10);
   assert.equal(visualSettings.cameraFollowDownEnabled, false);
   assert.equal(visualSettings.upperZoneAutoScrollEnabled, true);
+  assert.equal(visualSettings.sceneTwoOverflowYVisible, true);
   assert.equal(visualSettings.gachiClickSoundFilename, "Camen.mp3");
   assert.deepEqual(SharedRoomSettings.GACHI_SOUND_FILENAMES, [
     "Aaaaaa.mp3",
@@ -2621,7 +2643,10 @@ test("группа дождя содержит общий toggle и blur тём�
   const legacyV42 = SharedRoomSettings.migrateRoomSettings({}, 42);
   assert.equal(legacyV42.cameraFollowDownEnabled, true);
   assert.equal(legacyV42.upperZoneAutoScrollEnabled, false);
+  assert.equal(legacyV42.sceneTwoOverflowYVisible, false);
   assert.equal(legacyV42.gachiClickSoundFilename, "Camen.mp3");
+  const legacyV43 = SharedRoomSettings.migrateRoomSettings({}, 43);
+  assert.equal(legacyV43.sceneTwoOverflowYVisible, false);
   assert.deepEqual(
     SharedRoomSettings.migrateRockVisualSettings({
       rockPressShrinkPercent: 17,
@@ -2724,6 +2749,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     cameraFollowDownEnabled: true,
     upperZoneAutoScrollEnabled: false,
+    sceneTwoOverflowYVisible: false,
     gachiClickSoundFilename: "Camen.mp3",
   });
   assert.deepEqual(
@@ -2735,6 +2761,7 @@ test("группа дождя содержит общий toggle и blur тём�
       ...DEFAULT_PRECLICK_HOP_SETTINGS,
       cameraFollowDownEnabled: true,
       upperZoneAutoScrollEnabled: false,
+      sceneTwoOverflowYVisible: false,
       gachiClickSoundFilename: "Camen.mp3",
     },
   );

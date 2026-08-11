@@ -14,7 +14,7 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v43";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v44";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -31,6 +31,7 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
   }),
 ]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v43",
   "sisyphus-czar-settings-v42",
   "sisyphus-czar-settings-v41",
   "sisyphus-czar-settings-v40",
@@ -614,6 +615,15 @@ export const SETTINGS_GROUPS = [
         activeLabel: "Включён",
         inactiveLabel: "Выключен",
         hint: "Разрешает камере автоматически прокручиваться вверх, когда камень оказывается выше центра viewport.",
+      },
+      {
+        name: "sceneTwoOverflowYVisible",
+        label: "Вертикальная прокрутка",
+        type: "toggle-button",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.sceneTwoOverflowYVisible,
+        activeLabel: "Показать",
+        inactiveLabel: "Скрыть",
+        hint: "Показывает вертикальный overflow страницы в сцене 2. В скрытом состоянии программное следование камеры продолжает работать.",
       },
     ],
   },

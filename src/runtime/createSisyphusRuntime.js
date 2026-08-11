@@ -156,6 +156,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   const body = document.body;
+  const initialDocumentOverflowY = document.documentElement.style.overflowY;
   const world = elements.world || document.querySelector(".world");
   const topInscription =
     elements.topInscription || document.querySelector(".top-inscription");
@@ -329,6 +330,8 @@ export function createSisyphusRuntime(elements = {}) {
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     cameraFollowLerp:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.cameraFollowLerp,
+    sceneTwoOverflowYVisible:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoOverflowYVisible,
     foldPositionPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldPositionPercent,
     foldPanelHeightVh:
@@ -1372,6 +1375,7 @@ export function createSisyphusRuntime(elements = {}) {
       preclickHopAudio.elements.delete(audio);
     };
     audio.addEventListener("ended", releaseAudio);
+    audio.addEventListener("error", releaseAudio);
     preclickHopAudio.elements.add(audio);
     try {
       audio.currentTime = 0;
@@ -1415,6 +1419,7 @@ export function createSisyphusRuntime(elements = {}) {
           gachiClickAudio.elements.delete(audio);
         };
         audio.addEventListener("ended", releaseAudio);
+        audio.addEventListener("error", releaseAudio);
         gachiClickAudio.elements.add(audio);
         try {
           audio.currentTime = 0;
@@ -1985,6 +1990,12 @@ export function createSisyphusRuntime(elements = {}) {
       "--scene-height-vh",
       `${params.sceneHeightScreens * 100}vh`
     );
+  }
+
+  function applySceneTwoOverflowY() {
+    document.documentElement.style.overflowY = params.sceneTwoOverflowYVisible
+      ? "auto"
+      : "hidden";
   }
 
   function sceneMotionOptions() {
@@ -2585,6 +2596,9 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (shouldHandleChange("sceneHeightScreens")) {
       applySceneHeight();
+    }
+    if (shouldHandleChange("sceneTwoOverflowYVisible")) {
+      applySceneTwoOverflowY();
     }
     if (preservedState) {
       applyCanonicalMotion(preservedState);
@@ -5125,7 +5139,6 @@ export function createSisyphusRuntime(elements = {}) {
       snapshot.phase !== PHASES.INTRO &&
       snapshot.phase !== PHASES.WON;
     if (localControlWasEnding) {
-      stopGachiClickSound();
       startSharedReleaseHandoff();
       collab.snapshots = [];
     }
@@ -5153,12 +5166,6 @@ export function createSisyphusRuntime(elements = {}) {
 
     const snapshotAtReturnPlace = sharedSnapshotAtReturnPlace(snapshot);
     setPhase(snapshot.phase);
-    if (
-      snapshot.phase === PHASES.FALLING &&
-      previousPhase !== PHASES.FALLING
-    ) {
-      stopGachiClickSound();
-    }
     setTheme(sharedSnapshotTheme(snapshot), {
       durationMs: returnThemeTransitionDuration(snapshotAtReturnPlace, {
         immediate: snapshot.phase === PHASES.INTRO,
@@ -5446,7 +5453,6 @@ export function createSisyphusRuntime(elements = {}) {
       releaseRockPress();
       return;
     }
-    stopGachiClickSound();
     releaseRockPress();
     const canReleaseWithImpulse = sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
@@ -5484,7 +5490,6 @@ export function createSisyphusRuntime(elements = {}) {
       releaseRockPress();
       return;
     }
-    stopGachiClickSound();
     const canReleaseWithImpulse = !neutral && sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
@@ -6593,7 +6598,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (!SharedPhysics.beginFinalFall(state)) {
       return false;
     }
-    stopGachiClickSound();
     resetFinalFallGate();
     setPhase(state.phase);
     applyCanonicalMotion(state);
@@ -6652,12 +6656,6 @@ export function createSisyphusRuntime(elements = {}) {
       deltaSeconds,
       sceneMotionOptions()
     );
-    if (
-      previousPhase !== PHASES.FALLING &&
-      state.phase === PHASES.FALLING
-    ) {
-      stopGachiClickSound();
-    }
     maybeActivateRockPhysicsScale(state);
     const touchedGroundCanonical =
       wasAboveGround && state.y >= SharedPhysics.WORLD_HEIGHT - 0.01;
@@ -6780,8 +6778,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    stopGachiClickSound();
-
     const pointerId = motion.activePointerId;
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
@@ -6818,7 +6814,6 @@ export function createSisyphusRuntime(elements = {}) {
     const sceneTwoActive = preclickRockGuidance.completed;
 
     if (motion.phase === PHASES.FALLING) {
-      stopGachiClickSound();
       if (sceneTwoActive) {
         playGachiClickSound();
       }
@@ -6950,8 +6945,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    stopGachiClickSound();
-
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
@@ -7396,6 +7389,7 @@ export function createSisyphusRuntime(elements = {}) {
       document.documentElement.classList.remove(
         "is-manual-scroll-disabled",
       );
+      document.documentElement.style.overflowY = initialDocumentOverflowY;
       body.classList.remove(
         "is-manual-scroll-disabled",
         "preclick-rock-guidance",

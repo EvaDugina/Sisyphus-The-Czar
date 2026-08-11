@@ -724,6 +724,32 @@ test("N фейковых кликов отталкивают камень, а к
     button: "left",
     clickCount: 1,
   });
+  for (let click = 2; click <= 3; click += 1) {
+    await rock.dispatchEvent("pointerdown", {
+      pointerType: "mouse",
+      pointerId: click + 10,
+      button: 0,
+      buttons: 1,
+      isPrimary: true,
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+        ),
+      )
+      .toBe(click);
+  }
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
+    )
+    .toMatchObject({
+      activeCount: 3,
+      playCount: 3,
+      stopCount: 0,
+      lastFilename: "Camen.mp3",
+    });
   await cdp.detach();
 
   await page.getByTestId("restart-session").click();

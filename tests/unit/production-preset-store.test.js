@@ -38,11 +38,12 @@ test("Git production preset содержит полный canonical snapshot", (
   );
   const normalized = normalizeDocument(document);
 
-  assert.equal(normalized.source.settingsSchemaVersion, 43);
+  assert.equal(normalized.source.settingsSchemaVersion, 44);
   assert.equal(normalized.source.name, "v1");
   assert.equal(normalized.settings.handAudioEnabled, false);
   assert.equal(normalized.settings.cameraFollowDownEnabled, true);
   assert.equal(normalized.settings.upperZoneAutoScrollEnabled, false);
+  assert.equal(normalized.settings.sceneTwoOverflowYVisible, false);
   assert.equal(normalized.settings.gachiClickSoundFilename, "Camen.mp3");
   assert.deepEqual(
     Object.keys(normalized.settings).sort(),
@@ -59,7 +60,7 @@ test("Git production preset содержит полный canonical snapshot", (
   );
 });
 
-test("production preset мигрирует legacy Fold-ключи и длину отскока в schema 43", () => {
+test("production preset мигрирует legacy Fold-ключи и длину отскока в schema 44", () => {
   const normalized = normalizeDocument({
     version: STORE_VERSION,
     selectedAt: "2026-08-09T10:00:00.000Z",
@@ -78,7 +79,7 @@ test("production preset мигрирует legacy Fold-ключи и длину 
     },
   });
 
-  assert.equal(normalized.source.settingsSchemaVersion, 43);
+  assert.equal(normalized.source.settingsSchemaVersion, 44);
   assert.equal(normalized.settings.foldAngle, 52);
   assert.equal(normalized.settings.foldZoneSize, 17);
   assert.equal(normalized.settings.foldPositionPercent, 0);
@@ -116,7 +117,7 @@ test("production preset сохраняет старую дальность от�
     },
   });
 
-  assert.equal(normalized.source.settingsSchemaVersion, 43);
+  assert.equal(normalized.source.settingsSchemaVersion, 44);
   assert.equal(normalized.settings.preclickHopActivationRadiusPercent, 12);
   assert.equal(normalized.settings.preclickHopMaxDistancePercent, 15);
   assert.equal(
@@ -140,7 +141,7 @@ test("production preset разделяет press и pulse при миграци�
     },
   });
 
-  assert.equal(normalized.source.settingsSchemaVersion, 43);
+  assert.equal(normalized.source.settingsSchemaVersion, 44);
   assert.equal(normalized.settings.rockPressShrinkPercent, 17);
   assert.equal(normalized.settings.rockPulseShrinkPercent, 17);
   assert.equal(normalized.settings.rockImageId, "rock-03");
@@ -162,7 +163,7 @@ test("production preset мигрирует boolean-видимость руки �
     },
   });
 
-  assert.equal(normalized.source.settingsSchemaVersion, 43);
+  assert.equal(normalized.source.settingsSchemaVersion, 44);
   assert.equal(normalized.settings.handVisibilityMode, "hover");
   assert.equal(normalized.settings.handImageChangeDelayMs, 0);
   assert.equal(normalized.settings.foldPositionPercent, 0);

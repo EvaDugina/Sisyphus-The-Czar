@@ -6,7 +6,7 @@ const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
 
 const STORE_VERSION = 1;
-const SETTINGS_SCHEMA_VERSION = 43;
+const SETTINGS_SCHEMA_VERSION = 44;
 const MAX_SOURCE_ID_LENGTH = 180;
 const MAX_SOURCE_NAME_LENGTH = 120;
 
@@ -63,6 +63,9 @@ function normalizeSettings(settings, settingsSchemaVersion) {
   }
   if (Number(settingsSchemaVersion) < 43) {
     migratedSettings = RoomSettings.migrateRoomSettings(migratedSettings, 42);
+  }
+  if (Number(settingsSchemaVersion) < 44) {
+    migratedSettings = RoomSettings.migrateRoomSettings(migratedSettings, 43);
   }
   return {
     ...RoomSettings.sanitizeRoomSettings(migratedSettings),

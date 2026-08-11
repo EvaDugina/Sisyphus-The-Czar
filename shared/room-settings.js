@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 43;
+  const ROOM_SETTINGS_VERSION = 44;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -150,6 +150,7 @@
     cameraFollowLerp: 0.1,
     cameraFollowDownEnabled: true,
     upperZoneAutoScrollEnabled: false,
+    sceneTwoOverflowYVisible: false,
     gachiClickSoundFilename: DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     foldPositionPercent: 0,
     foldPanelHeightVh: 20,
@@ -639,6 +640,11 @@
         source,
         fallbackSource,
         "upperZoneAutoScrollEnabled"
+      ),
+      sceneTwoOverflowYVisible: boolSetting(
+        source,
+        fallbackSource,
+        "sceneTwoOverflowYVisible"
       ),
       gachiClickSoundFilename: enumSetting(
         source,
@@ -1317,6 +1323,12 @@
           current[key] = DEFAULT_ROOM_SETTINGS[key];
         }
       });
+    }
+    if (finiteNumber(version, 1) < 44) {
+      if (!Object.hasOwn(current, "sceneTwoOverflowYVisible")) {
+        current.sceneTwoOverflowYVisible =
+          DEFAULT_ROOM_SETTINGS.sceneTwoOverflowYVisible;
+      }
     }
     return current;
   }
