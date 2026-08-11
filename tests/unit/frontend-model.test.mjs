@@ -8,6 +8,7 @@ import {
 } from "../../src/lib/coordinates.mjs";
 import { createClientId } from "../../src/lib/clientId.mjs";
 import {
+  cameraFollowDirectionalScrollY,
   cameraFollowScrollY,
   cameraFollowScrollUpY,
   cameraTargetScrollY,
@@ -456,12 +457,55 @@ test("настройки инерции и hop отображают актуал
   const rockWallPenetration = controls.find(
     (control) => control.name === "rockWallPenetrationPercent"
   );
+  const cameraFollowDown = controls.find(
+    (control) => control.name === "cameraFollowDownEnabled",
+  );
+  const upperZoneAutoScroll = controls.find(
+    (control) => control.name === "upperZoneAutoScrollEnabled",
+  );
+  const gachiClickSound = controls.find(
+    (control) => control.name === "gachiClickSoundFilename",
+  );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v42");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v41");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v43");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v42");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
+  );
+  assert.deepEqual(
+    {
+      type: cameraFollowDown.type,
+      defaultChecked: cameraFollowDown.defaultChecked,
+      activeLabel: cameraFollowDown.activeLabel,
+      inactiveLabel: cameraFollowDown.inactiveLabel,
+    },
+    {
+      type: "toggle-button",
+      defaultChecked: true,
+      activeLabel: "Следовать",
+      inactiveLabel: "Не следовать",
+    },
+  );
+  assert.deepEqual(
+    {
+      type: upperZoneAutoScroll.type,
+      defaultChecked: upperZoneAutoScroll.defaultChecked,
+      activeLabel: upperZoneAutoScroll.activeLabel,
+      inactiveLabel: upperZoneAutoScroll.inactiveLabel,
+    },
+    {
+      type: "toggle-button",
+      defaultChecked: false,
+      activeLabel: "Включён",
+      inactiveLabel: "Выключен",
+    },
+  );
+  assert.equal(gachiClickSound.type, "select");
+  assert.equal(gachiClickSound.defaultValue, "Camen.mp3");
+  assert.deepEqual(
+    gachiClickSound.options.map(([filename]) => filename),
+    [...SharedRoomSettings.GACHI_SOUND_FILENAMES],
   );
   assert.deepEqual(
     {
@@ -578,6 +622,13 @@ test("UI классифицирует параметры по сценам бе�
   assert.deepEqual(settingsControlScenes("rockMaxWidthVw"), [
     SETTINGS_SCENES.TURNIP,
   ]);
+  [
+    "cameraFollowDownEnabled",
+    "upperZoneAutoScrollEnabled",
+    "gachiClickSoundFilename",
+  ].forEach((name) => {
+    assert.deepEqual(settingsControlScenes(name), [SETTINGS_SCENES.TURNIP]);
+  });
   assert.deepEqual(
     rockGroup.controls
       .filter((control) =>
@@ -661,7 +712,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 42);
+  assert.equal(productionSettingsSchemaVersion, 43);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -956,6 +1007,46 @@ test("камера вычисляет ограниченную цель и пр�
   assert.equal(cameraFollowScrollY(1000, 2000, 0), 1010);
   assert.equal(cameraFollowScrollUpY(2000, 1000, 0.1), 1900);
   assert.equal(cameraFollowScrollUpY(1000, 2000, 0.1), 1000);
+  assert.equal(
+    cameraFollowDirectionalScrollY({
+      currentScrollY: 1000,
+      targetScrollY: 2000,
+      lerp: 0.1,
+      followDown: true,
+      followUp: false,
+    }),
+    1100,
+  );
+  assert.equal(
+    cameraFollowDirectionalScrollY({
+      currentScrollY: 1000,
+      targetScrollY: 2000,
+      lerp: 0.1,
+      followDown: false,
+      followUp: true,
+    }),
+    1000,
+  );
+  assert.equal(
+    cameraFollowDirectionalScrollY({
+      currentScrollY: 2000,
+      targetScrollY: 1000,
+      lerp: 0.1,
+      followDown: true,
+      followUp: true,
+    }),
+    1900,
+  );
+  assert.equal(
+    cameraFollowDirectionalScrollY({
+      currentScrollY: 2000,
+      targetScrollY: 1000,
+      lerp: 0.1,
+      followDown: true,
+      followUp: false,
+    }),
+    2000,
+  );
 });
 
 test("точка траектории задаётся по высоте масштабированного камня", () => {
@@ -1288,6 +1379,7 @@ test("настройки размера камня есть в UI и получ�
   assert.deepEqual(
     rockSizeGroup.controls.map((control) => control.name),
     [
+      "gachiClickSoundFilename",
       "randomDropEnabled",
       "rockJumpEnabled",
       "rockJumpIntervalSeconds",
@@ -1897,7 +1989,11 @@ test("UI содержит настройки камеры, физики, overflo
   assert.ok(drizzleGroup);
   assert.deepEqual(
     cameraGroup.controls.map((control) => control.name),
-    ["cameraFollowLerp"],
+    [
+      "cameraFollowLerp",
+      "cameraFollowDownEnabled",
+      "upperZoneAutoScrollEnabled",
+    ],
   );
   assert.deepEqual(
     [
@@ -2282,6 +2378,9 @@ test("настройки препятствия Окна нормализуют 
       handVisibilityMode: "always",
       handImageChangeDelayMs: 0,
       cameraFollowLerp: 0.1,
+      cameraFollowDownEnabled: true,
+      upperZoneAutoScrollEnabled: false,
+      gachiClickSoundFilename: "Camen.mp3",
       foldPositionPercent: 0,
       foldPanelHeightVh: 20,
       rockGrabRadiusVh: 0,
@@ -2439,7 +2538,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 42);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 43);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2471,6 +2570,9 @@ test("группа дождя содержит общий toggle и blur тём�
     handVisibilityMode: "invalid",
     handImageChangeDelayMs: 9999,
     rockGrabRadiusVh: 999,
+    cameraFollowDownEnabled: "false",
+    upperZoneAutoScrollEnabled: "true",
+    gachiClickSoundFilename: "missing.mp3",
   });
   assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
   assert.equal(
@@ -2502,6 +2604,24 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.handVisibilityMode, "always");
   assert.equal(visualSettings.handImageChangeDelayMs, 1000);
   assert.equal(visualSettings.rockGrabRadiusVh, 10);
+  assert.equal(visualSettings.cameraFollowDownEnabled, false);
+  assert.equal(visualSettings.upperZoneAutoScrollEnabled, true);
+  assert.equal(visualSettings.gachiClickSoundFilename, "Camen.mp3");
+  assert.deepEqual(SharedRoomSettings.GACHI_SOUND_FILENAMES, [
+    "Aaaaaa.mp3",
+    "Aaaaah.mp3",
+    "Camen.mp3",
+    "Deep dark fantasies.mp3",
+    "Dungeon master.mp3",
+    "Get your ass down for me now boy.mp3",
+    "Like that.mp3",
+    "ahhhhhhh.mp3",
+    "thats-amazing.mp3",
+  ]);
+  const legacyV42 = SharedRoomSettings.migrateRoomSettings({}, 42);
+  assert.equal(legacyV42.cameraFollowDownEnabled, true);
+  assert.equal(legacyV42.upperZoneAutoScrollEnabled, false);
+  assert.equal(legacyV42.gachiClickSoundFilename, "Camen.mp3");
   assert.deepEqual(
     SharedRoomSettings.migrateRockVisualSettings({
       rockPressShrinkPercent: 17,
@@ -2602,6 +2722,9 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopMissProbabilityPercent: 10,
     preclickHopSpeedPxPerSecond: 1200,
     preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+    cameraFollowDownEnabled: true,
+    upperZoneAutoScrollEnabled: false,
+    gachiClickSoundFilename: "Camen.mp3",
   });
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({ foldZoneSize: 32 }, 35),
@@ -2610,6 +2733,9 @@ test("группа дождя содержит общий toggle и blur тём�
       foldPositionPercent: 0,
       foldPanelHeightVh: 32,
       ...DEFAULT_PRECLICK_HOP_SETTINGS,
+      cameraFollowDownEnabled: true,
+      upperZoneAutoScrollEnabled: false,
+      gachiClickSoundFilename: "Camen.mp3",
     },
   );
   assert.deepEqual(

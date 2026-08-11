@@ -11,7 +11,7 @@ import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import { rockImageUrl } from "../config/rockImages.mjs";
 import { createClientId } from "../lib/clientId.mjs";
 import {
-  cameraFollowScrollUpY,
+  cameraFollowDirectionalScrollY,
   cameraTargetScrollY,
 } from "../lib/cameraFollow.mjs";
 import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
@@ -1396,8 +1396,14 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     const playToken = gachiClickAudio.playToken;
-    const filename =
-      filenames[Math.floor(Math.random() * filenames.length)];
+    const requestedFilename = String(params.gachiClickSoundFilename || "");
+    const defaultFilename =
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.gachiClickSoundFilename;
+    const filename = filenames.includes(requestedFilename)
+      ? requestedFilename
+      : filenames.includes(defaultFilename)
+        ? defaultFilename
+        : filenames[0];
     loadAudioUrl("gachi", GACHI_AUDIO_LOADERS_BY_FILENAME, filename).then(
       (url) => {
         if (disposed || playToken !== gachiClickAudio.playToken || !url) {
@@ -3008,7 +3014,6 @@ export function createSisyphusRuntime(elements = {}) {
       speedPxPerSecond: params.preclickHopSpeedPxPerSecond,
     });
     rock.classList.add("is-preclick-hop");
-    playPreclickHopSound();
     let lastTrailSampleAt = performance.now();
     recordPreclickTrailPoint(startCenter, rect.height, worldRect, 0);
 
@@ -3219,6 +3224,7 @@ export function createSisyphusRuntime(elements = {}) {
       clientY: pointerY,
       imageUrl: preclickWindowImageUrl,
     });
+    playPreclickHopSound();
     performPreclickRockHop({
       centerX,
       centerY,
@@ -3706,11 +3712,13 @@ export function createSisyphusRuntime(elements = {}) {
     });
     const nextScrollY = immediate
       ? targetScrollY
-      : cameraFollowScrollUpY(
-          window.scrollY,
+      : cameraFollowDirectionalScrollY({
+          currentScrollY: window.scrollY,
           targetScrollY,
-          params.cameraFollowLerp,
-        );
+          lerp: params.cameraFollowLerp,
+          followUp: params.upperZoneAutoScrollEnabled,
+          followDown: params.cameraFollowDownEnabled,
+        });
     if (nextScrollY === window.scrollY) {
       return;
     }
@@ -6807,13 +6815,20 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    const sceneTwoActive = preclickRockGuidance.completed;
+
     if (motion.phase === PHASES.FALLING) {
       stopGachiClickSound();
+      if (sceneTwoActive) {
+        playGachiClickSound();
+      }
       return;
     }
 
     if (motion.phase !== PHASES.PLAY) {
-      playGachiClickSound();
+      if (sceneTwoActive) {
+        playGachiClickSound();
+      }
       return;
     }
 
@@ -6822,7 +6837,9 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    playGachiClickSound();
+    if (sceneTwoActive) {
+      playGachiClickSound();
+    }
 
     if (controlBlocked) {
       event.preventDefault();

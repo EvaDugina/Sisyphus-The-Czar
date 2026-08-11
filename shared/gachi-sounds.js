@@ -10,18 +10,14 @@
   "use strict";
 
   const GACHI_SOUND_FILENAMES = Object.freeze([
-    "242203-4fac17c9-0dad-4df2-83aa-47ba726e0380.mp3",
-    "567969-53534.mp3",
-    "56800453453.mp3",
-    "568023243432.mp3",
-    "568156-543354.mp3",
-    "568164355435.mp3",
-    "56816945334.mp3",
-    "5681822344.mp3",
-    "568230-5354.mp3",
-    "568265424332.mp3",
+    "Aaaaaa.mp3",
+    "Aaaaah.mp3",
+    "Camen.mp3",
+    "Deep dark fantasies.mp3",
+    "Dungeon master.mp3",
+    "Get your ass down for me now boy.mp3",
+    "Like that.mp3",
     "ahhhhhhh.mp3",
-    "boy-next-door.mp3",
     "thats-amazing.mp3",
   ]);
 

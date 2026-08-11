@@ -14,7 +14,7 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v42";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v43";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -31,6 +31,7 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
   }),
 ]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v42",
   "sisyphus-czar-settings-v41",
   "sisyphus-czar-settings-v40",
   "sisyphus-czar-settings-v39",
@@ -101,6 +102,9 @@ const ROCK_IMAGE_OPTIONS = SharedRoomSettings.ROCK_IMAGE_IDS.map((value) => [
   value,
   ROCK_IMAGE_LABELS[value],
 ]);
+const GACHI_SOUND_OPTIONS = SharedRoomSettings.GACHI_SOUND_FILENAMES.map(
+  (filename) => [filename, filename.replace(/\.mp3$/i, "")],
+);
 
 const PHYSICS_FORMULAS = {
   mass: [
@@ -593,6 +597,24 @@ export const SETTINGS_GROUPS = [
         output: DEFAULT_ROOM_SETTINGS.cameraFollowLerp.toFixed(2),
         hint: "После первого клика камера удерживает центр камня на середине viewport. Единица перемещает камеру к цели сразу, меньшие значения делают следование плавнее.",
       },
+      {
+        name: "cameraFollowDownEnabled",
+        label: "Следовать при падении",
+        type: "toggle-button",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.cameraFollowDownEnabled,
+        activeLabel: "Следовать",
+        inactiveLabel: "Не следовать",
+        hint: "Плавно прокручивает камеру вниз вслед за падающим камнем. Не влияет на отдельный автоскролл вверх.",
+      },
+      {
+        name: "upperZoneAutoScrollEnabled",
+        label: "Автоскролл в верхней области",
+        type: "toggle-button",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.upperZoneAutoScrollEnabled,
+        activeLabel: "Включён",
+        inactiveLabel: "Выключен",
+        hint: "Разрешает камере автоматически прокручиваться вверх, когда камень оказывается выше центра viewport.",
+      },
     ],
   },
   {
@@ -762,6 +784,14 @@ export const SETTINGS_GROUPS = [
   {
     title: "Камень",
     controls: [
+      {
+        name: "gachiClickSoundFilename",
+        label: "Звук клика по камню",
+        type: "select",
+        defaultValue: DEFAULT_ROOM_SETTINGS.gachiClickSoundFilename,
+        options: GACHI_SOUND_OPTIONS,
+        hint: "Звук из папки gachi, который воспроизводится один раз при клике по камню в сцене 2.",
+      },
       {
         name: "randomDropEnabled",
         label: "Случайное выпадение",

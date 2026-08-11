@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 42;
+  const ROOM_SETTINGS_VERSION = 43;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -47,6 +47,18 @@
   const ROCK_WIDTH_VW_LIMITS = Object.freeze([1, 150]);
   const ROCK_IMAGE_IDS = Object.freeze(["rock-03", "rock", "rock2"]);
   const HAND_VISIBILITY_MODES = Object.freeze(["always", "hover", "hidden"]);
+  const GACHI_SOUND_FILENAMES = Object.freeze([
+    "Aaaaaa.mp3",
+    "Aaaaah.mp3",
+    "Camen.mp3",
+    "Deep dark fantasies.mp3",
+    "Dungeon master.mp3",
+    "Get your ass down for me now boy.mp3",
+    "Like that.mp3",
+    "ahhhhhhh.mp3",
+    "thats-amazing.mp3",
+  ]);
+  const DEFAULT_GACHI_CLICK_SOUND_FILENAME = "Camen.mp3";
 
   const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
   const MIX_BLEND_MODES = Object.freeze([
@@ -136,6 +148,9 @@
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     stationaryAutoSlipEnabled: true,
     cameraFollowLerp: 0.1,
+    cameraFollowDownEnabled: true,
+    upperZoneAutoScrollEnabled: false,
+    gachiClickSoundFilename: DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     foldPositionPercent: 0,
     foldPanelHeightVh: 20,
     foldAngle: 30,
@@ -614,6 +629,22 @@
         "cameraFollowLerp",
         cameraFollowLerpMin,
         cameraFollowLerpMax
+      ),
+      cameraFollowDownEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "cameraFollowDownEnabled"
+      ),
+      upperZoneAutoScrollEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "upperZoneAutoScrollEnabled"
+      ),
+      gachiClickSoundFilename: enumSetting(
+        source,
+        fallbackSource,
+        "gachiClickSoundFilename",
+        GACHI_SOUND_FILENAMES
       ),
       foldPositionPercent: integerSetting(
         source,
@@ -1276,6 +1307,17 @@
         }
       });
     }
+    if (finiteNumber(version, 1) < 43) {
+      [
+        "cameraFollowDownEnabled",
+        "upperZoneAutoScrollEnabled",
+        "gachiClickSoundFilename",
+      ].forEach((key) => {
+        if (!Object.hasOwn(current, key)) {
+          current[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
     return current;
   }
 
@@ -1295,6 +1337,8 @@
     PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
     ROCK_IMAGE_IDS,
     HAND_VISIBILITY_MODES,
+    GACHI_SOUND_FILENAMES,
+    DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,
