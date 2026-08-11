@@ -14,7 +14,7 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v45";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v46";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -31,6 +31,7 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
   }),
 ]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v45",
   "sisyphus-czar-settings-v44",
   "sisyphus-czar-settings-v43",
   "sisyphus-czar-settings-v42",
@@ -434,6 +435,7 @@ export function settingsGroupControls(group) {
 
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickHopGuardClickCount",
+  "preclickPopupDelayMs",
   "preclickHopActivationRadiusPercent",
   "preclickHopMaxDistancePercent",
   "preclickHopMissProbabilityPercent",
@@ -969,7 +971,18 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
         output: `${DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount}`,
-        hint: "Первые N кликов по камню вызывают только бесшумный фейковый отскок. Следующий клик включает физику и переводит игру в сцену «Репка»; ноль отключает фейковые клики.",
+        hint: "Первые N кликов по камню вызывают фейковый отскок со смехом и Camen. Следующий клик включает физику и переводит игру в сцену «Репка»; ноль отключает фейковые клики.",
+      },
+      {
+        name: "preclickPopupDelayMs",
+        label: "Задержка всплывающего окна, мс",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs}мс`,
+        hint: "Задержка между фейковым кликом и показом окна с rock.webp. Ноль показывает окно сразу.",
       },
       {
         name: "preclickHopActivationRadiusPercent",

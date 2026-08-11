@@ -179,11 +179,11 @@ test("высота препятствия отсчитывается от ниж
   assert.equal(randomStepBetween(101, 139, 10, () => 1), 130);
 });
 
-test("фейковый клик открывает пустое окно в пропорциях камня без блокировки управления", () => {
+test("фейковый клик с задержкой открывает незакрываемое окно с rock.webp", () => {
   const { clock, controller, popups } = setup();
   assert.deepEqual(
     preclickPopupGeometry({
-      aspectRatio: 2,
+      aspectRatio: 2048 / 1692,
       centerX: 700,
       centerY: 600,
       screen: {
@@ -192,28 +192,62 @@ test("фейковый клик открывает пустое окно в пр
         availTop: 20,
         availWidth: 1200,
       },
+      width: 120,
     }),
-    { height: 320, left: 380, top: 440, width: 640 },
+    { height: 99, left: 640, top: 551, width: 120 },
   );
 
   assert.equal(
     controller.openPreclickWindow({
-      aspectRatio: 2,
+      aspectRatio: 2048 / 1692,
       clientX: 600,
       clientY: 400,
+      delayMs: 200,
+      imageUrl: "/assets/rock/rock.webp",
+      width: 120,
     }),
     true,
   );
-  assert.match(popups[0].features, /width=640/);
-  assert.match(popups[0].features, /height=320/);
-  assert.match(popups[0].features, /left=380/);
-  assert.match(popups[0].features, /top=440/);
-  assert.equal(popups[0].popup.document.body.children.length, 0);
+  assert.equal(popups.length, 0);
+  assert.equal(controller.getState().pendingPreclickWindowCount, 1);
+  clock.tick(199);
+  assert.equal(popups.length, 0);
+  clock.tick(1);
+  assert.equal(controller.getState().pendingPreclickWindowCount, 0);
+  assert.match(popups[0].features, /width=120/);
+  assert.match(popups[0].features, /height=99/);
+  assert.match(popups[0].features, /left=640/);
+  assert.match(popups[0].features, /top=551/);
+  assert.equal(popups[0].popup.document.body.children.length, 1);
+  assert.deepEqual(popups[0].popup.document.body.children[0], {
+    alt: "Камень",
+    src: "/assets/rock/rock.webp",
+    style: {
+      display: "block",
+      height: "100vh",
+      objectFit: "contain",
+      width: "100vw",
+    },
+    tagName: "IMG",
+  });
   assert.equal(controller.isControlBlocked(), false);
   assert.equal(controller.getState().trackedWindowCount, 1);
 
   clock.tick(WINDOW_OBSTACLE_LIFETIME_MS);
-  assert.equal(popups[0].popup.closed, true);
+  assert.equal(popups[0].popup.closed, false);
+  popups[0].popup.click();
+  assert.equal(popups[0].popup.closed, false);
+  controller.dispose();
+  assert.equal(popups[0].popup.closed, false);
+});
+
+test("dispose отменяет только ещё не открытый preclick-popup", () => {
+  const { clock, controller, popups } = setup();
+  assert.equal(controller.openPreclickWindow({ delayMs: 1000 }), true);
+  assert.equal(controller.getState().pendingPreclickWindowCount, 1);
+  controller.dispose();
+  clock.tick(1000);
+  assert.equal(popups.length, 0);
 });
 
 test("окна перекрываются, закрываются независимо и не создают дублирующий таймер", () => {

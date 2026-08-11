@@ -5,6 +5,7 @@ import "../../shared/chain-sounds.js";
 import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
 import groundImpactAudioUrl from "../../assets/audio/СимуляцияОргазма.mov?url";
 import preclickHopAudioUrl from "../../assets/audio/Смех.mp3?url";
+import preclickPopupRockImageUrl from "../../assets/rock/rock.webp?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import { rockImageUrl } from "../config/rockImages.mjs";
@@ -92,6 +93,8 @@ const TRAIL_NETWORK_BATCH_POINTS = 16;
 const TRAIL_NETWORK_FLUSH_MS = 50;
 const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
 const PRECLICK_HOP_EASING_CURVE = Object.freeze([0.22, 1, 0.36, 1]);
+const PRECLICK_POPUP_ROCK_FALLBACK_ASPECT_RATIO = 2048 / 1692;
+const PRECLICK_GACHI_CLICK_SOUND_FILENAME = "Camen.mp3";
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
 const THEME_BACKGROUND_SETTING_KEYS = [
   "lightBackgroundColor",
@@ -552,6 +555,11 @@ export function createSisyphusRuntime(elements = {}) {
     playCount: 0,
     stopCount: 0,
   };
+  const preclickPopupRockImage = typeof Image === "function" ? new Image() : null;
+  if (preclickPopupRockImage) {
+    preclickPopupRockImage.decoding = "async";
+    preclickPopupRockImage.src = preclickPopupRockImageUrl;
+  }
   body.classList.toggle(
     "hand-always-visible",
     params.handVisibilityMode === "always",
@@ -1390,7 +1398,9 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function playGachiClickSound() {
+  function playGachiClickSound(
+    requestedFilename = params.gachiClickSoundFilename,
+  ) {
     if (typeof Audio !== "function") {
       return;
     }
@@ -1399,11 +1409,11 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     const playToken = gachiClickAudio.playToken;
-    const requestedFilename = String(params.gachiClickSoundFilename || "");
+    const requested = String(requestedFilename || "");
     const defaultFilename =
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.gachiClickSoundFilename;
-    const filename = filenames.includes(requestedFilename)
-      ? requestedFilename
+    const filename = filenames.includes(requested)
+      ? requested
       : filenames.includes(defaultFilename)
         ? defaultFilename
         : filenames[0];
@@ -2994,6 +3004,7 @@ export function createSisyphusRuntime(elements = {}) {
     speedPxPerSecond,
   }) {
     cancelPreclickHopAnimation();
+    playPreclickHopSound();
     const currentOffset = preclickRockHopOffset();
     const rect = rock.getBoundingClientRect();
     const startCenter = {
@@ -3217,11 +3228,19 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.outsideRadius = false;
     syncHandCursorForPointer(event);
     windowObstacleController.openPreclickWindow({
-      aspectRatio: rect.height > 0 ? rect.width / rect.height : 1,
+      aspectRatio:
+        preclickPopupRockImage?.naturalWidth > 0 &&
+        preclickPopupRockImage?.naturalHeight > 0
+          ? preclickPopupRockImage.naturalWidth /
+            preclickPopupRockImage.naturalHeight
+          : PRECLICK_POPUP_ROCK_FALLBACK_ASPECT_RATIO,
       clientX: pointerX,
       clientY: pointerY,
+      delayMs: params.preclickPopupDelayMs,
+      imageUrl: preclickPopupRockImageUrl,
+      width: (window.innerWidth * params.rockActivatedWidthVw) / 100,
     });
-    playPreclickHopSound();
+    playGachiClickSound(PRECLICK_GACHI_CLICK_SOUND_FILENAME);
     performPreclickRockHop({
       centerX,
       centerY,

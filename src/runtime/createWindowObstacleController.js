@@ -151,6 +151,7 @@ export function createWindowObstacleController(options = {}) {
   let previousSettingsSignature = "";
   let wasInsideRange = false;
   const trackedWindows = new Map();
+  const pendingPreclickTimerIds = new Set();
 
   function settings() {
     const value = getSettings();
@@ -204,7 +205,9 @@ export function createWindowObstacleController(options = {}) {
       return false;
     }
     trackedWindows.delete(id);
-    clearTimeoutFn(entry.closeTimerId);
+    if (entry.closeTimerId !== null) {
+      clearTimeoutFn(entry.closeTimerId);
+    }
     if (closePopup) {
       try {
         entry.popup.close();
@@ -253,30 +256,46 @@ export function createWindowObstacleController(options = {}) {
       body.style.margin = "0";
       body.style.minHeight = "100vh";
       body.style.overflow = "hidden";
-      body.replaceChildren();
-      entry.popup.document.addEventListener(
-        "click",
-        () => finalizeWindow(entry.id, true),
-        { once: true },
-      );
+      if (entry.kind === "preclick" && entry.imageUrl) {
+        const image = entry.popup.document.createElement("img");
+        image.alt = "Камень";
+        image.src = entry.imageUrl;
+        image.style.display = "block";
+        image.style.height = "100vh";
+        image.style.objectFit = "contain";
+        image.style.width = "100vw";
+        body.replaceChildren(image);
+      } else {
+        body.replaceChildren();
+      }
+      if (entry.kind !== "preclick") {
+        entry.popup.document.addEventListener(
+          "click",
+          () => finalizeWindow(entry.id, true),
+          { once: true },
+        );
+      }
     } catch {
-      // about:blank is normally same-origin; auto-close and closed polling remain fallbacks.
+      // about:blank is normally same-origin; closed polling remains the fallback.
     }
   }
 
-  function trackWindow(popup, kind) {
+  function trackWindow(popup, kind, { imageUrl = "" } = {}) {
     const id = nextWindowId;
     nextWindowId += 1;
     const entry = {
       id,
+      imageUrl,
       kind,
       popup,
       closeTimerId: null,
     };
-    entry.closeTimerId = setTimeoutFn(
-      () => finalizeWindow(id, true),
-      WINDOW_OBSTACLE_LIFETIME_MS,
-    );
+    if (kind !== "preclick") {
+      entry.closeTimerId = setTimeoutFn(
+        () => finalizeWindow(id, true),
+        WINDOW_OBSTACLE_LIFETIME_MS,
+      );
+    }
     trackedWindows.set(id, entry);
     bindWindow(entry);
     ensureClosedPoll();
@@ -346,34 +365,54 @@ export function createWindowObstacleController(options = {}) {
     aspectRatio,
     clientX,
     clientY,
+    delayMs = 0,
+    imageUrl = "",
+    width = PRECLICK_POPUP_WIDTH_PX,
   } = {}) {
     if (disposed) {
       return false;
     }
-    const origin = getViewportScreenOrigin() || {};
-    const geometry = preclickPopupGeometry({
-      aspectRatio,
-      centerX: finite(origin.x, 0) + finite(clientX, 0),
-      centerY: finite(origin.y, 0) + finite(clientY, 0),
-      screen: getScreen(),
-    });
-    const features = [
-      "popup=yes",
-      `width=${geometry.width}`,
-      `height=${geometry.height}`,
-      `left=${geometry.left}`,
-      `top=${geometry.top}`,
-    ].join(",");
-    let popup;
-    try {
-      popup = openPopup("", "_blank", features);
-    } catch {
-      popup = null;
+    const open = () => {
+      if (disposed) {
+        return false;
+      }
+      const origin = getViewportScreenOrigin() || {};
+      const geometry = preclickPopupGeometry({
+        aspectRatio,
+        centerX: finite(origin.x, 0) + finite(clientX, 0),
+        centerY: finite(origin.y, 0) + finite(clientY, 0),
+        screen: getScreen(),
+        width,
+      });
+      const features = [
+        "popup=yes",
+        `width=${geometry.width}`,
+        `height=${geometry.height}`,
+        `left=${geometry.left}`,
+        `top=${geometry.top}`,
+      ].join(",");
+      let popup;
+      try {
+        popup = openPopup("", "_blank", features);
+      } catch {
+        popup = null;
+      }
+      if (!popup) {
+        return false;
+      }
+      trackWindow(popup, "preclick", { imageUrl });
+      return true;
+    };
+    const cleanDelayMs = clamp(Math.round(finite(delayMs, 0)), 0, 1000);
+    if (cleanDelayMs === 0) {
+      return open();
     }
-    if (!popup) {
-      return false;
-    }
-    trackWindow(popup, "preclick");
+    let timerId = null;
+    timerId = setTimeoutFn(() => {
+      pendingPreclickTimerIds.delete(timerId);
+      open();
+    }, cleanDelayMs);
+    pendingPreclickTimerIds.add(timerId);
     return true;
   }
 
@@ -474,7 +513,11 @@ export function createWindowObstacleController(options = {}) {
     }
     disposed = true;
     clearSchedule();
-    [...trackedWindows.keys()].forEach((id) => finalizeWindow(id, true));
+    pendingPreclickTimerIds.forEach((timerId) => clearTimeoutFn(timerId));
+    pendingPreclickTimerIds.clear();
+    [...trackedWindows.entries()].forEach(([id, entry]) =>
+      finalizeWindow(id, entry.kind !== "preclick"),
+    );
     if (closedPollTimerId !== null) {
       clearIntervalFn(closedPollTimerId);
       closedPollTimerId = null;
@@ -492,6 +535,7 @@ export function createWindowObstacleController(options = {}) {
       return {
         activeWindowCount: activeObstacleCount(),
         heightVh: currentRange.heightVh,
+        pendingPreclickWindowCount: pendingPreclickTimerIds.size,
         permission,
         schedulePending: scheduleTimerId !== null,
         trackedWindowCount: trackedWindows.size,

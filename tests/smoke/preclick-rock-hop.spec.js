@@ -288,21 +288,21 @@ test("камень прыгает накопительно, сохраняет g
   ).toBe(true);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: 1,
-    audioPlayCount: 0,
-    activeAudioCount: 0,
+    audioPlayCount: 1,
+    activeAudioCount: 1,
     animating: false,
   });
   const first = await hopState(page);
   expect(first.offset.x).toBeGreaterThan(0);
   expect(Math.abs(first.offset.y)).toBeLessThan(2);
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(0);
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(1);
 
   const movedCenter = await rockCenter(page);
   await page.mouse.move(movedCenter.x, movedCenter.y);
   await page.waitForTimeout(450);
   expect(await hopState(page)).toMatchObject({
     hopCount: 1,
-    audioPlayCount: 0,
+    audioPlayCount: 1,
     offset: first.offset,
   });
 
@@ -317,8 +317,8 @@ test("камень прыгает накопительно, сохраняет g
   await enterFromRight(page, radius, 0);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: 2,
-    audioPlayCount: 0,
-    activeAudioCount: 0,
+    audioPlayCount: 2,
+    activeAudioCount: 2,
     animating: false,
   });
   const second = await hopState(page);
@@ -329,7 +329,7 @@ test("камень прыгает накопительно, сохраняет g
   );
   expect(second.offset.x).toBeLessThan(first.offset.x);
   expect(fastDistance).toBeGreaterThanOrEqual(slowDistance);
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(0);
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(2);
 
   await page.setViewportSize({ width: 900, height: 700 });
   await expect
@@ -372,17 +372,36 @@ test("камень прыгает накопительно, сохраняет g
 
   const fakeClickPoint = await rockCenter(page);
   const popupPromise = page.waitForEvent("popup");
+  const popupRequestedAt = Date.now();
   await page.mouse.click(fakeClickPoint.x, fakeClickPoint.y);
   const fakeClickPopup = await popupPromise;
-  await expect(fakeClickPopup.locator("img")).toHaveCount(0);
-  await expect(fakeClickPopup.locator("body")).toBeEmpty();
+  expect(Date.now() - popupRequestedAt).toBeGreaterThanOrEqual(150);
+  const popupImage = fakeClickPopup.locator("img");
+  await expect(popupImage).toHaveCount(1);
+  await expect(popupImage).toHaveAttribute("alt", "Камень");
+  await expect(popupImage).toHaveAttribute("src", /rock\.webp/);
+  await expect
+    .poll(() =>
+      popupImage.evaluate((image) => ({
+        naturalHeight: image.naturalHeight,
+        naturalWidth: image.naturalWidth,
+        objectFit: getComputedStyle(image).objectFit,
+      })),
+    )
+    .toMatchObject({
+      naturalHeight: 1692,
+      naturalWidth: 2048,
+      objectFit: "contain",
+    });
+  await fakeClickPopup.close();
+  expect(fakeClickPopup.isClosed()).toBe(true);
+  await page.bringToFront();
   await expect.poll(() => hopState(page)).toMatchObject({
     guardClicksUsed: 1,
     hopCount: beforeReducedHop.hopCount + 1,
-    audioPlayCount: 1,
+    audioPlayCount: beforeReducedHop.audioPlayCount + 1,
     lastFilename: "Смех.mp3",
   });
-
   const point = await rockCenter(page);
   await page.mouse.move(point.x, point.y);
   const beforeGrab = await hopState(page);
@@ -392,9 +411,11 @@ test("камень прыгает накопительно, сохраняет g
     x: window.__sisyphusTestApi.motion.x,
     y: window.__sisyphusTestApi.motion.y,
   }));
-  expect(beforeGrab.audioPlayCount).toBe(1);
-  expect(beforeGrab.activeAudioCount).toBe(1);
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(1);
+  expect(beforeGrab.audioPlayCount).toBe(beforeReducedHop.audioPlayCount + 1);
+  expect(beforeGrab.activeAudioCount).toBe(beforeReducedHop.activeAudioCount + 1);
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(
+    beforeGrab.audioPlayCount,
+  );
   await page.mouse.down();
   const afterGrabCenter = await rockCenter(page);
   const afterGrabGeometry = await rockGeometry(page);
@@ -519,7 +540,7 @@ test("камень бесшовно переносится по обеим ос�
   const horizontalEntry = await enterFromLeft(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: 1,
-    audioPlayCount: 0,
+    audioPlayCount: 1,
     animating: false,
   });
   const horizontalCenter = await rockCenter(page);
@@ -533,7 +554,7 @@ test("камень бесшовно переносится по обеим ос�
   const verticalEntry = await enterFromTop(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: 2,
-    audioPlayCount: 0,
+    audioPlayCount: 2,
     animating: false,
   });
   const verticalCenter = await rockCenter(page);
@@ -547,7 +568,7 @@ test("камень бесшовно переносится по обеим ос�
   await enterFromBottomRight(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: 2,
-    audioPlayCount: 0,
+    audioPlayCount: 2,
     forcedRadiusMissConsumed: true,
     lastRadiusDecision: "forced-miss",
     animating: false,
@@ -556,7 +577,7 @@ test("камень бесшовно переносится по обеим ос�
   const cornerEntry = await enterFromBottomRight(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: 3,
-    audioPlayCount: 0,
+    audioPlayCount: 3,
     animating: false,
   });
   const cornerCenter = await rockCenter(page);
@@ -570,7 +591,7 @@ test("камень бесшовно переносится по обеим ос�
   expect(cornerCenter.x).toBeLessThan(1000);
   expect(cornerCenter.y).toBeGreaterThanOrEqual(0);
   expect(cornerCenter.y).toBeLessThan(700);
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(0);
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(3);
 
   expect(
     await page.evaluate(
@@ -594,7 +615,7 @@ test("камень бесшовно переносится по обеим ос�
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,
     hopCount: 3,
-    audioPlayCount: 0,
+    audioPlayCount: 3,
     offset: { x: 0, y: 0 },
   });
   await cdp.send("Input.dispatchMouseEvent", {
@@ -625,7 +646,7 @@ test("N фейковых кликов отталкивают камень, а к
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
       handAudioEnabled: true,
-      gachiClickSoundFilename: "Camen.mp3",
+      gachiClickSoundFilename: "Aaaaaa.mp3",
       rockPressShrinkPercent: 0,
       rockWallPenetrationPercent: 0,
     });
@@ -677,17 +698,17 @@ test("N фейковых кликов отталкивают камень, а к
       guardClickCount: 3,
       guardClicksUsed: click,
       hopCount: click + 1,
-      audioPlayCount: click,
+      audioPlayCount: click + 1,
       animating: false,
     });
     expect(await page.evaluate(() => window.__controlAcquireMessages.length)).toBe(0);
     expect(await page.evaluate(() => window.__sisyphusTestApi.motion.dragging)).toBe(false);
-    expect(
-      await page.evaluate(
-        () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
-      ),
-    ).toBe(0);
-    expect(await page.evaluate(() => window.__laughPlayCount)).toBe(click);
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
+      )
+      .toMatchObject({ playCount: click, lastFilename: "Camen.mp3" });
+    expect(await page.evaluate(() => window.__laughPlayCount)).toBe(click + 1);
   }
 
   const realClickPoint = await visibleRockPoint(page);
@@ -714,7 +735,7 @@ test("N фейковых кликов отталкивают камень, а к
         () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
       ),
     )
-    .toBe(0);
+    .toBe(3);
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mouseReleased",
     x: realClickPoint.x,
@@ -723,7 +744,7 @@ test("N фейковых кликов отталкивают камень, а к
     clickCount: 1,
   });
 
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(3);
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(4);
   const sceneTwoClickPoint = await visibleRockPoint(page);
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mousePressed",
@@ -738,8 +759,8 @@ test("N фейковых кликов отталкивают камень, а к
         window.__sisyphusTestApi.getGachiClickAudioState(),
       ),
     )
-    .toMatchObject({ playCount: 1, lastFilename: "Camen.mp3" });
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(3);
+    .toMatchObject({ playCount: 4, lastFilename: "Aaaaaa.mp3" });
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(4);
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mouseReleased",
     x: sceneTwoClickPoint.x,
@@ -761,17 +782,17 @@ test("N фейковых кликов отталкивают камень, а к
           () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
         ),
       )
-      .toBe(click);
+      .toBe(click + 3);
   }
   await expect
     .poll(() =>
       page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
     )
     .toMatchObject({
-      activeCount: 3,
-      playCount: 3,
+      activeCount: 6,
+      playCount: 6,
       stopCount: 0,
-      lastFilename: "Camen.mp3",
+      lastFilename: "Aaaaaa.mp3",
     });
   await cdp.detach();
 

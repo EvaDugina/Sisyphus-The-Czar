@@ -139,6 +139,8 @@ const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
 const DEFAULT_PRECLICK_HOP_SETTINGS = Object.freeze({
   preclickHopGuardClickCount:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
+  preclickPopupDelayMs:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs,
   preclickHopActivationRadiusPercent:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusPercent,
   preclickHopMaxDistancePercent:
@@ -454,6 +456,9 @@ test("настройки инерции и hop отображают актуал
   const preclickHopGuardClickCount = controls.find(
     (control) => control.name === "preclickHopGuardClickCount"
   );
+  const preclickPopupDelay = controls.find(
+    (control) => control.name === "preclickPopupDelayMs"
+  );
   const rockWallPenetration = controls.find(
     (control) => control.name === "rockWallPenetrationPercent"
   );
@@ -470,8 +475,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v45");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v44");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v46");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v45");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -545,6 +550,22 @@ test("настройки инерции и hop отображают актуал
   assert.equal(
     preclickHopGuardClickCount.label,
     "Количество фейковых кликов"
+  );
+  assert.deepEqual(
+    {
+      label: preclickPopupDelay.label,
+      min: preclickPopupDelay.min,
+      max: preclickPopupDelay.max,
+      step: preclickPopupDelay.step,
+      defaultValue: preclickPopupDelay.defaultValue,
+    },
+    {
+      label: "Задержка всплывающего окна, мс",
+      min: 0,
+      max: 1000,
+      step: 1,
+      defaultValue: 200,
+    }
   );
   assert.deepEqual(
     {
@@ -623,6 +644,7 @@ test("UI классифицирует параметры по сценам бе�
       .map((control) => control.name),
     [
       "preclickHopGuardClickCount",
+      "preclickPopupDelayMs",
       "preclickHopActivationRadiusPercent",
       "preclickHopMaxDistancePercent",
       "preclickHopMissProbabilityPercent",
@@ -730,7 +752,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 45);
+  assert.equal(productionSettingsSchemaVersion, 46);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1413,6 +1435,7 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseShrinkPercent",
       "rockPulseBpm",
       "preclickHopGuardClickCount",
+      "preclickPopupDelayMs",
       "preclickHopActivationRadiusPercent",
       "preclickHopMaxDistancePercent",
       "preclickHopMissProbabilityPercent",
@@ -2558,7 +2581,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 45);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 46);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2572,6 +2595,7 @@ test("группа дождя содержит общий toggle и blur тём�
     rockPulseBpm: 999,
     preclickParallaxMaxOffsetPx: 9999,
     preclickHopGuardClickCount: 999,
+    preclickPopupDelayMs: 9999,
     preclickHopActivationRadiusPercent: -1,
     preclickHopMaxDistancePercent: -5,
     preclickHopMissProbabilityPercent: 999,
@@ -2609,6 +2633,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockPulseEnabled, true);
   assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickHopGuardClickCount, 10);
+  assert.equal(visualSettings.preclickPopupDelayMs, 1000);
   assert.equal(visualSettings.preclickHopActivationRadiusPercent, 0);
   assert.equal(visualSettings.preclickHopMaxDistancePercent, 0);
   assert.equal(visualSettings.preclickHopMissProbabilityPercent, 100);
@@ -2650,6 +2675,8 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(legacyV43.upperZoneAutoScrollEnabled, true);
   const legacyV44 = SharedRoomSettings.migrateRoomSettings({}, 44);
   assert.equal(legacyV44.upperZoneAutoScrollEnabled, true);
+  const legacyV45 = SharedRoomSettings.migrateRoomSettings({}, 45);
+  assert.equal(legacyV45.preclickPopupDelayMs, 200);
   assert.deepEqual(
     SharedRoomSettings.migrateRockVisualSettings({
       rockPressShrinkPercent: 17,
@@ -2671,6 +2698,7 @@ test("группа дождя содержит общий toggle и blur тём�
         legacyV17.preclickHopActivationRadiusPercent,
       preclickHopMaxDistancePercent:
         legacyV17.preclickHopMaxDistancePercent,
+      preclickPopupDelayMs: legacyV17.preclickPopupDelayMs,
       preclickHopMissProbabilityPercent:
         legacyV17.preclickHopMissProbabilityPercent,
       preclickHopSpeedPxPerSecond:
@@ -2750,6 +2778,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopMissProbabilityPercent: 10,
     preclickHopSpeedPxPerSecond: 1200,
     preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+    preclickPopupDelayMs: 200,
     cameraFollowDownEnabled: true,
     upperZoneAutoScrollEnabled: true,
     sceneTwoOverflowYVisible: false,

@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 45;
+  const ROOM_SETTINGS_VERSION = 46;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -103,6 +103,7 @@
     windowObstacleHeightPx: [100, 1080],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     preclickHopGuardClickCount: [0, 10],
+    preclickPopupDelayMs: [0, 1000],
     preclickHopActivationRadiusPercent: [0, 300],
     preclickHopMaxDistancePercent: [0, 150],
     preclickHopMissProbabilityPercent: [0, 100],
@@ -177,6 +178,7 @@
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickHopGuardClickCount: 1,
+    preclickPopupDelayMs: 200,
     preclickHopActivationRadiusPercent: 50,
     preclickHopMaxDistancePercent: 62.5,
     preclickHopMissProbabilityPercent: 10,
@@ -797,6 +799,13 @@
         preclickHopGuardClickMin,
         preclickHopGuardClickMax
       ),
+      preclickPopupDelayMs: integerSetting(
+        source,
+        fallbackSource,
+        "preclickPopupDelayMs",
+        ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[0],
+        ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[1]
+      ),
       preclickHopActivationRadiusPercent,
       preclickHopMaxDistancePercent: finiteSetting(
         preclickHopDistanceSource,
@@ -1334,6 +1343,12 @@
       if (!Object.hasOwn(current, "upperZoneAutoScrollEnabled")) {
         current.upperZoneAutoScrollEnabled =
           DEFAULT_ROOM_SETTINGS.upperZoneAutoScrollEnabled;
+      }
+    }
+    if (finiteNumber(version, 1) < 46) {
+      if (!Object.hasOwn(current, "preclickPopupDelayMs")) {
+        current.preclickPopupDelayMs =
+          DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs;
       }
     }
     return current;

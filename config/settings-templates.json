@@ -1,14 +1,14 @@
 {
   "version": 1,
-  "savedAt": "2026-08-11T19:42:54.802Z",
-  "revision": 65,
+  "savedAt": "2026-08-11T20:43:07.745Z",
+  "revision": 71,
   "entries": [
     {
       "id": "settings-version-mscz5hfd-c30065d5-639b-4c30-9b66-03f291160c20",
       "name": "v1",
-      "settingsSchemaVersion": 45,
+      "settingsSchemaVersion": 46,
       "createdAt": "2026-08-03T08:35:52.057Z",
-      "updatedAt": "2026-08-11T19:42:54.800Z",
+      "updatedAt": "2026-08-11T20:43:07.745Z",
       "settings": {
         "themeMode": "dark",
         "lightBackgroundColor": "#f8f8f5",
@@ -17,7 +17,7 @@
         "darkBackgroundColor": "#101211",
         "darkBackgroundDeepColor": "#191a16",
         "darkBackgroundLowColor": "#050505",
-        "sceneHeightScreens": 100,
+        "sceneHeightScreens": 4,
         "returnScrollDurationSeconds": 4,
         "returnScrollEasing": "cubic-bezier(0.4, 0, 0.2, 1)",
         "stationaryAutoSlipEnabled": true,
@@ -56,8 +56,8 @@
         "preclickHopSpeedEasing": "cubic-bezier(0.22, 1, 0.36, 1)",
         "customCursorEnabled": false,
         "customCursorSizePx": 32,
-        "handVisibilityMode": "hover",
-        "handImageChangeDelayMs": 0,
+        "handVisibilityMode": "always",
+        "handImageChangeDelayMs": 50,
         "rockGrabRadiusVh": 0,
         "rockMinWidthVw": 25,
         "rockMaxWidthVw": 50,
@@ -123,7 +123,8 @@
         "inertia": 0.9,
         "horizontalInertia": 0.02,
         "groundFriction": 1,
-        "turbulence": 0.4
+        "turbulence": 0.4,
+        "preclickPopupDelayMs": 200
       }
     }
   ]
