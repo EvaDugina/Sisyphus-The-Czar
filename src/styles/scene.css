@@ -8,6 +8,15 @@
   font-weight: 400;
 }
 
+@font-face {
+  font-family: "Inter Timer";
+  src: url("../../assets/fonts/Inter/Inter-Timer-700.woff2") format("woff2");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+  unicode-range: U+0030-003A;
+}
+
 .world {
   position: relative;
   height: var(--scene-height-vh, 1000vh);
@@ -85,7 +94,7 @@
   margin: 0;
   overflow: hidden;
   color: color-mix(in srgb, var(--ink) 20%, transparent);
-  font-family: fantasy;
+  font-family: "Inter Timer", Inter, ui-sans-serif, system-ui, sans-serif;
   font-size: 32rem;
   font-variant-numeric: tabular-nums;
   font-weight: 700;
