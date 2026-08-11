@@ -1,7 +1,7 @@
 export const WINDOW_OBSTACLE_LIFETIME_MS = 2000;
 export const WINDOW_OBSTACLE_CLOSED_POLL_MS = 100;
 export const PRECLICK_POPUP_WIDTH_PX = 640;
-export const PRECLICK_POPUP_FALLBACK_ASPECT_RATIO = 920 / 387;
+export const PRECLICK_POPUP_FALLBACK_ASPECT_RATIO = 1;
 
 export const WINDOW_OBSTACLE_PERMISSION = Object.freeze({
   UNCHECKED: "unchecked",
@@ -253,18 +253,7 @@ export function createWindowObstacleController(options = {}) {
       body.style.margin = "0";
       body.style.minHeight = "100vh";
       body.style.overflow = "hidden";
-      if (entry.imageUrl) {
-        const image = entry.popup.document.createElement("img");
-        image.alt = "";
-        image.src = entry.imageUrl;
-        image.style.display = "block";
-        image.style.height = "100vh";
-        image.style.objectFit = "fill";
-        image.style.width = "100vw";
-        body.replaceChildren(image);
-      } else {
-        body.replaceChildren();
-      }
+      body.replaceChildren();
       entry.popup.document.addEventListener(
         "click",
         () => finalizeWindow(entry.id, true),
@@ -275,14 +264,13 @@ export function createWindowObstacleController(options = {}) {
     }
   }
 
-  function trackWindow(popup, kind, content = {}) {
+  function trackWindow(popup, kind) {
     const id = nextWindowId;
     nextWindowId += 1;
     const entry = {
       id,
       kind,
       popup,
-      imageUrl: typeof content.imageUrl === "string" ? content.imageUrl : "",
       closeTimerId: null,
     };
     entry.closeTimerId = setTimeoutFn(
@@ -354,13 +342,12 @@ export function createWindowObstacleController(options = {}) {
     return trackWindow(popup, kind);
   }
 
-  function openPreclickImageWindow({
+  function openPreclickWindow({
     aspectRatio,
     clientX,
     clientY,
-    imageUrl,
   } = {}) {
-    if (disposed || typeof imageUrl !== "string" || !imageUrl) {
+    if (disposed) {
       return false;
     }
     const origin = getViewportScreenOrigin() || {};
@@ -386,7 +373,7 @@ export function createWindowObstacleController(options = {}) {
     if (!popup) {
       return false;
     }
-    trackWindow(popup, "preclick", { imageUrl });
+    trackWindow(popup, "preclick");
     return true;
   }
 
@@ -512,7 +499,7 @@ export function createWindowObstacleController(options = {}) {
       };
     },
     isControlBlocked: () => activeObstacleCount() > 0,
-    openPreclickImageWindow,
+    openPreclickWindow,
     refresh,
     testPopupPermission,
   });

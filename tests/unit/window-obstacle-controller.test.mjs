@@ -179,11 +179,11 @@ test("высота препятствия отсчитывается от ниж
   assert.equal(randomStepBetween(101, 139, 10, () => 1), 130);
 });
 
-test("фейковый клик открывает центрированное окно с изображением без блокировки управления", () => {
+test("фейковый клик открывает пустое окно в пропорциях камня без блокировки управления", () => {
   const { clock, controller, popups } = setup();
   assert.deepEqual(
     preclickPopupGeometry({
-      aspectRatio: 920 / 387,
+      aspectRatio: 2,
       centerX: 700,
       centerY: 600,
       screen: {
@@ -193,26 +193,22 @@ test("фейковый клик открывает центрированное 
         availWidth: 1200,
       },
     }),
-    { height: 269, left: 380, top: 466, width: 640 },
+    { height: 320, left: 380, top: 440, width: 640 },
   );
 
   assert.equal(
-    controller.openPreclickImageWindow({
+    controller.openPreclickWindow({
+      aspectRatio: 2,
       clientX: 600,
       clientY: 400,
-      imageUrl: "/assets/ВЗГЛЯД.jpg",
     }),
     true,
   );
   assert.match(popups[0].features, /width=640/);
-  assert.match(popups[0].features, /height=269/);
+  assert.match(popups[0].features, /height=320/);
   assert.match(popups[0].features, /left=380/);
-  assert.match(popups[0].features, /top=466/);
-  const image = popups[0].popup.document.body.children[0];
-  assert.equal(image.tagName, "IMG");
-  assert.equal(image.src, "/assets/ВЗГЛЯД.jpg");
-  assert.equal(image.style.width, "100vw");
-  assert.equal(image.style.height, "100vh");
+  assert.match(popups[0].features, /top=440/);
+  assert.equal(popups[0].popup.document.body.children.length, 0);
   assert.equal(controller.isControlBlocked(), false);
   assert.equal(controller.getState().trackedWindowCount, 1);
 

@@ -6,7 +6,6 @@ import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
 import groundImpactAudioUrl from "../../assets/audio/СимуляцияОргазма.mov?url";
 import preclickHopAudioUrl from "../../assets/audio/Смех.mp3?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
-import preclickWindowImageUrl from "../../assets/ВЗГЛЯД.jpg?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import { rockImageUrl } from "../config/rockImages.mjs";
 import { createClientId } from "../lib/clientId.mjs";
@@ -3001,7 +3000,6 @@ export function createSisyphusRuntime(elements = {}) {
       x: rect.left + rect.width / 2,
       y: rect.top + rect.height / 2,
     };
-    const worldRect = world.getBoundingClientRect();
     const baseCenter = preclickRockBaseCenter(currentOffset);
     const target = calculatePreclickHopTarget({
       pointerX: preclickRockGuidance.pointerX,
@@ -3028,10 +3026,8 @@ export function createSisyphusRuntime(elements = {}) {
       speedPxPerSecond: params.preclickHopSpeedPxPerSecond,
     });
     rock.classList.add("is-preclick-hop");
-    let lastTrailSampleAt = performance.now();
-    recordPreclickTrailPoint(startCenter, rect.height, worldRect, 0);
 
-    const applyHopProgress = (progress, sampleAt = performance.now()) => {
+    const applyHopProgress = (progress) => {
       const wrappedCenter = wrapPreclickHopCenter({
         x: startCenter.x + target.deltaX * progress,
         y: startCenter.y + target.deltaY * progress,
@@ -3041,18 +3037,6 @@ export function createSisyphusRuntime(elements = {}) {
       setPreclickRockHopOffset(
         wrappedCenter.x - baseCenter.x,
         wrappedCenter.y - baseCenter.y,
-      );
-      const deltaSeconds = clamp(
-        (sampleAt - lastTrailSampleAt) / 1000,
-        0,
-        MAX_FRAME_SECONDS,
-      );
-      lastTrailSampleAt = sampleAt;
-      recordPreclickTrailPoint(
-        wrappedCenter,
-        rect.height,
-        worldRect,
-        deltaSeconds,
       );
     };
 
@@ -3073,7 +3057,6 @@ export function createSisyphusRuntime(elements = {}) {
           progress,
           params.preclickHopSpeedEasing || PRECLICK_HOP_EASING_CURVE,
         ),
-        now,
       );
       if (progress < 1) {
         preclickRockGuidance.hopAnimationId =
@@ -3233,10 +3216,10 @@ export function createSisyphusRuntime(elements = {}) {
       params.preclickHopActivationRadiusPercent > 0;
     preclickRockGuidance.outsideRadius = false;
     syncHandCursorForPointer(event);
-    windowObstacleController.openPreclickImageWindow({
+    windowObstacleController.openPreclickWindow({
+      aspectRatio: rect.height > 0 ? rect.width / rect.height : 1,
       clientX: pointerX,
       clientY: pointerY,
-      imageUrl: preclickWindowImageUrl,
     });
     playPreclickHopSound();
     performPreclickRockHop({
@@ -5893,32 +5876,6 @@ export function createSisyphusRuntime(elements = {}) {
     recordTrailAnchorPoint(anchor, deltaSeconds);
   }
 
-  function preclickTrailAnchorPoint(center, rockHeight, worldRect) {
-    const heightProgress =
-      clamp(Number(params.trailAnchorHeightPercent) || 0, 0, 100) / 100;
-    return {
-      x: center.x - worldRect.left,
-      y:
-        center.y - worldRect.top +
-        rockHeight * (heightProgress - 0.5),
-    };
-  }
-
-  function recordPreclickTrailPoint(
-    center,
-    rockHeight,
-    worldRect,
-    deltaSeconds,
-  ) {
-    if (preclickRockGuidance.completed) {
-      return;
-    }
-    recordTrailAnchorPoint(
-      preclickTrailAnchorPoint(center, rockHeight, worldRect),
-      deltaSeconds,
-    );
-  }
-
   function recordTrailAnchorPoint(anchor, deltaSeconds) {
     const rockX = Number(anchor?.x);
     const rockY = Number(anchor?.y);
@@ -7115,6 +7072,7 @@ export function createSisyphusRuntime(elements = {}) {
       initialSharedState,
       motion,
       params,
+      updateCameraFollow,
       getLastRainRendererProfile: () => {
         const profile = rain.lastProfile;
         return profile

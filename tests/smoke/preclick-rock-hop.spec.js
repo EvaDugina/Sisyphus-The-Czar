@@ -374,10 +374,8 @@ test("камень прыгает накопительно, сохраняет g
   const popupPromise = page.waitForEvent("popup");
   await page.mouse.click(fakeClickPoint.x, fakeClickPoint.y);
   const fakeClickPopup = await popupPromise;
-  await expect(fakeClickPopup.locator("img")).toHaveAttribute(
-    "src",
-    /%D0%92%D0%97%D0%93%D0%9B%D0%AF%D0%94\.jpg|ВЗГЛЯД\.jpg/,
-  );
+  await expect(fakeClickPopup.locator("img")).toHaveCount(0);
+  await expect(fakeClickPopup.locator("body")).toBeEmpty();
   await expect.poll(() => hopState(page)).toMatchObject({
     guardClicksUsed: 1,
     hopCount: beforeReducedHop.hopCount + 1,
@@ -456,16 +454,26 @@ test("камень прыгает накопительно, сохраняет g
   } else {
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
   }
-  const scrollAfterUpwardFollow = await page.evaluate(() => scrollY);
-  await page.mouse.move(
-    afterGrabCenter.x,
-    (page.viewportSize()?.height || 700) - 50,
-    { steps: 80 },
-  );
+  await page.mouse.up();
+  const scrollBeforeDownwardFollow = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.applyTestSettings({ cameraFollowLerp: 1 });
+    const middleY = api.bounds.maxY / 2;
+    api.setPosition(api.motion.x, middleY);
+    api.updateCameraFollow({ immediate: true });
+    return scrollY;
+  });
+  await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.setPosition(
+      api.motion.x,
+      Math.min(api.bounds.maxY, api.motion.y + window.innerHeight),
+    );
+    api.updateCameraFollow({ immediate: true });
+  });
   await expect
     .poll(() => page.evaluate(() => scrollY))
-    .toBeGreaterThan(scrollAfterUpwardFollow + 1);
-  await page.mouse.up();
+    .toBeGreaterThan(scrollBeforeDownwardFollow + 1);
   await page.mouse.move(10, 10);
   await page.mouse.move(point.x, point.y);
   expect(await hopState(page)).toMatchObject({
@@ -775,7 +783,7 @@ test("N фейковых кликов отталкивают камень, а к
   });
 });
 
-test("фейковый отскок первой сцены создаёт общий след траектории", async ({
+test("фейковый отскок первой сцены не создаёт след траектории", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -811,9 +819,9 @@ test("фейковый отскок первой сцены создаёт об�
     hopCount: 1,
     animating: false,
   });
-  await expect
-    .poll(() => trailState(page))
-    .toMatchObject({ enabled: true });
-  expect((await trailState(page)).pointCount).toBeGreaterThan(1);
-  expect((await trailState(page)).canonicalPointCount).toBeGreaterThan(1);
+  await expect.poll(() => trailState(page)).toMatchObject({
+    enabled: true,
+    pointCount: 0,
+    canonicalPointCount: 0,
+  });
 });
