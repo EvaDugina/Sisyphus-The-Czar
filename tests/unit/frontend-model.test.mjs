@@ -18,6 +18,7 @@ import {
   physicalHeightProgress,
 } from "../../src/lib/drizzleVolume.mjs";
 import { getRainVisualProfile } from "../../src/lib/rainProfile.mjs";
+import { rainScrollProfile } from "../../src/lib/rainScrollProfile.mjs";
 import {
   buildFoldBlendMask,
   calculateFoldDocumentLayout,
@@ -439,6 +440,26 @@ test("повторный hide не перезапускает таймер ис�
   );
 });
 
+test("scroll-профиль дождя имеет плато 5 viewport вокруг середины пути", () => {
+  const options = { scrollHeight: 11_000, viewportHeight: 1_000 };
+  const start = rainScrollProfile({ ...options, scrollY: 0 });
+  const plateauStart = rainScrollProfile({ ...options, scrollY: 2_500 });
+  const middle = rainScrollProfile({ ...options, scrollY: 5_000 });
+  const plateauEnd = rainScrollProfile({ ...options, scrollY: 7_500 });
+  const bottom = rainScrollProfile({ ...options, scrollY: 10_000 });
+
+  assert.equal(start.opacity, 0);
+  assert.equal(start.audio, 0);
+  assert.equal(plateauStart.risingEnd, 0.25);
+  assert.equal(plateauStart.fallingStart, 0.75);
+  assert.equal(plateauStart.hill, 1);
+  assert.equal(middle.hill, 1);
+  assert.equal(plateauEnd.hill, 1);
+  assert.equal(bottom.opacity, 0);
+  assert.equal(bottom.audio, 0);
+  assert.equal(bottom.atBottom, true);
+});
+
 test("настройки инерции и hop отображают актуальные шкалы", () => {
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const inertia = controls.find(
@@ -475,8 +496,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v46");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v45");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v47");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v46");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -752,7 +773,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 46);
+  assert.equal(productionSettingsSchemaVersion, 47);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -946,6 +967,7 @@ test("физика содержит параметры мира и движен�
   const visiblePhysicsNames = [
     "gravity",
     "bounce",
+    "wallBounce",
     "inertia",
     "horizontalInertia",
     "groundFriction",
@@ -2240,6 +2262,7 @@ test("общие визуальные настройки комнаты есть
     [
       "gravity",
       "bounce",
+      "wallBounce",
       "inertia",
       "horizontalInertia",
       "groundFriction",
@@ -2343,94 +2366,62 @@ test("параметры единственной руки вынесены в �
   assert.equal(SharedRoomSettings.DEFAULT_ROOM_SETTINGS.handWidthVw, 28.75 / 2);
 });
 
-test("настройки препятствия Окна нормализуют диапазоны и мигрируют с версии 16", () => {
+test("невидимая линия сцены 2 имеет независимые параметры и мигрирует Окна", () => {
   const obstacleGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Препятствия",
   );
-  const windowsGroup = obstacleGroup?.subgroups?.find(
-    (group) => group.title === "Окна",
+  const barrierGroup = obstacleGroup?.subgroups?.find(
+    (group) => group.title === "Невидимая линия",
   );
-  const controls = windowsGroup?.controls || [];
+  const controls = barrierGroup?.controls || [];
 
-  assert.ok(windowsGroup);
-  assert.equal(windowsGroup.permissionControl, "window-obstacle");
+  assert.ok(barrierGroup);
   assert.deepEqual(
     controls.map((control) => control.name),
     [
-      "windowObstacleEnabled",
-      "windowObstacleMinHeightVh",
-      "windowObstacleMaxHeightVh",
-      "windowObstacleMinIntervalSeconds",
-      "windowObstacleMaxIntervalSeconds",
-      "windowObstacleMinWidthPx",
-      "windowObstacleMaxWidthPx",
-      "windowObstacleMinHeightPx",
-      "windowObstacleMaxHeightPx",
+      "sceneTwoBarrierEnabled",
+      "sceneTwoBarrierHeightVh",
+      "sceneTwoBarrierHopActivationRadiusPercent",
+      "sceneTwoBarrierHopMaxDistancePercent",
+      "sceneTwoBarrierHopMissProbabilityPercent",
+      "sceneTwoBarrierHopSpeedPxPerSecond",
+      "sceneTwoBarrierHopSpeedEasing",
     ],
   );
-  assert.deepEqual(
-    SharedRoomSettings.sanitizeRoomSettings({
-      windowObstacleEnabled: true,
-      windowObstacleMinHeightVh: 2000,
-      windowObstacleMaxHeightVh: 1000,
-      windowObstacleMinIntervalSeconds: 99,
-      windowObstacleMaxIntervalSeconds: 0,
-      windowObstacleMinWidthPx: 2000,
-      windowObstacleMaxWidthPx: 50,
-      windowObstacleMinHeightPx: 1200,
-      windowObstacleMaxHeightPx: 80,
-    }),
-    {
-      ...SharedRoomSettings.DEFAULT_ROOM_SETTINGS,
-      windowObstacleEnabled: true,
-      windowObstacleMinHeightVh: 1000,
-      windowObstacleMaxHeightVh: 2000,
-      windowObstacleMinIntervalSeconds: 0.1,
-      windowObstacleMaxIntervalSeconds: 30,
-      windowObstacleMinWidthPx: 100,
-      windowObstacleMaxWidthPx: 1920,
-      windowObstacleMinHeightPx: 100,
-      windowObstacleMaxHeightPx: 1080,
-    },
+  const clean = SharedRoomSettings.sanitizeRoomSettings({
+    sceneTwoBarrierEnabled: true,
+    sceneTwoBarrierHeightVh: 99999,
+    sceneTwoBarrierHopMissProbabilityPercent: -1,
+  });
+  assert.equal(clean.sceneTwoBarrierEnabled, true);
+  assert.equal(clean.sceneTwoBarrierHeightVh, 10000);
+  assert.equal(clean.sceneTwoBarrierHopMissProbabilityPercent, 0);
+
+  const migrated = SharedRoomSettings.migrateRoomSettings({
+    windowObstacleEnabled: true,
+    preclickHopActivationRadiusPercent: 80,
+    preclickHopMaxDistancePercent: 89.7,
+    preclickHopMissProbabilityPercent: 10,
+    preclickHopSpeedPxPerSecond: 1200,
+    preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+  }, 46);
+  assert.equal(migrated.sceneTwoBarrierEnabled, true);
+  assert.equal(migrated.sceneTwoBarrierHeightVh, 1250);
+  assert.equal(migrated.sceneTwoBarrierHopActivationRadiusPercent, 80);
+  assert.equal(migrated.sceneTwoBarrierHopMaxDistancePercent, 89.7);
+  assert.equal(migrated.sceneTwoBarrierHopMissProbabilityPercent, 10);
+  assert.equal(migrated.sceneTwoBarrierHopSpeedPxPerSecond, 1200);
+  assert.equal(
+    migrated.sceneTwoBarrierHopSpeedEasing,
+    "cubic-bezier(0.22, 1, 0.36, 1)",
   );
-  assert.deepEqual(
-    SharedRoomSettings.migrateRoomSettings(
-      { windowObstacleEnabled: true },
-      16,
-    ),
-    {
-      windowObstacleEnabled: false,
-      windowObstacleMinHeightVh: 1000,
-      windowObstacleMaxHeightVh: 1500,
-      windowObstacleMinIntervalSeconds: 0.5,
-      windowObstacleMaxIntervalSeconds: 1.5,
-      windowObstacleMinWidthPx: 240,
-      windowObstacleMaxWidthPx: 640,
-      windowObstacleMinHeightPx: 160,
-      windowObstacleMaxHeightPx: 480,
-      lightBackgroundColor: "#f8f8f5",
-      lightBackgroundDeepColor: "#e9e8e2",
-      lightBackgroundLowColor: "#d9d8d1",
-      darkBackgroundColor: "#101211",
-      darkBackgroundDeepColor: "#191a16",
-      darkBackgroundLowColor: "#070807",
-      rockActivatedWidthVw: 10,
-      handAudioEnabled: true,
-      drizzleEnabled: true,
-      handVisibilityMode: "always",
-      handImageChangeDelayMs: 0,
-      cameraFollowLerp: 0.1,
-      cameraFollowDownEnabled: true,
-      upperZoneAutoScrollEnabled: true,
-      sceneTwoOverflowYVisible: false,
-      gachiClickSoundFilename: "Camen.mp3",
-      foldPositionPercent: 0,
-      foldPanelHeightVh: 20,
-      rockGrabRadiusVh: 0,
-      ...DEFAULT_PRECLICK_HOP_SETTINGS,
-      ...DEFAULT_CUSTOM_CURSOR_SETTINGS,
-      ...DEFAULT_ROCK_VISUAL_MIGRATION,
-    },
+  assert.equal(Object.hasOwn(migrated, "windowObstacleEnabled"), false);
+  assert.equal(
+    SharedRoomSettings.sceneTwoBarrierCanonicalY({
+      sceneHeightScreens: 20,
+      sceneTwoBarrierHeightVh: 1250,
+    }),
+    750,
   );
 });
 
@@ -2581,7 +2572,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 46);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 47);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2783,6 +2774,13 @@ test("группа дождя содержит общий toggle и blur тём�
     upperZoneAutoScrollEnabled: true,
     sceneTwoOverflowYVisible: false,
     gachiClickSoundFilename: "Camen.mp3",
+    sceneTwoBarrierEnabled: false,
+    sceneTwoBarrierHeightVh: 1250,
+    sceneTwoBarrierHopActivationRadiusPercent: 11,
+    sceneTwoBarrierHopMaxDistancePercent: 150,
+    sceneTwoBarrierHopMissProbabilityPercent: 10,
+    sceneTwoBarrierHopSpeedPxPerSecond: 1200,
+    sceneTwoBarrierHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
   });
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({ foldZoneSize: 32 }, 35),
@@ -2795,6 +2793,13 @@ test("группа дождя содержит общий toggle и blur тём�
       upperZoneAutoScrollEnabled: true,
       sceneTwoOverflowYVisible: false,
       gachiClickSoundFilename: "Camen.mp3",
+      sceneTwoBarrierEnabled: false,
+      sceneTwoBarrierHeightVh: 1250,
+      sceneTwoBarrierHopActivationRadiusPercent: 50,
+      sceneTwoBarrierHopMaxDistancePercent: 62.5,
+      sceneTwoBarrierHopMissProbabilityPercent: 10,
+      sceneTwoBarrierHopSpeedPxPerSecond: 1200,
+      sceneTwoBarrierHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     },
   );
   assert.deepEqual(

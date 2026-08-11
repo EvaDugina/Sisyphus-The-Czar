@@ -32,6 +32,7 @@ import {
   getRainVisualProfile,
   MAX_RAIN_FX_OPACITY,
 } from "../lib/rainProfile.mjs";
+import { rainScrollProfile } from "../lib/rainScrollProfile.mjs";
 import { shouldStartRainExit } from "../lib/rainState.mjs";
 import {
   calculatePreclickHopTarget,
@@ -55,7 +56,6 @@ import {
   rockLocalXForVisualGrab,
   rockPressScaleFactor,
   rockScaleForY,
-  rockSceneTwoGrabScaleFactor,
   rockWallPenetrationPixels,
 } from "../lib/rockScale.mjs";
 import { trailAnchorPoint } from "../lib/trailAnchor.mjs";
@@ -80,11 +80,7 @@ import {
   settings as productionSettings,
 } from "../config/production-preset.mjs";
 import { createSettingsController } from "./createSettingsController.js";
-import {
-  createWindowObstacleController,
-  WINDOW_OBSTACLE_PERMISSION,
-  windowObstacleHeightFromStartVh,
-} from "./createWindowObstacleController.js";
+import { createWindowObstacleController } from "./createWindowObstacleController.js";
 
 const ROLE_AUDIO_FADE_IN_MS = 300;
 const ROLE_AUDIO_VOLUME = 1;
@@ -164,6 +160,8 @@ export function createSisyphusRuntime(elements = {}) {
     elements.topInscription || document.querySelector(".top-inscription");
   const summitTimerElement =
     elements.summitTimer || document.querySelector(".summit-timer");
+  const summitLeaderboardElement =
+    elements.summitLeaderboard || document.querySelector(".summit-leaderboard");
   const rock = elements.rock || document.querySelector(".rock");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
   const handCursor = elements.handCursor || document.querySelector(".hand-cursor");
@@ -192,15 +190,6 @@ export function createSisyphusRuntime(elements = {}) {
   const sessionStatus = elements.sessionStatus || document.querySelector("[data-session-status]");
   const sessionRestartButton =
     elements.sessionRestartButton || document.querySelector(".session-restart");
-  const windowObstaclePopupStatus = document.querySelector(
-    "[data-window-obstacle-popup-status]",
-  );
-  const windowObstaclePopupHelp = document.querySelector(
-    "[data-window-obstacle-popup-help]",
-  );
-  const windowObstaclePopupTest = document.querySelector(
-    "[data-window-obstacle-popup-test]",
-  );
   const finePointer = window.matchMedia("(pointer: fine)");
   const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
   const SharedPhysics = window.SisyphusPhysics;
@@ -513,6 +502,10 @@ export function createSisyphusRuntime(elements = {}) {
     rockPulseScaleFactor: 1,
     rockPulseAnimationId: null,
     rockPulseStartedAt: 0,
+    sceneTwoSizeState: "ground",
+    sceneTwoSizeCycleArmed: false,
+    sceneTwoPressTimerId: null,
+    wallContact: null,
     rockActivationArmed: false,
     physicsActivated: false,
     rockActivationScaleFactor: 1,
@@ -582,6 +575,7 @@ export function createSisyphusRuntime(elements = {}) {
     "handForce",
     "pointerInfluence",
     "bounce",
+    "wallBounce",
     "inertia",
     "horizontalInertia",
     "groundFriction",
@@ -768,7 +762,46 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function renderSummitLeaderboard(payload = {}) {
+    if (!summitLeaderboardElement) {
+      return;
+    }
+    const current = payload.current && typeof payload.current === "object"
+      ? payload.current
+      : null;
+    const currentId = typeof current?.id === "string" ? current.id : null;
+    const top = Array.isArray(payload.top) ? payload.top.slice(0, 9) : [];
+    const currentInTop = currentId && top.some((entry) => entry?.id === currentId);
+    const entries = [...top, ...(current && !currentInTop ? [current] : [])];
+    const fragment = document.createDocumentFragment();
+    entries.forEach((entry) => {
+      if (!entry || typeof entry.name !== "string") {
+        return;
+      }
+      const row = document.createElement("li");
+      row.className = "summit-leaderboard__row";
+      if (entry.id === currentId) {
+        row.classList.add("is-current");
+        row.setAttribute("aria-current", "true");
+      }
+      const rank = document.createElement("span");
+      rank.className = "summit-leaderboard__rank";
+      rank.textContent = Number.isSafeInteger(entry.rank) ? `#${entry.rank}` : "—";
+      const name = document.createElement("span");
+      name.className = "summit-leaderboard__name";
+      name.textContent = entry.name;
+      const score = document.createElement("time");
+      score.className = "summit-leaderboard__score";
+      score.textContent = formatSummitElapsedMs(entry.scoreMs);
+      row.append(rank, name, score);
+      fragment.append(row);
+    });
+    summitLeaderboardElement.replaceChildren(fragment);
+    requestFoldSync();
+  }
+
   function applySummitTimerSnapshot(payload) {
+    const wasRunning = summitTimer.running;
     summitTimer.elapsedMs = Math.min(
       Number.MAX_SAFE_INTEGER,
       Math.max(0, Number(payload.summitElapsedMs) || 0),
@@ -779,6 +812,9 @@ export function createSisyphusRuntime(elements = {}) {
       summitTimerElement.dataset.running = String(summitTimer.running);
     }
     renderSummitTimer();
+    if (wasRunning && !summitTimer.running && payload.dragging === false) {
+      armSummitRainScroll();
+    }
   }
 
   function currentViewport() {
@@ -830,6 +866,13 @@ export function createSisyphusRuntime(elements = {}) {
     renderToken: 0,
     returnRequested: false,
     resizeHandler: null,
+    scrollArmed: false,
+    scrollCompleted: false,
+    scrollStarted: false,
+    scrollUnlocked: false,
+    lastScrollY: 0,
+    touchY: null,
+    userIntentUntil: 0,
   };
 
   const chainHoverAudio = {
@@ -858,6 +901,11 @@ export function createSisyphusRuntime(elements = {}) {
   };
   const groundImpactAudio = {
     armed: false,
+    elements: new Set(),
+    lastFilename: null,
+    playCount: 0,
+  };
+  const wallImpactAudio = {
     elements: new Set(),
     lastFilename: null,
     playCount: 0,
@@ -956,44 +1004,7 @@ export function createSisyphusRuntime(elements = {}) {
     settingsPanel: elements.settingsPanel,
     stageControlChange,
   });
-  const windowObstacleController = createWindowObstacleController({
-    getHeightVh: () => {
-      const start = initialLocalPosition();
-      return windowObstacleHeightFromStartVh(
-        motion.y + bounds.rockHeight / 2,
-        start.y + bounds.rockHeight / 2,
-        window.innerHeight,
-      );
-    },
-    getSettings: () => SharedRoomSettings.sanitizeRoomSettings(params),
-    onActiveWindowsChange: (count) => {
-      const blocked = count > 0;
-      body.classList.toggle("is-window-obstacle-active", blocked);
-      rock.classList.toggle("is-window-obstacle-blocked", blocked);
-      if (blocked) {
-        rock.setAttribute("aria-disabled", "true");
-        if (motion.dragging) {
-          forceReleaseRock({ neutral: true });
-        }
-      } else {
-        rock.removeAttribute("aria-disabled");
-      }
-    },
-    onPermissionChange: (permission, label) => {
-      if (windowObstaclePopupStatus) {
-        windowObstaclePopupStatus.dataset.state = permission;
-        windowObstaclePopupStatus.textContent = label;
-      }
-      if (windowObstaclePopupHelp) {
-        windowObstaclePopupHelp.hidden =
-          permission !== WINDOW_OBSTACLE_PERMISSION.BLOCKED;
-      }
-      if (windowObstaclePopupTest) {
-        windowObstaclePopupTest.disabled =
-          permission === WINDOW_OBSTACLE_PERMISSION.TEST_OPENED;
-      }
-    },
-  });
+  const preclickPopupController = createWindowObstacleController();
   const settingsUiEnabled = settingsController.enabled;
 
   function fitTopInscription() {
@@ -1470,6 +1481,32 @@ export function createSisyphusRuntime(elements = {}) {
     } catch {
       releaseAudio();
       // Ошибка отдельного звука не должна останавливать физический цикл.
+    }
+  }
+
+  function playWallImpactSound() {
+    if (typeof Audio !== "function") {
+      return;
+    }
+    const audio = new Audio(groundImpactAudioUrl);
+    audio.preload = "auto";
+    const releaseAudio = () => {
+      wallImpactAudio.elements.delete(audio);
+    };
+    audio.addEventListener("ended", releaseAudio);
+    audio.addEventListener("error", releaseAudio);
+    wallImpactAudio.elements.add(audio);
+    try {
+      audio.currentTime = 0;
+      audio.volume = 1;
+      const promise = audio.play();
+      if (promise && typeof promise.catch === "function") {
+        promise.catch(releaseAudio);
+      }
+      wallImpactAudio.lastFilename = "СимуляцияОргазма.mov";
+      wallImpactAudio.playCount += 1;
+    } catch {
+      releaseAudio();
     }
   }
 
@@ -2002,7 +2039,8 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function applySceneTwoOverflowY() {
-    document.documentElement.style.overflowY = params.sceneTwoOverflowYVisible
+    document.documentElement.style.overflowY =
+      rain.scrollUnlocked || params.sceneTwoOverflowYVisible
       ? "auto"
       : "hidden";
   }
@@ -2211,6 +2249,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function shouldShowRain() {
+    if (rain.scrollCompleted) {
+      return false;
+    }
+    if (rain.scrollArmed || rain.scrollStarted) {
+      return rain.scrollStarted;
+    }
     return params.rainEnabled || rain.returnRequested;
   }
 
@@ -2286,22 +2330,98 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function showReturnRain() {
-    rain.returnRequested = true;
-    syncRainVisibility();
-  }
-
   function hideReturnRain(options = {}) {
     rain.returnRequested = false;
     syncRainVisibility(options);
   }
 
-  function syncReturnRain(isAtReturnPlace) {
-    if (isAtReturnPlace) {
-      showReturnRain();
-    } else {
-      hideReturnRain();
+  function applySummitRainScrollProfile() {
+    if (!rain.scrollStarted || rain.scrollCompleted) {
+      return null;
     }
+    const profile = rainScrollProfile({
+      scrollY: window.scrollY,
+      scrollHeight: document.documentElement.scrollHeight,
+      viewportHeight: window.innerHeight,
+    });
+    rainLayer?.style.setProperty("--rain-scroll-opacity", `${profile.opacity}`);
+    cancelRainLoopFade();
+    setRainLoopVolume(params.rainMaxVolume * profile.audio);
+    if (profile.atBottom) {
+      rain.scrollArmed = false;
+      rain.scrollCompleted = true;
+      rain.scrollStarted = false;
+      rain.returnRequested = false;
+      rainLayer?.classList.remove("is-rain-scroll-driven");
+      hideRainLayer({ immediate: true });
+    }
+    return profile;
+  }
+
+  function startSummitRainScroll() {
+    if (!rain.scrollArmed || rain.scrollStarted || rain.scrollCompleted) {
+      return false;
+    }
+    rain.scrollStarted = true;
+    rain.returnRequested = true;
+    rainLayer?.classList.add("is-rain-scroll-driven");
+    showRainLayer();
+    applySummitRainScrollProfile();
+    return true;
+  }
+
+  function armSummitRainScroll() {
+    if (rain.scrollCompleted || rain.scrollArmed || rain.scrollStarted) {
+      return false;
+    }
+    rain.scrollArmed = true;
+    rain.scrollStarted = false;
+    rain.scrollUnlocked = true;
+    rain.lastScrollY = window.scrollY;
+    rain.returnRequested = false;
+    rainLayer?.classList.add("is-rain-scroll-driven");
+    rainLayer?.style.setProperty("--rain-scroll-opacity", "0");
+    hideRainLayer({ immediate: true });
+    applySceneTwoOverflowY();
+    return true;
+  }
+
+  function resetSummitRainScroll() {
+    rain.scrollArmed = false;
+    rain.scrollCompleted = false;
+    rain.scrollStarted = false;
+    rain.scrollUnlocked = false;
+    rain.touchY = null;
+    rain.userIntentUntil = 0;
+    rain.returnRequested = false;
+    rainLayer?.classList.remove("is-rain-scroll-driven");
+    rainLayer?.style.removeProperty("--rain-scroll-opacity");
+    if (params.rainEnabled) {
+      showRainLayer();
+    } else {
+      hideRainLayer({ immediate: true });
+    }
+    applySceneTwoOverflowY();
+  }
+
+  function markSummitRainScrollIntent() {
+    rain.userIntentUntil = performance.now() + 750;
+  }
+
+  function syncSummitRainScroll() {
+    const nextScrollY = window.scrollY;
+    const movedDown = nextScrollY > rain.lastScrollY + 0.5;
+    if (
+      rain.scrollArmed &&
+      !rain.scrollStarted &&
+      movedDown &&
+      performance.now() <= rain.userIntentUntil
+    ) {
+      startSummitRainScroll();
+    } else if (rain.scrollStarted) {
+      applySummitRainScrollProfile();
+    }
+    rain.lastScrollY = nextScrollY;
   }
 
   function setTheme(theme, options = {}) {
@@ -2701,7 +2821,6 @@ export function createSisyphusRuntime(elements = {}) {
         scheduleSharedRoomSettingsUpdate();
       }
     }
-    windowObstacleController.refresh();
   }
 
   function readControls(options = {}) {
@@ -3227,7 +3346,7 @@ export function createSisyphusRuntime(elements = {}) {
       params.preclickHopActivationRadiusPercent > 0;
     preclickRockGuidance.outsideRadius = false;
     syncHandCursorForPointer(event);
-    windowObstacleController.openPreclickWindow({
+    preclickPopupController.openPreclickWindow({
       aspectRatio:
         preclickPopupRockImage?.naturalWidth > 0 &&
         preclickPopupRockImage?.naturalHeight > 0
@@ -3324,7 +3443,7 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
-  function baseScaleForLocalY(y) {
+  function heightScaleForLocalY(y) {
     return rockScaleForY(y, bounds.maxY, {
       easing: params.rockScaleEasing,
       minWidthVw: params.rockMinWidthVw,
@@ -3332,6 +3451,15 @@ export function createSisyphusRuntime(elements = {}) {
       baseWidthPx: bounds.rockWidth,
       viewportWidthPx: bounds.worldWidth,
     });
+  }
+
+  function baseScaleForLocalY(y) {
+    if (!preclickRockGuidance.completed) {
+      return heightScaleForLocalY(y);
+    }
+    return heightScaleForLocalY(
+      motion.sceneTwoSizeState === "ground" ? bounds.maxY : 0,
+    );
   }
 
   function scaleForLocalY(y) {
@@ -3360,7 +3488,11 @@ export function createSisyphusRuntime(elements = {}) {
 
   function renderRockPulse(now) {
     motion.rockPulseAnimationId = null;
-    if (!params.rockPulseEnabled || document.hidden) {
+    if (
+      !params.rockPulseEnabled ||
+      document.hidden ||
+      motion.sceneTwoSizeState !== "airborne"
+    ) {
       motion.rockPulseScaleFactor = 1;
       applyRockScale();
       return;
@@ -3374,7 +3506,11 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function syncRockPulse() {
-    if (!params.rockPulseEnabled || document.hidden) {
+    if (
+      !params.rockPulseEnabled ||
+      document.hidden ||
+      motion.sceneTwoSizeState !== "airborne"
+    ) {
       stopRockPulse();
       return;
     }
@@ -3398,6 +3534,80 @@ export function createSisyphusRuntime(elements = {}) {
     }
     motion.rockPressActive = false;
     applyRockScale();
+  }
+
+  function clearSceneTwoPressTimer() {
+    if (motion.sceneTwoPressTimerId !== null) {
+      window.clearTimeout(motion.sceneTwoPressTimerId);
+      motion.sceneTwoPressTimerId = null;
+    }
+  }
+
+  function transitionSceneTwoRockScale() {
+    clearRockActivationScaleTransition();
+    if (!reducedMotion.matches) {
+      rock.classList.add("is-activation-scaling");
+      void rock.offsetWidth;
+    }
+    applyRockScale();
+    if (!reducedMotion.matches) {
+      motion.rockActivationScaleTimerId = window.setTimeout(() => {
+        motion.rockActivationScaleTimerId = null;
+        rock.classList.remove("is-activation-scaling");
+      }, ROCK_ACTIVATION_SCALE_DURATION_MS);
+    }
+  }
+
+  function beginSceneTwoGrabScale() {
+    if (!preclickRockGuidance.completed) {
+      activateRockPress();
+      return;
+    }
+    clearSceneTwoPressTimer();
+    releaseRockPress();
+    stopRockPulse();
+    motion.sceneTwoSizeState = "held";
+    motion.sceneTwoSizeCycleArmed = true;
+    motion.rockActivationArmed = false;
+    motion.physicsActivated = false;
+    motion.rockActivationScaleFactor = 1;
+    transitionSceneTwoRockScale();
+    motion.sceneTwoPressTimerId = window.setTimeout(() => {
+      motion.sceneTwoPressTimerId = null;
+      if (motion.sceneTwoSizeState === "held" && motion.dragging) {
+        activateRockPress();
+      }
+    }, reducedMotion.matches ? 0 : ROCK_ACTIVATION_SCALE_DURATION_MS);
+  }
+
+  function beginSceneTwoAirborneScale({ armGroundReset = true } = {}) {
+    if (!preclickRockGuidance.completed) {
+      releaseRockPress();
+      return;
+    }
+    clearSceneTwoPressTimer();
+    releaseRockPress();
+    motion.sceneTwoSizeState = "airborne";
+    motion.sceneTwoSizeCycleArmed =
+      motion.sceneTwoSizeCycleArmed || armGroundReset;
+    motion.rockActivationArmed = false;
+    motion.physicsActivated = false;
+    motion.rockActivationScaleFactor = 1;
+    transitionSceneTwoRockScale();
+    syncRockPulse();
+  }
+
+  function settleSceneTwoRockScaleOnGround() {
+    if (!preclickRockGuidance.completed || !motion.sceneTwoSizeCycleArmed) {
+      return false;
+    }
+    clearSceneTwoPressTimer();
+    motion.sceneTwoSizeState = "ground";
+    motion.sceneTwoSizeCycleArmed = false;
+    releaseRockPress();
+    stopRockPulse();
+    transitionSceneTwoRockScale();
+    return true;
   }
 
   function applyRockImageSettings() {
@@ -3489,30 +3699,6 @@ export function createSisyphusRuntime(elements = {}) {
     return true;
   }
 
-  function restoreRockInitialScaleOnSceneTwoGrab() {
-    const nextScaleFactor = rockSceneTwoGrabScaleFactor(
-      motion.physicsActivated,
-      motion.rockActivationScaleFactor,
-    );
-    if (nextScaleFactor === motion.rockActivationScaleFactor) {
-      return false;
-    }
-    clearRockActivationScaleTransition();
-    if (!reducedMotion.matches) {
-      rock.classList.add("is-activation-scaling");
-      void rock.offsetWidth;
-    }
-    motion.rockActivationScaleFactor = nextScaleFactor;
-    applyRockScale();
-    if (!reducedMotion.matches) {
-      motion.rockActivationScaleTimerId = window.setTimeout(() => {
-        motion.rockActivationScaleTimerId = null;
-        rock.classList.remove("is-activation-scaling");
-      }, ROCK_ACTIVATION_SCALE_DURATION_MS);
-    }
-    return true;
-  }
-
   function applyRockScale() {
     updateBounds();
     const baseScale = scaleForLocalY(motion.y);
@@ -3537,12 +3723,21 @@ export function createSisyphusRuntime(elements = {}) {
     updateBounds();
     motion.x = clamp(x, 0, bounds.maxX);
     motion.y = clamp(y, 0, bounds.maxY);
+    const wallContact =
+      motion.x <= 0.5 ? "left" : motion.x >= bounds.maxX - 0.5 ? "right" : null;
+    if (
+      preclickRockGuidance.completed &&
+      wallContact &&
+      wallContact !== motion.wallContact
+    ) {
+      playWallImpactSound();
+    }
+    motion.wallContact = wallContact;
     rock.style.setProperty("--rock-x", `${motion.x}px`);
     rock.style.setProperty("--rock-y", `${motion.y}px`);
     requestFoldSync();
     applyRockScale();
     syncDrizzleLoopVolume();
-    windowObstacleController.refresh();
   }
 
   function createSummitSharedImprint(input = {}) {
@@ -3682,6 +3877,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function syncAfterScroll() {
+    syncSummitRainScroll();
     ensureTrailCanvasSize();
     trail.sessionDirty = true;
     trail.glowDirty = true;
@@ -4709,6 +4905,11 @@ export function createSisyphusRuntime(elements = {}) {
   function resetLocalExperience() {
     const pointerId = motion.activePointerId;
     releaseRockPress();
+    clearSceneTwoPressTimer();
+    motion.sceneTwoSizeState = "ground";
+    motion.sceneTwoSizeCycleArmed = false;
+    motion.wallContact = null;
+    stopRockPulse();
     groundImpactAudio.armed = false;
     resetHeightGateState();
     stopLoop();
@@ -4741,7 +4942,7 @@ export function createSisyphusRuntime(elements = {}) {
     setPhase(PHASES.PLAY);
     showInitialHandCursor();
     setTheme(resolveTheme("dark"));
-    hideReturnRain({ immediate: true });
+    resetSummitRainScroll();
     resetTrail();
     renderImprint();
     centerIntroRock();
@@ -4898,7 +5099,6 @@ export function createSisyphusRuntime(elements = {}) {
       collab.trailWriterId = normalizeHolderId(
         payload.trailWriterId || payload.holderId || collab.clientId,
       );
-      armRockActivationScale();
       updateSharedHolder(payload.holderId || collab.clientId);
       collab.remoteControllerId = collab.holderId;
       updateSessionStatus();
@@ -4909,6 +5109,7 @@ export function createSisyphusRuntime(elements = {}) {
       collab.lastControlSlip = { ...payload };
       clearTrailNetworkQueue();
       updateSharedHolder(payload.holderId);
+      beginSceneTwoAirborneScale();
       cancelSharedLocalDrag();
     } else if (
       message.type === "heightGate.activated" ||
@@ -4920,6 +5121,9 @@ export function createSisyphusRuntime(elements = {}) {
       collab.pendingControl = false;
       collab.hasControl = false;
       clearTrailNetworkQueue();
+      if (payload.reason === "scene_two_barrier") {
+        beginSceneTwoAirborneScale();
+      }
       cancelSharedLocalDrag();
       updateSessionStatus();
     } else if (message.type === "presence.update") {
@@ -5061,6 +5265,7 @@ export function createSisyphusRuntime(elements = {}) {
       : offsetSample;
     collab.clockOffsetReady = true;
     applySummitTimerSnapshot(payload);
+    renderSummitLeaderboard(payload.leaderboard);
     if (Object.hasOwn(payload, "physics")) {
       applySharedPhysics(payload.physics);
     }
@@ -5183,10 +5388,6 @@ export function createSisyphusRuntime(elements = {}) {
       hideReturnRain({ immediate: true });
     } else {
       collab.firstFallRequestSent = false;
-      syncReturnRain(
-        snapshotAtReturnPlace ||
-          (rain.returnRequested && snapshot.phase === PHASES.FALLING),
-      );
     }
 
     if (snapshot.phase === PHASES.WON) {
@@ -5198,7 +5399,7 @@ export function createSisyphusRuntime(elements = {}) {
     } else if (collab.snapshots.length === 1 && !motion.dragging) {
       applySharedFrame(snapshot, { previousPhase });
     }
-    if (restoringActiveSession) {
+    if (restoringActiveSession && !preclickRockGuidance.completed) {
       armRockActivationScale();
       activateRockPhysicsScale({ immediate: true });
       updateCameraFollow({ immediate: true });
@@ -5218,14 +5419,39 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       return;
     }
-    if (snapshot.suspended) {
-      if (motion.rockActivationArmed || motion.physicsActivated) {
-        resetRockActivationScale();
+    if (preclickRockGuidance.completed) {
+      const snapshotOnGround =
+        !snapshot.dragging &&
+        Number(snapshot.y) >= SharedPhysics.WORLD_HEIGHT - 0.01;
+      if (snapshot.suspended || snapshotOnGround) {
+        if (!settleSceneTwoRockScaleOnGround()) {
+          motion.sceneTwoSizeState = "ground";
+          stopRockPulse();
+          releaseRockPress();
+        }
+      } else if (snapshot.dragging && snapshot.holderId) {
+        if (motion.sceneTwoSizeState !== "held") {
+          clearSceneTwoPressTimer();
+          stopRockPulse();
+          motion.sceneTwoSizeState = "held";
+          motion.sceneTwoSizeCycleArmed = true;
+          motion.rockActivationScaleFactor = 1;
+          transitionSceneTwoRockScale();
+          activateRockPress();
+        }
+      } else if (motion.sceneTwoSizeState !== "airborne") {
+        beginSceneTwoAirborneScale();
       }
-    } else if (snapshot.dragging && snapshot.holderId) {
-      armRockActivationScale();
+    } else {
+      if (snapshot.suspended) {
+        if (motion.rockActivationArmed || motion.physicsActivated) {
+          resetRockActivationScale();
+        }
+      } else if (snapshot.dragging && snapshot.holderId) {
+        armRockActivationScale();
+      }
+      maybeActivateRockPhysicsScale(snapshot);
     }
-    maybeActivateRockPhysicsScale(snapshot);
     const local = snapshot.suspended
       ? initialLocalPosition()
       : canonicalToLocal(snapshot.x, snapshot.y);
@@ -5358,10 +5584,6 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function beginSharedDrag(event) {
-    if (windowObstacleController.isControlBlocked()) {
-      event.preventDefault();
-      return;
-    }
     if (!collab.connected) {
       updateSessionStatus();
       return;
@@ -5372,7 +5594,6 @@ export function createSisyphusRuntime(elements = {}) {
 
     event.preventDefault();
     armGroundImpactSound();
-    activateRockPress();
     clearSharedReleaseHandoff();
     collab.releasePending = false;
     scheduleGrabbingHandImage();
@@ -5380,6 +5601,7 @@ export function createSisyphusRuntime(elements = {}) {
     const position = localToCanonical(motion.x, motion.y);
     motion.suspended = false;
     motion.dragging = true;
+    beginSceneTwoGrabScale();
     motion.activePointerId = event.pointerId;
     setGrabPointFromPointer(event);
     motion.dragTargetX = motion.x;
@@ -5455,7 +5677,9 @@ export function createSisyphusRuntime(elements = {}) {
       releaseRockPress();
       return;
     }
-    releaseRockPress();
+    const releasedInImprint =
+      motion.phase === PHASES.PLAY && rockInsideImprint();
+    beginSceneTwoAirborneScale();
     const canReleaseWithImpulse = sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
@@ -5483,15 +5707,24 @@ export function createSisyphusRuntime(elements = {}) {
     collab.pendingControl = false;
     collab.hasControl = false;
     cancelSharedLocalDrag();
+    if (releasedInImprint) {
+      armSummitRainScroll();
+    }
     syncReturnTheme();
     updateSessionStatus();
   }
 
-  function forceReleaseSharedDrag(hidePointer = false, neutral = false) {
+  function forceReleaseSharedDrag(
+    hidePointer = false,
+    neutral = false,
+    barrierHop = false,
+  ) {
     if (!motion.dragging) {
       releaseRockPress();
       return;
     }
+    const releasedInImprint =
+      motion.phase === PHASES.PLAY && rockInsideImprint();
     const canReleaseWithImpulse = !neutral && sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
@@ -5500,6 +5733,7 @@ export function createSisyphusRuntime(elements = {}) {
       ? localVelocityToCanonical(pointerVelocity.vx, pointerVelocity.vy)
       : { vx: 0, vy: 0 };
     const position = localToCanonical(motion.x, motion.y);
+    beginSceneTwoAirborneScale();
     const pointer = updateLocalSharedPointer(
       null,
       "grab",
@@ -5514,11 +5748,15 @@ export function createSisyphusRuntime(elements = {}) {
     sendShared("control.release", {
       ...position,
       ...velocity,
+      barrierHop,
       pointer,
     });
     collab.pendingControl = false;
     collab.hasControl = false;
     cancelSharedLocalDrag();
+    if (releasedInImprint) {
+      armSummitRainScroll();
+    }
     syncReturnTheme();
     if (hidePointer) {
       hideHandCursor();
@@ -5772,8 +6010,8 @@ export function createSisyphusRuntime(elements = {}) {
     collab.groundTouchSeq = next;
     const touchedGround = previous !== null && next > previous;
     if (touchedGround) {
-      hideReturnRain();
       playArmedGroundImpactSound();
+      settleSceneTwoRockScaleOnGround();
     }
     return resetTrailOnGroundTouch(touchedGround);
   }
@@ -6577,7 +6815,7 @@ export function createSisyphusRuntime(elements = {}) {
     resetFinalFallGate();
     setPhase(state.phase);
     applyCanonicalMotion(state);
-    showReturnRain();
+    armSummitRainScroll();
     return true;
   }
 
@@ -6593,19 +6831,15 @@ export function createSisyphusRuntime(elements = {}) {
       rockInsideImprint();
     syncFinalFallGate();
     const nextTheme = resolveTheme(atReturnPlace ? "light" : "dark");
-    const keepRainUntilGround =
-      rain.returnRequested && motion.phase === PHASES.FALLING;
     motion.wasAtReturnPlace = atReturnPlace;
     setTheme(nextTheme, {
       durationMs: returnThemeTransitionDuration(atReturnPlace),
     });
-    syncReturnRain(atReturnPlace || keepRainUntilGround);
   }
 
   function enterPlayPhase() {
     setPhase(PHASES.PLAY);
     setTheme(resolveTheme("dark"));
-    hideReturnRain();
     rock.classList.remove("is-falling");
   }
 
@@ -6640,8 +6874,8 @@ export function createSisyphusRuntime(elements = {}) {
       touchedGroundCanonical ||
       (previousY < bounds.maxY - 0.75 && motion.y >= bounds.maxY - 0.75);
     if (touchedGround) {
-      hideReturnRain();
       playArmedGroundImpactSound();
+      settleSceneTwoRockScaleOnGround();
     }
     resetTrailOnGroundTouch(touchedGround);
     if (previousPhase === PHASES.FALLING && state.phase === PHASES.PLAY) {
@@ -6667,6 +6901,9 @@ export function createSisyphusRuntime(elements = {}) {
       (motion.phase === PHASES.INTRO || motion.phase === PHASES.PLAY)
     ) {
       applyDragTargetMovement(deltaSeconds);
+      if (localRockAboveSceneTwoBarrier()) {
+        forceReleaseRock({ barrierHop: true });
+      }
       syncReturnTheme();
     }
 
@@ -6746,14 +6983,14 @@ export function createSisyphusRuntime(elements = {}) {
   function forceReleaseRock(options = {}) {
     const neutral = options.neutral === true;
     if (collab.enabled) {
-      forceReleaseSharedDrag(true, neutral);
+      forceReleaseSharedDrag(true, neutral, options.barrierHop === true);
       return;
     }
 
-    releaseRockPress();
     if (!motion.dragging) {
       return;
     }
+    beginSceneTwoAirborneScale();
     const pointerId = motion.activePointerId;
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
@@ -6773,13 +7010,92 @@ export function createSisyphusRuntime(elements = {}) {
       motion.vx = 0;
       motion.vy = 0;
       motion.suspended = false;
+    } else if (options.barrierHop === true) {
+      const state = SharedPhysics.sanitizeState(currentSharedState());
+      SharedPhysics.applyBarrierHopImpulse(state, localBarrierHopOptions());
+      const velocity = canonicalVelocityToLocal(state.vx, state.vy);
+      motion.vx = velocity.vx;
+      motion.vy = velocity.vy;
+      motion.suspended = false;
     } else {
       applyReleaseImpulse();
     }
     setHandToGrab();
+    if (releasedInImprint) {
+      armSummitRainScroll();
+    }
     rock.classList.add("is-falling");
     syncReturnTheme();
     startLoop();
+  }
+
+  function localRockAboveSceneTwoBarrier() {
+    if (!preclickRockGuidance.completed || !params.sceneTwoBarrierEnabled) {
+      return false;
+    }
+    const position = localToCanonical(motion.x, motion.y);
+    return SharedRoomSettings.stateAboveSceneTwoBarrier(
+      position,
+      params,
+      SharedPhysics.WORLD_HEIGHT,
+    );
+  }
+
+  function localBarrierHopOptions() {
+    return {
+      easingPoints: SharedRoomSettings.parseCubicBezier(
+        params.sceneTwoBarrierHopSpeedEasing,
+      ),
+      maxDistancePercent: params.sceneTwoBarrierHopMaxDistancePercent,
+      speedPxPerSecond: params.sceneTwoBarrierHopSpeedPxPerSecond,
+    };
+  }
+
+  function requestSceneTwoBarrierHop(event) {
+    if (!localRockAboveSceneTwoBarrier()) {
+      return false;
+    }
+    event.preventDefault();
+    updateBounds();
+    const position = localToCanonical(motion.x, motion.y);
+    if (collab.enabled) {
+      if (!collab.connected) {
+        updateSessionStatus();
+        return true;
+      }
+      collab.pendingControl = true;
+      const pointer = updateLocalSharedPointer(
+        event,
+        "grab",
+        !handIsHidden(),
+      );
+      sendShared("control.acquire", { ...position, pointer });
+      updateSessionStatus();
+      return true;
+    }
+
+    const missed =
+      Math.random() * 100 < params.sceneTwoBarrierHopMissProbabilityPercent;
+    if (missed) {
+      return true;
+    }
+    const state = {
+      ...position,
+      vx: 0,
+      vy: 0,
+      dragging: false,
+      controllerId: null,
+      suspended: false,
+    };
+    SharedPhysics.applyBarrierHopImpulse(state, localBarrierHopOptions());
+    const velocity = canonicalVelocityToLocal(state.vx, state.vy);
+    motion.vx = velocity.vx;
+    motion.vy = velocity.vy;
+    motion.suspended = false;
+    beginSceneTwoAirborneScale();
+    rock.classList.add("is-falling");
+    startLoop();
+    return true;
   }
 
   function startDrag(event) {
@@ -6803,8 +7119,11 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const controlBlocked = windowObstacleController.isControlBlocked();
-    if (!controlBlocked && consumePreclickGuardClick(event)) {
+    if (sceneTwoActive && requestSceneTwoBarrierHop(event)) {
+      return;
+    }
+
+    if (consumePreclickGuardClick(event)) {
       return;
     }
 
@@ -6812,14 +7131,7 @@ export function createSisyphusRuntime(elements = {}) {
       playGachiClickSound();
     }
 
-    if (controlBlocked) {
-      event.preventDefault();
-      return;
-    }
-
     completePreclickRockGuidance({ preserveHopPosition: true });
-    restoreRockInitialScaleOnSceneTwoGrab();
-
     playDrizzleLoopSound();
     playRockPointerDownSound();
 
@@ -6830,12 +7142,11 @@ export function createSisyphusRuntime(elements = {}) {
 
     event.preventDefault();
     armGroundImpactSound();
-    activateRockPress();
     scheduleGrabbingHandImage();
     updateBounds();
-    armRockActivationScale();
     motion.suspended = false;
     motion.dragging = true;
+    beginSceneTwoGrabScale();
     motion.activePointerId = event.pointerId;
     setGrabPointFromPointer(event);
     motion.dragTargetX = motion.x;
@@ -6867,24 +7178,29 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function startExpandedRockDrag(event) {
+    const barrierAttempt = localRockAboveSceneTwoBarrier();
     if (
       event.pointerType !== "mouse" ||
       event.button !== 0 ||
       event.isPrimary === false ||
-      params.rockGrabRadiusVh <= 0 ||
+      (!barrierAttempt && params.rockGrabRadiusVh <= 0) ||
       event.composedPath().includes(rock) ||
       pointerTargetIsInteractive(event)
     ) {
       return;
     }
 
-    const radius = (params.rockGrabRadiusVh / 100) * window.innerHeight;
+    const rockRect = rock.getBoundingClientRect();
+    const radius = barrierAttempt
+      ? rockRect.width *
+        (params.sceneTwoBarrierHopActivationRadiusPercent / 100)
+      : (params.rockGrabRadiusVh / 100) * window.innerHeight;
     if (
       !cursorCircleIntersectsRect({
         x: event.clientX,
         y: event.clientY,
         radius,
-        rect: rock.getBoundingClientRect(),
+        rect: rockRect,
       })
     ) {
       return;
@@ -6917,10 +7233,10 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    releaseRockPress();
     if (!motion.dragging) {
       return;
     }
+    beginSceneTwoAirborneScale();
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
@@ -6940,6 +7256,9 @@ export function createSisyphusRuntime(elements = {}) {
       applyReleaseImpulse(pointerVelocity);
     }
     setHandToGrab();
+    if (releasedInImprint) {
+      armSummitRainScroll();
+    }
     rock.classList.add("is-falling");
     syncReturnTheme();
     startLoop();
@@ -7001,9 +7320,6 @@ export function createSisyphusRuntime(elements = {}) {
       syncRockPulse();
     }
   });
-  listen(windowObstaclePopupTest, "click", () => {
-    windowObstacleController.testPopupPermission();
-  });
 
   // Открытием панели управляет React-хук useSettings.
   listen(window, "pointermove", updatePreclickRockGuidance, { passive: true });
@@ -7033,6 +7349,30 @@ export function createSisyphusRuntime(elements = {}) {
   listen(window, "pointercancel", stopDrag);
   listen(window, "pointerup", releaseAlwaysVisibleHand);
   listen(window, "pointercancel", releaseAlwaysVisibleHand);
+  listen(window, "wheel", (event) => {
+    if (event.deltaY > 0) {
+      markSummitRainScrollIntent();
+    }
+  }, { passive: true });
+  listen(window, "touchstart", (event) => {
+    rain.touchY = event.touches[0]?.clientY ?? null;
+  }, { passive: true });
+  listen(window, "touchmove", (event) => {
+    const nextTouchY = event.touches[0]?.clientY ?? null;
+    if (
+      nextTouchY !== null &&
+      rain.touchY !== null &&
+      nextTouchY < rain.touchY
+    ) {
+      markSummitRainScrollIntent();
+    }
+    rain.touchY = nextTouchY;
+  }, { passive: true });
+  listen(window, "keydown", (event) => {
+    if (["ArrowDown", "PageDown", "End", " "].includes(event.key)) {
+      markSummitRainScrollIntent();
+    }
+  });
   listen(window, "blur", cancelDragAndCursor);
   listen(
     window,
@@ -7067,7 +7407,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.suspended = true;
     motion.wasAtReturnPlace = false;
     setTheme(resolveTheme("dark"));
-    hideReturnRain({ immediate: true });
+    resetSummitRainScroll();
     motion.sceneReady = true;
     showInitialHandCursor();
     resizeTrailCanvas();
@@ -7114,7 +7454,11 @@ export function createSisyphusRuntime(elements = {}) {
         pulseScaleFactor: motion.rockPulseScaleFactor,
         pulseShrinkPercent: params.rockPulseShrinkPercent,
         visualShrinkScaleFactor: visualShrinkScaleFactor(),
+        sceneTwoSizeState: motion.sceneTwoSizeState,
+        sceneTwoSizeCycleArmed: motion.sceneTwoSizeCycleArmed,
       }),
+      beginSceneTwoAirborneScale,
+      settleSceneTwoRockScaleOnGround,
       getRoleAudioState: () => {
         const state = roleAudioFade.latest;
         return {
@@ -7143,6 +7487,24 @@ export function createSisyphusRuntime(elements = {}) {
         lastFilename: groundImpactAudio.lastFilename,
         playCount: groundImpactAudio.playCount,
       }),
+      getWallImpactAudioState: () => ({
+        activeCount: wallImpactAudio.elements.size,
+        lastFilename: wallImpactAudio.lastFilename,
+        playCount: wallImpactAudio.playCount,
+      }),
+      getSummitRainScrollState: () => ({
+        armed: rain.scrollArmed,
+        completed: rain.scrollCompleted,
+        started: rain.scrollStarted,
+        unlocked: rain.scrollUnlocked,
+        opacity: Number(
+          rainLayer?.style.getPropertyValue("--rain-scroll-opacity") || 0,
+        ),
+        maxVolume: params.rainMaxVolume,
+        volume: rainLoopAudio.volume,
+        visible: Boolean(rainLayer?.classList.contains("is-rain-visible")),
+      }),
+      armSummitRainScroll,
       armGroundImpactSound,
       applyTestSettings,
       receiveSharedSnapshot,
@@ -7240,7 +7602,7 @@ export function createSisyphusRuntime(elements = {}) {
         passedGateIds: [...collab.heightGateState.passedGateIds],
         remainingSeconds: activeHeightGateRemainingSeconds(),
       }),
-      getWindowObstacleState: windowObstacleController.getState,
+      getPreclickPopupState: preclickPopupController.getState,
       fitTopInscription,
       drawTrail,
       getGlowRenderState: () => ({
@@ -7362,7 +7724,7 @@ export function createSisyphusRuntime(elements = {}) {
         trail.renderFrameId = null;
       }
       settingsController.dispose?.();
-      windowObstacleController.dispose();
+      preclickPopupController.dispose();
       document.documentElement.classList.remove(
         "is-manual-scroll-disabled",
       );

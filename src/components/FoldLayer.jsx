@@ -14,6 +14,7 @@ const DYNAMIC_SELECTORS = [
   ".rock",
   ".rock-imprint",
   ".summit-timer",
+  ".summit-leaderboard",
   ".weather-rain",
   ".hand-cursor:not(.is-remote)",
 ];
@@ -166,6 +167,8 @@ function syncMirror(sourceWorld, mirrorWorld, foldRockImageId) {
     copyPresentation(source, mirror);
     if (selector === ".summit-timer") {
       mirror.textContent = source.textContent;
+    } else if (selector === ".summit-leaderboard") {
+      mirror.replaceChildren(...[...source.children].map((child) => child.cloneNode(true)));
     }
   }
 

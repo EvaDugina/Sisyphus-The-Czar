@@ -42,3 +42,31 @@ test("повреждённый session store не останавливает с�
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test("session store сохраняет рейтинг отдельно от живых комнат", () => {
+  const directory = fs.mkdtempSync(path.join(os.tmpdir(), "sisyphus-store-"));
+  const filePath = path.join(directory, "sessions.json");
+  try {
+    const leaderboard = {
+      czarSequence: 7,
+      entries: [
+        {
+          id: "czar-7",
+          sequence: 7,
+          name: "ЦарьВасилий7",
+          bestMs: 12_345,
+          createdAt: 1,
+          updatedAt: 2,
+        },
+      ],
+    };
+    const store = new SessionStore(filePath);
+    assert.equal(store.save([], { leaderboard }), true);
+
+    const restored = new SessionStore(filePath);
+    assert.deepEqual(restored.load(), []);
+    assert.deepEqual(restored.leaderboardState, leaderboard);
+  } finally {
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

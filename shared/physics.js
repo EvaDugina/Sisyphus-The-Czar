@@ -38,7 +38,7 @@
   });
   const DEFAULT_FORCE_DEFICIT_CURVE = Object.freeze([0.42, 0, 1, 1]);
   const CUBIC_BEZIER_SOLVE_ITERATIONS = 24;
-  const PHYSICS_VERSION = 11;
+  const PHYSICS_VERSION = 12;
   const RELEASE_TRANSFER_SCALE = 0.42;
   const HORIZONTAL_INERTIA_EFFECT_SCALE = 0.001;
   const VERTICAL_INERTIA_EFFECT_SCALE = 0.1;
@@ -60,6 +60,7 @@
     handForce: [1, 1000],
     pointerInfluence: [0, 10],
     bounce: [0, 1],
+    wallBounce: [0, 1],
     inertia: [0, 5],
     horizontalInertia: [0, 5],
     groundFriction: [0, 1],
@@ -73,6 +74,7 @@
     handForce: 50,
     pointerInfluence: 1,
     bounce: 0.35,
+    wallBounce: 0.35,
     inertia: 0.9,
     horizontalInertia: 0.02,
     groundFriction: 0.35,
@@ -148,6 +150,9 @@
     const source = input && typeof input === "object" ? { ...input } : {};
     if (!hasOwn(source, "groundFriction") && hasOwn(source, "sliding")) {
       source.groundFriction = source.sliding;
+    }
+    if (!hasOwn(source, "wallBounce") && hasOwn(source, "bounce")) {
+      source.wallBounce = source.bounce;
     }
     return source;
   }
@@ -550,6 +555,37 @@
     };
   }
 
+  function applyBarrierHopImpulse(state, options = {}) {
+    const random =
+      typeof options.random === "function" ? options.random : Math.random;
+    const distanceFactor = clamp(
+      finiteNumber(options.maxDistancePercent, 62.5) / 150,
+      0,
+      1
+    );
+    const easedMagnitude = cubicBezierProgress(
+      0.28 + clamp(finiteNumber(random(), 0.5), 0, 1) * 0.72,
+      options.easingPoints
+    );
+    const speed =
+      clamp(finiteNumber(options.speedPxPerSecond, 1200), 100, 5000) *
+      distanceFactor *
+      easedMagnitude;
+    const angle = clamp(finiteNumber(random(), 0.5), 0, 0.999999999) *
+      Math.PI * 2;
+
+    state.vx = Math.cos(angle) * speed;
+    state.vy = Math.sin(angle) * speed;
+    state.dragging = false;
+    state.controllerId = null;
+    state.suspended = false;
+
+    return {
+      angleRadians: angle,
+      speed,
+    };
+  }
+
   function applyGroundFriction(state, physics, dt) {
     if (physics.groundFriction <= 0 || state.vx === 0) {
       return;
@@ -597,8 +633,11 @@
     state.vx *= Math.pow(AIR_RETENTION_PER_SECOND, dt);
 
     if (state.x <= 0 || state.x >= WORLD_WIDTH) {
+      const movingIntoWall =
+        (state.x <= 0 && state.vx < 0) ||
+        (state.x >= WORLD_WIDTH && state.vx > 0);
       state.x = clamp(state.x, 0, WORLD_WIDTH);
-      state.vx *= -0.24;
+      state.vx = movingIntoWall ? -state.vx * physics.wallBounce : state.vx;
     }
 
     if (state.y >= WORLD_HEIGHT) {
@@ -688,6 +727,7 @@
     beginFinalFall,
     applyReleaseImpulse,
     applyRockJumpImpulse,
+    applyBarrierHopImpulse,
     stepState,
     isMoving,
   });

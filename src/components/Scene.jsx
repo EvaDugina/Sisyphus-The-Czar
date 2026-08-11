@@ -15,6 +15,12 @@ export function Scene({ scene, trail, rain }) {
         sessionCanvasRef={trail.trailSessionCanvasRef}
         glowCanvasRef={trail.trailGlowCanvasRef}
       />
+      <ol
+        ref={scene.summitLeaderboardRef}
+        className="summit-leaderboard"
+        data-testid="summit-leaderboard"
+        aria-label="Рейтинг удержания камня на вершине"
+      />
       <div
         className="summit-timer"
         data-testid="summit-timer"

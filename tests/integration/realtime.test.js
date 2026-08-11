@@ -170,10 +170,13 @@ test("single-client комната переживает disconnect для reload
     const session = service.manager.sessions.get(firstCreated.sessionId);
     return Boolean(
       session &&
-        service.manager.connectedCount(session) === 0 &&
-        session.emptyDeleteAt !== null,
+        service.manager.connectedCount(session) === 0,
     );
   });
+  assert.equal(
+    service.manager.getSession(firstCreated.sessionId).emptyDeleteAt,
+    null,
+  );
 
   const reconnected = connect(
     `${wsBase}?session=${firstCreated.sessionId}&client=integration-client-a001`,
@@ -604,7 +607,7 @@ test("визуальная trail-история хранит последние 
   newcomer.socket.close();
 });
 
-test("leave-token немедленно закрывает личную сессию", async (context) => {
+test("leave-token закрывает соединение, но сохраняет личность до TTL", async (context) => {
   const { service, base, wsBase } = await startService(context);
   const created = await createSession(base, "integration-leave-a001");
   const client = connect(
@@ -636,7 +639,8 @@ test("leave-token немедленно закрывает личную сесс�
     }),
   });
   assert.equal(left.status, 204);
-  assert.equal(service.manager.sessions.has(created.sessionId), false);
+  assert.equal(service.manager.sessions.has(created.sessionId), true);
+  assert.equal(service.manager.getSession(created.sessionId).emptyDeleteAt, null);
   assert.equal((await client.closed).reason, "session_left");
 });
 

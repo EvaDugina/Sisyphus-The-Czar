@@ -65,7 +65,7 @@ test("settings template store атомарно сохраняет whitelist и �
   assert.deepEqual(loaded.latest(), saved.entry);
 });
 
-test("settings template store мигрирует legacy Fold-ключи в schema 46", (context) => {
+test("settings template store мигрирует legacy Fold-ключи в schema 47", (context) => {
   const { store } = temporaryStore(context);
   const legacy = entry("legacy-fold");
   legacy.settingsSchemaVersion = 32;
@@ -79,7 +79,7 @@ test("settings template store мигрирует legacy Fold-ключи в schem
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 46);
+  assert.equal(imported.settingsSchemaVersion, 47);
   assert.equal(imported.settings.preclickPopupDelayMs, 200);
   assert.equal(imported.settings.foldAngle, 55);
   assert.equal(imported.settings.foldZoneSize, 18);
@@ -108,7 +108,7 @@ test("settings template store добавляет настройки сцены 2
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 46);
+  assert.equal(imported.settingsSchemaVersion, 47);
   assert.equal(imported.settings.cameraFollowLerp, 0.25);
   assert.equal(imported.settings.cameraFollowDownEnabled, true);
   assert.equal(imported.settings.upperZoneAutoScrollEnabled, true);
@@ -127,7 +127,7 @@ test("settings template store мигрирует длину отскока из 
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 46);
+  assert.equal(imported.settingsSchemaVersion, 47);
   assert.equal(imported.settings.preclickHopActivationRadiusPercent, 20);
   assert.equal(imported.settings.preclickHopMaxDistancePercent, 25);
   assert.equal(
@@ -146,7 +146,7 @@ test("settings template store разделяет press и pulse из schema 34",
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 46);
+  assert.equal(imported.settingsSchemaVersion, 47);
   assert.equal(imported.settings.rockPressShrinkPercent, 17);
   assert.equal(imported.settings.rockPulseShrinkPercent, 17);
   assert.equal(imported.settings.rockImageId, "rock-03");
@@ -163,7 +163,7 @@ test("settings template store мигрирует boolean-видимость ру
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 46);
+  assert.equal(imported.settingsSchemaVersion, 47);
   assert.equal(imported.settings.handVisibilityMode, "hover");
   assert.equal(imported.settings.handImageChangeDelayMs, 0);
   assert.equal(imported.settings.foldPositionPercent, 0);

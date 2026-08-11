@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 46;
+const SETTINGS_SCHEMA_VERSION = 47;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -1284,6 +1284,7 @@ export function createSettingsController(options) {
       handForce: params.handForce.toFixed(0),
       pointerInfluence: params.pointerInfluence.toFixed(1),
       bounce: params.bounce.toFixed(2),
+      wallBounce: params.wallBounce.toFixed(2),
       inertia: params.inertia.toFixed(2),
       horizontalInertia: params.horizontalInertia.toFixed(2),
       groundFriction: params.groundFriction.toFixed(2),
@@ -1323,22 +1324,16 @@ export function createSettingsController(options) {
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
       handImageChangeDelayMs: `${params.handImageChangeDelayMs.toFixed(0)}мс`,
       rockGrabRadiusVh: `${params.rockGrabRadiusVh.toFixed(1)}vh`,
-      windowObstacleMinHeightVh:
-        `${params.windowObstacleMinHeightVh.toFixed(0)}vh`,
-      windowObstacleMaxHeightVh:
-        `${params.windowObstacleMaxHeightVh.toFixed(0)}vh`,
-      windowObstacleMinIntervalSeconds:
-        secondsOutput(params.windowObstacleMinIntervalSeconds),
-      windowObstacleMaxIntervalSeconds:
-        secondsOutput(params.windowObstacleMaxIntervalSeconds),
-      windowObstacleMinWidthPx:
-        `${params.windowObstacleMinWidthPx.toFixed(0)}px`,
-      windowObstacleMaxWidthPx:
-        `${params.windowObstacleMaxWidthPx.toFixed(0)}px`,
-      windowObstacleMinHeightPx:
-        `${params.windowObstacleMinHeightPx.toFixed(0)}px`,
-      windowObstacleMaxHeightPx:
-        `${params.windowObstacleMaxHeightPx.toFixed(0)}px`,
+      sceneTwoBarrierHeightVh:
+        `${params.sceneTwoBarrierHeightVh.toFixed(0)}vh`,
+      sceneTwoBarrierHopActivationRadiusPercent:
+        `${params.sceneTwoBarrierHopActivationRadiusPercent.toFixed(0)}%`,
+      sceneTwoBarrierHopMaxDistancePercent:
+        `${params.sceneTwoBarrierHopMaxDistancePercent.toFixed(1)}%`,
+      sceneTwoBarrierHopMissProbabilityPercent:
+        `${params.sceneTwoBarrierHopMissProbabilityPercent.toFixed(0)}%`,
+      sceneTwoBarrierHopSpeedPxPerSecond:
+        `${params.sceneTwoBarrierHopSpeedPxPerSecond.toFixed(0)} px/s`,
       drizzleStartVolume: `${Math.round(params.drizzleStartVolume * 100)}%`,
       drizzleEndVolume: `${Math.round(params.drizzleEndVolume * 100)}%`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,
@@ -1383,6 +1378,7 @@ export function createSettingsController(options) {
       handForce: number("handForce"),
       pointerInfluence: number("pointerInfluence"),
       bounce: number("bounce"),
+      wallBounce: number("wallBounce"),
       inertia: number("inertia"),
       horizontalInertia: number("horizontalInertia"),
       groundFriction: number("groundFriction"),

@@ -340,6 +340,69 @@ test("секундомер вершины останавливается с по
   assert.equal(restarted.summitTimerRunning, true);
 });
 
+test("рейтинг хранит всех царей, показывает top-9 и абсолютное место текущего", () => {
+  const { clock, manager } = setup();
+  const sessions = Array.from({ length: 11 }, () => manager.createSession());
+
+  const initial = manager.leaderboardSnapshot(sessions[0]);
+  assert.equal(initial.current.name, "ЦарьИван1");
+  assert.equal(initial.current.scoreMs, 0);
+  assert.equal(initial.current.rank, null);
+  assert.deepEqual(initial.top, []);
+
+  sessions.forEach((session, index) => {
+    session.summitElapsedMs = (index + 1) * 1000;
+    manager.commitLeaderboardResult(session, session.summitElapsedMs);
+  });
+  const leaderboard = manager.leaderboardSnapshot(sessions[0]);
+  assert.equal(leaderboard.total, 11);
+  assert.equal(leaderboard.top.length, 9);
+  assert.equal(leaderboard.top[0].scoreMs, 11_000);
+  assert.equal(leaderboard.top.at(-1).scoreMs, 3_000);
+  assert.equal(leaderboard.current.rank, 11);
+
+  const restored = setup().manager;
+  restored.restoreLeaderboard(manager.serializeLeaderboard());
+  clock.value = 500;
+  const next = restored.createSession();
+  assert.match(
+    restored.leaderboardSnapshot(next).current.name,
+    /^Царь[^\s\d]+12$/,
+  );
+});
+
+test("невидимая линия запрещает захват и выбрасывает камень случайным импульсом", () => {
+  const { manager } = setup({ random: () => 0.5 });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
+    roomSettings: {
+      sceneHeightScreens: 20,
+      sceneTwoBarrierEnabled: true,
+      sceneTwoBarrierHeightVh: 1000,
+      sceneTwoBarrierHopMissProbabilityPercent: 0,
+      sceneTwoBarrierHopMaxDistancePercent: 75,
+      sceneTwoBarrierHopSpeedPxPerSecond: 1200,
+    },
+  });
+  const participant = connect(manager, session, "barrier-client-001");
+
+  assert.equal(
+    manager.acquireControl(session, participant.client, { x: 500, y: 900 }),
+    false,
+  );
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.suspended, false);
+  assert.ok(Math.hypot(session.state.vx, session.state.vy) > 0);
+  const denied = participant.socket.messages.findLast(
+    (message) => message.type === "control.denied",
+  );
+  assert.equal(denied.payload.reason, "scene_two_barrier");
+  assert.equal(
+    participant.socket.messages.some((message) => message.type === "audio.play"),
+    false,
+  );
+});
+
 test("активный секундомер вершины сохраняется и продолжается после restore", () => {
   const firstSetup = setup();
   firstSetup.clock.value = 1000;
@@ -976,6 +1039,38 @@ test("control.release применяет финальную позицию ко�
   assert.equal(session.state.controllerId, null);
 });
 
+test("control.release над линией заменяет скорость руки случайным barrier-hop", () => {
+  const { manager } = setup({ random: () => 0.25 });
+  const session = manager.createSession({
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 1200 },
+    roomSettings: {
+      sceneHeightScreens: 10,
+      sceneTwoBarrierEnabled: true,
+      sceneTwoBarrierHeightVh: 500,
+      sceneTwoBarrierHopMaxDistancePercent: 100,
+      sceneTwoBarrierHopSpeedPxPerSecond: 1200,
+      sceneTwoBarrierHopSpeedEasing: "cubic-bezier(0, 0, 1, 1)",
+    },
+  });
+  const first = connect(manager, session, "client-barrier-release1");
+
+  manager.acquireControl(session, first.client, { x: 500, y: 1200 });
+  manager.releaseControl(session, first.client, {
+    barrierHop: true,
+    x: 500,
+    y: 900,
+    vx: 4000,
+    vy: 4000,
+  });
+
+  assert.equal(session.state.dragging, false);
+  assert.equal(session.state.controllerId, null);
+  assert.notEqual(session.state.vx, 0);
+  assert.notEqual(session.state.vy, 0);
+  assert.ok(Math.abs(session.state.vx) < 4000);
+  assert.ok(Math.abs(session.state.vy) < 4000);
+});
+
 test("сохранённая сессия мигрирует со старой шкалы инерции", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
@@ -1289,8 +1384,8 @@ test("явный выход последнего участника удаляе
   assert.equal(manager.sessions.has(session.id), false);
 });
 
-test("single-client reconnect в grace-период сохраняет состояние и настройки", () => {
-  const { clock, manager } = setup({ emptyGraceMs: 1000 });
+test("single-client reconnect до TTL сохраняет личность, состояние и настройки", () => {
+  const { clock, manager } = setup({ emptyGraceMs: 1000, ttlMs: 10_000 });
   const session = manager.createSession(
     {
       state: { phase: Physics.PHASES.PLAY, x: 420, y: 800, vx: 25, vy: -30 },
@@ -1304,7 +1399,7 @@ test("single-client reconnect в grace-период сохраняет сост�
   manager.disconnectClient(session, first.client.id, first.socket);
 
   assert.equal(manager.sessions.has(session.id), true);
-  assert.equal(session.emptyDeleteAt, 1000);
+  assert.equal(session.emptyDeleteAt, null);
 
   clock.value = 500;
   const reconnected = connect(manager, session, "client-reload-001");
@@ -1320,6 +1415,11 @@ test("single-client reconnect в grace-период сохраняет сост�
   clock.value = 1001;
   manager.tick();
   assert.equal(manager.sessions.has(session.id), true);
+
+  manager.disconnectClient(session, reconnected.client.id, reconnected.socket);
+  clock.value = session.expiresAt + 1;
+  manager.tick();
+  assert.equal(manager.sessions.has(session.id), false);
 });
 
 test("подключение после grace не воскрешает удалённую сессию", () => {

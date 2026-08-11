@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 46;
+  const ROOM_SETTINGS_VERSION = 47;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -97,10 +97,11 @@
     heightGateCount: [0, MAX_HEIGHT_GATES],
     heightGatePercent: [1, 99],
     heightGateDurationSeconds: [1, 60],
-    windowObstacleHeightVh: [0, 10000],
-    windowObstacleIntervalSeconds: [0.1, 30],
-    windowObstacleWidthPx: [100, 1920],
-    windowObstacleHeightPx: [100, 1080],
+    sceneTwoBarrierHeightVh: [0, 10000],
+    sceneTwoBarrierHopActivationRadiusPercent: [0, 300],
+    sceneTwoBarrierHopMaxDistancePercent: [0, 150],
+    sceneTwoBarrierHopMissProbabilityPercent: [0, 100],
+    sceneTwoBarrierHopSpeedPxPerSecond: [100, 5000],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     preclickHopGuardClickCount: [0, 10],
     preclickPopupDelayMs: [0, 1000],
@@ -192,15 +193,13 @@
     handWidthVw: 14.375,
     heightGates: Object.freeze([]),
     handForceDeficitEasing: DEFAULT_HAND_FORCE_DEFICIT_EASING,
-    windowObstacleEnabled: false,
-    windowObstacleMinHeightVh: 1000,
-    windowObstacleMaxHeightVh: 1500,
-    windowObstacleMinIntervalSeconds: 0.5,
-    windowObstacleMaxIntervalSeconds: 1.5,
-    windowObstacleMinWidthPx: 240,
-    windowObstacleMaxWidthPx: 640,
-    windowObstacleMinHeightPx: 160,
-    windowObstacleMaxHeightPx: 480,
+    sceneTwoBarrierEnabled: false,
+    sceneTwoBarrierHeightVh: 1250,
+    sceneTwoBarrierHopActivationRadiusPercent: 50,
+    sceneTwoBarrierHopMaxDistancePercent: 62.5,
+    sceneTwoBarrierHopMissProbabilityPercent: 10,
+    sceneTwoBarrierHopSpeedPxPerSecond: 1200,
+    sceneTwoBarrierHopSpeedEasing: DEFAULT_PRECLICK_HOP_SPEED_EASING,
     handAudioEnabled: true,
     drizzleEnabled: true,
     drizzleStartVolume: 0.1,
@@ -490,37 +489,6 @@
       ROOM_SETTINGS_LIMITS.rockWallPenetrationPercent;
     const [rockPulseShrinkMin, rockPulseShrinkMax] =
       ROOM_SETTINGS_LIMITS.rockPulseShrinkPercent;
-    const windowObstacleHeightRange = normalizeNumericRange(
-      source,
-      fallbackSource,
-      "windowObstacleMinHeightVh",
-      "windowObstacleMaxHeightVh",
-      ROOM_SETTINGS_LIMITS.windowObstacleHeightVh,
-      true
-    );
-    const windowObstacleIntervalRange = normalizeNumericRange(
-      source,
-      fallbackSource,
-      "windowObstacleMinIntervalSeconds",
-      "windowObstacleMaxIntervalSeconds",
-      ROOM_SETTINGS_LIMITS.windowObstacleIntervalSeconds
-    );
-    const windowObstacleWidthRange = normalizeNumericRange(
-      source,
-      fallbackSource,
-      "windowObstacleMinWidthPx",
-      "windowObstacleMaxWidthPx",
-      ROOM_SETTINGS_LIMITS.windowObstacleWidthPx,
-      true
-    );
-    const windowObstacleHeightPxRange = normalizeNumericRange(
-      source,
-      fallbackSource,
-      "windowObstacleMinHeightPx",
-      "windowObstacleMaxHeightPx",
-      ROOM_SETTINGS_LIMITS.windowObstacleHeightPx,
-      true
-    );
     const [rainStrengthMin, rainStrengthMax] = ROOM_SETTINGS_LIMITS.rainStrength;
     const [rainVolumeMin, rainVolumeMax] =
       ROOM_SETTINGS_LIMITS.rainMaxVolume;
@@ -882,15 +850,51 @@
         fallbackSource,
         "handForceDeficitEasing"
       ),
-      windowObstacleEnabled: boolSetting(
+      sceneTwoBarrierEnabled: boolSetting(
         source,
         fallbackSource,
-        "windowObstacleEnabled"
+        "sceneTwoBarrierEnabled"
       ),
-      ...windowObstacleHeightRange,
-      ...windowObstacleIntervalRange,
-      ...windowObstacleWidthRange,
-      ...windowObstacleHeightPxRange,
+      sceneTwoBarrierHeightVh: integerSetting(
+        source,
+        fallbackSource,
+        "sceneTwoBarrierHeightVh",
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHeightVh[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHeightVh[1]
+      ),
+      sceneTwoBarrierHopActivationRadiusPercent: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoBarrierHopActivationRadiusPercent",
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHopActivationRadiusPercent[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHopActivationRadiusPercent[1]
+      ),
+      sceneTwoBarrierHopMaxDistancePercent: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoBarrierHopMaxDistancePercent",
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHopMaxDistancePercent[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHopMaxDistancePercent[1]
+      ),
+      sceneTwoBarrierHopMissProbabilityPercent: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoBarrierHopMissProbabilityPercent",
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHopMissProbabilityPercent[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHopMissProbabilityPercent[1]
+      ),
+      sceneTwoBarrierHopSpeedPxPerSecond: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoBarrierHopSpeedPxPerSecond",
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHopSpeedPxPerSecond[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoBarrierHopSpeedPxPerSecond[1]
+      ),
+      sceneTwoBarrierHopSpeedEasing: cubicBezierSetting(
+        source,
+        fallbackSource,
+        "sceneTwoBarrierHopSpeedEasing"
+      ),
       handAudioEnabled: boolSetting(
         source,
         fallbackSource,
@@ -1351,6 +1355,49 @@
           DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs;
       }
     }
+    if (finiteNumber(version, 1) < 47) {
+      if (!Object.hasOwn(current, "sceneTwoBarrierEnabled")) {
+        current.sceneTwoBarrierEnabled = Boolean(current.windowObstacleEnabled);
+      }
+      current.sceneTwoBarrierHeightVh =
+        DEFAULT_ROOM_SETTINGS.sceneTwoBarrierHeightVh;
+      [
+        [
+          "sceneTwoBarrierHopActivationRadiusPercent",
+          "preclickHopActivationRadiusPercent",
+        ],
+        [
+          "sceneTwoBarrierHopMaxDistancePercent",
+          "preclickHopMaxDistancePercent",
+        ],
+        [
+          "sceneTwoBarrierHopMissProbabilityPercent",
+          "preclickHopMissProbabilityPercent",
+        ],
+        [
+          "sceneTwoBarrierHopSpeedPxPerSecond",
+          "preclickHopSpeedPxPerSecond",
+        ],
+        ["sceneTwoBarrierHopSpeedEasing", "preclickHopSpeedEasing"],
+      ].forEach(([nextKey, previousKey]) => {
+        if (!Object.hasOwn(current, nextKey)) {
+          current[nextKey] = Object.hasOwn(current, previousKey)
+            ? current[previousKey]
+            : DEFAULT_ROOM_SETTINGS[nextKey];
+        }
+      });
+      [
+        "windowObstacleEnabled",
+        "windowObstacleMinHeightVh",
+        "windowObstacleMaxHeightVh",
+        "windowObstacleMinIntervalSeconds",
+        "windowObstacleMaxIntervalSeconds",
+        "windowObstacleMinWidthPx",
+        "windowObstacleMaxWidthPx",
+        "windowObstacleMinHeightPx",
+        "windowObstacleMaxHeightPx",
+      ].forEach((key) => delete current[key]);
+    }
     return current;
   }
 
@@ -1359,6 +1406,27 @@
     return (
       (SCENE_MOTION_REFERENCE_SCREENS / clean.sceneHeightScreens) *
       SCENE_MOTION_COMPENSATION_BOOST
+    );
+  }
+
+  function sceneTwoBarrierCanonicalY(settings, worldHeight = 2000) {
+    const clean = sanitizeRoomSettings(settings);
+    const totalHeightVh = Math.max(100, clean.sceneHeightScreens * 100);
+    const progress = clamp(
+      clean.sceneTwoBarrierHeightVh / totalHeightVh,
+      0,
+      1
+    );
+    return Math.max(0, finiteNumber(worldHeight, 2000)) * (1 - progress);
+  }
+
+  function stateAboveSceneTwoBarrier(state, settings, worldHeight = 2000) {
+    if (!sanitizeRoomSettings(settings).sceneTwoBarrierEnabled) {
+      return false;
+    }
+    return (
+      finiteNumber(state?.y, worldHeight) <=
+      sceneTwoBarrierCanonicalY(settings, worldHeight)
     );
   }
 
@@ -1387,5 +1455,7 @@
     migrateRoomSettings,
     sanitizeRoomSettings,
     sceneMotionMultiplier,
+    sceneTwoBarrierCanonicalY,
+    stateAboveSceneTwoBarrier,
   });
 });

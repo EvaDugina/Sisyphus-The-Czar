@@ -795,59 +795,6 @@ input[type="range"] {
   margin-bottom: 0.45rem;
 }
 
-.window-obstacle-permission {
-  display: grid;
-  gap: 0.5rem;
-  padding: 0.65rem;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--surface) 72%, transparent);
-}
-
-.window-obstacle-permission__row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  color: var(--muted);
-  font-size: 0.78rem;
-}
-
-.window-obstacle-permission__status {
-  color: var(--ink);
-  font-weight: 700;
-  text-align: right;
-}
-
-.window-obstacle-permission__status[data-state="allowed"] {
-  color: #4fbe78;
-}
-
-.window-obstacle-permission__status[data-state="blocked"] {
-  color: #e46e6e;
-}
-
-.window-obstacle-permission__test {
-  padding: 0.45rem 0.6rem;
-  border: 1px solid var(--line);
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--surface) 55%, transparent);
-  color: var(--ink);
-  cursor: pointer;
-}
-
-.window-obstacle-permission__test:disabled {
-  cursor: wait;
-  opacity: 0.55;
-}
-
-.window-obstacle-permission__help {
-  margin: 0;
-  color: #e46e6e;
-  font-size: 0.74rem;
-  line-height: 1.35;
-}
-
 .trail-clear,
 .session-restart {
   width: 100%;

@@ -70,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v46", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v47", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v46");
+    localStorage.removeItem("sisyphus-czar-settings-v47");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,7 +91,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v46", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -117,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v46", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,11 +125,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v46", 
     .toEqual([47, 13]);
 });
 
-test("hop-настройки мигрируют из localStorage v39 в v46 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v39 в v47 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v46");
+    localStorage.removeItem("sisyphus-czar-settings-v47");
     localStorage.setItem(
       "sisyphus-czar-settings-v39",
       JSON.stringify({
@@ -149,7 +149,7 @@ test("hop-настройки мигрируют из localStorage v39 в v46 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return {
           guardClicks: stored.preclickHopGuardClickCount,
@@ -173,11 +173,11 @@ test("hop-настройки мигрируют из localStorage v39 в v46 б�
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v46", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v47", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v46");
+    localStorage.removeItem("sisyphus-czar-settings-v47");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -190,7 +190,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -208,9 +208,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v46", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v47", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v46");
+    localStorage.removeItem("sisyphus-czar-settings-v47");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -223,7 +223,7 @@ test("настройки руки мигрируют из localStorage v36 в v4
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -239,9 +239,9 @@ test("настройки руки мигрируют из localStorage v36 в v4
     });
 });
 
-test("раскладка Fold мигрирует из localStorage v37 в v46", async ({ page }) => {
+test("раскладка Fold мигрирует из localStorage v37 в v47", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v46");
+    localStorage.removeItem("sisyphus-czar-settings-v47");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -254,7 +254,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v46", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -269,7 +269,7 @@ test("группа Камень показывает семь контролов
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v46");
+    localStorage.removeItem("sisyphus-czar-settings-v47");
   });
 
   await page.goto("/");
@@ -368,7 +368,7 @@ test("панель показывает параметры и разделы в�
     name: "Очистить траекторию",
   });
   const obstacleGroup = page
-    .locator('[name="windowObstacleEnabled"]')
+    .locator('[name="sceneTwoBarrierEnabled"]')
     .locator("xpath=ancestor::details[contains(@class, 'control-group')]");
 
   await expect(sceneOne).toHaveAttribute("aria-pressed", "true");
@@ -974,7 +974,7 @@ test("mouse захватывает камень внутри расширенн�
   await page.mouse.up();
 });
 
-test("препятствие Окна сообщает о popup-блокировке", async ({
+test("невидимая линия заменяет popup-препятствие сцены 2", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -1003,29 +1003,23 @@ test("препятствие Окна сообщает о popup-блокиров
       element.open = true;
     });
 
-    const windowsGroup = obstacleGroup.locator(
-      '[aria-label="Препятствия: Окна"]',
+    const barrierGroup = obstacleGroup.locator(
+      '[aria-label="Препятствия: Невидимая линия"]',
     );
-    await expect(windowsGroup.locator(":scope > summary")).toHaveText("Окна");
-    await expect(page.locator('[name="windowObstacleEnabled"]')).not.toBeChecked();
-    await expect(page.locator('[name="windowObstacleMinHeightVh"]')).toHaveValue("1000");
-    await expect(page.locator('[name="windowObstacleMaxHeightVh"]')).toHaveValue("1500");
-    await expect(page.locator('[name="windowObstacleMinIntervalSeconds"]')).toHaveValue("0.5");
-    await expect(page.locator('[name="windowObstacleMaxIntervalSeconds"]')).toHaveValue("1.5");
-    await expect(page.locator('[name="windowObstacleMinWidthPx"]')).toHaveValue("240");
-    await expect(page.locator('[name="windowObstacleMaxWidthPx"]')).toHaveValue("640");
-    await expect(page.locator('[name="windowObstacleMinHeightPx"]')).toHaveValue("160");
-    await expect(page.locator('[name="windowObstacleMaxHeightPx"]')).toHaveValue("480");
-    await expect(page.locator('[name="windowObstacleMinHeightVh"]')).toHaveAttribute("step", "100");
-    await expect(page.locator('[name="windowObstacleMinIntervalSeconds"]')).toHaveAttribute("step", "0.1");
-    await expect(page.locator('[name="windowObstacleMinWidthPx"]')).toHaveAttribute("step", "10");
-
-    const status = page.locator("[data-window-obstacle-popup-status]");
-    await expect(status).toHaveAttribute("data-state", "unchecked");
-    await page.locator("[data-window-obstacle-popup-test]").click();
-    await expect(status).toHaveAttribute("data-state", "blocked");
-    await expect(status).toContainText("Заблокировано");
-    await expect(page.locator("[data-window-obstacle-popup-help]")).toBeVisible();
+    await expect(barrierGroup.locator(":scope > summary")).toHaveText("Невидимая линия");
+    await expect(page.locator('[name="sceneTwoBarrierEnabled"]')).not.toBeChecked();
+    await expect(page.locator('[name="sceneTwoBarrierHeightVh"]')).toHaveValue("1250");
+    await expect(page.locator('[name="sceneTwoBarrierHopActivationRadiusPercent"]')).toHaveValue("50");
+    await expect(page.locator('[name="sceneTwoBarrierHopMaxDistancePercent"]')).toHaveValue("62.5");
+    await expect(page.locator('[name="sceneTwoBarrierHopMissProbabilityPercent"]')).toHaveValue("10");
+    await expect(page.locator('[name="sceneTwoBarrierHopSpeedPxPerSecond"]')).toHaveValue("1200");
+    await expect(page.locator('[name="sceneTwoBarrierHopSpeedEasing"]')).toHaveValue(
+      "cubic-bezier(0.22, 1, 0.36, 1)",
+    );
+    await expect(page.locator('[name="sceneTwoBarrierHeightVh"]')).toHaveAttribute("step", "100");
+    await expect(page.locator('[name="sceneTwoBarrierHopMaxDistancePercent"]')).toHaveAttribute("step", "0.1");
+    await expect(page.locator('[name="sceneTwoBarrierHopSpeedPxPerSecond"]')).toHaveAttribute("step", "50");
+    await expect(page.locator("[data-window-obstacle-popup-status]")).toHaveCount(0);
 });
 
 test("Fold синхронизирует сцену и применяет общие сохраняемые настройки", async ({
@@ -1082,7 +1076,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,
@@ -1325,7 +1319,7 @@ test("настройки выпадения и выпрыгивания дост
   await expect(jumpSpread).toBeDisabled();
 });
 
-test("первое падение анимирует размер камня, сохраняет контакт с полом, а темы используют свои градиенты", async ({
+test("state-machine сцены 2 меняет размер камня и сохраняет контакт с полом", async ({
   page,
 }) => {
   await page.goto("/");
@@ -1378,9 +1372,8 @@ test("первое падение анимирует размер камня, с
       pointerInfluence: 0,
       preclickHopGuardClickCount: 0,
       preclickHopActivationRadiusPercent: 0,
-      rockActivatedWidthVw: 10,
       rockMaxWidthVw: 10,
-      rockMinWidthVw: 10,
+      rockMinWidthVw: 5,
       rockPressShrinkPercent: 0,
       rockPulseEnabled: false,
     });
@@ -1393,56 +1386,43 @@ test("первое падение анимирует размер камня, с
   await expect
     .poll(() =>
       page.evaluate(() => ({
-        activated: window.__sisyphusTestApi.motion.physicsActivated,
-        armed: window.__sisyphusTestApi.motion.rockActivationArmed,
+        armed: window.__sisyphusTestApi.motion.sceneTwoSizeCycleArmed,
+        state: window.__sisyphusTestApi.motion.sceneTwoSizeState,
       })),
     )
-    .toEqual({ activated: false, armed: true });
-  await expect(rock).not.toHaveClass(/is-activation-scaling/);
-  expect((await rock.boundingBox()).width).toBeCloseTo(initialWidth, 0);
-
-  await page.mouse.move(
-    box.x + box.width / 2,
-    Math.max(80, box.y + box.height / 2 - 180),
-    { steps: 8 },
-  );
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const { bounds, motion } = window.__sisyphusTestApi;
-        return bounds.maxY - motion.y;
-      }),
-    )
-    .toBeGreaterThan(20);
-  await page.mouse.up();
-  await expect
-    .poll(() =>
-      page.evaluate(() => {
-        const { bounds, collab, motion } = window.__sisyphusTestApi;
-        return {
-          activated: motion.physicsActivated,
-          armed: motion.rockActivationArmed,
-          dragging: motion.dragging,
-          suspended: motion.suspended,
-          vy: motion.vy,
-          y: motion.y,
-          maxY: bounds.maxY,
-          releasePending: collab.releasePending,
-        };
-      }),
-    )
-    .toMatchObject({ activated: true });
+    .toEqual({ armed: true, state: "held" });
   await page.waitForTimeout(350);
-  const activated = await rock.evaluate((element) => ({
-    activated: window.__sisyphusTestApi.motion.physicsActivated,
+  const held = await rock.evaluate((element) => ({
     width: element.getBoundingClientRect().width,
     viewportWidth: window.innerWidth,
   }));
-  expect(activated.activated).toBe(true);
+  expect(held.width).toBeGreaterThan(initialWidth);
+  expect(Math.abs(held.width - held.viewportWidth * 0.1)).toBeLessThanOrEqual(10);
+
+  await page.mouse.up();
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.beginSceneTwoAirborneScale();
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__sisyphusTestApi.motion.sceneTwoSizeState,
+      ),
+    )
+    .toBe("airborne");
+  await page.waitForTimeout(350);
+  const airborne = await rock.evaluate((element) => ({
+    width: element.getBoundingClientRect().width,
+    viewportWidth: window.innerWidth,
+  }));
   expect(
-    Math.abs(activated.width - activated.viewportWidth * 0.1),
+    Math.abs(airborne.width - airborne.viewportWidth * 0.1),
   ).toBeLessThanOrEqual(10);
 
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.settleSceneTwoRockScaleOnGround();
+  });
+  await page.waitForTimeout(350);
   const floorContact = await page.evaluate(() => {
     const { bounds, motion, setPosition, updateBounds } =
       window.__sisyphusTestApi;
@@ -1450,9 +1430,6 @@ test("первое падение анимирует размер камня, с
     setPosition(bounds.maxX, bounds.maxY);
     const rock = document.querySelector("#root > .world > .rock");
     const rockRect = rock.getBoundingClientRect();
-    const worldRect = document
-      .querySelector("#root > .world")
-      .getBoundingClientRect();
     const visualHeight = rock.offsetHeight * motion.rockScale;
     const penetrationPercent =
       window.__sisyphusTestApi.params.rockWallPenetrationPercent;
@@ -1461,48 +1438,121 @@ test("первое падение анимирует размер камня, с
     return {
       gap: document.querySelector("#root > .world").offsetHeight - visualBottom,
       expectedPenetration: (visualHeight * penetrationPercent) / 100,
-      sidePenetration: rockRect.right - worldRect.right,
-      expectedSidePenetration: (rockRect.width * penetrationPercent) / 100,
+      sizeState: motion.sceneTwoSizeState,
+      width: rockRect.width,
       y: motion.y,
       maxY: bounds.maxY,
     };
   });
   expect(floorContact.y).toBeCloseTo(floorContact.maxY, 5);
+  expect(floorContact.sizeState).toBe("ground");
+  expect(floorContact.width).toBeLessThan(airborne.width);
   expect(
     Math.abs(floorContact.gap + floorContact.expectedPenetration),
   ).toBeLessThanOrEqual(2);
-  expect(
-    Math.abs(
-      floorContact.sidePenetration - floorContact.expectedSidePenetration,
-    ),
-  ).toBeLessThanOrEqual(1);
+});
 
-  const directionTrigger = await page.evaluate(() => {
+test("рейтинг отображает текущего царя, а дождь ждёт пользовательский scroll", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+
+  const leaderboard = page.getByTestId("summit-leaderboard");
+  const current = leaderboard.locator(".summit-leaderboard__row.is-current");
+  await expect(current).toHaveCount(1);
+  await expect(current.locator(".summit-leaderboard__rank")).toHaveText("—");
+  await expect(current.locator(".summit-leaderboard__name")).toHaveText(
+    /^Царь[^\s\d]+\d+$/,
+  );
+  await expect(current.locator(".summit-leaderboard__score")).toHaveText(
+    "00:00:00",
+  );
+
+  await page.evaluate(() => {
+    window.scrollTo(0, 0);
+    window.__sisyphusTestApi.completePreclickRockGuidance();
+    window.__sisyphusTestApi.applyTestSettings({
+      rainEnabled: true,
+      sceneHeightScreens: 10,
+    });
+    window.__sisyphusTestApi.armSummitRainScroll();
+  });
+  await expect
+    .poll(() => page.evaluate(() => ({
+      overflowY: document.documentElement.style.overflowY,
+      rain: window.__sisyphusTestApi.getSummitRainScrollState(),
+    })))
+    .toMatchObject({
+      overflowY: "auto",
+      rain: { armed: true, started: false, visible: false, volume: 0 },
+    });
+
+  await page.evaluate(() => window.scrollTo(0, 50));
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.getSummitRainScrollState().started,
+    ))
+    .toBe(false);
+
+  await page.evaluate(() => window.scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(0);
+  await page.keyboard.press("PageDown");
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.getSummitRainScrollState().started,
+    ))
+    .toBe(true);
+
+  await page.evaluate(() => {
+    const maxScroll = document.documentElement.scrollHeight - window.innerHeight;
+    window.scrollTo(0, maxScroll / 2);
+  });
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.getSummitRainScrollState(),
+    ))
+    .toMatchObject({ opacity: 1, started: true, visible: true });
+  const plateauRain = await page.evaluate(() =>
+    window.__sisyphusTestApi.getSummitRainScrollState(),
+  );
+  expect(plateauRain.volume).toBeCloseTo(plateauRain.maxVolume, 5);
+
+  await page.evaluate(() => window.scrollTo(
+    0,
+    document.documentElement.scrollHeight - window.innerHeight,
+  ));
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.getSummitRainScrollState(),
+    ))
+    .toMatchObject({ completed: true, started: false, visible: false, volume: 0 });
+});
+
+test("удар камня о боковую стену включает симуляцию оргазма", async ({ page }) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
-    api.motion.physicsActivated = false;
-    api.motion.rockActivationArmed = true;
-    api.motion.rockActivationScaleFactor = 1;
-    api.motion.dragging = false;
-    api.motion.suspended = false;
-    api.motion.vy = -100;
+    api.completePreclickRockGuidance();
     api.setPosition(api.bounds.maxX / 2, api.bounds.maxY / 2);
-    api.applyPhysics(SharedPhysics.FIXED_STEP_SECONDS);
-    const whileMovingUp = api.motion.physicsActivated;
-    api.motion.vy = 1;
-    api.applyPhysics(SharedPhysics.FIXED_STEP_SECONDS);
-    return {
-      afterMovingDown: api.motion.physicsActivated,
-      animationStarted: document
-        .querySelector("#root > .world > .rock")
-        .classList.contains("is-activation-scaling"),
-      whileMovingUp,
-    };
   });
-  expect(directionTrigger).toEqual({
-    afterMovingDown: true,
-    animationStarted: true,
-    whileMovingUp: false,
+  const before = await page.evaluate(() =>
+    window.__sisyphusTestApi.getWallImpactAudioState().playCount,
+  );
+  await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.setPosition(0, api.bounds.maxY / 2);
   });
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.getWallImpactAudioState(),
+    ))
+    .toMatchObject({
+      lastFilename: "СимуляцияОргазма.mov",
+      playCount: before + 1,
+    });
 });
 
 test("glow-профили и зависимости select работают на странице настроек", async ({

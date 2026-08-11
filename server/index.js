@@ -224,9 +224,14 @@ function createService(options = {}) {
   const sessionStore =
     options.sessionStore ||
     new SessionStore(config.sessionStorePath, { logger: log });
-  manager.restoreSessions(sessionStore.load());
+  const storedSessions = sessionStore.load();
+  manager.restoreLeaderboard(sessionStore.leaderboardState);
+  manager.restoreSessions(storedSessions);
   const persistSessions = (force = false) =>
-    sessionStore.save(manager.serializeSessions(), { force });
+    sessionStore.save(manager.serializeSessions(), {
+      force,
+      leaderboard: manager.serializeLeaderboard(),
+    });
   const settingsPresetForNewSession = () =>
     storedProductionPreset?.settings || ProductionPreset.settings;
   const defaultSession = manager.ensureDefaultSession();

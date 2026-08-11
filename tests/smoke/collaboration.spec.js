@@ -258,15 +258,19 @@ test("dev UI сохраняет последний параметр после �
   await openSettingsPanel(page);
   await setRange(page, "sceneHeightScreens", 7);
   await setRange(page, "gravity", 8.5);
+  await setRange(page, "wallBounce", 0.42);
   await expect(page.locator('[name="sceneHeightScreens"]')).toHaveValue("7");
   await expect(page.locator('[name="gravity"]')).toHaveValue("8.5");
+  await expect(page.locator('[name="wallBounce"]')).toHaveValue("0.42");
 
   await page.waitForTimeout(200);
   await setRange(page, "sceneHeightScreens", 8);
   await setRange(page, "gravity", 9.5);
+  await setRange(page, "wallBounce", 0.73);
   await page.waitForTimeout(700);
   await expect(page.locator('[name="sceneHeightScreens"]')).toHaveValue("8");
   await expect(page.locator('[name="gravity"]')).toHaveValue("9.5");
+  await expect(page.locator('[name="wallBounce"]')).toHaveValue("0.73");
   await saveRoomSettings(page);
   await closeSettingsPanel(page);
   await expect
@@ -297,6 +301,9 @@ test("dev UI сохраняет последний параметр после �
   await expect
     .poll(() => page.evaluate(() => window.__sisyphusTestApi.params.gravity))
     .toBe(9.5);
+  await expect
+    .poll(() => page.evaluate(() => window.__sisyphusTestApi.params.wallBounce))
+    .toBe(0.73);
 });
 
 test("camera UI и новые настройки сохраняются вместе", async ({
@@ -431,7 +438,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -1370,7 +1377,7 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return stored.gravity;
       }),
@@ -1378,11 +1385,11 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v46 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v47 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v46");
+    localStorage.removeItem("sisyphus-czar-settings-v47");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1405,7 +1412,7 @@ test("локальные настройки v20 мигрируют в v46 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2488,7 +2495,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v46",
+      "sisyphus-czar-settings-v47",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2951,7 +2958,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}"
         );
         return stored.trailRenderProfile;
       })
@@ -2990,7 +2997,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -3126,7 +3133,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -3161,7 +3168,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -3178,7 +3185,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v46") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v47") || "{}"
         );
         return stored.rainEnabled;
       })

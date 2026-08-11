@@ -1112,3 +1112,53 @@ test("фиксированный шаг даёт одинаковый резул
 
   assert.deepEqual(first, second);
 });
+
+test("пружинистость боковых стен независима от наземного отскока", () => {
+  const initial = {
+    phase: Physics.PHASES.PLAY,
+    x: 0.1,
+    y: 500,
+    vx: -300,
+    vy: 0,
+  };
+  const soft = Physics.sanitizeState(initial);
+  const springy = Physics.sanitizeState(initial);
+  Physics.stepState(
+    soft,
+    Physics.sanitizePhysics({ bounce: 1, wallBounce: 0.2, turbulence: 0 }),
+    Physics.FIXED_STEP_SECONDS,
+  );
+  Physics.stepState(
+    springy,
+    Physics.sanitizePhysics({ bounce: 1, wallBounce: 0.8, turbulence: 0 }),
+    Physics.FIXED_STEP_SECONDS,
+  );
+
+  assert.ok(soft.vx > 0);
+  assert.ok(springy.vx > soft.vx * 3.9);
+  assert.equal(Physics.migratePhysics({ bounce: 0.73 }, 11).wallBounce, 0.73);
+});
+
+test("barrier-hop освобождает камень и задаёт случайный физический импульс", () => {
+  const state = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 500,
+    y: 500,
+    dragging: true,
+    controllerId: "master",
+  });
+  const values = [0.5, 0.25];
+  const result = Physics.applyBarrierHopImpulse(state, {
+    random: () => values.shift(),
+    maxDistancePercent: 75,
+    speedPxPerSecond: 1200,
+    easingPoints: [0.22, 1, 0.36, 1],
+  });
+
+  assert.equal(state.dragging, false);
+  assert.equal(state.controllerId, null);
+  assert.equal(state.suspended, false);
+  assert.ok(result.speed > 0);
+  assert.ok(Math.abs(state.vx) < 1e-8);
+  assert.ok(state.vy > 0);
+});

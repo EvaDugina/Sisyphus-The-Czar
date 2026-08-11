@@ -26,6 +26,16 @@ const SLIP_DELAY_MAX_MS = 2000;
 const STATIONARY_HOLD_RELEASE_MS = 200;
 const STATIONARY_POSITION_EPSILON = 0.01;
 const DEFAULT_AUDIO_LEAD_MS = 200;
+const TSAR_NAMES = Object.freeze([
+  "Иван", "Пётр", "Алексей", "Михаил", "Фёдор", "Дмитрий", "Василий", "Николай",
+  "Александр", "Павел", "Константин", "Борис", "Симеон", "Всеволод", "Ярослав", "Святослав",
+  "Владимир", "Юрий", "Андрей", "Игорь", "Олег", "Роман", "Даниил", "Мстислав",
+  "Ростислав", "Вячеслав", "Георгий", "Глеб", "Рюрик", "Изяслав", "Всеслав", "Добрыня",
+  "Мирослав", "Ратмир", "Станислав", "Лев", "Сергей", "Максим", "Матвей", "Тихон",
+  "Платон", "Елисей", "Егор", "Степан", "Григорий", "Арсений", "Кирилл", "Никита",
+  "Илья", "Савва", "Филипп", "Тимофей", "Прохор", "Емельян", "Лука", "Макар",
+  "Тарас", "Захар", "Евсей", "Демьян", "Антон", "Виктор", "Валентин", "Гавриил",
+]);
 
 function finite(value, fallback = 0) {
   const number = Number(value);
@@ -214,10 +224,121 @@ class SessionManager {
       (() => ({ revision: 0, entry: null }));
     this.logger = options.logger || (() => {});
     this.sessions = new Map();
+    this.leaderboardEntries = new Map();
+    this.czarSequence = 0;
     this.sharedTrailHub = null;
     this.sharedTrailRevision = 0;
     this.sharedTrailEvents = [];
     this.nextTrailSyncAt = this.now() + this.trailSyncIntervalMs;
+  }
+
+  nextCzarIdentity() {
+    const sequence = ++this.czarSequence;
+    const name = TSAR_NAMES[(sequence - 1) % TSAR_NAMES.length];
+    return {
+      id: `czar-${sequence}`,
+      sequence,
+      name: `Царь${name}${sequence}`,
+    };
+  }
+
+  ensureLeaderboardIdentity(session, source = {}) {
+    const requestedId = String(source.leaderboardId || "");
+    const existing = requestedId ? this.leaderboardEntries.get(requestedId) : null;
+    if (existing) {
+      session.leaderboardId = existing.id;
+      return existing;
+    }
+
+    const identity = this.nextCzarIdentity();
+    const now = this.now();
+    const entry = {
+      ...identity,
+      bestMs: 0,
+      createdAt: now,
+      updatedAt: now,
+    };
+    this.leaderboardEntries.set(entry.id, entry);
+    session.leaderboardId = entry.id;
+    return entry;
+  }
+
+  restoreLeaderboard(state = {}) {
+    const entries = Array.isArray(state.entries) ? state.entries : [];
+    this.leaderboardEntries.clear();
+    this.czarSequence = Math.max(0, Math.floor(finite(state.czarSequence, 0)));
+    entries.forEach((source) => {
+      const sequence = Math.max(1, Math.floor(finite(source?.sequence, 0)));
+      const id = String(source?.id || "");
+      const name = String(source?.name || "");
+      if (!/^czar-[1-9]\d*$/.test(id) || !/^Царь[^\s\d]+[1-9]\d*$/.test(name)) {
+        return;
+      }
+      const entry = {
+        id,
+        sequence,
+        name,
+        bestMs: Math.min(
+          Number.MAX_SAFE_INTEGER,
+          Math.max(0, Math.floor(finite(source.bestMs, 0))),
+        ),
+        createdAt: Math.max(0, finite(source.createdAt, this.now())),
+        updatedAt: Math.max(0, finite(source.updatedAt, this.now())),
+      };
+      this.leaderboardEntries.set(entry.id, entry);
+      this.czarSequence = Math.max(this.czarSequence, sequence);
+    });
+    return this.leaderboardEntries.size;
+  }
+
+  serializeLeaderboard() {
+    return {
+      czarSequence: this.czarSequence,
+      entries: [...this.leaderboardEntries.values()]
+        .sort((left, right) => left.sequence - right.sequence)
+        .map((entry) => ({ ...entry })),
+    };
+  }
+
+  commitLeaderboardResult(session, elapsedMs = this.summitElapsedAt(session)) {
+    const entry = this.ensureLeaderboardIdentity(session, session);
+    const result = Math.min(
+      Number.MAX_SAFE_INTEGER,
+      Math.max(0, Math.floor(finite(elapsedMs, 0))),
+    );
+    if (result <= entry.bestMs) {
+      return false;
+    }
+    entry.bestMs = result;
+    entry.updatedAt = this.now();
+    this.sessions.forEach((otherSession) => {
+      if (otherSession !== session) {
+        this.markChanged(otherSession);
+      }
+    });
+    return true;
+  }
+
+  leaderboardSnapshot(session) {
+    const currentEntry = this.ensureLeaderboardIdentity(session, session);
+    const ranked = [...this.leaderboardEntries.values()]
+      .filter((entry) => entry.bestMs > 0)
+      .sort(
+        (left, right) =>
+          right.bestMs - left.bestMs || left.sequence - right.sequence,
+      );
+    const currentIndex = ranked.findIndex((entry) => entry.id === currentEntry.id);
+    const row = (entry, rank) => ({
+      id: entry.id,
+      name: entry.name,
+      scoreMs: entry.bestMs,
+      rank,
+    });
+    return {
+      top: ranked.slice(0, 9).map((entry, index) => row(entry, index + 1)),
+      current: row(currentEntry, currentIndex >= 0 ? currentIndex + 1 : null),
+      total: this.leaderboardEntries.size,
+    };
   }
 
   createSession(payload = {}, options = {}) {
@@ -279,6 +400,10 @@ class SessionManager {
       lastPointerAt: now,
       dirty: true,
     };
+
+    if (id !== DEFAULT_SESSION_ID) {
+      this.ensureLeaderboardIdentity(session, payload);
+    }
 
     this.sessions.set(id, session);
     this.logger("session_created", { session: id.slice(0, 8) });
@@ -442,6 +567,7 @@ class SessionManager {
       groundTouchSeq: session.groundTouchSeq,
       summitElapsedMs: session.summitElapsedMs,
       summitRunningSince: session.summitRunningSince,
+      leaderboardId: session.leaderboardId,
       heightGateProgress: {
         passedGateIds: [...session.passedHeightGateIds],
         activeGate: session.activeHeightGate
@@ -478,7 +604,10 @@ class SessionManager {
         : finite(record.emptyDeleteAt, null);
       if (
         !persistent &&
-        (expiresAt <= now || (emptyDeleteAt !== null && emptyDeleteAt <= now))
+        (expiresAt <= now ||
+          (record.singleClient !== true &&
+            emptyDeleteAt !== null &&
+            emptyDeleteAt <= now))
       ) {
         return;
       }
@@ -596,7 +725,8 @@ class SessionManager {
         createdAt: Math.min(finite(record.createdAt, now), now),
         lastActivityAt: Math.min(finite(record.lastActivityAt, now), now),
         expiresAt,
-        emptyDeleteAt: persistent ? null : emptyDeleteAt,
+        emptyDeleteAt:
+          persistent || record.singleClient === true ? null : emptyDeleteAt,
         lastTickAt: now,
         accumulator: 0,
         nextSnapshotAt: now,
@@ -615,6 +745,10 @@ class SessionManager {
         lastPointerAt,
         dirty: true,
       };
+
+      if (session.id !== DEFAULT_SESSION_ID) {
+        this.ensureLeaderboardIdentity(session, record);
+      }
 
       if (activeHeightGate) {
         const gateY =
@@ -691,7 +825,7 @@ class SessionManager {
   }
 
   scheduleEmptyCleanup(session) {
-    if (this.isPersistentSession(session)) {
+    if (this.isPersistentSession(session) || session?.singleClient) {
       this.cancelEmptyCleanup(session);
       return;
     }
@@ -778,6 +912,7 @@ class SessionManager {
     }
     session.summitElapsedMs = this.summitElapsedAt(session, now);
     session.summitRunningSince = null;
+    this.commitLeaderboardResult(session, session.summitElapsedMs);
     return true;
   }
 
@@ -998,6 +1133,26 @@ class SessionManager {
     this.syncFinalFallGate(session, now);
   }
 
+  barrierHopOptions(session) {
+    return {
+      easingPoints: RoomSettings.parseCubicBezier(
+        session.roomSettings.sceneTwoBarrierHopSpeedEasing
+      ),
+      maxDistancePercent:
+        session.roomSettings.sceneTwoBarrierHopMaxDistancePercent,
+      random: this.random,
+      speedPxPerSecond:
+        session.roomSettings.sceneTwoBarrierHopSpeedPxPerSecond,
+    };
+  }
+
+  applyBarrierHop(session) {
+    return Physics.applyBarrierHopImpulse(
+      session.state,
+      this.barrierHopOptions(session)
+    );
+  }
+
   removeHolder(session, clientId, options = {}) {
     const holder = this.activeHolder(session);
     if (!holder || holder.clientId !== clientId) {
@@ -1058,6 +1213,12 @@ class SessionManager {
         angleDegrees,
         inertiaFactor
       );
+    } else if (
+      options.applyBarrierHopImpulse &&
+      wasDragging &&
+      session.state.phase === Physics.PHASES.PLAY
+    ) {
+      jump = this.applyBarrierHop(session);
     }
     this.syncFinalFallGate(session, now);
     this.markChanged(session);
@@ -1193,12 +1354,8 @@ class SessionManager {
     });
 
     if (this.connectedCount(session) === 0) {
-      if (!session.singleClient || this.isPersistentSession(session)) {
-        this.touch(session);
-        this.scheduleEmptyCleanup(session);
-      } else {
-        this.destroySession(session, 1000, "session_left");
-      }
+      this.touch(session);
+      this.scheduleEmptyCleanup(session);
       return true;
     }
 
@@ -1391,6 +1548,28 @@ class SessionManager {
       this.sendTo(client, "control.denied", { reason: "already_controlled" });
       return false;
     }
+    if (
+      RoomSettings.stateAboveSceneTwoBarrier(
+        state,
+        session.roomSettings,
+        Physics.WORLD_HEIGHT
+      )
+    ) {
+      const missed =
+        this.random() * 100 <
+        session.roomSettings.sceneTwoBarrierHopMissProbabilityPercent;
+      const jump = missed ? null : this.applyBarrierHop(session);
+      if (jump) {
+        this.markChanged(session);
+        this.broadcastSnapshot(session);
+      }
+      this.sendTo(client, "control.denied", {
+        reason: "scene_two_barrier",
+        hopped: Boolean(jump),
+        ...(jump || {}),
+      });
+      return false;
+    }
     state.suspended = false;
     session.holder = {
       clientId: client.id,
@@ -1463,11 +1642,19 @@ class SessionManager {
     if (payload.pointer) {
       this.updatePointer(session, client, payload.pointer);
     }
+    const barrierHop =
+      payload.barrierHop === true &&
+      RoomSettings.stateAboveSceneTwoBarrier(
+        holder,
+        session.roomSettings,
+        Physics.WORLD_HEIGHT
+      );
     this.syncDrag(session);
     return this.removeHolder(session, client.id, {
-      applyReleaseImpulse: true,
+      applyBarrierHopImpulse: barrierHop,
+      applyReleaseImpulse: !barrierHop,
       notify: false,
-      reason: "released",
+      reason: barrierHop ? "scene_two_barrier" : "released",
     });
   }
 
@@ -2196,6 +2383,19 @@ class SessionManager {
             session.state.y = constrainedY;
             session.state.vy = 0;
           }
+          if (
+            RoomSettings.stateAboveSceneTwoBarrier(
+              session.state,
+              session.roomSettings,
+              Physics.WORLD_HEIGHT
+            )
+          ) {
+            this.removeHolder(session, dragHolder.clientId, {
+              applyBarrierHopImpulse: true,
+              notify: true,
+              reason: "scene_two_barrier",
+            });
+          }
         }
         if (wasAboveGround && session.state.y >= Physics.WORLD_HEIGHT - 0.01) {
           groundTouched = true;
@@ -2255,6 +2455,7 @@ class SessionManager {
       revision: session.revision,
       serverTime,
       heightGateState: this.heightGateState(session),
+      leaderboard: this.leaderboardSnapshot(session),
     };
     if (normalized.includeConfig) {
       payload.physics = { ...session.physics };

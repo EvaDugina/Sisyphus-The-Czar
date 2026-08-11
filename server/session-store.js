@@ -10,6 +10,8 @@ class SessionStore {
     this.filePath = String(filePath || "").trim();
     this.logger = options.logger || (() => {});
     this.lastSerializedSessions = null;
+    this.lastSerializedLeaderboard = null;
+    this.leaderboardState = { czarSequence: 0, entries: [] };
   }
 
   get enabled() {
@@ -31,6 +33,11 @@ class SessionStore {
         throw new Error("unsupported_session_store_format");
       }
       this.lastSerializedSessions = JSON.stringify(document.sessions);
+      this.leaderboardState =
+        document.leaderboard && typeof document.leaderboard === "object"
+          ? document.leaderboard
+          : { czarSequence: 0, entries: [] };
+      this.lastSerializedLeaderboard = JSON.stringify(this.leaderboardState);
       this.logger("session_store_loaded", { sessions: document.sessions.length });
       return document.sessions;
     } catch (error) {
@@ -47,7 +54,16 @@ class SessionStore {
     const serializedSessions = JSON.stringify(
       Array.isArray(sessions) ? sessions : []
     );
-    if (!options.force && serializedSessions === this.lastSerializedSessions) {
+    const leaderboard =
+      options.leaderboard && typeof options.leaderboard === "object"
+        ? options.leaderboard
+        : this.leaderboardState;
+    const serializedLeaderboard = JSON.stringify(leaderboard);
+    if (
+      !options.force &&
+      serializedSessions === this.lastSerializedSessions &&
+      serializedLeaderboard === this.lastSerializedLeaderboard
+    ) {
       return false;
     }
 
@@ -61,11 +77,14 @@ class SessionStore {
           version: STORE_VERSION,
           savedAt: Date.now(),
           sessions: JSON.parse(serializedSessions),
+          leaderboard: JSON.parse(serializedLeaderboard),
         }),
         { encoding: "utf8", mode: 0o600 }
       );
       fs.renameSync(temporaryPath, this.filePath);
       this.lastSerializedSessions = serializedSessions;
+      this.lastSerializedLeaderboard = serializedLeaderboard;
+      this.leaderboardState = leaderboard;
       return true;
     } catch (error) {
       try {

@@ -17,6 +17,7 @@ export function useSisyphusExperience() {
     remoteCursorLayerRef: useRef(null),
     hintRef: useRef(null),
     heightGateStatusRef: useRef(null),
+    summitLeaderboardRef: useRef(null),
   };
   const trail = {
     trailCanvasRef: useRef(null),
@@ -46,6 +47,7 @@ export function useSisyphusExperience() {
     remoteCursorLayerRef,
     rockImprintRef,
     rockRef,
+    summitLeaderboardRef,
     worldRef,
   } = scene;
   const { trailCanvasRef, trailSessionCanvasRef, trailGlowCanvasRef } = trail;
@@ -60,6 +62,7 @@ export function useSisyphusExperience() {
       world: worldRef.current,
       rock: rockRef.current,
       rockImprint: rockImprintRef.current,
+      summitLeaderboard: summitLeaderboardRef.current,
       handCursor: handCursorRef.current,
       heightGateStatus: heightGateStatusRef.current,
       remoteCursorLayer: remoteCursorLayerRef.current,
@@ -94,6 +97,7 @@ export function useSisyphusExperience() {
     sessionPanelRef,
     sessionStatusRef,
     settingsLinkRef,
+    summitLeaderboardRef,
     trailCanvasRef,
     trailSessionCanvasRef,
     trailGlowCanvasRef,

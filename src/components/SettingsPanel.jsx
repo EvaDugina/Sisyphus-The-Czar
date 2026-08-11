@@ -8,7 +8,6 @@ import {
   settingsGroupControls,
 } from "../config/settings.mjs";
 import { SettingsControl } from "./SettingsControl";
-import { WindowObstaclePermissionControl } from "./WindowObstaclePermissionControl";
 
 export function SettingsPanel({
   panelRef,
@@ -154,9 +153,6 @@ export function SettingsPanel({
                   hidden={!subgroupVisible}
                 >
                   <summary>{subgroup.title}</summary>
-                  {subgroup.permissionControl === "window-obstacle" && (
-                    <WindowObstaclePermissionControl />
-                  )}
                   {settingsGroupControls(subgroup).map((control) => (
                     <SettingsControl
                       control={control}
