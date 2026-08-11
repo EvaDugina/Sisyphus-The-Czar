@@ -222,6 +222,14 @@ test("камень прыгает накопительно, сохраняет g
   await watchLaughPlayCalls(page);
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        followDown: params.cameraFollowDownEnabled,
+        followUp: params.upperZoneAutoScrollEnabled,
+      })),
+    )
+    .toEqual({ followDown: true, followUp: true });
   await page.waitForTimeout(250);
   const body = page.locator("body");
   const html = page.locator("html");
@@ -237,6 +245,16 @@ test("камень прыгает накопительно, сохраняет g
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   await expect(body).toHaveClass(/preclick-rock-guidance/);
   await expect(html).toHaveClass(/is-manual-scroll-disabled/);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({ sceneHeightScreens: 4 });
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => document.documentElement.scrollHeight > window.innerHeight,
+      ),
+    )
+    .toBe(true);
   await scrollToRock(page);
 
   const rock = page.locator(SOURCE_ROCK);
@@ -250,8 +268,6 @@ test("камень прыгает накопительно, сохраняет g
     params.preclickHopSpeedEasing = "cubic-bezier(0.22, 1, 0.36, 1)";
     params.rockPressShrinkPercent = 0;
     params.rockWallPenetrationPercent = 0;
-    params.upperZoneAutoScrollEnabled = true;
-    params.cameraFollowDownEnabled = false;
   });
   const radius = await rock.evaluate(
     (element) => element.getBoundingClientRect().width * 0.5,
@@ -430,8 +446,8 @@ test("камень прыгает накопительно, сохраняет g
   const scrollAtActivation = await page.evaluate(() => scrollY);
   await page.mouse.move(
     afterGrabCenter.x,
-    Math.max(50, afterGrabCenter.y - 300),
-    { steps: 8 },
+    50,
+    { steps: 80 },
   );
   if (scrollAtActivation > 0) {
     await expect
@@ -443,13 +459,12 @@ test("камень прыгает накопительно, сохраняет g
   const scrollAfterUpwardFollow = await page.evaluate(() => scrollY);
   await page.mouse.move(
     afterGrabCenter.x,
-    Math.min((page.viewportSize()?.height || 700) - 50, afterGrabCenter.y + 300),
-    { steps: 8 },
+    (page.viewportSize()?.height || 700) - 50,
+    { steps: 80 },
   );
-  await page.waitForTimeout(250);
-  expect(await page.evaluate(() => scrollY)).toBeLessThanOrEqual(
-    scrollAfterUpwardFollow + 1,
-  );
+  await expect
+    .poll(() => page.evaluate(() => scrollY))
+    .toBeGreaterThan(scrollAfterUpwardFollow + 1);
   await page.mouse.up();
   await page.mouse.move(10, 10);
   await page.mouse.move(point.x, point.y);

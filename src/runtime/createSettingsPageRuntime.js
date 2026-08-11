@@ -15,7 +15,7 @@ import {
   WINDOW_OBSTACLE_PERMISSION,
 } from "./createWindowObstacleController.js";
 
-const SETTINGS_SCHEMA_VERSION = 44;
+const SETTINGS_SCHEMA_VERSION = 45;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 function randomRequestId() {

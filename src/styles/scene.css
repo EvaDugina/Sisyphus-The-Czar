@@ -1,3 +1,13 @@
+@font-face {
+  font-family: "Comico";
+  src:
+    url("../../assets/fonts/Comico_Complete/Fonts/WEB/fonts/Comico-Regular.woff2") format("woff2"),
+    url("../../assets/fonts/Comico_Complete/Fonts/WEB/fonts/Comico-Regular.woff") format("woff");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400;
+}
+
 .world {
   position: relative;
   height: var(--scene-height-vh, 1000vh);
@@ -50,13 +60,12 @@
   width: min(92vw, 76rem);
   margin: 0;
   color: color-mix(in srgb, var(--ink) 88%, transparent);
-  font-family:
-    "Cormorant Garamond", Georgia, "Times New Roman", serif;
-  font-weight: 700;
+  font-family: "Comico", fantasy;
+  font-weight: 400;
   letter-spacing: 0;
   line-height: 0.84;
   text-align: center;
-  text-transform: uppercase;
+  text-transform: none;
   text-shadow: 0 0.08em 0.16em var(--shadow);
   transform: translateX(-50%);
   transition: color 420ms ease;

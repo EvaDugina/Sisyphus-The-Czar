@@ -5,7 +5,11 @@ import { WeatherRain } from "./WeatherRain";
 
 export function Scene({ scene, trail, rain }) {
   return (
-    <main ref={scene.worldRef} className="world" aria-label="Сцена Пути Царей">
+    <main
+      ref={scene.worldRef}
+      className="world"
+      aria-label="Сцена The Path of Tzarey"
+    >
       <TrailCanvas
         historyCanvasRef={trail.trailCanvasRef}
         sessionCanvasRef={trail.trailSessionCanvasRef}
@@ -20,8 +24,8 @@ export function Scene({ scene, trail, rain }) {
       </div>
       <section className="summit">
         <div className="target-zone" aria-hidden="true" />
-        <h2 className="title2">Миниатюра</h2>
-        <h2 className="title">ПУТЬ ЦАРЕЙ</h2>
+        <h2 className="title2">miniature</h2>
+        <h2 className="title">The Path of Tzarey</h2>
       </section>
       <WeatherRain
         layerRef={rain.rainLayerRef}

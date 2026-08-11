@@ -431,7 +431,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v44") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v45") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -1370,7 +1370,7 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v44") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v45") || "{}",
         );
         return stored.gravity;
       }),
@@ -1378,11 +1378,11 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v44 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v45 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v44");
+    localStorage.removeItem("sisyphus-czar-settings-v45");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1405,7 +1405,7 @@ test("локальные настройки v20 мигрируют в v44 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v44") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v45") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2029,11 +2029,18 @@ test("вход на корень открывает рабочую личную 
   await page.goto("/");
   await expect(page).toHaveURL(/\/$/);
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
-  await expect(page).toHaveTitle("ПУТЬ ЦАРЕЙ");
+  await expect(page).toHaveTitle("The Path of Tzarey");
   await expect(page.locator(".top-inscription")).toHaveCount(0);
   await expect(page.getByTestId("summit-timer")).toHaveText("00:00:00");
   await expect(page.locator("#root > .world > .summit .title")).toHaveText(
-    "ПУТЬ ЦАРЕЙ",
+    "The Path of Tzarey",
+  );
+  await expect(page.locator("#root > .world > .summit .title2")).toHaveText(
+    "miniature",
+  );
+  await expect(page.locator("#root > .world")).toHaveAttribute(
+    "aria-label",
+    "Сцена The Path of Tzarey",
   );
   await expect(page.locator("html")).not.toHaveClass(/is-scroll-locked/);
   await expect(page.locator("body")).not.toHaveClass(/is-scroll-locked/);
@@ -2063,18 +2070,30 @@ test("вход на корень открывает рабочую личную 
   expect(startState.pointerEvents).toBe("auto");
   expect(startState.scale).toBeGreaterThan(0);
   expect(startState.scrollable).toBe(startState.sceneHeightScreens > 1);
+  await page.evaluate(() => document.fonts.ready);
   const summitTimerLayout = await page.getByTestId("summit-timer").evaluate(
     (timer) => {
       const title = document.querySelector(".title");
+      const subtitle = document.querySelector(".title2");
       const timerRect = timer.getBoundingClientRect();
+      const titleRect = title.getBoundingClientRect();
+      const subtitleRect = subtitle.getBoundingClientRect();
       const timerStyle = getComputedStyle(timer);
       const titleStyle = getComputedStyle(title);
+      const subtitleStyle = getComputedStyle(subtitle);
       return {
         centerDelta: Math.abs(
           timerRect.left + timerRect.width / 2 - window.innerWidth / 2
         ),
         fitsViewport: timerRect.width <= window.innerWidth,
         fontSize: Number.parseFloat(timerStyle.fontSize),
+        fontLoaded: document.fonts.check('16px "Comico"'),
+        subtitleFitsViewport:
+          subtitleRect.left >= 0 && subtitleRect.right <= window.innerWidth,
+        subtitleFontFamily: subtitleStyle.fontFamily,
+        titleFitsViewport:
+          titleRect.left >= 0 && titleRect.right <= window.innerWidth,
+        titleFontFamily: titleStyle.fontFamily,
         titleFontSize: Number.parseFloat(titleStyle.fontSize),
         zIndex: Number.parseInt(timerStyle.zIndex, 10),
         titleZIndex: Number.parseInt(titleStyle.zIndex, 10),
@@ -2083,6 +2102,11 @@ test("вход на корень открывает рабочую личную 
   );
   expect(summitTimerLayout.centerDelta).toBeLessThan(2);
   expect(summitTimerLayout.fitsViewport).toBe(true);
+  expect(summitTimerLayout.fontLoaded).toBe(true);
+  expect(summitTimerLayout.titleFitsViewport).toBe(true);
+  expect(summitTimerLayout.subtitleFitsViewport).toBe(true);
+  expect(summitTimerLayout.titleFontFamily).toContain("Comico");
+  expect(summitTimerLayout.subtitleFontFamily).toContain("Comico");
   expect(summitTimerLayout.fontSize).toBeGreaterThan(
     summitTimerLayout.titleFontSize
   );
@@ -2464,7 +2488,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v44",
+      "sisyphus-czar-settings-v45",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2927,7 +2951,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v44") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v45") || "{}"
         );
         return stored.trailRenderProfile;
       })
@@ -2966,7 +2990,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v44") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v45") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -3102,7 +3126,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v44") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v45") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -3137,7 +3161,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v44") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v45") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -3154,7 +3178,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v44") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v45") || "{}"
         );
         return stored.rainEnabled;
       })
