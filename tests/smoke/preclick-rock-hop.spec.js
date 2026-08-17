@@ -215,6 +215,73 @@ function toroidalDistance(first, second, viewport) {
   );
 }
 
+test("камера независимо следует за камнем вверх и вниз при скрытом overflow", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.goto("/");
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+
+  const directionalCamera = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.completePreclickRockGuidance();
+    api.applyTestSettings({ sceneHeightScreens: 4 });
+    api.updateBounds();
+    const middleY = api.bounds.maxY / 2;
+    const upY = Math.max(api.bounds.minY, middleY - window.innerHeight);
+    const downY = Math.min(api.bounds.maxY, middleY + window.innerHeight);
+    const measure = (targetY, settings) => {
+      api.applyTestSettings({
+        cameraFollowUpLerp: 1,
+        cameraFollowDownLerp: 1,
+        sceneTwoOverflowYVisible: false,
+        ...settings,
+      });
+      api.setPosition(api.motion.x, middleY);
+      api.updateCameraFollow({ immediate: true });
+      const before = scrollY;
+      api.setPosition(api.motion.x, targetY);
+      api.updateCameraFollow();
+      return { before, after: scrollY };
+    };
+    return {
+      overflowY: document.documentElement.style.overflowY,
+      upEnabled: measure(upY, {
+        cameraFollowUpEnabled: true,
+        cameraFollowDownEnabled: false,
+      }),
+      upBlocked: measure(upY, {
+        cameraFollowUpEnabled: false,
+        cameraFollowDownEnabled: true,
+      }),
+      downEnabled: measure(downY, {
+        cameraFollowUpEnabled: false,
+        cameraFollowDownEnabled: true,
+      }),
+      downBlocked: measure(downY, {
+        cameraFollowUpEnabled: true,
+        cameraFollowDownEnabled: false,
+      }),
+    };
+  });
+
+  expect(directionalCamera.overflowY).toBe("hidden");
+  expect(directionalCamera.upEnabled.after).toBeLessThan(
+    directionalCamera.upEnabled.before,
+  );
+  expect(directionalCamera.upBlocked.after).toBeCloseTo(
+    directionalCamera.upBlocked.before,
+    5,
+  );
+  expect(directionalCamera.downEnabled.after).toBeGreaterThan(
+    directionalCamera.downEnabled.before,
+  );
+  expect(directionalCamera.downBlocked.after).toBeCloseTo(
+    directionalCamera.downBlocked.before,
+    5,
+  );
+});
+
 test("камень прыгает накопительно, сохраняет guidance и завершается первым захватом", async ({
   page,
 }) => {
@@ -225,11 +292,20 @@ test("камень прыгает накопительно, сохраняет g
   await expect
     .poll(() =>
       page.evaluate(() => ({
+        followUp: params.cameraFollowUpEnabled,
+        upLerp: params.cameraFollowUpLerp,
         followDown: params.cameraFollowDownEnabled,
-        followUp: params.upperZoneAutoScrollEnabled,
+        downLerp: params.cameraFollowDownLerp,
+        rockAcceleration: params.rockAccelerationEnabled,
       })),
     )
-    .toEqual({ followDown: true, followUp: true });
+    .toEqual({
+      followUp: true,
+      upLerp: 0.1,
+      followDown: true,
+      downLerp: 0.1,
+      rockAcceleration: false,
+    });
   await page.waitForTimeout(250);
   const body = page.locator("body");
   const html = page.locator("html");
@@ -500,25 +576,6 @@ test("камень прыгает накопительно, сохраняет g
     await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
   }
   await page.mouse.up();
-  const scrollBeforeDownwardFollow = await page.evaluate(() => {
-    const api = window.__sisyphusTestApi;
-    api.applyTestSettings({ cameraFollowLerp: 1 });
-    const middleY = api.bounds.maxY / 2;
-    api.setPosition(api.motion.x, middleY);
-    api.updateCameraFollow({ immediate: true });
-    return scrollY;
-  });
-  await page.evaluate(() => {
-    const api = window.__sisyphusTestApi;
-    api.setPosition(
-      api.motion.x,
-      Math.min(api.bounds.maxY, api.motion.y + window.innerHeight),
-    );
-    api.updateCameraFollow({ immediate: true });
-  });
-  await expect
-    .poll(() => page.evaluate(() => scrollY))
-    .toBeGreaterThan(scrollBeforeDownwardFollow + 1);
   await page.mouse.move(10, 10);
   await page.mouse.move(point.x, point.y);
   expect(await hopState(page)).toMatchObject({

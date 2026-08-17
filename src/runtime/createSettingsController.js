@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 48;
+const SETTINGS_SCHEMA_VERSION = 49;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -239,23 +239,30 @@ export function createSettingsController(options) {
       return;
     }
     settingsPanel
-      .querySelectorAll("[data-setting-enabled-when]")
+      .querySelectorAll(
+        "[data-setting-enabled-when], [data-setting-static-disabled='true']",
+      )
       .forEach((control) => {
+        const staticDisabled =
+          control.dataset.settingStaticDisabled === "true";
         const condition = parseSettingDependencyAttribute(
           control.dataset.settingEnabledWhen,
         );
         const dependency = condition?.name
           ? settingsPanel.querySelector(`[name="${condition.name}"]`)
           : null;
-        const enabled = Boolean(
-          dependency &&
-            !dependency.disabled &&
-            settingDependencyMatches(condition, {
-              checked: dependency.checked,
-              type: dependency.type,
-              value: dependency.value,
-            }),
-        );
+        const dependencyEnabled = condition?.name
+          ? Boolean(
+              dependency &&
+                !dependency.disabled &&
+                settingDependencyMatches(condition, {
+                  checked: dependency.checked,
+                  type: dependency.type,
+                  value: dependency.value,
+                }),
+            )
+          : true;
+        const enabled = !staticDisabled && dependencyEnabled;
         control.querySelectorAll("input, select, button").forEach((input) => {
           input.disabled = !enabled;
         });
@@ -279,10 +286,12 @@ export function createSettingsController(options) {
             return option?.textContent?.trim() || value;
           })
           .filter(Boolean);
-        const reason = allowedLabels?.length
-          ? `Доступно, когда «${dependencyLabel}»: ${allowedLabels.join(", ")}.`
-          : `Доступно, когда «${dependencyLabel}» включено.`;
-        control.dataset.hint = enabled
+        const reason = staticDisabled
+          ? ""
+          : allowedLabels?.length
+            ? `Доступно, когда «${dependencyLabel}»: ${allowedLabels.join(", ")}.`
+            : `Доступно, когда «${dependencyLabel}» включено.`;
+        control.dataset.hint = enabled || staticDisabled
           ? control.dataset.settingBaseHint
           : [control.dataset.settingBaseHint, reason].filter(Boolean).join(" ");
       });
@@ -1311,7 +1320,8 @@ export function createSettingsController(options) {
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
-      cameraFollowLerp: params.cameraFollowLerp.toFixed(2),
+      cameraFollowUpLerp: params.cameraFollowUpLerp.toFixed(2),
+      cameraFollowDownLerp: params.cameraFollowDownLerp.toFixed(2),
       foldPositionPercent: `${params.foldPositionPercent.toFixed(0)}%`,
       foldPanelHeightVh: `${params.foldPanelHeightVh.toFixed(0)} vh`,
       foldAngle: `${params.foldAngle.toFixed(0)}°`,

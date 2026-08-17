@@ -6,7 +6,7 @@
     {
       "id": "settings-version-mscz5hfd-c30065d5-639b-4c30-9b66-03f291160c20",
       "name": "v1",
-      "settingsSchemaVersion": 48,
+      "settingsSchemaVersion": 49,
       "createdAt": "2026-08-03T08:35:52.057Z",
       "updatedAt": "2026-08-11T20:43:07.745Z",
       "settings": {
@@ -21,9 +21,11 @@
         "returnScrollDurationSeconds": 4,
         "returnScrollEasing": "cubic-bezier(0.4, 0, 0.2, 1)",
         "stationaryAutoSlipEnabled": true,
-        "cameraFollowLerp": 0.1,
+        "cameraFollowUpEnabled": true,
+        "cameraFollowUpLerp": 0.1,
         "cameraFollowDownEnabled": true,
-        "upperZoneAutoScrollEnabled": false,
+        "cameraFollowDownLerp": 0.1,
+        "rockAccelerationEnabled": false,
         "sceneTwoOverflowYVisible": false,
         "gachiClickSoundFilename": "Camen.mp3",
         "foldPositionPercent": 0,

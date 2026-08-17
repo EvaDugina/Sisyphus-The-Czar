@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 48;
+  const ROOM_SETTINGS_VERSION = 49;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -84,7 +84,8 @@
   const ROOM_SETTINGS_LIMITS = Object.freeze({
     sceneHeightScreens: [1, 100],
     returnScrollDurationSeconds: [0, 10],
-    cameraFollowLerp: [0.01, 1],
+    cameraFollowUpLerp: [0.01, 1],
+    cameraFollowDownLerp: [0.01, 1],
     foldPositionPercent: [0, 100],
     foldPanelHeightVh: [1, 100],
     foldAngle: [0, 180],
@@ -151,9 +152,11 @@
     returnScrollDurationSeconds: 4,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
     stationaryAutoSlipEnabled: true,
-    cameraFollowLerp: 0.1,
+    cameraFollowUpEnabled: true,
+    cameraFollowUpLerp: 0.1,
     cameraFollowDownEnabled: true,
-    upperZoneAutoScrollEnabled: true,
+    cameraFollowDownLerp: 0.1,
+    rockAccelerationEnabled: false,
     sceneTwoOverflowYVisible: false,
     gachiClickSoundFilename: DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     foldPositionPercent: 0,
@@ -455,8 +458,10 @@
     const [sceneMin, sceneMax] = ROOM_SETTINGS_LIMITS.sceneHeightScreens;
     const [returnScrollMin, returnScrollMax] =
       ROOM_SETTINGS_LIMITS.returnScrollDurationSeconds;
-    const [cameraFollowLerpMin, cameraFollowLerpMax] =
-      ROOM_SETTINGS_LIMITS.cameraFollowLerp;
+    const [cameraFollowUpLerpMin, cameraFollowUpLerpMax] =
+      ROOM_SETTINGS_LIMITS.cameraFollowUpLerp;
+    const [cameraFollowDownLerpMin, cameraFollowDownLerpMax] =
+      ROOM_SETTINGS_LIMITS.cameraFollowDownLerp;
     const [foldPositionMin, foldPositionMax] =
       ROOM_SETTINGS_LIMITS.foldPositionPercent;
     const [foldPanelHeightMin, foldPanelHeightMax] =
@@ -599,23 +604,31 @@
         fallbackSource,
         "stationaryAutoSlipEnabled"
       ),
-      cameraFollowLerp: finiteSetting(
+      cameraFollowUpEnabled: boolSetting(
         source,
         fallbackSource,
-        "cameraFollowLerp",
-        cameraFollowLerpMin,
-        cameraFollowLerpMax
+        "cameraFollowUpEnabled"
+      ),
+      cameraFollowUpLerp: finiteSetting(
+        source,
+        fallbackSource,
+        "cameraFollowUpLerp",
+        cameraFollowUpLerpMin,
+        cameraFollowUpLerpMax
       ),
       cameraFollowDownEnabled: boolSetting(
         source,
         fallbackSource,
         "cameraFollowDownEnabled"
       ),
-      upperZoneAutoScrollEnabled: boolSetting(
+      cameraFollowDownLerp: finiteSetting(
         source,
         fallbackSource,
-        "upperZoneAutoScrollEnabled"
+        "cameraFollowDownLerp",
+        cameraFollowDownLerpMin,
+        cameraFollowDownLerpMax
       ),
+      rockAccelerationEnabled: false,
       sceneTwoOverflowYVisible: boolSetting(
         source,
         fallbackSource,
@@ -1294,7 +1307,7 @@
         source.handAlwaysVisible = true;
       }
       if (!Object.hasOwn(source, "cameraFollowLerp")) {
-        source.cameraFollowLerp = DEFAULT_ROOM_SETTINGS.cameraFollowLerp;
+        source.cameraFollowLerp = DEFAULT_ROOM_SETTINGS.cameraFollowUpLerp;
       }
       delete source.positionScrollEnabled;
       delete source.positionScrollZonePercent;
@@ -1353,7 +1366,6 @@
     if (finiteNumber(version, 1) < 43) {
       [
         "cameraFollowDownEnabled",
-        "upperZoneAutoScrollEnabled",
         "gachiClickSoundFilename",
       ].forEach((key) => {
         if (!Object.hasOwn(current, key)) {
@@ -1365,12 +1377,6 @@
       if (!Object.hasOwn(current, "sceneTwoOverflowYVisible")) {
         current.sceneTwoOverflowYVisible =
           DEFAULT_ROOM_SETTINGS.sceneTwoOverflowYVisible;
-      }
-    }
-    if (finiteNumber(version, 1) < 45) {
-      if (!Object.hasOwn(current, "upperZoneAutoScrollEnabled")) {
-        current.upperZoneAutoScrollEnabled =
-          DEFAULT_ROOM_SETTINGS.upperZoneAutoScrollEnabled;
       }
     }
     if (finiteNumber(version, 1) < 46) {
@@ -1432,6 +1438,33 @@
           current[key] = DEFAULT_ROOM_SETTINGS[key];
         }
       });
+    }
+    if (finiteNumber(version, 1) < 49) {
+      const legacyCameraFollowLerp = clamp(
+        finiteNumber(
+          current.cameraFollowLerp,
+          DEFAULT_ROOM_SETTINGS.cameraFollowUpLerp
+        ),
+        ROOM_SETTINGS_LIMITS.cameraFollowUpLerp[0],
+        ROOM_SETTINGS_LIMITS.cameraFollowUpLerp[1]
+      );
+      if (!Object.hasOwn(current, "cameraFollowUpEnabled")) {
+        current.cameraFollowUpEnabled =
+          DEFAULT_ROOM_SETTINGS.cameraFollowUpEnabled;
+      }
+      if (!Object.hasOwn(current, "cameraFollowUpLerp")) {
+        current.cameraFollowUpLerp = legacyCameraFollowLerp;
+      }
+      if (!Object.hasOwn(current, "cameraFollowDownEnabled")) {
+        current.cameraFollowDownEnabled =
+          DEFAULT_ROOM_SETTINGS.cameraFollowDownEnabled;
+      }
+      if (!Object.hasOwn(current, "cameraFollowDownLerp")) {
+        current.cameraFollowDownLerp = legacyCameraFollowLerp;
+      }
+      current.rockAccelerationEnabled = false;
+      delete current.cameraFollowLerp;
+      delete current.upperZoneAutoScrollEnabled;
     }
     return current;
   }

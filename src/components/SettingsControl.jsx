@@ -7,6 +7,7 @@ export function SettingsControl({ control, hidden = false }) {
     activeLabel,
     defaultChecked,
     defaultValue,
+    disabled = false,
     enabledWhen,
     formulas,
     hint,
@@ -35,12 +36,15 @@ export function SettingsControl({ control, hidden = false }) {
   if (type === "checkbox") {
     return (
       <label
-        className="control is-check"
+        className={`control is-check${disabled ? " is-disabled" : ""}`}
         data-hint={hint}
         data-formulas={formulasAttr}
         data-setting-control
+        data-setting-disabled={disabled ? "true" : undefined}
         data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
         data-setting-scope={scope}
+        data-setting-static-disabled={disabled ? "true" : undefined}
+        aria-disabled={disabled ? "true" : undefined}
         hidden={hidden}
       >
         <input
@@ -48,6 +52,7 @@ export function SettingsControl({ control, hidden = false }) {
           name={name}
           type="checkbox"
           defaultChecked={defaultChecked}
+          disabled={disabled}
         />
         <span>{label}</span>
       </label>
@@ -77,12 +82,15 @@ export function SettingsControl({ control, hidden = false }) {
 
     return (
       <div
-        className="control is-toggle-button"
+        className={`control is-toggle-button${disabled ? " is-disabled" : ""}`}
         data-hint={hint}
         data-formulas={formulasAttr}
         data-setting-control
+        data-setting-disabled={disabled ? "true" : undefined}
         data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
         data-setting-scope={scope}
+        data-setting-static-disabled={disabled ? "true" : undefined}
+        aria-disabled={disabled ? "true" : undefined}
         hidden={hidden}
       >
         <span className="control-label">
@@ -93,11 +101,14 @@ export function SettingsControl({ control, hidden = false }) {
           name={name}
           type="checkbox"
           defaultChecked={defaultChecked}
+          disabled={disabled}
           hidden
         />
         <button
           className="control-toggle-button"
           type="button"
+          disabled={disabled}
+          aria-disabled={disabled ? "true" : undefined}
           aria-pressed={String(Boolean(defaultChecked))}
           data-setting-toggle-button
           data-active-label={activeText}
@@ -112,7 +123,12 @@ export function SettingsControl({ control, hidden = false }) {
 
   const field =
     type === "select" ? (
-      <select data-setting-input name={name} defaultValue={defaultValue}>
+      <select
+        data-setting-input
+        name={name}
+        defaultValue={defaultValue}
+        disabled={disabled}
+      >
         {options.map(([value, text]) => (
           <option key={value} value={value}>
             {text}
@@ -125,18 +141,22 @@ export function SettingsControl({ control, hidden = false }) {
         data-setting-input
         type={type}
         defaultValue={defaultValue}
+        disabled={disabled}
         {...inputProps}
       />
     );
 
   return (
     <label
-      className="control"
+      className={`control${disabled ? " is-disabled" : ""}`}
       data-hint={hint}
       data-formulas={formulasAttr}
       data-setting-control
+      data-setting-disabled={disabled ? "true" : undefined}
       data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
       data-setting-scope={scope}
+      data-setting-static-disabled={disabled ? "true" : undefined}
+      aria-disabled={disabled ? "true" : undefined}
       hidden={hidden}
     >
       <span className="control-label">

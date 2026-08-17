@@ -324,8 +324,16 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.darkBackgroundLowColor,
     returnScrollDurationSeconds: DEFAULT_RETURN_SCROLL_DURATION_SECONDS,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
-    cameraFollowLerp:
-      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.cameraFollowLerp,
+    cameraFollowUpEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.cameraFollowUpEnabled,
+    cameraFollowUpLerp:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.cameraFollowUpLerp,
+    cameraFollowDownEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.cameraFollowDownEnabled,
+    cameraFollowDownLerp:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.cameraFollowDownLerp,
+    rockAccelerationEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockAccelerationEnabled,
     sceneTwoOverflowYVisible:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoOverflowYVisible,
     foldPositionPercent:
@@ -3954,8 +3962,9 @@ export function createSisyphusRuntime(elements = {}) {
       : cameraFollowDirectionalScrollY({
           currentScrollY: window.scrollY,
           targetScrollY,
-          lerp: params.cameraFollowLerp,
-          followUp: params.upperZoneAutoScrollEnabled,
+          upLerp: params.cameraFollowUpLerp,
+          downLerp: params.cameraFollowDownLerp,
+          followUp: params.cameraFollowUpEnabled,
           followDown: params.cameraFollowDownEnabled,
         });
     if (nextScrollY === window.scrollY) {

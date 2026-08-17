@@ -65,7 +65,7 @@ test("settings template store атомарно сохраняет whitelist и �
   assert.deepEqual(loaded.latest(), saved.entry);
 });
 
-test("settings template store мигрирует legacy Fold-ключи в schema 48", (context) => {
+test("settings template store мигрирует legacy Fold-ключи в schema 49", (context) => {
   const { store } = temporaryStore(context);
   const legacy = entry("legacy-fold");
   legacy.settingsSchemaVersion = 32;
@@ -79,7 +79,7 @@ test("settings template store мигрирует legacy Fold-ключи в schem
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 48);
+  assert.equal(imported.settingsSchemaVersion, 49);
   assert.equal(imported.settings.preclickPopupDelayMs, 200);
   assert.equal(imported.settings.foldAngle, 55);
   assert.equal(imported.settings.foldZoneSize, 18);
@@ -100,18 +100,30 @@ test("settings template store мигрирует legacy Fold-ключи в schem
   assert.equal(imported.settings.foldRockImageId, "rock-03");
 });
 
-test("settings template store добавляет настройки сцены 2 из schema 42", (context) => {
+test("settings template store мигрирует настройки камеры из schema 48", (context) => {
   const { store } = temporaryStore(context);
   const legacy = entry("legacy-scene-two-controls");
-  legacy.settingsSchemaVersion = 42;
-  legacy.settings = { cameraFollowLerp: 0.25 };
+  legacy.settingsSchemaVersion = 48;
+  legacy.settings = {
+    cameraFollowLerp: 0.25,
+    cameraFollowDownEnabled: false,
+    upperZoneAutoScrollEnabled: true,
+    rockAccelerationEnabled: true,
+  };
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 48);
-  assert.equal(imported.settings.cameraFollowLerp, 0.25);
-  assert.equal(imported.settings.cameraFollowDownEnabled, true);
-  assert.equal(imported.settings.upperZoneAutoScrollEnabled, true);
+  assert.equal(imported.settingsSchemaVersion, 49);
+  assert.equal(imported.settings.cameraFollowUpEnabled, true);
+  assert.equal(imported.settings.cameraFollowUpLerp, 0.25);
+  assert.equal(imported.settings.cameraFollowDownEnabled, false);
+  assert.equal(imported.settings.cameraFollowDownLerp, 0.25);
+  assert.equal(imported.settings.rockAccelerationEnabled, false);
+  assert.equal(Object.hasOwn(imported.settings, "cameraFollowLerp"), false);
+  assert.equal(
+    Object.hasOwn(imported.settings, "upperZoneAutoScrollEnabled"),
+    false,
+  );
   assert.equal(imported.settings.sceneTwoOverflowYVisible, false);
   assert.equal(imported.settings.gachiClickSoundFilename, "Camen.mp3");
 });
@@ -127,7 +139,7 @@ test("settings template store мигрирует длину отскока из 
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 48);
+  assert.equal(imported.settingsSchemaVersion, 49);
   assert.equal(imported.settings.preclickHopActivationRadiusPercent, 20);
   assert.equal(imported.settings.preclickHopMaxDistancePercent, 25);
   assert.equal(
@@ -146,7 +158,7 @@ test("settings template store разделяет press и pulse из schema 34",
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 48);
+  assert.equal(imported.settingsSchemaVersion, 49);
   assert.equal(imported.settings.rockPressShrinkPercent, 17);
   assert.equal(imported.settings.rockPulseShrinkPercent, 17);
   assert.equal(imported.settings.rockImageId, "rock-03");
@@ -163,7 +175,7 @@ test("settings template store мигрирует boolean-видимость ру
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 48);
+  assert.equal(imported.settingsSchemaVersion, 49);
   assert.equal(imported.settings.handVisibilityMode, "hover");
   assert.equal(imported.settings.handImageChangeDelayMs, 0);
   assert.equal(imported.settings.foldPositionPercent, 0);

@@ -45,17 +45,22 @@ export function cameraFollowScrollUpY(currentScrollY, targetScrollY, lerp) {
 export function cameraFollowDirectionalScrollY({
   currentScrollY,
   targetScrollY,
-  lerp,
-  followUp = false,
+  upLerp,
+  downLerp,
+  followUp = true,
   followDown = true,
 }) {
   const current = Math.max(0, finiteNumber(currentScrollY, 0));
   const target = Math.max(0, finiteNumber(targetScrollY, current));
-  if (target < current && !followUp) {
-    return current;
+  if (target < current) {
+    return followUp
+      ? cameraFollowScrollY(current, target, upLerp)
+      : current;
   }
-  if (target > current && !followDown) {
-    return current;
+  if (target > current) {
+    return followDown
+      ? cameraFollowScrollY(current, target, downLerp)
+      : current;
   }
-  return cameraFollowScrollY(current, target, lerp);
+  return current;
 }

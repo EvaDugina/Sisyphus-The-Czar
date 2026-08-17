@@ -10,7 +10,7 @@ import {
   resolveProductionPresetMessage,
 } from "../lib/productionPresetMessages.mjs";
 import { createSettingsController } from "./createSettingsController.js";
-const SETTINGS_SCHEMA_VERSION = 48;
+const SETTINGS_SCHEMA_VERSION = 49;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 
 function randomRequestId() {

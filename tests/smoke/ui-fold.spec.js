@@ -70,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v48", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v49", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v48");
+    localStorage.removeItem("sisyphus-czar-settings-v49");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,7 +91,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v48", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -117,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v48", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,11 +125,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v48", 
     .toEqual([47, 13]);
 });
 
-test("настройки popup и берёз мигрируют из localStorage v47 в v48", async ({
+test("настройки popup и берёз мигрируют из localStorage v47 в v49", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v48");
+    localStorage.removeItem("sisyphus-czar-settings-v49");
     localStorage.setItem(
       "sisyphus-czar-settings-v47",
       JSON.stringify({ preclickPopupDelayMs: 345 }),
@@ -142,7 +142,7 @@ test("настройки popup и берёз мигрируют из localStorag
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           delay: stored.preclickPopupDelayMs,
@@ -160,11 +160,11 @@ test("настройки popup и берёз мигрируют из localStorag
     });
 });
 
-test("hop-настройки мигрируют из localStorage v39 в v48 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v39 в v49 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v48");
+    localStorage.removeItem("sisyphus-czar-settings-v49");
     localStorage.setItem(
       "sisyphus-czar-settings-v39",
       JSON.stringify({
@@ -184,13 +184,15 @@ test("hop-настройки мигрируют из localStorage v39 в v48 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           guardClicks: stored.preclickHopGuardClickCount,
           radius: stored.preclickHopActivationRadiusPercent,
           distance: stored.preclickHopMaxDistancePercent,
-          cameraFollowLerp: stored.cameraFollowLerp,
+          cameraFollowUpLerp: stored.cameraFollowUpLerp,
+          cameraFollowDownLerp: stored.cameraFollowDownLerp,
+          hasLegacyCamera: Object.hasOwn(stored, "cameraFollowLerp"),
           hasLegacy: Object.keys(stored).some((key) =>
             key.startsWith("preclickParallax") ||
             key === "preclickHopActivationRadiusVw" ||
@@ -203,16 +205,18 @@ test("hop-настройки мигрируют из localStorage v39 в v48 б�
       guardClicks: 1,
       radius: 12,
       distance: 150,
-      cameraFollowLerp: 0.25,
+      cameraFollowUpLerp: 0.25,
+      cameraFollowDownLerp: 0.25,
+      hasLegacyCamera: false,
       hasLegacy: false,
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v48", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v49", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v48");
+    localStorage.removeItem("sisyphus-czar-settings-v49");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -225,7 +229,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -243,9 +247,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v48", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v49", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v48");
+    localStorage.removeItem("sisyphus-czar-settings-v49");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -258,7 +262,7 @@ test("настройки руки мигрируют из localStorage v36 в v4
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -274,9 +278,9 @@ test("настройки руки мигрируют из localStorage v36 в v4
     });
 });
 
-test("раскладка Fold мигрирует из localStorage v37 в v48", async ({ page }) => {
+test("раскладка Fold мигрирует из localStorage v37 в v49", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v48");
+    localStorage.removeItem("sisyphus-czar-settings-v49");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -289,7 +293,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v48", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -304,7 +308,7 @@ test("группа Камень показывает десять контрол
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v48");
+    localStorage.removeItem("sisyphus-czar-settings-v49");
   });
 
   await page.goto("/");
@@ -380,10 +384,11 @@ test("панель показывает параметры и разделы в�
   const fakeClicks = page.locator('[name="preclickHopGuardClickCount"]');
   const gravity = page.locator('[name="gravity"]');
   const theme = page.locator('[name="themeMode"]');
+  const cameraFollowUp = page.locator('[name="cameraFollowUpEnabled"]');
+  const cameraFollowUpLerp = page.locator('[name="cameraFollowUpLerp"]');
   const cameraFollowDown = page.locator('[name="cameraFollowDownEnabled"]');
-  const upperZoneAutoScroll = page.locator(
-    '[name="upperZoneAutoScrollEnabled"]',
-  );
+  const cameraFollowDownLerp = page.locator('[name="cameraFollowDownLerp"]');
+  const rockAcceleration = page.locator('[name="rockAccelerationEnabled"]');
   const sceneTwoOverflowY = page.locator(
     '[name="sceneTwoOverflowYVisible"]',
   );
@@ -397,10 +402,13 @@ test("панель показывает параметры и разделы в�
   const themeControl = theme.locator(
     "xpath=ancestor::*[@data-setting-control]",
   );
+  const cameraFollowUpControl = cameraFollowUp.locator(
+    "xpath=ancestor::*[@data-setting-control]",
+  );
   const cameraFollowDownControl = cameraFollowDown.locator(
     "xpath=ancestor::*[@data-setting-control]",
   );
-  const upperZoneAutoScrollControl = upperZoneAutoScroll.locator(
+  const rockAccelerationControl = rockAcceleration.locator(
     "xpath=ancestor::*[@data-setting-control]",
   );
   const sceneTwoOverflowYControl = sceneTwoOverflowY.locator(
@@ -428,8 +436,9 @@ test("панель показывает параметры и разделы в�
   await expect(sceneTwo).toHaveAttribute("aria-pressed", "false");
   await expect(fakeClicksControl).not.toHaveAttribute("hidden", "");
   await expect(gravityControl).toHaveAttribute("hidden", "");
+  await expect(cameraFollowUpControl).toHaveAttribute("hidden", "");
   await expect(cameraFollowDownControl).toHaveAttribute("hidden", "");
-  await expect(upperZoneAutoScrollControl).toHaveAttribute("hidden", "");
+  await expect(rockAccelerationControl).toHaveAttribute("hidden", "");
   await expect(sceneTwoOverflowYControl).toHaveAttribute("hidden", "");
   await expect(gachiClickSoundControl).toHaveAttribute("hidden", "");
   await expect(obstacleGroup).toHaveAttribute("hidden", "");
@@ -446,12 +455,26 @@ test("панель показывает параметры и разделы в�
   await expect(sceneTwo).toHaveAttribute("aria-pressed", "true");
   await expect(fakeClicksControl).toHaveAttribute("hidden", "");
   await expect(gravityControl).not.toHaveAttribute("hidden", "");
+  await expect(cameraFollowUpControl).not.toHaveAttribute("hidden", "");
   await expect(cameraFollowDownControl).not.toHaveAttribute("hidden", "");
-  await expect(upperZoneAutoScrollControl).not.toHaveAttribute("hidden", "");
+  await expect(rockAccelerationControl).not.toHaveAttribute("hidden", "");
   await expect(sceneTwoOverflowYControl).not.toHaveAttribute("hidden", "");
   await expect(gachiClickSoundControl).not.toHaveAttribute("hidden", "");
+  await expect(cameraFollowUp).toBeChecked();
+  await expect(cameraFollowUpLerp).toHaveValue("0.1");
+  await expect(cameraFollowUpLerp).toBeEnabled();
   await expect(cameraFollowDown).toBeChecked();
-  await expect(upperZoneAutoScroll).toBeChecked();
+  await expect(cameraFollowDownLerp).toHaveValue("0.1");
+  await expect(cameraFollowDownLerp).toBeEnabled();
+  await expect(rockAcceleration).not.toBeChecked();
+  await expect(rockAcceleration).toBeDisabled();
+  await expect(rockAccelerationControl).toHaveAttribute(
+    "data-setting-static-disabled",
+    "true",
+  );
+  await expect(
+    rockAccelerationControl.locator("[data-setting-toggle-button]"),
+  ).toHaveAttribute("aria-disabled", "true");
   await expect(sceneTwoOverflowY).not.toBeChecked();
   await expect(gachiClickSound).toHaveValue("Camen.mp3");
   await expect(obstacleGroup).not.toHaveAttribute("hidden", "");
@@ -461,12 +484,16 @@ test("панель показывает параметры и разделы в�
   await expect(clearTrail).toBeVisible();
   await expect(theme).toHaveValue("dark");
   await expect(trailLineWidth).toHaveValue("27");
+  await setSettingValue(page, "cameraFollowUpEnabled", false);
+  await expect(cameraFollowUpLerp).toBeDisabled();
+  await expect(cameraFollowDownLerp).toBeEnabled();
   await setSettingValue(page, "cameraFollowDownEnabled", false);
-  await setSettingValue(page, "upperZoneAutoScrollEnabled", false);
+  await expect(cameraFollowDownLerp).toBeDisabled();
   await setSettingValue(page, "sceneTwoOverflowYVisible", true);
   await setSettingValue(page, "gachiClickSoundFilename", "Like that.mp3");
+  await expect(cameraFollowUp).not.toBeChecked();
   await expect(cameraFollowDown).not.toBeChecked();
-  await expect(upperZoneAutoScroll).not.toBeChecked();
+  await expect(rockAcceleration).not.toBeChecked();
   await expect(sceneTwoOverflowY).toBeChecked();
   await expect(gachiClickSound).toHaveValue("Like that.mp3");
 
@@ -476,14 +503,16 @@ test("панель показывает параметры и разделы в�
   await expect(theme).toHaveValue("dark");
   await expect(trailGroup).not.toHaveAttribute("hidden", "");
   await expect(trailLineWidth).toHaveValue("27");
+  await expect(cameraFollowUpControl).toHaveAttribute("hidden", "");
   await expect(cameraFollowDownControl).toHaveAttribute("hidden", "");
-  await expect(upperZoneAutoScrollControl).toHaveAttribute("hidden", "");
+  await expect(rockAccelerationControl).toHaveAttribute("hidden", "");
   await expect(sceneTwoOverflowYControl).toHaveAttribute("hidden", "");
   await expect(gachiClickSoundControl).toHaveAttribute("hidden", "");
 
   await sceneTwo.click();
+  await expect(cameraFollowUp).not.toBeChecked();
   await expect(cameraFollowDown).not.toBeChecked();
-  await expect(upperZoneAutoScroll).not.toBeChecked();
+  await expect(rockAcceleration).not.toBeChecked();
   await expect(sceneTwoOverflowY).toBeChecked();
   await expect(gachiClickSound).toHaveValue("Like that.mp3");
 });
@@ -1129,7 +1158,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,

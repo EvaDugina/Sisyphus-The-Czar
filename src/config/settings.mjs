@@ -14,7 +14,7 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v48";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v49";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -31,6 +31,7 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
   }),
 ]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v48",
   "sisyphus-czar-settings-v47",
   "sisyphus-czar-settings-v46",
   "sisyphus-czar-settings-v45",
@@ -596,33 +597,56 @@ export const SETTINGS_GROUPS = [
     title: "Камера",
     controls: [
       {
-        name: "cameraFollowLerp",
-        label: "Lerp камеры",
+        name: "cameraFollowUpEnabled",
+        label: "Следовать вверх",
+        type: "toggle-button",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.cameraFollowUpEnabled,
+        activeLabel: "Следовать",
+        inactiveLabel: "Не следовать",
+        hint: "Разрешает камере плавно двигаться вверх вслед за поднимающимся камнем.",
+      },
+      {
+        name: "cameraFollowUpLerp",
+        label: "Lerp вверх",
         type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.cameraFollowLerp[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.cameraFollowLerp[1],
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.cameraFollowUpLerp[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.cameraFollowUpLerp[1],
         step: 0.01,
-        defaultValue: DEFAULT_ROOM_SETTINGS.cameraFollowLerp,
-        output: DEFAULT_ROOM_SETTINGS.cameraFollowLerp.toFixed(2),
-        hint: "После первого клика камера удерживает центр камня на середине viewport. Единица перемещает камеру к цели сразу, меньшие значения делают следование плавнее.",
+        defaultValue: DEFAULT_ROOM_SETTINGS.cameraFollowUpLerp,
+        output: DEFAULT_ROOM_SETTINGS.cameraFollowUpLerp.toFixed(2),
+        enabledWhen: "cameraFollowUpEnabled",
+        hint: "Коэффициент плавного следования вверх. Единица перемещает камеру к цели сразу, меньшие значения увеличивают отставание.",
       },
       {
         name: "cameraFollowDownEnabled",
-        label: "Следовать при падении",
+        label: "Следовать вниз",
         type: "toggle-button",
         defaultChecked: DEFAULT_ROOM_SETTINGS.cameraFollowDownEnabled,
         activeLabel: "Следовать",
         inactiveLabel: "Не следовать",
-        hint: "Плавно прокручивает камеру вниз вслед за падающим камнем. Не влияет на отдельный автоскролл вверх.",
+        hint: "Разрешает камере плавно двигаться вниз вслед за опускающимся или падающим камнем.",
       },
       {
-        name: "upperZoneAutoScrollEnabled",
-        label: "Автоскролл в верхней области",
+        name: "cameraFollowDownLerp",
+        label: "Lerp вниз",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.cameraFollowDownLerp[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.cameraFollowDownLerp[1],
+        step: 0.01,
+        defaultValue: DEFAULT_ROOM_SETTINGS.cameraFollowDownLerp,
+        output: DEFAULT_ROOM_SETTINGS.cameraFollowDownLerp.toFixed(2),
+        enabledWhen: "cameraFollowDownEnabled",
+        hint: "Коэффициент плавного следования вниз. Единица перемещает камеру к цели сразу, меньшие значения увеличивают отставание.",
+      },
+      {
+        name: "rockAccelerationEnabled",
+        label: "Ускорение камня",
         type: "toggle-button",
-        defaultChecked: DEFAULT_ROOM_SETTINGS.upperZoneAutoScrollEnabled,
+        defaultChecked: DEFAULT_ROOM_SETTINGS.rockAccelerationEnabled,
         activeLabel: "Включён",
         inactiveLabel: "Выключен",
-        hint: "Разрешает камере автоматически прокручиваться вверх, когда камень оказывается выше центра viewport.",
+        disabled: true,
+        hint: "Механика ускорения камня пока не используется.",
       },
       {
         name: "sceneTwoOverflowYVisible",

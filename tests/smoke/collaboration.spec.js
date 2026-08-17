@@ -330,12 +330,15 @@ test("camera UI и новые настройки сохраняются вмес
   await expect(page.locator('[name="manualVerticalScrollEnabled"]')).toHaveCount(
     0,
   );
-  await expect(page.locator('[name="cameraFollowLerp"]')).toHaveValue("0.1");
-  await expect(page.locator('[name="cameraFollowLerp"]')).toHaveAttribute(
+  await expect(page.locator('[name="cameraFollowUpLerp"]')).toHaveValue("0.1");
+  await expect(page.locator('[name="cameraFollowDownLerp"]')).toHaveValue(
+    "0.1",
+  );
+  await expect(page.locator('[name="cameraFollowUpLerp"]')).toHaveAttribute(
     "min",
     "0.01",
   );
-  await expect(page.locator('[name="cameraFollowLerp"]')).toHaveAttribute(
+  await expect(page.locator('[name="cameraFollowDownLerp"]')).toHaveAttribute(
     "max",
     "1",
   );
@@ -357,11 +360,12 @@ test("camera UI и новые настройки сохраняются вмес
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveValue("35");
   await expect(page.locator('[name^="returnScroll"]')).toHaveCount(0);
-  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(7);
+  await expect(page.locator("[data-cubic-bezier-control]")).toHaveCount(8);
   await expect(page.locator('[name="foldAngle"]')).toHaveValue("30");
   await expect(page.locator('[name="foldZoneSize"]')).toHaveValue("20");
 
-  await setRange(page, "cameraFollowLerp", 0.25);
+  await setRange(page, "cameraFollowUpLerp", 0.25);
+  await setRange(page, "cameraFollowDownLerp", 0.4);
   await page.locator('[name="handVisibilityMode"]').selectOption("hover");
   await setRange(page, "handImageChangeDelayMs", 375);
   await setField(page, "rockMinWidthVw", 40);
@@ -416,7 +420,10 @@ test("camera UI и новые настройки сохраняются вмес
   await openControlGroup(page, "Камень");
   await openControlGroup(page, "Рука");
   await openControlGroup(page, "Капель");
-  await expect(page.locator('[name="cameraFollowLerp"]')).toHaveValue("0.25");
+  await expect(page.locator('[name="cameraFollowUpLerp"]')).toHaveValue("0.25");
+  await expect(page.locator('[name="cameraFollowDownLerp"]')).toHaveValue(
+    "0.4",
+  );
   await expect(page.locator('[name="handVisibilityMode"]')).toHaveValue(
     "hover",
   );
@@ -438,7 +445,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -447,7 +454,8 @@ test("camera UI и новые настройки сохраняются вмес
             stored.drizzleEndVolume,
             stored.drizzleVolumeEasing,
           ],
-          cameraFollowLerp: stored.cameraFollowLerp,
+          cameraFollowUpLerp: stored.cameraFollowUpLerp,
+          cameraFollowDownLerp: stored.cameraFollowDownLerp,
           finalFallEnabled: stored.finalFallEnabled,
           handVisibilityMode: stored.handVisibilityMode,
           handImageChangeDelayMs: stored.handImageChangeDelayMs,
@@ -458,7 +466,8 @@ test("camera UI и новые настройки сохраняются вмес
     .toEqual({
       delay: 3.5,
       drizzle: [0.2, 0.8, "cubic-bezier(0, 0, 1, 1)"],
-      cameraFollowLerp: 0.25,
+      cameraFollowUpLerp: 0.25,
+      cameraFollowDownLerp: 0.4,
       finalFallEnabled: true,
       handVisibilityMode: "hover",
       handImageChangeDelayMs: 375,
@@ -1377,7 +1386,7 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return stored.gravity;
       }),
@@ -1385,11 +1394,11 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v48 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v49 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v48");
+    localStorage.removeItem("sisyphus-czar-settings-v49");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1412,12 +1421,13 @@ test("локальные настройки v20 мигрируют в v48 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
         );
         return {
           gravity: stored.gravity,
           glowOptimizationMode: stored.glowOptimizationMode,
-          cameraFollowLerp: stored.cameraFollowLerp,
+          cameraFollowUpLerp: stored.cameraFollowUpLerp,
+          cameraFollowDownLerp: stored.cameraFollowDownLerp,
           handVisibilityMode: stored.handVisibilityMode,
           handImageChangeDelayMs: stored.handImageChangeDelayMs,
           preclickHopGuardClickCount: stored.preclickHopGuardClickCount,
@@ -1438,7 +1448,8 @@ test("локальные настройки v20 мигрируют в v48 без
     .toEqual({
       gravity: 7.5,
       glowOptimizationMode: "balanced",
-      cameraFollowLerp: 0.1,
+      cameraFollowUpLerp: 0.1,
+      cameraFollowDownLerp: 0.1,
       handVisibilityMode: "always",
       handImageChangeDelayMs: 0,
       preclickHopGuardClickCount: 1,
@@ -2495,7 +2506,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v48",
+      "sisyphus-czar-settings-v49",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2958,7 +2969,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
         );
         return stored.trailRenderProfile;
       })
@@ -2997,7 +3008,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -3133,7 +3144,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -3168,7 +3179,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -3185,7 +3196,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v48") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
         );
         return stored.rainEnabled;
       })

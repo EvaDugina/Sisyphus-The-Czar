@@ -776,7 +776,11 @@ test("roomSettings.update синхронизирует размер руки и 
     handVisibilityMode: "hidden",
     handImageChangeDelayMs: 375,
     rockGrabRadiusVh: 4.5,
-    cameraFollowLerp: 0.25,
+    cameraFollowUpEnabled: false,
+    cameraFollowUpLerp: 0.25,
+    cameraFollowDownEnabled: true,
+    cameraFollowDownLerp: 0.4,
+    rockAccelerationEnabled: false,
     rainMaxVolume: 2.5,
     rainDropColor: "#123456",
     rainHighlightColor: "#fedcba",
@@ -801,7 +805,11 @@ test("roomSettings.update синхронизирует размер руки и 
       handVisibilityMode: "hidden",
       handImageChangeDelayMs: 375,
       rockGrabRadiusVh: 4.5,
-      cameraFollowLerp: 0.25,
+      cameraFollowUpEnabled: false,
+      cameraFollowUpLerp: 0.25,
+      cameraFollowDownEnabled: true,
+      cameraFollowDownLerp: 0.4,
+      rockAccelerationEnabled: true,
       rainMaxVolume: 2.5,
       rainDropColor: "#123456",
       rainHighlightColor: "#fedcba",
@@ -1390,7 +1398,10 @@ test("single-client reconnect до TTL сохраняет личность, со
     {
       state: { phase: Physics.PHASES.PLAY, x: 420, y: 800, vx: 25, vy: -30 },
       physics: { gravity: 7 },
-      roomSettings: { cameraFollowLerp: 0.25 },
+      roomSettings: {
+        cameraFollowUpLerp: 0.25,
+        cameraFollowDownLerp: 0.4,
+      },
       imprint: { x: 400, y: 700 },
     },
     { singleClient: true },
@@ -1408,7 +1419,8 @@ test("single-client reconnect до TTL сохраняет личность, со
   assert.equal(session.state.phase, Physics.PHASES.PLAY);
   assert.equal(session.state.x, 420);
   assert.equal(session.physics.gravity, 7);
-  assert.equal(session.roomSettings.cameraFollowLerp, 0.25);
+  assert.equal(session.roomSettings.cameraFollowUpLerp, 0.25);
+  assert.equal(session.roomSettings.cameraFollowDownLerp, 0.4);
   assert.deepEqual(session.imprint, Physics.createSummitImprint({ y: 700 }));
   assert.equal(reconnected.client.id, "client-reload-001");
 
