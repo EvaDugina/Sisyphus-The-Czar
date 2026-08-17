@@ -24,6 +24,9 @@ lint_and_unit:
 
 commit_lint:
   stage: validate
+  before_script:
+    - apk add --no-cache git
+    - npm ci --cache .npm --prefer-offline
   script:
     - FROM_SHA="${CI_MERGE_REQUEST_DIFF_BASE_SHA:-$CI_COMMIT_BEFORE_SHA}"
     - if [ -z "$FROM_SHA" ] || echo "$FROM_SHA" | grep -Eq '^0+$'; then FROM_SHA="HEAD~1"; fi
