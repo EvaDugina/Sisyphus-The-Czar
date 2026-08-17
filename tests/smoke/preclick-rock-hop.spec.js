@@ -233,6 +233,15 @@ test("камень прыгает накопительно, сохраняет g
   await page.waitForTimeout(250);
   const body = page.locator("body");
   const html = page.locator("html");
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        [...document.querySelectorAll(".birch-layer")].every(
+          (layer) => getComputedStyle(layer).display === "none",
+        ),
+      ),
+    )
+    .toBe(true);
   await expect(body).toHaveClass(/preclick-rock-guidance/);
   await expect(body).toHaveClass(/is-manual-scroll-disabled/);
   await expect(html).toHaveClass(/is-manual-scroll-disabled/);
@@ -371,6 +380,13 @@ test("камень прыгает накопительно, сохраняет g
   });
 
   const fakeClickPoint = await rockCenter(page);
+  const expectedPopupWidth = await page.evaluate(() =>
+    Math.round(
+      (innerWidth * params.rockActivatedWidthVw) / 100 *
+        params.preclickPopupSizeMultiplier,
+    ),
+  );
+  const expectedPopupHeight = Math.round(expectedPopupWidth / (340 / 328));
   const popupPromise = page.waitForEvent("popup");
   const popupRequestedAt = Date.now();
   await page.mouse.click(fakeClickPoint.x, fakeClickPoint.y);
@@ -383,6 +399,10 @@ test("камень прыгает накопительно, сохраняет g
   await expect
     .poll(() =>
       popupImage.evaluate((image) => ({
+        imageHeight: image.getBoundingClientRect().height,
+        imageWidth: image.getBoundingClientRect().width,
+        innerHeight,
+        innerWidth,
         naturalHeight: image.naturalHeight,
         naturalWidth: image.naturalWidth,
         objectFit: getComputedStyle(image).objectFit,
@@ -391,7 +411,11 @@ test("камень прыгает накопительно, сохраняет g
     .toMatchObject({
       naturalHeight: 328,
       naturalWidth: 340,
-      objectFit: "contain",
+      objectFit: "fill",
+      imageHeight: expectedPopupHeight,
+      imageWidth: expectedPopupWidth,
+      innerHeight: expectedPopupHeight,
+      innerWidth: expectedPopupWidth,
     });
   await fakeClickPopup.close();
   expect(fakeClickPopup.isClosed()).toBe(true);
@@ -646,12 +670,53 @@ test("N фейковых кликов отталкивают камень, а к
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
       preclickPopupDelayMs: 0,
+      preclickPopupSizeMultiplier: 2,
+      birchBackgroundEnabled: true,
+      birchScalePercent: 400,
       handAudioEnabled: true,
       gachiClickSoundFilename: "Aaaaaa.mp3",
+      rockActivatedWidthVw: 10,
       rockPressShrinkPercent: 0,
       rockWallPenetrationPercent: 0,
     });
   });
+
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const layer = document.querySelector(
+          "#root > .world > .birch-layer--front",
+        );
+        const layerRect = layer.getBoundingClientRect();
+        const trees = [
+          ...document.querySelectorAll(
+            "#root > .world > .birch-layer .birch-layer__tree",
+          ),
+        ];
+        const targetCenterY = layerRect.top + layerRect.height / 2;
+        return {
+          bodyClass: document.body.classList.contains(
+            "birch-background-enabled",
+          ),
+          display: getComputedStyle(layer).display,
+          maxCenterDelta: Math.max(
+            ...trees.map((tree) => {
+              const rect = tree.getBoundingClientRect();
+              return Math.abs(rect.top + rect.height / 2 - targetCenterY);
+            }),
+          ),
+          scale: getComputedStyle(document.body)
+            .getPropertyValue("--birch-scale")
+            .trim(),
+        };
+      }),
+    )
+    .toEqual({
+      bodyClass: true,
+      display: "block",
+      maxCenterDelta: 0,
+      scale: "4",
+    });
 
   const radius = await rock.evaluate(
     (element) => element.getBoundingClientRect().width * 0.5,
@@ -678,7 +743,19 @@ test("N фейковых кликов отталкивают камень, а к
     });
   });
   const cdp = await page.context().newCDPSession(page);
+  const popupMultipliers = [1, 2, 4];
+  const artworkSizes = [
+    { height: 328, width: 340 },
+    { height: 330, width: 341 },
+    { height: 328, width: 334 },
+  ];
   for (let click = 1; click <= 3; click += 1) {
+    const multiplier = popupMultipliers[click - 1];
+    await page.evaluate((nextMultiplier) => {
+      window.__sisyphusTestApi.applyTestSettings({
+        preclickPopupSizeMultiplier: nextMultiplier,
+      });
+    }, multiplier);
     const point = await visibleRockPoint(page);
     const popupPromise = page.waitForEvent("popup");
     await cdp.send("Input.dispatchMouseEvent", {
@@ -695,6 +772,31 @@ test("N фейковых кликов отталкивают камень, а к
       new RegExp(`0${click}[^/]*\\.png`),
     );
     await expect(popupImage).toHaveAttribute("alt", `Картина 0${click}`);
+    const expectedWidth = 120 * multiplier;
+    const artworkSize = artworkSizes[click - 1];
+    const expectedHeight = Math.round(
+      expectedWidth / (artworkSize.width / artworkSize.height),
+    );
+    await expect
+      .poll(() =>
+        popupImage.evaluate((image) => {
+          const rect = image.getBoundingClientRect();
+          return {
+            imageHeight: rect.height,
+            imageWidth: rect.width,
+            innerHeight,
+            innerWidth,
+            objectFit: getComputedStyle(image).objectFit,
+          };
+        }),
+      )
+      .toEqual({
+        imageHeight: expectedHeight,
+        imageWidth: expectedWidth,
+        innerHeight: expectedHeight,
+        innerWidth: expectedWidth,
+        objectFit: "fill",
+      });
     await popup.close();
     await page.bringToFront();
     await cdp.send("Input.dispatchMouseEvent", {

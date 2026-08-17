@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 47;
+const SETTINGS_SCHEMA_VERSION = 48;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -1297,6 +1297,9 @@ export function createSettingsController(options) {
       rockPulseBpm: `${params.rockPulseBpm.toFixed(0)} BPM`,
       preclickHopGuardClickCount:
         params.preclickHopGuardClickCount.toFixed(0),
+      preclickPopupSizeMultiplier:
+        `${params.preclickPopupSizeMultiplier.toFixed(0)}×`,
+      birchScalePercent: `${params.birchScalePercent.toFixed(0)}%`,
       preclickHopActivationRadiusPercent:
         `${params.preclickHopActivationRadiusPercent.toFixed(0)}%`,
       preclickHopMaxDistancePercent:

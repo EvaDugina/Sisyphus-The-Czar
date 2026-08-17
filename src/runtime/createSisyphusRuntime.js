@@ -570,6 +570,7 @@ export function createSisyphusRuntime(elements = {}) {
     params.handVisibilityMode === "hidden",
   );
   applyCustomCursorSettings();
+  applyBirchBackgroundSettings();
   resetPreclickRockGuidance();
   const finalFallGate = {
     enteredAt: null,
@@ -2488,6 +2489,17 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function applyBirchBackgroundSettings() {
+    body.classList.toggle(
+      "birch-background-enabled",
+      params.birchBackgroundEnabled,
+    );
+    body.style.setProperty(
+      "--birch-scale",
+      String(params.birchScalePercent / 100),
+    );
+  }
+
   function resolveTheme(autoTheme) {
     return params.themeMode === "auto" ? autoTheme : params.themeMode;
   }
@@ -2665,6 +2677,9 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (shouldHandleChange("customCursorEnabled", "customCursorSizePx")) {
       applyCustomCursorSettings();
+    }
+    if (shouldHandleChange("birchBackgroundEnabled", "birchScalePercent")) {
+      applyBirchBackgroundSettings();
     }
     if (shouldHandleChange("rockImageId")) {
       applyRockImageSettings();
@@ -3368,7 +3383,9 @@ export function createSisyphusRuntime(elements = {}) {
       delayMs: params.preclickPopupDelayMs,
       imageAlt: artwork.alt,
       imageUrl: artwork.url,
-      width: (window.innerWidth * params.rockActivatedWidthVw) / 100,
+      width:
+        ((window.innerWidth * params.rockActivatedWidthVw) / 100) *
+        params.preclickPopupSizeMultiplier,
     });
     performPreclickRockHop({
       centerX,

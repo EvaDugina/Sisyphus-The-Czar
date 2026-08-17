@@ -76,8 +76,19 @@ function createClock() {
   };
 }
 
-function createPopup() {
+function featureNumber(features, name, fallback) {
+  const match = String(features).match(new RegExp(`(?:^|,)${name}=(-?\\d+)`));
+  return match ? Number(match[1]) : fallback;
+}
+
+function createPopup(features = "") {
   const listeners = new Map();
+  const chromeWidth = 16;
+  const chromeHeight = 40;
+  const resizeCalls = [];
+  const moveCalls = [];
+  const requestedOuterWidth = featureNumber(features, "width", 320);
+  const requestedOuterHeight = featureNumber(features, "height", 240);
   const body = {
     children: [],
     replaceChildren(...children) {
@@ -85,8 +96,14 @@ function createPopup() {
     },
     style: {},
   };
-  return {
+  const popup = {
     closed: false,
+    innerHeight: Math.max(1, requestedOuterHeight - chromeHeight),
+    innerWidth: Math.max(1, requestedOuterWidth - chromeWidth),
+    moveCalls,
+    outerHeight: requestedOuterHeight,
+    outerWidth: requestedOuterWidth,
+    resizeCalls,
     close() {
       this.closed = true;
     },
@@ -98,6 +115,7 @@ function createPopup() {
         listeners.set(type, callback);
       },
       body,
+      documentElement: { style: {} },
       createElement(tagName) {
         return {
           alt: null,
@@ -108,7 +126,18 @@ function createPopup() {
       },
       title: "not-empty",
     },
+    moveTo(left, top) {
+      moveCalls.push([left, top]);
+    },
+    resizeTo(width, height) {
+      resizeCalls.push([width, height]);
+      this.outerWidth = width;
+      this.outerHeight = height;
+      this.innerWidth = Math.max(1, width - chromeWidth);
+      this.innerHeight = Math.max(1, height - chromeHeight);
+    },
   };
+  return popup;
 }
 
 function defaultSettings() {
@@ -151,7 +180,7 @@ function setup({ blocked = false } = {}) {
       if (popupState.blocked) {
         return null;
       }
-      const popup = createPopup();
+      const popup = createPopup(features);
       popups.push({ features, popup });
       return popup;
     },
@@ -219,15 +248,32 @@ test("фейковый клик с задержкой открывает нез�
   assert.match(popups[0].features, /height=116/);
   assert.match(popups[0].features, /left=640/);
   assert.match(popups[0].features, /top=542/);
+  assert.deepEqual(popups[0].popup.resizeCalls, [[136, 156]]);
+  assert.deepEqual(popups[0].popup.moveCalls, [[640, 542]]);
+  assert.equal(popups[0].popup.innerWidth, 120);
+  assert.equal(popups[0].popup.innerHeight, 116);
+  assert.deepEqual(popups[0].popup.document.documentElement.style, {
+    height: "100%",
+    margin: "0",
+    overflow: "hidden",
+    width: "100%",
+  });
+  assert.deepEqual(popups[0].popup.document.body.style, {
+    height: "100%",
+    margin: "0",
+    minHeight: "0",
+    overflow: "hidden",
+    width: "100%",
+  });
   assert.equal(popups[0].popup.document.body.children.length, 1);
   assert.deepEqual(popups[0].popup.document.body.children[0], {
     alt: "Картина 01",
     src: "/assets/gogh/01.png",
     style: {
       display: "block",
-      height: "100vh",
-      objectFit: "contain",
-      width: "100vw",
+      height: "100%",
+      objectFit: "fill",
+      width: "100%",
     },
     tagName: "IMG",
   });

@@ -252,18 +252,27 @@ export function createWindowObstacleController(options = {}) {
   function bindWindow(entry) {
     try {
       entry.popup.document.title = "";
+      const root = entry.popup.document.documentElement;
       const body = entry.popup.document.body;
+      if (root) {
+        root.style.height = "100%";
+        root.style.margin = "0";
+        root.style.overflow = "hidden";
+        root.style.width = "100%";
+      }
+      body.style.height = "100%";
       body.style.margin = "0";
-      body.style.minHeight = "100vh";
+      body.style.minHeight = "0";
       body.style.overflow = "hidden";
+      body.style.width = "100%";
       if (entry.kind === "preclick" && entry.imageUrl) {
         const image = entry.popup.document.createElement("img");
         image.alt = entry.imageAlt;
         image.src = entry.imageUrl;
         image.style.display = "block";
-        image.style.height = "100vh";
-        image.style.objectFit = "contain";
-        image.style.width = "100vw";
+        image.style.height = "100%";
+        image.style.objectFit = "fill";
+        image.style.width = "100%";
         body.replaceChildren(image);
       } else {
         body.replaceChildren();
@@ -280,11 +289,61 @@ export function createWindowObstacleController(options = {}) {
     }
   }
 
-  function trackWindow(popup, kind, { imageAlt = "", imageUrl = "" } = {}) {
+  function fitPreclickWindow(entry) {
+    if (entry.kind !== "preclick" || !entry.geometryInput) {
+      return;
+    }
+    try {
+      const popup = entry.popup;
+      const chromeWidth = Math.max(
+        0,
+        Math.round(finite(popup.outerWidth, 0) - finite(popup.innerWidth, 0)),
+      );
+      const chromeHeight = Math.max(
+        0,
+        Math.round(finite(popup.outerHeight, 0) - finite(popup.innerHeight, 0)),
+      );
+      const rawScreen = entry.geometryInput.screen || {};
+      const contentScreen = {
+        availHeight: Math.max(
+          1,
+          Math.round(finite(rawScreen.availHeight, 1)) - chromeHeight,
+        ),
+        availLeft: finite(rawScreen.availLeft, 0),
+        availTop: finite(rawScreen.availTop, 0),
+        availWidth: Math.max(
+          1,
+          Math.round(finite(rawScreen.availWidth, 1)) - chromeWidth,
+        ),
+      };
+      const geometry = preclickPopupGeometry({
+        ...entry.geometryInput,
+        screen: contentScreen,
+      });
+      if (typeof popup.resizeTo === "function") {
+        popup.resizeTo(
+          geometry.width + chromeWidth,
+          geometry.height + chromeHeight,
+        );
+      }
+      if (typeof popup.moveTo === "function") {
+        popup.moveTo(geometry.left, geometry.top);
+      }
+    } catch {
+      // Browser popup policies may reject resize/move; initial geometry remains usable.
+    }
+  }
+
+  function trackWindow(
+    popup,
+    kind,
+    { geometryInput = null, imageAlt = "", imageUrl = "" } = {},
+  ) {
     const id = nextWindowId;
     nextWindowId += 1;
     const entry = {
       id,
+      geometryInput,
       imageAlt,
       imageUrl,
       kind,
@@ -299,6 +358,7 @@ export function createWindowObstacleController(options = {}) {
     }
     trackedWindows.set(id, entry);
     bindWindow(entry);
+    fitPreclickWindow(entry);
     ensureClosedPoll();
     notifyActiveObstacleCount();
     return entry;
@@ -379,13 +439,14 @@ export function createWindowObstacleController(options = {}) {
         return false;
       }
       const origin = getViewportScreenOrigin() || {};
-      const geometry = preclickPopupGeometry({
+      const geometryInput = {
         aspectRatio,
         centerX: finite(origin.x, 0) + finite(clientX, 0),
         centerY: finite(origin.y, 0) + finite(clientY, 0),
         screen: getScreen(),
         width,
-      });
+      };
+      const geometry = preclickPopupGeometry(geometryInput);
       const features = [
         "popup=yes",
         `width=${geometry.width}`,
@@ -402,7 +463,11 @@ export function createWindowObstacleController(options = {}) {
       if (!popup) {
         return false;
       }
-      trackWindow(popup, "preclick", { imageAlt, imageUrl });
+      trackWindow(popup, "preclick", {
+        geometryInput,
+        imageAlt,
+        imageUrl,
+      });
       return true;
     };
     const cleanDelayMs = clamp(Math.round(finite(delayMs, 0)), 0, 1000);

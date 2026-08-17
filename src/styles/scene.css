@@ -159,9 +159,14 @@
   bottom: 0;
   left: 0;
   height: 100svh;
+  display: none;
   overflow: hidden;
   pointer-events: none;
   user-select: none;
+}
+
+body.birch-background-enabled .birch-layer {
+  display: block;
 }
 
 .birch-layer--behind {
@@ -174,15 +179,16 @@
 
 .birch-layer__tree {
   position: absolute;
-  bottom: 0;
+  top: 50%;
   left: var(--birch-x);
   width: auto;
   max-width: none;
-  height: 100%;
+  height: calc(100% * var(--birch-scale, 1));
   object-fit: contain;
   object-position: center bottom;
   pointer-events: none;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%);
+  transform-origin: center;
   -webkit-user-drag: none;
 }
 

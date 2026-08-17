@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 47;
+  const ROOM_SETTINGS_VERSION = 48;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -105,6 +105,8 @@
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     preclickHopGuardClickCount: [0, 10],
     preclickPopupDelayMs: [0, 1000],
+    preclickPopupSizeMultiplier: [1, 4],
+    birchScalePercent: [100, 400],
     preclickHopActivationRadiusPercent: [0, 300],
     preclickHopMaxDistancePercent: [0, 150],
     preclickHopMissProbabilityPercent: [0, 100],
@@ -180,6 +182,9 @@
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickHopGuardClickCount: 1,
     preclickPopupDelayMs: 200,
+    preclickPopupSizeMultiplier: 2,
+    birchBackgroundEnabled: false,
+    birchScalePercent: 100,
     preclickHopActivationRadiusPercent: 50,
     preclickHopMaxDistancePercent: 62.5,
     preclickHopMissProbabilityPercent: 10,
@@ -773,6 +778,25 @@
         "preclickPopupDelayMs",
         ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[0],
         ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[1]
+      ),
+      preclickPopupSizeMultiplier: integerSetting(
+        source,
+        fallbackSource,
+        "preclickPopupSizeMultiplier",
+        ROOM_SETTINGS_LIMITS.preclickPopupSizeMultiplier[0],
+        ROOM_SETTINGS_LIMITS.preclickPopupSizeMultiplier[1]
+      ),
+      birchBackgroundEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "birchBackgroundEnabled"
+      ),
+      birchScalePercent: integerSetting(
+        source,
+        fallbackSource,
+        "birchScalePercent",
+        ROOM_SETTINGS_LIMITS.birchScalePercent[0],
+        ROOM_SETTINGS_LIMITS.birchScalePercent[1]
       ),
       preclickHopActivationRadiusPercent,
       preclickHopMaxDistancePercent: finiteSetting(
@@ -1397,6 +1421,17 @@
         "windowObstacleMinHeightPx",
         "windowObstacleMaxHeightPx",
       ].forEach((key) => delete current[key]);
+    }
+    if (finiteNumber(version, 1) < 48) {
+      [
+        "preclickPopupSizeMultiplier",
+        "birchBackgroundEnabled",
+        "birchScalePercent",
+      ].forEach((key) => {
+        if (!Object.hasOwn(current, key)) {
+          current[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
     }
     return current;
   }

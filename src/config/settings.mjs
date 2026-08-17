@@ -14,7 +14,7 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v47";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v48";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -31,6 +31,7 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
   }),
 ]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v47",
   "sisyphus-czar-settings-v46",
   "sisyphus-czar-settings-v45",
   "sisyphus-czar-settings-v44",
@@ -437,6 +438,9 @@ export function settingsGroupControls(group) {
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickHopGuardClickCount",
   "preclickPopupDelayMs",
+  "preclickPopupSizeMultiplier",
+  "birchBackgroundEnabled",
+  "birchScalePercent",
   "preclickHopActivationRadiusPercent",
   "preclickHopMaxDistancePercent",
   "preclickHopMissProbabilityPercent",
@@ -995,7 +999,39 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs,
         output: `${DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs}мс`,
-        hint: "Задержка между фейковым кликом и показом окна с rock.webp. Ноль показывает окно сразу.",
+        hint: "Задержка между фейковым кликом и показом очередной картины 01–03. Ноль показывает окно сразу.",
+      },
+      {
+        name: "preclickPopupSizeMultiplier",
+        label: "Размер окон с картинами",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickPopupSizeMultiplier[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickPopupSizeMultiplier[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupSizeMultiplier,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickPopupSizeMultiplier}×`,
+        hint: "Множитель базового размера popup: 1 — прежний размер, 2 — вдвое больше. Если окно не помещается, оно пропорционально уменьшается.",
+      },
+      {
+        name: "birchBackgroundEnabled",
+        label: "Показывать фон с берёзами",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.birchBackgroundEnabled,
+        hint: "Показывает девять берёз в нижнем экране сцены «Кошки-мышки».",
+      },
+      {
+        name: "birchScalePercent",
+        label: "Размер берёз, %",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.birchScalePercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.birchScalePercent[1],
+        step: 10,
+        defaultValue: DEFAULT_ROOM_SETTINGS.birchScalePercent,
+        output: `${DEFAULT_ROOM_SETTINGS.birchScalePercent}%`,
+        enabledWhen: "birchBackgroundEnabled",
+        hint: "Одновременно увеличивает все берёзы относительно вертикального центра нижнего экрана.",
       },
       {
         name: "preclickHopActivationRadiusPercent",

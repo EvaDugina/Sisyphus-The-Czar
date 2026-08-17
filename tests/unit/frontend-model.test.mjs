@@ -480,6 +480,15 @@ test("настройки инерции и hop отображают актуал
   const preclickPopupDelay = controls.find(
     (control) => control.name === "preclickPopupDelayMs"
   );
+  const preclickPopupSize = controls.find(
+    (control) => control.name === "preclickPopupSizeMultiplier"
+  );
+  const birchBackgroundEnabled = controls.find(
+    (control) => control.name === "birchBackgroundEnabled"
+  );
+  const birchScale = controls.find(
+    (control) => control.name === "birchScalePercent"
+  );
   const rockWallPenetration = controls.find(
     (control) => control.name === "rockWallPenetrationPercent"
   );
@@ -496,8 +505,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v47");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v46");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v48");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v47");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -590,6 +599,52 @@ test("настройки инерции и hop отображают актуал
   );
   assert.deepEqual(
     {
+      label: preclickPopupSize.label,
+      min: preclickPopupSize.min,
+      max: preclickPopupSize.max,
+      step: preclickPopupSize.step,
+      defaultValue: preclickPopupSize.defaultValue,
+    },
+    {
+      label: "Размер окон с картинами",
+      min: 1,
+      max: 4,
+      step: 1,
+      defaultValue: 2,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: birchBackgroundEnabled.label,
+      type: birchBackgroundEnabled.type,
+      defaultChecked: birchBackgroundEnabled.defaultChecked,
+    },
+    {
+      label: "Показывать фон с берёзами",
+      type: "checkbox",
+      defaultChecked: false,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: birchScale.label,
+      min: birchScale.min,
+      max: birchScale.max,
+      step: birchScale.step,
+      defaultValue: birchScale.defaultValue,
+      enabledWhen: birchScale.enabledWhen,
+    },
+    {
+      label: "Размер берёз, %",
+      min: 100,
+      max: 400,
+      step: 10,
+      defaultValue: 100,
+      enabledWhen: "birchBackgroundEnabled",
+    },
+  );
+  assert.deepEqual(
+    {
       min: rockWallPenetration.min,
       max: rockWallPenetration.max,
       step: rockWallPenetration.step,
@@ -666,6 +721,9 @@ test("UI классифицирует параметры по сценам бе�
     [
       "preclickHopGuardClickCount",
       "preclickPopupDelayMs",
+      "preclickPopupSizeMultiplier",
+      "birchBackgroundEnabled",
+      "birchScalePercent",
       "preclickHopActivationRadiusPercent",
       "preclickHopMaxDistancePercent",
       "preclickHopMissProbabilityPercent",
@@ -773,7 +831,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 47);
+  assert.equal(productionSettingsSchemaVersion, 48);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1458,6 +1516,9 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseBpm",
       "preclickHopGuardClickCount",
       "preclickPopupDelayMs",
+      "preclickPopupSizeMultiplier",
+      "birchBackgroundEnabled",
+      "birchScalePercent",
       "preclickHopActivationRadiusPercent",
       "preclickHopMaxDistancePercent",
       "preclickHopMissProbabilityPercent",
@@ -2572,7 +2633,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 47);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 48);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2587,6 +2648,9 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickParallaxMaxOffsetPx: 9999,
     preclickHopGuardClickCount: 999,
     preclickPopupDelayMs: 9999,
+    preclickPopupSizeMultiplier: 999,
+    birchBackgroundEnabled: "true",
+    birchScalePercent: 9999,
     preclickHopActivationRadiusPercent: -1,
     preclickHopMaxDistancePercent: -5,
     preclickHopMissProbabilityPercent: 999,
@@ -2625,6 +2689,9 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickHopGuardClickCount, 10);
   assert.equal(visualSettings.preclickPopupDelayMs, 1000);
+  assert.equal(visualSettings.preclickPopupSizeMultiplier, 4);
+  assert.equal(visualSettings.birchBackgroundEnabled, true);
+  assert.equal(visualSettings.birchScalePercent, 400);
   assert.equal(visualSettings.preclickHopActivationRadiusPercent, 0);
   assert.equal(visualSettings.preclickHopMaxDistancePercent, 0);
   assert.equal(visualSettings.preclickHopMissProbabilityPercent, 100);
@@ -2668,6 +2735,10 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(legacyV44.upperZoneAutoScrollEnabled, true);
   const legacyV45 = SharedRoomSettings.migrateRoomSettings({}, 45);
   assert.equal(legacyV45.preclickPopupDelayMs, 200);
+  const legacyV47 = SharedRoomSettings.migrateRoomSettings({}, 47);
+  assert.equal(legacyV47.preclickPopupSizeMultiplier, 2);
+  assert.equal(legacyV47.birchBackgroundEnabled, false);
+  assert.equal(legacyV47.birchScalePercent, 100);
   assert.deepEqual(
     SharedRoomSettings.migrateRockVisualSettings({
       rockPressShrinkPercent: 17,
@@ -2770,6 +2841,9 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopSpeedPxPerSecond: 1200,
     preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     preclickPopupDelayMs: 200,
+    preclickPopupSizeMultiplier: 2,
+    birchBackgroundEnabled: false,
+    birchScalePercent: 100,
     cameraFollowDownEnabled: true,
     upperZoneAutoScrollEnabled: true,
     sceneTwoOverflowYVisible: false,
@@ -2789,6 +2863,9 @@ test("группа дождя содержит общий toggle и blur тём�
       foldPositionPercent: 0,
       foldPanelHeightVh: 32,
       ...DEFAULT_PRECLICK_HOP_SETTINGS,
+      preclickPopupSizeMultiplier: 2,
+      birchBackgroundEnabled: false,
+      birchScalePercent: 100,
       cameraFollowDownEnabled: true,
       upperZoneAutoScrollEnabled: true,
       sceneTwoOverflowYVisible: false,
