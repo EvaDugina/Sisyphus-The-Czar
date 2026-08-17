@@ -6,7 +6,7 @@
     {
       "id": "settings-version-mscz5hfd-c30065d5-639b-4c30-9b66-03f291160c20",
       "name": "v1",
-      "settingsSchemaVersion": 49,
+      "settingsSchemaVersion": 50,
       "createdAt": "2026-08-03T08:35:52.057Z",
       "updatedAt": "2026-08-11T20:43:07.745Z",
       "settings": {
@@ -94,6 +94,8 @@
         "rainExitEasing": "cubic-bezier(0.4, 0, 0.2, 1)",
         "rainEnterMs": 1100,
         "rainExitMs": 2000,
+        "summitTimerFontFamily": "sf-pro-display-bold",
+        "summitTimerFontSizeRem": 32,
         "trailEnabled": true,
         "trailReset": false,
         "lineDelay": 0.5,

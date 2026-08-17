@@ -70,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v49", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v50", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v49");
+    localStorage.removeItem("sisyphus-czar-settings-v50");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,7 +91,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v49", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -117,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v49", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,11 +125,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v49", 
     .toEqual([47, 13]);
 });
 
-test("настройки popup и берёз мигрируют из localStorage v47 в v49", async ({
+test("настройки popup и берёз мигрируют из localStorage v47 в v50", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v49");
+    localStorage.removeItem("sisyphus-czar-settings-v50");
     localStorage.setItem(
       "sisyphus-czar-settings-v47",
       JSON.stringify({ preclickPopupDelayMs: 345 }),
@@ -142,7 +142,7 @@ test("настройки popup и берёз мигрируют из localStorag
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           delay: stored.preclickPopupDelayMs,
@@ -160,11 +160,11 @@ test("настройки popup и берёз мигрируют из localStorag
     });
 });
 
-test("hop-настройки мигрируют из localStorage v39 в v49 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v39 в v50 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v49");
+    localStorage.removeItem("sisyphus-czar-settings-v50");
     localStorage.setItem(
       "sisyphus-czar-settings-v39",
       JSON.stringify({
@@ -184,7 +184,7 @@ test("hop-настройки мигрируют из localStorage v39 в v49 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           guardClicks: stored.preclickHopGuardClickCount,
@@ -212,11 +212,11 @@ test("hop-настройки мигрируют из localStorage v39 в v49 б�
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v49", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v50", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v49");
+    localStorage.removeItem("sisyphus-czar-settings-v50");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -229,7 +229,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -247,9 +247,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v49", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v50", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v49");
+    localStorage.removeItem("sisyphus-czar-settings-v50");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -262,7 +262,7 @@ test("настройки руки мигрируют из localStorage v36 в v4
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -278,9 +278,9 @@ test("настройки руки мигрируют из localStorage v36 в v4
     });
 });
 
-test("раскладка Fold мигрирует из localStorage v37 в v49", async ({ page }) => {
+test("раскладка Fold мигрирует из localStorage v37 в v50", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v49");
+    localStorage.removeItem("sisyphus-czar-settings-v50");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -293,7 +293,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v49", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -308,7 +308,7 @@ test("группа Камень показывает десять контрол
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v49");
+    localStorage.removeItem("sisyphus-czar-settings-v50");
   });
 
   await page.goto("/");
@@ -381,6 +381,7 @@ test("панель показывает параметры и разделы в�
     name: "Сцена 1. Кошки-мышки",
   });
   const sceneTwo = page.getByRole("button", { name: "Сцена 2. Репка" });
+  const sceneThree = page.getByRole("button", { name: "Сцена 3. Соки" });
   const fakeClicks = page.locator('[name="preclickHopGuardClickCount"]');
   const gravity = page.locator('[name="gravity"]');
   const theme = page.locator('[name="themeMode"]');
@@ -388,7 +389,6 @@ test("панель показывает параметры и разделы в�
   const cameraFollowUpLerp = page.locator('[name="cameraFollowUpLerp"]');
   const cameraFollowDown = page.locator('[name="cameraFollowDownEnabled"]');
   const cameraFollowDownLerp = page.locator('[name="cameraFollowDownLerp"]');
-  const rockAcceleration = page.locator('[name="rockAccelerationEnabled"]');
   const sceneTwoOverflowY = page.locator(
     '[name="sceneTwoOverflowYVisible"]',
   );
@@ -406,9 +406,6 @@ test("панель показывает параметры и разделы в�
     "xpath=ancestor::*[@data-setting-control]",
   );
   const cameraFollowDownControl = cameraFollowDown.locator(
-    "xpath=ancestor::*[@data-setting-control]",
-  );
-  const rockAccelerationControl = rockAcceleration.locator(
     "xpath=ancestor::*[@data-setting-control]",
   );
   const sceneTwoOverflowYControl = sceneTwoOverflowY.locator(
@@ -431,16 +428,26 @@ test("панель показывает параметры и разделы в�
   const obstacleGroup = page
     .locator('[name="sceneTwoBarrierEnabled"]')
     .locator("xpath=ancestor::details[contains(@class, 'control-group')]");
+  const summitTimerFont = page.locator('[name="summitTimerFontFamily"]');
+  const summitTimerSize = page.locator('[name="summitTimerFontSizeRem"]');
+  const summitTimerFontControl = summitTimerFont.locator(
+    "xpath=ancestor::*[@data-setting-control]",
+  );
+  const summitTimerSizeControl = summitTimerSize.locator(
+    "xpath=ancestor::*[@data-setting-control]",
+  );
 
   await expect(sceneOne).toHaveAttribute("aria-pressed", "true");
   await expect(sceneTwo).toHaveAttribute("aria-pressed", "false");
+  await expect(sceneThree).toHaveAttribute("aria-pressed", "false");
   await expect(fakeClicksControl).not.toHaveAttribute("hidden", "");
   await expect(gravityControl).toHaveAttribute("hidden", "");
   await expect(cameraFollowUpControl).toHaveAttribute("hidden", "");
   await expect(cameraFollowDownControl).toHaveAttribute("hidden", "");
-  await expect(rockAccelerationControl).toHaveAttribute("hidden", "");
   await expect(sceneTwoOverflowYControl).toHaveAttribute("hidden", "");
   await expect(gachiClickSoundControl).toHaveAttribute("hidden", "");
+  await expect(summitTimerFontControl).toHaveAttribute("hidden", "");
+  await expect(summitTimerSizeControl).toHaveAttribute("hidden", "");
   await expect(obstacleGroup).toHaveAttribute("hidden", "");
   await expect(themeControl).not.toHaveAttribute("hidden", "");
   await expect(trailGroup).not.toHaveAttribute("hidden", "");
@@ -457,7 +464,6 @@ test("панель показывает параметры и разделы в�
   await expect(gravityControl).not.toHaveAttribute("hidden", "");
   await expect(cameraFollowUpControl).not.toHaveAttribute("hidden", "");
   await expect(cameraFollowDownControl).not.toHaveAttribute("hidden", "");
-  await expect(rockAccelerationControl).not.toHaveAttribute("hidden", "");
   await expect(sceneTwoOverflowYControl).not.toHaveAttribute("hidden", "");
   await expect(gachiClickSoundControl).not.toHaveAttribute("hidden", "");
   await expect(cameraFollowUp).toBeChecked();
@@ -466,15 +472,6 @@ test("панель показывает параметры и разделы в�
   await expect(cameraFollowDown).toBeChecked();
   await expect(cameraFollowDownLerp).toHaveValue("0.1");
   await expect(cameraFollowDownLerp).toBeEnabled();
-  await expect(rockAcceleration).not.toBeChecked();
-  await expect(rockAcceleration).toBeDisabled();
-  await expect(rockAccelerationControl).toHaveAttribute(
-    "data-setting-static-disabled",
-    "true",
-  );
-  await expect(
-    rockAccelerationControl.locator("[data-setting-toggle-button]"),
-  ).toHaveAttribute("aria-disabled", "true");
   await expect(sceneTwoOverflowY).not.toBeChecked();
   await expect(gachiClickSound).toHaveValue("Camen.mp3");
   await expect(obstacleGroup).not.toHaveAttribute("hidden", "");
@@ -493,7 +490,6 @@ test("панель показывает параметры и разделы в�
   await setSettingValue(page, "gachiClickSoundFilename", "Like that.mp3");
   await expect(cameraFollowUp).not.toBeChecked();
   await expect(cameraFollowDown).not.toBeChecked();
-  await expect(rockAcceleration).not.toBeChecked();
   await expect(sceneTwoOverflowY).toBeChecked();
   await expect(gachiClickSound).toHaveValue("Like that.mp3");
 
@@ -505,16 +501,63 @@ test("панель показывает параметры и разделы в�
   await expect(trailLineWidth).toHaveValue("27");
   await expect(cameraFollowUpControl).toHaveAttribute("hidden", "");
   await expect(cameraFollowDownControl).toHaveAttribute("hidden", "");
-  await expect(rockAccelerationControl).toHaveAttribute("hidden", "");
   await expect(sceneTwoOverflowYControl).toHaveAttribute("hidden", "");
   await expect(gachiClickSoundControl).toHaveAttribute("hidden", "");
 
   await sceneTwo.click();
   await expect(cameraFollowUp).not.toBeChecked();
   await expect(cameraFollowDown).not.toBeChecked();
-  await expect(rockAcceleration).not.toBeChecked();
   await expect(sceneTwoOverflowY).toBeChecked();
   await expect(gachiClickSound).toHaveValue("Like that.mp3");
+
+  await sceneThree.click();
+  await expect(sceneOne).toHaveAttribute("aria-pressed", "false");
+  await expect(sceneTwo).toHaveAttribute("aria-pressed", "false");
+  await expect(sceneThree).toHaveAttribute("aria-pressed", "true");
+  await expect(summitTimerFontControl).not.toHaveAttribute("hidden", "");
+  await expect(summitTimerSizeControl).not.toHaveAttribute("hidden", "");
+  await expect(themeControl).toHaveAttribute("hidden", "");
+  await expect(gravityControl).toHaveAttribute("hidden", "");
+  await expect(trailGroup).toHaveAttribute("hidden", "");
+  await expect(summitTimerFont).toHaveValue("sf-pro-display-bold");
+  await expect(summitTimerSize).toHaveAttribute("min", "4");
+  await expect(summitTimerSize).toHaveAttribute("max", "64");
+  await setSettingValue(page, "summitTimerFontFamily", "aksent");
+  await setSettingValue(page, "summitTimerFontSizeRem", 12);
+  await expect(summitTimerFont).toHaveValue("aksent");
+  await expect(summitTimerSize).toHaveValue("12");
+  await expect(
+    page.locator('[data-output="summitTimerFontSizeRem"]'),
+  ).toHaveText("12 rem");
+});
+
+test("настройки сцены 3 меняют шрифт и размер секундомера", async ({ page }) => {
+  await page.goto("/");
+  await waitForFoldReady(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      summitTimerFontFamily: "aksent",
+      summitTimerFontSizeRem: 12,
+    });
+  });
+
+  await expect
+    .poll(() =>
+      page.getByTestId("summit-timer").evaluate((element) => ({
+        cssFontFamily: getComputedStyle(element).fontFamily,
+        cssFontSize: getComputedStyle(element).fontSize,
+        fontFamily: element.dataset.fontFamily,
+        fontSizeVariable: element.style.getPropertyValue(
+          "--summit-timer-font-size",
+        ),
+      })),
+    )
+    .toEqual({
+      cssFontFamily: "Aksent, Impact, sans-serif",
+      cssFontSize: "192px",
+      fontFamily: "aksent",
+      fontSizeVariable: "12rem",
+    });
 });
 
 test("overflow-y сцены 2 переключается без блокировки программного скролла", async ({
@@ -778,7 +821,7 @@ test("UI переключает три режима руки и задержив
     window.__sisyphusTestApi.applyTestSettings({
       handVisibilityMode: "always",
       handImageChangeDelayMs: 300,
-    });
+    }, { broadcastChanges: true });
   });
   await expect(page.locator("body")).toHaveClass(/hand-always-visible/);
   await expect(hand).toHaveClass(/is-visible/);
@@ -794,14 +837,17 @@ test("UI переключает три режима руки и задержив
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
       handVisibilityMode: "hidden",
-    });
+    }, { broadcastChanges: true });
   });
   await expect(page.locator("body")).toHaveClass(/hand-hidden/);
   await rock.hover();
   await expect(hand).toHaveCSS("display", "none");
 
   await page.evaluate(() => {
-    window.__sisyphusTestApi.applyTestSettings({ handVisibilityMode: "always" });
+    window.__sisyphusTestApi.applyTestSettings(
+      { handVisibilityMode: "always" },
+      { broadcastChanges: true },
+    );
   });
   await expect(page.locator("body")).toHaveClass(/hand-always-visible/);
   await expect(hand).toHaveClass(/is-visible/);
@@ -1158,7 +1204,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,
@@ -1184,6 +1230,7 @@ test("Fold синхронизирует сцену и применяет общ�
     ),
   ).toBeVisible();
   await page.evaluate(() => {
+    localStorage.removeItem("sisyphus-room-session-v1");
     sessionStorage.removeItem("sisyphus-room-session-id");
   });
   await page.goto("/");
@@ -1448,7 +1495,9 @@ test("state-machine сцены 2 меняет размер камня и сох�
     )
     .toBe("#ddeeff");
 
-  await page.evaluate(() => {
+  const sizeSettingsRevision = await page.evaluate(() => {
+    const revision = window.__sisyphusTestApi.getCollaborationDebugState()
+      .settingsRevision;
     window.__sisyphusTestApi.applyTestSettings({
       gravity: 0.1,
       pointerInfluence: 0,
@@ -1458,8 +1507,28 @@ test("state-machine сцены 2 меняет размер камня и сох�
       rockMinWidthVw: 5,
       rockPressShrinkPercent: 0,
       rockPulseEnabled: false,
-    });
+    }, { broadcastChanges: true });
+    return revision;
   });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        pendingRoomSettingKeys:
+          window.__sisyphusTestApi.getCollaborationDebugState()
+            .pendingRoomSettingKeys,
+        rockMaxWidthVw: window.__sisyphusTestApi.params.rockMaxWidthVw,
+        rockMinWidthVw: window.__sisyphusTestApi.params.rockMinWidthVw,
+        settingsRevision:
+          window.__sisyphusTestApi.getCollaborationDebugState()
+            .settingsRevision,
+      })),
+    )
+    .toEqual({
+      pendingRoomSettingKeys: [],
+      rockMaxWidthVw: 10,
+      rockMinWidthVw: 5,
+      settingsRevision: sizeSettingsRevision + 1,
+    });
   const rock = page.locator("#root > .world > .rock");
   const box = await rock.boundingBox();
   const initialWidth = box.width;
@@ -1521,6 +1590,8 @@ test("state-machine сцены 2 меняет размер камня и сох�
       gap: document.querySelector("#root > .world").offsetHeight - visualBottom,
       expectedPenetration: (visualHeight * penetrationPercent) / 100,
       sizeState: motion.sceneTwoSizeState,
+      minWidthVw: window.__sisyphusTestApi.params.rockMinWidthVw,
+      viewportWidth: window.innerWidth,
       width: rockRect.width,
       y: motion.y,
       maxY: bounds.maxY,
@@ -1530,8 +1601,35 @@ test("state-machine сцены 2 меняет размер камня и сох�
   expect(floorContact.sizeState).toBe("ground");
   expect(floorContact.width).toBeLessThan(airborne.width);
   expect(
+    Math.abs(
+      floorContact.width -
+        floorContact.viewportWidth * (floorContact.minWidthVw / 100),
+    ),
+  ).toBeLessThanOrEqual(10);
+  expect(
     Math.abs(floorContact.gap + floorContact.expectedPenetration),
   ).toBeLessThanOrEqual(2);
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.beginSceneTwoAirborneScale();
+  });
+  await page.waitForTimeout(350);
+  const reboundWithoutGrab = await rock.evaluate((element) => ({
+    width: element.getBoundingClientRect().width,
+    minWidthVw: window.__sisyphusTestApi.params.rockMinWidthVw,
+    viewportWidth: window.innerWidth,
+    state: window.__sisyphusTestApi.motion.sceneTwoSizeState,
+    armed: window.__sisyphusTestApi.motion.sceneTwoSizeCycleArmed,
+  }));
+  expect(reboundWithoutGrab.state).toBe("ground");
+  expect(reboundWithoutGrab.armed).toBe(false);
+  expect(
+    Math.abs(
+      reboundWithoutGrab.width -
+        reboundWithoutGrab.viewportWidth *
+          (reboundWithoutGrab.minWidthVw / 100),
+    ),
+  ).toBeLessThanOrEqual(10);
 });
 
 test("рейтинг отображает текущего царя, а дождь ждёт пользовательский scroll", async ({

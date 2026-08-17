@@ -9,9 +9,14 @@ import {
 import {
   resolveProductionPresetMessage,
 } from "../lib/productionPresetMessages.mjs";
+import {
+  clearStoredRoomSession,
+  readStoredRoomSession,
+  ROOM_SESSION_ID_PATTERN,
+  writeStoredRoomSession,
+} from "../lib/roomSessionStorage.mjs";
 import { createSettingsController } from "./createSettingsController.js";
-const SETTINGS_SCHEMA_VERSION = 49;
-const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+const SETTINGS_SCHEMA_VERSION = 50;
 
 function randomRequestId() {
   const random =
@@ -41,6 +46,7 @@ export function createSettingsPageRuntime(elements = {}) {
   let reconnectTimerId = null;
   let sessionCreateInFlight = false;
   let pendingRequestId = "";
+  let activeSessionId = "";
   let combinedSave = null;
   let restoredSettingsAtLaunch = null;
   let settingsController;
@@ -264,6 +270,9 @@ export function createSettingsPageRuntime(elements = {}) {
       return;
     }
     if (message.type === "session.snapshot") {
+      if (activeSessionId) {
+        writeStoredRoomSession(activeSessionId, payload.expiresAt);
+      }
       const revision = Number(payload.settingsRevision);
       if (Number.isSafeInteger(revision) && revision > 0) {
         settingsRevision = revision;
@@ -353,9 +362,10 @@ export function createSettingsPageRuntime(elements = {}) {
   }
 
   function connectSharedSession(sessionId) {
-    if (disposed || !SESSION_ID_PATTERN.test(sessionId)) {
+    if (disposed || !ROOM_SESSION_ID_PATTERN.test(sessionId)) {
       return;
     }
+    activeSessionId = sessionId;
     clearReconnectTimer();
     const endpoint = new URL("/realtime", window.location.origin);
     endpoint.protocol = endpoint.protocol === "https:" ? "wss:" : "ws:";
@@ -383,11 +393,8 @@ export function createSettingsPageRuntime(elements = {}) {
       collab.connected = false;
       socket = null;
       if (event.code === 4004) {
-        try {
-          sessionStorage.removeItem("sisyphus-room-session-id");
-        } catch {
-          /* sessionStorage недоступен */
-        }
+        clearStoredRoomSession(activeSessionId);
+        activeSessionId = "";
         const cleanUrl = new URL(window.location.href);
         cleanUrl.searchParams.delete("session");
         window.history.replaceState(
@@ -422,14 +429,12 @@ export function createSettingsPageRuntime(elements = {}) {
     sessionCreateInFlight = true;
     try {
       const urlSessionId = new URL(window.location.href).searchParams.get("session") || "";
-      let sessionId = SESSION_ID_PATTERN.test(urlSessionId) ? urlSessionId : "";
+      let sessionId = ROOM_SESSION_ID_PATTERN.test(urlSessionId) ? urlSessionId : "";
+      let expiresAt = null;
       if (!sessionId) {
-        try {
-          const stored = sessionStorage.getItem("sisyphus-room-session-id") || "";
-          sessionId = SESSION_ID_PATTERN.test(stored) ? stored : "";
-        } catch {
-          sessionId = "";
-        }
+        const stored = readStoredRoomSession();
+        sessionId = stored?.sessionId || "";
+        expiresAt = stored?.expiresAt || null;
       }
       if (!sessionId) {
         const response = await fetch("/api/sessions", {
@@ -442,15 +447,12 @@ export function createSettingsPageRuntime(elements = {}) {
         }
         const result = await response.json();
         sessionId = String(result.sessionId || "");
+        expiresAt = result.expiresAt;
       }
-      if (!SESSION_ID_PATTERN.test(sessionId)) {
+      if (!ROOM_SESSION_ID_PATTERN.test(sessionId)) {
         throw new Error("invalid_session_response");
       }
-      try {
-        sessionStorage.setItem("sisyphus-room-session-id", sessionId);
-      } catch {
-        /* sessionStorage недоступен */
-      }
+      writeStoredRoomSession(sessionId, expiresAt);
       connectSharedSession(sessionId);
     } catch (error) {
       setSessionStatus("Не удалось подключиться к комнате", "error");

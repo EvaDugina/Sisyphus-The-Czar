@@ -8,6 +8,12 @@ import {
 } from "../../src/lib/coordinates.mjs";
 import { createClientId } from "../../src/lib/clientId.mjs";
 import {
+  clearStoredRoomSession,
+  readStoredRoomSession,
+  ROOM_SESSION_STORAGE_KEY,
+  writeStoredRoomSession,
+} from "../../src/lib/roomSessionStorage.mjs";
+import {
   cameraFollowDirectionalScrollY,
   cameraFollowScrollY,
   cameraFollowScrollUpY,
@@ -228,6 +234,71 @@ test("client ID работает без randomUUID на HTTP", () => {
 
 test("client ID имеет допустимый fallback без Web Crypto", () => {
   assert.match(createClientId(null), /^[A-Za-z0-9_-]{16,64}$/);
+});
+
+test("room-session живёт в localStorage до серверного expiresAt", () => {
+  const values = new Map();
+  const localStorage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, String(value)),
+    removeItem: (key) => values.delete(key),
+  };
+  const sessionStorage = {
+    getItem: () => null,
+    removeItem: () => {},
+  };
+  const sessionId = "abcdefghijklmnopqrstuv";
+
+  assert.equal(
+    writeStoredRoomSession(sessionId, 2000, { localStorage, sessionStorage }),
+    true,
+  );
+  assert.deepEqual(
+    readStoredRoomSession({ localStorage, sessionStorage, now: 1500 }),
+    { sessionId, expiresAt: 2000 },
+  );
+  assert.equal(
+    readStoredRoomSession({ localStorage, sessionStorage, now: 2000 }),
+    null,
+  );
+  assert.equal(values.has(ROOM_SESSION_STORAGE_KEY), false);
+});
+
+test("legacy room-session мигрирует и чужая новая запись не удаляется", () => {
+  const localValues = new Map();
+  const sessionValues = new Map([
+    ["sisyphus-room-session-id", "abcdefghijklmnopqrstuv"],
+  ]);
+  const localStorage = {
+    getItem: (key) => localValues.get(key) ?? null,
+    setItem: (key, value) => localValues.set(key, String(value)),
+    removeItem: (key) => localValues.delete(key),
+  };
+  const sessionStorage = {
+    getItem: (key) => sessionValues.get(key) ?? null,
+    removeItem: (key) => sessionValues.delete(key),
+  };
+
+  assert.deepEqual(readStoredRoomSession({ localStorage, sessionStorage }), {
+    sessionId: "abcdefghijklmnopqrstuv",
+    expiresAt: null,
+  });
+  writeStoredRoomSession("zyxwvutsrqponmlkjihgfe", 4000, {
+    localStorage,
+    sessionStorage,
+  });
+  assert.equal(
+    clearStoredRoomSession("abcdefghijklmnopqrstuv", {
+      localStorage,
+      sessionStorage,
+      now: 3000,
+    }),
+    false,
+  );
+  assert.equal(
+    readStoredRoomSession({ localStorage, sessionStorage, now: 3000 })?.sessionId,
+    "zyxwvutsrqponmlkjihgfe",
+  );
 });
 
 test("координаты сохраняют каноническое положение между viewport", () => {
@@ -508,8 +579,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v49");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v48");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v50");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v49");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -703,6 +774,9 @@ test("UI классифицирует параметры по сценам бе�
   const trailGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Траектория"
   );
+  const summitTimerGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Секундомер"
+  );
 
   assert.deepEqual(SETTINGS_SCENE_OPTIONS, [
     {
@@ -710,7 +784,11 @@ test("UI классифицирует параметры по сценам бе�
       label: "Сцена 1. Кошки-мышки",
     },
     { id: SETTINGS_SCENES.TURNIP, label: "Сцена 2. Репка" },
+    { id: SETTINGS_SCENES.JUICES, label: "Сцена 3. Соки" },
   ]);
+  ["summitTimerFontFamily", "summitTimerFontSizeRem"].forEach((name) => {
+    assert.deepEqual(settingsControlScenes(name), [SETTINGS_SCENES.JUICES]);
+  });
   assert.deepEqual(
     controls
       .filter((control) => {
@@ -810,6 +888,14 @@ test("UI классифицирует параметры по сценам бе�
     true
   );
   assert.equal(
+    settingsGroupVisibleInScene(summitTimerGroup, SETTINGS_SCENES.JUICES),
+    true,
+  );
+  assert.equal(
+    settingsGroupVisibleInScene(physicsGroup, SETTINGS_SCENES.JUICES),
+    false,
+  );
+  assert.equal(
     controls.every((control) => settingsControlScenes(control).length > 0),
     true
   );
@@ -837,7 +923,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 49);
+  assert.equal(productionSettingsSchemaVersion, 50);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -2659,7 +2745,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 49);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 50);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2702,6 +2788,8 @@ test("группа дождя содержит общий toggle и blur тём�
     rockAccelerationEnabled: "true",
     upperZoneAutoScrollEnabled: "true",
     sceneTwoOverflowYVisible: "true",
+    summitTimerFontFamily: "missing",
+    summitTimerFontSizeRem: 999,
     gachiClickSoundFilename: "missing.mp3",
   });
   assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
@@ -2745,6 +2833,8 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockAccelerationEnabled, false);
   assert.equal(Object.hasOwn(visualSettings, "upperZoneAutoScrollEnabled"), false);
   assert.equal(visualSettings.sceneTwoOverflowYVisible, true);
+  assert.equal(visualSettings.summitTimerFontFamily, "sf-pro-display-bold");
+  assert.equal(visualSettings.summitTimerFontSizeRem, 64);
   assert.equal(visualSettings.gachiClickSoundFilename, "Camen.mp3");
   assert.deepEqual(SharedRoomSettings.GACHI_SOUND_FILENAMES, [
     "Aaaaaa.mp3",
@@ -2807,6 +2897,9 @@ test("группа дождя содержит общий toggle и blur тём�
       hasLegacyAutoScroll: false,
     },
   );
+  const legacyV49 = SharedRoomSettings.migrateRoomSettings({}, 49);
+  assert.equal(legacyV49.summitTimerFontFamily, "sf-pro-display-bold");
+  assert.equal(legacyV49.summitTimerFontSizeRem, 32);
   assert.deepEqual(
     SharedRoomSettings.migrateRockVisualSettings({
       rockPressShrinkPercent: 17,
@@ -2918,6 +3011,8 @@ test("группа дождя содержит общий toggle и blur тём�
     cameraFollowDownLerp: 0.1,
     rockAccelerationEnabled: false,
     sceneTwoOverflowYVisible: false,
+    summitTimerFontFamily: "sf-pro-display-bold",
+    summitTimerFontSizeRem: 32,
     gachiClickSoundFilename: "Camen.mp3",
     sceneTwoBarrierEnabled: false,
     sceneTwoBarrierHeightVh: 1250,
@@ -2943,6 +3038,8 @@ test("группа дождя содержит общий toggle и blur тём�
       cameraFollowDownLerp: 0.1,
       rockAccelerationEnabled: false,
       sceneTwoOverflowYVisible: false,
+      summitTimerFontFamily: "sf-pro-display-bold",
+      summitTimerFontSizeRem: 32,
       gachiClickSoundFilename: "Camen.mp3",
       sceneTwoBarrierEnabled: false,
       sceneTwoBarrierHeightVh: 1250,

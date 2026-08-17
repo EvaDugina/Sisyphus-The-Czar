@@ -44,6 +44,11 @@ import {
   wrapPreclickHopCenter,
 } from "../lib/preclickHop.mjs";
 import { cursorCircleIntersectsRect } from "../lib/rockGrab.mjs";
+import {
+  clearStoredRoomSession,
+  readStoredRoomSession,
+  writeStoredRoomSession,
+} from "../lib/roomSessionStorage.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
 import { formatSummitElapsedMs } from "../lib/summitTimer.mjs";
 import {
@@ -302,6 +307,12 @@ export function createSisyphusRuntime(elements = {}) {
   const DEFAULT_RAIN_BLUR_BLEND_MODE = "normal";
   const DEFAULT_THEME_TRANSITION_MS = 420;
   const DEFAULT_THEME_MODE = SharedRoomSettings.DEFAULT_ROOM_SETTINGS.themeMode;
+  const SUMMIT_TIMER_FONT_STACKS = Object.freeze({
+    "sf-pro-display-bold":
+      '"SF Pro Display Bold", "Arial Black", sans-serif',
+    "droid-1997": '"Droid 1997", Impact, sans-serif',
+    aksent: '"Aksent", Impact, sans-serif',
+  });
   const DEFAULT_RETURN_SCROLL_EASING =
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.returnScrollEasing;
   const DEFAULT_RETURN_SCROLL_DURATION_SECONDS =
@@ -336,6 +347,10 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockAccelerationEnabled,
     sceneTwoOverflowYVisible:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoOverflowYVisible,
+    summitTimerFontFamily:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.summitTimerFontFamily,
+    summitTimerFontSizeRem:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.summitTimerFontSizeRem,
     foldPositionPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldPositionPercent,
     foldPanelHeightVh:
@@ -579,6 +594,7 @@ export function createSisyphusRuntime(elements = {}) {
   );
   applyCustomCursorSettings();
   applyBirchBackgroundSettings();
+  applySummitTimerSettings();
   resetPreclickRockGuidance();
   const finalFallGate = {
     enteredAt: null,
@@ -2489,6 +2505,27 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
+  function applySummitTimerSettings() {
+    if (!summitTimerElement) {
+      return;
+    }
+    const fontKey = Object.hasOwn(
+      SUMMIT_TIMER_FONT_STACKS,
+      params.summitTimerFontFamily,
+    )
+      ? params.summitTimerFontFamily
+      : SharedRoomSettings.DEFAULT_ROOM_SETTINGS.summitTimerFontFamily;
+    summitTimerElement.style.setProperty(
+      "--summit-timer-font-family",
+      SUMMIT_TIMER_FONT_STACKS[fontKey],
+    );
+    summitTimerElement.style.setProperty(
+      "--summit-timer-font-size",
+      `${params.summitTimerFontSizeRem}rem`,
+    );
+    summitTimerElement.dataset.fontFamily = fontKey;
+  }
+
   function applyCustomCursorSettings() {
     body.classList.toggle("custom-cursor-enabled", params.customCursorEnabled);
     body.style.setProperty(
@@ -2682,6 +2719,11 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (shouldHandleChange("handVisibilityMode")) {
       applyHandVisibilitySetting();
+    }
+    if (
+      shouldHandleChange("summitTimerFontFamily", "summitTimerFontSizeRem")
+    ) {
+      applySummitTimerSettings();
     }
     if (shouldHandleChange("customCursorEnabled", "customCursorSizePx")) {
       applyCustomCursorSettings();
@@ -3615,21 +3657,27 @@ export function createSisyphusRuntime(elements = {}) {
     }, reducedMotion.matches ? 0 : ROCK_ACTIVATION_SCALE_DURATION_MS);
   }
 
-  function beginSceneTwoAirborneScale({ armGroundReset = true } = {}) {
+  function beginSceneTwoAirborneScale() {
     if (!preclickRockGuidance.completed) {
       releaseRockPress();
-      return;
+      return false;
+    }
+    if (!motion.sceneTwoSizeCycleArmed) {
+      clearSceneTwoPressTimer();
+      releaseRockPress();
+      stopRockPulse();
+      motion.sceneTwoSizeState = "ground";
+      return false;
     }
     clearSceneTwoPressTimer();
     releaseRockPress();
     motion.sceneTwoSizeState = "airborne";
-    motion.sceneTwoSizeCycleArmed =
-      motion.sceneTwoSizeCycleArmed || armGroundReset;
     motion.rockActivationArmed = false;
     motion.physicsActivated = false;
     motion.rockActivationScaleFactor = 1;
     transitionSceneTwoRockScale();
     syncRockPulse();
+    return true;
   }
 
   function settleSceneTwoRockScaleOnGround() {
@@ -4740,11 +4788,7 @@ export function createSisyphusRuntime(elements = {}) {
     cancelSharedLocalDrag();
     clearRemotePointers();
     resetHeightGateState();
-    try {
-      sessionStorage.removeItem("sisyphus-room-session-id");
-    } catch {
-      /* sessionStorage недоступен */
-    }
+    clearStoredRoomSession();
 
     if (disposed) {
       return;
@@ -4770,12 +4814,7 @@ export function createSisyphusRuntime(elements = {}) {
     collab.sessionCreateAbortController = abortController;
     setSessionStatus("Создаём личную сессию…", "connecting");
     try {
-      let storedSessionId = "";
-      try {
-        storedSessionId = sessionStorage.getItem("sisyphus-room-session-id") || "";
-      } catch {
-        storedSessionId = "";
-      }
+      const storedSessionId = readStoredRoomSession()?.sessionId || "";
       if (/^[A-Za-z0-9_-]{22}$/.test(storedSessionId)) {
         collab.restoringStoredSession = true;
         collab.sessionId = storedSessionId;
@@ -4806,11 +4845,7 @@ export function createSisyphusRuntime(elements = {}) {
       collab.expired = false;
       collab.restoringStoredSession = false;
       collab.sessionId = result.sessionId;
-      try {
-        sessionStorage.setItem("sisyphus-room-session-id", collab.sessionId);
-      } catch {
-        /* sessionStorage недоступен — ссылка всё равно получит query-параметр */
-      }
+      writeStoredRoomSession(collab.sessionId, result.expiresAt);
       updateSettingsLink();
       collab.leaveToken = null;
       collab.sequence = 0;
@@ -5260,6 +5295,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function receiveSharedSnapshot(payload) {
+    if (collab.sessionId) {
+      writeStoredRoomSession(collab.sessionId, payload.expiresAt);
+    }
     if (payload.roomSettings && typeof payload.roomSettings === "object") {
       const snapshotHeight = Number(payload.roomSettings.sceneHeightScreens);
       collab.lastRoomSettingsSnapshotHeight = Number.isFinite(snapshotHeight)
@@ -5467,13 +5505,7 @@ export function createSisyphusRuntime(elements = {}) {
         }
       } else if (snapshot.dragging && snapshot.holderId) {
         if (motion.sceneTwoSizeState !== "held") {
-          clearSceneTwoPressTimer();
-          stopRockPulse();
-          motion.sceneTwoSizeState = "held";
-          motion.sceneTwoSizeCycleArmed = true;
-          motion.rockActivationScaleFactor = 1;
-          transitionSceneTwoRockScale();
-          activateRockPress();
+          beginSceneTwoGrabScale();
         }
       } else if (motion.sceneTwoSizeState !== "airborne") {
         beginSceneTwoAirborneScale();
@@ -7698,14 +7730,7 @@ export function createSisyphusRuntime(elements = {}) {
     loadLatestVersion: false,
     loadVersionedSettings: true,
   });
-  let restoringPersistedSession = false;
-  try {
-    restoringPersistedSession = /^[A-Za-z0-9_-]{22}$/.test(
-      sessionStorage.getItem("sisyphus-room-session-id") || "",
-    );
-  } catch {
-    /* sessionStorage недоступен */
-  }
+  const restoringPersistedSession = Boolean(readStoredRoomSession()?.sessionId);
   collab.restoringStoredSession = restoringPersistedSession;
   readControls();
   if (restoredSettingKeys.length > 0) {

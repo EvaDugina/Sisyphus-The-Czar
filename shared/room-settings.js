@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 49;
+  const ROOM_SETTINGS_VERSION = 50;
   const MAX_HEIGHT_GATES = 10;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
@@ -47,6 +47,11 @@
   const ROCK_WIDTH_VW_LIMITS = Object.freeze([1, 150]);
   const ROCK_IMAGE_IDS = Object.freeze(["rock-03", "rock", "rock2"]);
   const HAND_VISIBILITY_MODES = Object.freeze(["always", "hover", "hidden"]);
+  const SUMMIT_TIMER_FONT_FAMILIES = Object.freeze([
+    "sf-pro-display-bold",
+    "droid-1997",
+    "aksent",
+  ]);
   const GACHI_SOUND_FILENAMES = Object.freeze([
     "Aaaaaa.mp3",
     "Aaaaah.mp3",
@@ -128,6 +133,7 @@
     rainBlurSaturation: [0, 2],
     rainZIndex: [0, 30],
     rainTimingMs: [0, 20000],
+    summitTimerFontSizeRem: [4, 64],
     lineDelay: [0, 1],
     trailAnchorHeightPercent: [0, 100],
     trailMaxPoints: [20, 10000],
@@ -229,6 +235,8 @@
     rainExitEasing: "cubic-bezier(0.4, 0, 0.2, 1)",
     rainEnterMs: 1100,
     rainExitMs: 2000,
+    summitTimerFontFamily: "sf-pro-display-bold",
+    summitTimerFontSizeRem: 32,
     trailEnabled: true,
     trailReset: false,
     lineDelay: 0.5,
@@ -510,6 +518,8 @@
       ROOM_SETTINGS_LIMITS.rainBlurSaturation;
     const [zIndexMin, zIndexMax] = ROOM_SETTINGS_LIMITS.rainZIndex;
     const [timingMin, timingMax] = ROOM_SETTINGS_LIMITS.rainTimingMs;
+    const [summitTimerFontSizeMin, summitTimerFontSizeMax] =
+      ROOM_SETTINGS_LIMITS.summitTimerFontSizeRem;
     const [lineDelayMin, lineDelayMax] = ROOM_SETTINGS_LIMITS.lineDelay;
     const [trailAnchorMin, trailAnchorMax] =
       ROOM_SETTINGS_LIMITS.trailAnchorHeightPercent;
@@ -627,6 +637,19 @@
         "cameraFollowDownLerp",
         cameraFollowDownLerpMin,
         cameraFollowDownLerpMax
+      ),
+      summitTimerFontFamily: enumSetting(
+        source,
+        fallbackSource,
+        "summitTimerFontFamily",
+        SUMMIT_TIMER_FONT_FAMILIES
+      ),
+      summitTimerFontSizeRem: finiteSetting(
+        source,
+        fallbackSource,
+        "summitTimerFontSizeRem",
+        summitTimerFontSizeMin,
+        summitTimerFontSizeMax
       ),
       rockAccelerationEnabled: false,
       sceneTwoOverflowYVisible: boolSetting(
@@ -1466,6 +1489,13 @@
       delete current.cameraFollowLerp;
       delete current.upperZoneAutoScrollEnabled;
     }
+    if (finiteNumber(version, 1) < 50) {
+      ["summitTimerFontFamily", "summitTimerFontSizeRem"].forEach((key) => {
+        if (!Object.hasOwn(current, key)) {
+          current[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
     return current;
   }
 
@@ -1506,6 +1536,7 @@
     PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
     ROCK_IMAGE_IDS,
     HAND_VISIBILITY_MODES,
+    SUMMIT_TIMER_FONT_FAMILIES,
     GACHI_SOUND_FILENAMES,
     DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     ROOM_SETTINGS_VERSION,

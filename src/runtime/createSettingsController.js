@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 49;
+const SETTINGS_SCHEMA_VERSION = 50;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -1322,6 +1322,7 @@ export function createSettingsController(options) {
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
       cameraFollowUpLerp: params.cameraFollowUpLerp.toFixed(2),
       cameraFollowDownLerp: params.cameraFollowDownLerp.toFixed(2),
+      summitTimerFontSizeRem: `${params.summitTimerFontSizeRem.toFixed(0)} rem`,
       foldPositionPercent: `${params.foldPositionPercent.toFixed(0)}%`,
       foldPanelHeightVh: `${params.foldPanelHeightVh.toFixed(0)} vh`,
       foldAngle: `${params.foldAngle.toFixed(0)}°`,

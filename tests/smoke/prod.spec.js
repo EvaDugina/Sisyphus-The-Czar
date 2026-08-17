@@ -242,6 +242,7 @@ test("production build creates one personal session per user, keeps a clean URL 
     expect(
       secondSocketMessages.some(({ type }) => type === "control.granted"),
     ).toBe(false);
+    await second.waitForTimeout(800);
 
     const secondPoint = await moveToVisibleRock(second);
     await second.mouse.down();

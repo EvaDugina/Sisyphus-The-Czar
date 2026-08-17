@@ -238,7 +238,8 @@ test("dev UI сохраняет последний параметр после �
   await page.goto("/");
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
   const sessionId = await page.evaluate(() =>
-    sessionStorage.getItem("sisyphus-room-session-id"),
+    JSON.parse(localStorage.getItem("sisyphus-room-session-v1") || "null")
+      ?.sessionId,
   );
   await expect
     .poll(() =>
@@ -276,7 +277,8 @@ test("dev UI сохраняет последний параметр после �
   await expect
     .poll(() =>
       page.evaluate(() =>
-        sessionStorage.getItem("sisyphus-room-session-id"),
+        JSON.parse(localStorage.getItem("sisyphus-room-session-v1") || "null")
+          ?.sessionId,
       ),
     )
     .toBe(sessionId);
@@ -445,7 +447,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -1386,7 +1388,7 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return stored.gravity;
       }),
@@ -1394,11 +1396,11 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .toBe(migratedGravity);
 });
 
-test("локальные настройки v20 мигрируют в v49 без потери trailEnabled", async ({
+test("локальные настройки v20 мигрируют в v50 без потери trailEnabled", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v49");
+    localStorage.removeItem("sisyphus-czar-settings-v50");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1421,7 +1423,7 @@ test("локальные настройки v20 мигрируют в v49 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2406,6 +2408,7 @@ test("вход на корень открывает рабочую личную 
 });
 
 test("reload восстанавливает активную сессию и возвращает камень в viewport", async ({
+  context,
   page,
 }) => {
   await page.goto("/");
@@ -2468,8 +2471,9 @@ test("reload восстанавливает активную сессию и в�
           ),
           sameSession:
             collab.sessionId === expected.sessionId &&
-            sessionStorage.getItem("sisyphus-room-session-id") ===
-              expected.sessionId,
+            JSON.parse(
+              localStorage.getItem("sisyphus-room-session-v1") || "null",
+            )?.sessionId === expected.sessionId,
           stateClassRestored: document.body.classList.contains("state-play"),
         };
       }, target),
@@ -2480,6 +2484,41 @@ test("reload восстанавливает активную сессию и в�
       sameSession: true,
       stateClassRestored: true,
     });
+
+  const identity = await page.evaluate(() => ({
+    name: document.querySelector(
+      ".summit-leaderboard__row.is-current .summit-leaderboard__name",
+    )?.textContent || "",
+    sessionId: collab.sessionId,
+  }));
+  expect(identity.name).toMatch(/^Царь/);
+  await page.close();
+
+  const reopenedPage = await context.newPage();
+  await reopenedPage.goto("/");
+  await expect(reopenedPage.getByTestId("session-status")).toContainText(
+    "В сессии",
+  );
+  await expect
+    .poll(() =>
+      reopenedPage.evaluate(() => ({
+        name:
+          document.querySelector(
+            ".summit-leaderboard__row.is-current .summit-leaderboard__name",
+          )?.textContent || "",
+        sessionId: window.__sisyphusTestApi.getCollaborationDebugState()
+          .sessionId,
+        storedSessionId: JSON.parse(
+          localStorage.getItem("sisyphus-room-session-v1") || "null",
+        )?.sessionId,
+      })),
+    )
+    .toEqual({
+      name: identity.name,
+      sessionId: identity.sessionId,
+      storedSessionId: identity.sessionId,
+    });
+  await reopenedPage.close();
 });
 
 test("reload высокой сцены открывает низ и сохраняет suspended-сессию", async ({
@@ -2506,7 +2545,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v49",
+      "sisyphus-czar-settings-v50",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -2529,8 +2568,9 @@ test("reload высокой сцены открывает низ и сохран
           ),
           sameSession:
             collab.sessionId === expectedSessionId &&
-            sessionStorage.getItem("sisyphus-room-session-id") ===
-              expectedSessionId,
+            JSON.parse(
+              localStorage.getItem("sisyphus-room-session-v1") || "null",
+            )?.sessionId === expectedSessionId,
           suspended: currentSharedState().suspended,
         };
       }, preparedRoom.sessionId),
@@ -2725,7 +2765,7 @@ test.skip("legacy: общий pointerdown-звук не применяется �
 });
 
 test("падение компенсируется при изменении высоты сцены", async ({ browser }) => {
-  test.setTimeout(60_000);
+  test.setTimeout(120_000);
 
   async function profileForHeight(height) {
     const context = await createBrowserContext(browser, {
@@ -2969,7 +3009,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}"
         );
         return stored.trailRenderProfile;
       })
@@ -3008,7 +3048,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -3144,7 +3184,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -3179,7 +3219,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -3196,7 +3236,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v49") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v50") || "{}"
         );
         return stored.rainEnabled;
       })

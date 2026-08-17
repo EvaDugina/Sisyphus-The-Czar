@@ -17,6 +17,30 @@
   unicode-range: U+0030-003A;
 }
 
+@font-face {
+  font-family: "Droid 1997";
+  src: url("../../assets/fonts/droid 1997/Droid 1997.otf") format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400 700;
+}
+
+@font-face {
+  font-family: "Aksent";
+  src: url("../../assets/fonts/Aksent/aksentnormal.ttf") format("truetype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 400 700;
+}
+
+@font-face {
+  font-family: "SF Pro Display Bold";
+  src: url("../../assets/fonts/SF-Pro-Display-Bold/SF-Pro-Display-Bold.otf") format("opentype");
+  font-display: swap;
+  font-style: normal;
+  font-weight: 700;
+}
+
 .world {
   position: relative;
   height: var(--scene-height-vh, 1000vh);
@@ -94,8 +118,11 @@
   margin: 0;
   overflow: hidden;
   color: color-mix(in srgb, var(--ink) 20%, transparent);
-  font-family: "Inter Timer", Inter, ui-sans-serif, system-ui, sans-serif;
-  font-size: 32rem;
+  font-family: var(
+    --summit-timer-font-family,
+    "SF Pro Display Bold", Inter, ui-sans-serif, system-ui, sans-serif
+  );
+  font-size: var(--summit-timer-font-size, 32rem);
   font-variant-numeric: tabular-nums;
   font-weight: 700;
   letter-spacing: 0;

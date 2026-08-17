@@ -14,11 +14,12 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v49";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v50";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
   TURNIP: "turnip",
+  JUICES: "juices",
 });
 export const SETTINGS_SCENE_OPTIONS = Object.freeze([
   Object.freeze({
@@ -29,8 +30,13 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
     id: SETTINGS_SCENES.TURNIP,
     label: "Сцена 2. Репка",
   }),
+  Object.freeze({
+    id: SETTINGS_SCENES.JUICES,
+    label: "Сцена 3. Соки",
+  }),
 ]);
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v49",
   "sisyphus-czar-settings-v48",
   "sisyphus-czar-settings-v47",
   "sisyphus-czar-settings-v46",
@@ -449,6 +455,11 @@ const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickHopSpeedEasing",
 ]);
 
+const JUICES_ONLY_SETTING_NAMES = new Set([
+  "summitTimerFontFamily",
+  "summitTimerFontSizeRem",
+]);
+
 const TRAIL_SCENE_SETTING_NAMES = [
   "trailEnabled",
   "trailAnchorHeightPercent",
@@ -495,6 +506,7 @@ const CATS_AND_MICE_SCENES = Object.freeze([
   SETTINGS_SCENES.CATS_AND_MICE,
 ]);
 const TURNIP_SCENES = Object.freeze([SETTINGS_SCENES.TURNIP]);
+const JUICES_SCENES = Object.freeze([SETTINGS_SCENES.JUICES]);
 const SHARED_SCENES = Object.freeze([
   SETTINGS_SCENES.CATS_AND_MICE,
   SETTINGS_SCENES.TURNIP,
@@ -504,6 +516,9 @@ export function settingsControlScenes(control) {
   const name = typeof control === "string" ? control : control?.name;
   if (CATS_AND_MICE_ONLY_SETTING_NAMES.has(name)) {
     return CATS_AND_MICE_SCENES;
+  }
+  if (JUICES_ONLY_SETTING_NAMES.has(name)) {
+    return JUICES_SCENES;
   }
   if (SHARED_SCENE_SETTING_NAMES.has(name)) {
     return SHARED_SCENES;
@@ -522,6 +537,34 @@ export function settingsGroupVisibleInScene(group, sceneId) {
 }
 
 export const SETTINGS_GROUPS = [
+  {
+    title: "Секундомер",
+    controls: [
+      {
+        name: "summitTimerFontFamily",
+        label: "Шрифт секундомера",
+        type: "select",
+        defaultValue: DEFAULT_ROOM_SETTINGS.summitTimerFontFamily,
+        options: [
+          ["sf-pro-display-bold", "SF-Pro-Display-Bold"],
+          ["droid-1997", "Droid 1997"],
+          ["aksent", "Aksent"],
+        ],
+        hint: "Шрифт большого секундомера на вершине сцены 3.",
+      },
+      {
+        name: "summitTimerFontSizeRem",
+        label: "Размер секундомера, rem",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.summitTimerFontSizeRem[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.summitTimerFontSizeRem[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.summitTimerFontSizeRem,
+        output: `${DEFAULT_ROOM_SETTINGS.summitTimerFontSizeRem} rem`,
+        hint: "Размер большого секундомера на вершине. Значение сохраняется в общих настройках комнаты.",
+      },
+    ],
+  },
   {
     title: "Вид",
     controls: [
