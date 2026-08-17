@@ -984,7 +984,7 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
         output: `${DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount}`,
-        hint: "Первые N кликов по камню вызывают фейковый отскок со смехом и Camen. Следующий клик включает физику и переводит игру в сцену «Репка»; ноль отключает фейковые клики.",
+        hint: "Первые N кликов по камню вызывают фейковый отскок со смехом и открывают картины 01–03. Следующий клик включает физику и переводит игру в сцену «Репка»; ноль отключает фейковые клики.",
       },
       {
         name: "preclickPopupDelayMs",

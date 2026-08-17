@@ -1,3 +1,4 @@
+import { BirchLayer } from "./BirchLayer";
 import { Rock } from "./Rock";
 import { RockImprint } from "./RockImprint";
 import { TrailCanvas } from "./TrailCanvas";
@@ -38,8 +39,10 @@ export function Scene({ scene, trail, rain }) {
         fxCanvasRef={rain.rainFxCanvasRef}
         fallbackCanvasRef={rain.rainFallbackCanvasRef}
       />
+      <BirchLayer depth="behind" />
       <RockImprint rockImprintRef={scene.rockImprintRef} />
       <Rock rockRef={scene.rockRef} />
+      <BirchLayer depth="front" />
       <div
         ref={scene.heightGateStatusRef}
         className="height-gate-status"

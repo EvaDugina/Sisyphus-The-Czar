@@ -378,8 +378,8 @@ test("камень прыгает накопительно, сохраняет g
   expect(Date.now() - popupRequestedAt).toBeGreaterThanOrEqual(150);
   const popupImage = fakeClickPopup.locator("img");
   await expect(popupImage).toHaveCount(1);
-  await expect(popupImage).toHaveAttribute("alt", "Камень");
-  await expect(popupImage).toHaveAttribute("src", /rock\.webp/);
+  await expect(popupImage).toHaveAttribute("alt", "Картина 01");
+  await expect(popupImage).toHaveAttribute("src", /01[^/]*\.png/);
   await expect
     .poll(() =>
       popupImage.evaluate((image) => ({
@@ -389,8 +389,8 @@ test("камень прыгает накопительно, сохраняет g
       })),
     )
     .toMatchObject({
-      naturalHeight: 1692,
-      naturalWidth: 2048,
+      naturalHeight: 328,
+      naturalWidth: 340,
       objectFit: "contain",
     });
   await fakeClickPopup.close();
@@ -645,6 +645,7 @@ test("N фейковых кликов отталкивают камень, а к
       preclickHopGuardClickCount: 3,
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
+      preclickPopupDelayMs: 0,
       handAudioEnabled: true,
       gachiClickSoundFilename: "Aaaaaa.mp3",
       rockPressShrinkPercent: 0,
@@ -679,6 +680,7 @@ test("N фейковых кликов отталкивают камень, а к
   const cdp = await page.context().newCDPSession(page);
   for (let click = 1; click <= 3; click += 1) {
     const point = await visibleRockPoint(page);
+    const popupPromise = page.waitForEvent("popup");
     await cdp.send("Input.dispatchMouseEvent", {
       type: "mousePressed",
       x: point.x,
@@ -686,6 +688,15 @@ test("N фейковых кликов отталкивают камень, а к
       button: "left",
       clickCount: 1,
     });
+    const popup = await popupPromise;
+    const popupImage = popup.locator("img");
+    await expect(popupImage).toHaveAttribute(
+      "src",
+      new RegExp(`0${click}[^/]*\\.png`),
+    );
+    await expect(popupImage).toHaveAttribute("alt", `Картина 0${click}`);
+    await popup.close();
+    await page.bringToFront();
     await cdp.send("Input.dispatchMouseEvent", {
       type: "mouseReleased",
       x: point.x,
@@ -707,7 +718,7 @@ test("N фейковых кликов отталкивают камень, а к
       .poll(() =>
         page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
       )
-      .toMatchObject({ playCount: click, lastFilename: "Camen.mp3" });
+      .toMatchObject({ playCount: 0, lastFilename: null });
     expect(await page.evaluate(() => window.__laughPlayCount)).toBe(click + 1);
   }
 
@@ -735,7 +746,7 @@ test("N фейковых кликов отталкивают камень, а к
         () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
       ),
     )
-    .toBe(3);
+    .toBe(0);
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mouseReleased",
     x: realClickPoint.x,
@@ -759,7 +770,7 @@ test("N фейковых кликов отталкивают камень, а к
         window.__sisyphusTestApi.getGachiClickAudioState(),
       ),
     )
-    .toMatchObject({ playCount: 4, lastFilename: "Aaaaaa.mp3" });
+    .toMatchObject({ playCount: 1, lastFilename: "Aaaaaa.mp3" });
   expect(await page.evaluate(() => window.__laughPlayCount)).toBe(4);
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mouseReleased",
@@ -782,15 +793,15 @@ test("N фейковых кликов отталкивают камень, а к
           () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
         ),
       )
-      .toBe(click + 3);
+      .toBe(click);
   }
   await expect
     .poll(() =>
       page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
     )
     .toMatchObject({
-      activeCount: 6,
-      playCount: 6,
+      activeCount: 3,
+      playCount: 3,
       stopCount: 0,
       lastFilename: "Aaaaaa.mp3",
     });

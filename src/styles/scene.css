@@ -153,6 +153,39 @@
   font-size: 3.2rem;
 }
 
+.birch-layer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 100svh;
+  overflow: hidden;
+  pointer-events: none;
+  user-select: none;
+}
+
+.birch-layer--behind {
+  z-index: 5;
+}
+
+.birch-layer--front {
+  z-index: 7;
+}
+
+.birch-layer__tree {
+  position: absolute;
+  bottom: 0;
+  left: var(--birch-x);
+  width: auto;
+  max-width: none;
+  height: 100%;
+  object-fit: contain;
+  object-position: center bottom;
+  pointer-events: none;
+  transform: translateX(-50%);
+  -webkit-user-drag: none;
+}
+
 @property --rock-scale {
   syntax: "<number>";
   inherits: false;

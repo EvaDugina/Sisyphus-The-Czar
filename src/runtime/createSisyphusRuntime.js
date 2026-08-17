@@ -5,7 +5,9 @@ import "../../shared/chain-sounds.js";
 import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
 import groundImpactAudioUrl from "../../assets/audio/СимуляцияОргазма.mov?url";
 import preclickHopAudioUrl from "../../assets/audio/Смех.mp3?url";
-import preclickPopupRockImageUrl from "../../assets/rock/rock.webp?url";
+import gogh01Url from "../../assets/gogh/01.png?url";
+import gogh02Url from "../../assets/gogh/02.png?url";
+import gogh03Url from "../../assets/gogh/03.png?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
 import { rockImageUrl } from "../config/rockImages.mjs";
@@ -89,8 +91,11 @@ const TRAIL_NETWORK_BATCH_POINTS = 16;
 const TRAIL_NETWORK_FLUSH_MS = 50;
 const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
 const PRECLICK_HOP_EASING_CURVE = Object.freeze([0.22, 1, 0.36, 1]);
-const PRECLICK_POPUP_ROCK_FALLBACK_ASPECT_RATIO = 2048 / 1692;
-const PRECLICK_GACHI_CLICK_SOUND_FILENAME = "Camen.mp3";
+const PRECLICK_POPUP_ARTWORKS = Object.freeze([
+  Object.freeze({ alt: "Картина 01", fallbackAspectRatio: 340 / 328, url: gogh01Url }),
+  Object.freeze({ alt: "Картина 02", fallbackAspectRatio: 341 / 330, url: gogh02Url }),
+  Object.freeze({ alt: "Картина 03", fallbackAspectRatio: 334 / 328, url: gogh03Url }),
+]);
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
 const THEME_BACKGROUND_SETTING_KEYS = [
   "lightBackgroundColor",
@@ -548,11 +553,14 @@ export function createSisyphusRuntime(elements = {}) {
     playCount: 0,
     stopCount: 0,
   };
-  const preclickPopupRockImage = typeof Image === "function" ? new Image() : null;
-  if (preclickPopupRockImage) {
-    preclickPopupRockImage.decoding = "async";
-    preclickPopupRockImage.src = preclickPopupRockImageUrl;
-  }
+  const preclickPopupArtworkImages = PRECLICK_POPUP_ARTWORKS.map((artwork) => {
+    const image = typeof Image === "function" ? new Image() : null;
+    if (image) {
+      image.decoding = "async";
+      image.src = artwork.url;
+    }
+    return image;
+  });
   body.classList.toggle(
     "hand-always-visible",
     params.handVisibilityMode === "always",
@@ -3346,20 +3354,22 @@ export function createSisyphusRuntime(elements = {}) {
       params.preclickHopActivationRadiusPercent > 0;
     preclickRockGuidance.outsideRadius = false;
     syncHandCursorForPointer(event);
+    const artworkIndex =
+      (preclickRockGuidance.guardClicksUsed - 1) % PRECLICK_POPUP_ARTWORKS.length;
+    const artwork = PRECLICK_POPUP_ARTWORKS[artworkIndex];
+    const artworkImage = preclickPopupArtworkImages[artworkIndex];
     preclickPopupController.openPreclickWindow({
       aspectRatio:
-        preclickPopupRockImage?.naturalWidth > 0 &&
-        preclickPopupRockImage?.naturalHeight > 0
-          ? preclickPopupRockImage.naturalWidth /
-            preclickPopupRockImage.naturalHeight
-          : PRECLICK_POPUP_ROCK_FALLBACK_ASPECT_RATIO,
+        artworkImage?.naturalWidth > 0 && artworkImage?.naturalHeight > 0
+          ? artworkImage.naturalWidth / artworkImage.naturalHeight
+          : artwork.fallbackAspectRatio,
       clientX: pointerX,
       clientY: pointerY,
       delayMs: params.preclickPopupDelayMs,
-      imageUrl: preclickPopupRockImageUrl,
+      imageAlt: artwork.alt,
+      imageUrl: artwork.url,
       width: (window.innerWidth * params.rockActivatedWidthVw) / 100,
     });
-    playGachiClickSound(PRECLICK_GACHI_CLICK_SOUND_FILENAME);
     performPreclickRockHop({
       centerX,
       centerY,

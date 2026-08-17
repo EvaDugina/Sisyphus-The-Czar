@@ -258,7 +258,7 @@ export function createWindowObstacleController(options = {}) {
       body.style.overflow = "hidden";
       if (entry.kind === "preclick" && entry.imageUrl) {
         const image = entry.popup.document.createElement("img");
-        image.alt = "Камень";
+        image.alt = entry.imageAlt;
         image.src = entry.imageUrl;
         image.style.display = "block";
         image.style.height = "100vh";
@@ -280,11 +280,12 @@ export function createWindowObstacleController(options = {}) {
     }
   }
 
-  function trackWindow(popup, kind, { imageUrl = "" } = {}) {
+  function trackWindow(popup, kind, { imageAlt = "", imageUrl = "" } = {}) {
     const id = nextWindowId;
     nextWindowId += 1;
     const entry = {
       id,
+      imageAlt,
       imageUrl,
       kind,
       popup,
@@ -366,6 +367,7 @@ export function createWindowObstacleController(options = {}) {
     clientX,
     clientY,
     delayMs = 0,
+    imageAlt = "",
     imageUrl = "",
     width = PRECLICK_POPUP_WIDTH_PX,
   } = {}) {
@@ -400,7 +402,7 @@ export function createWindowObstacleController(options = {}) {
       if (!popup) {
         return false;
       }
-      trackWindow(popup, "preclick", { imageUrl });
+      trackWindow(popup, "preclick", { imageAlt, imageUrl });
       return true;
     };
     const cleanDelayMs = clamp(Math.round(finite(delayMs, 0)), 0, 1000);

@@ -179,11 +179,11 @@ test("высота препятствия отсчитывается от ниж
   assert.equal(randomStepBetween(101, 139, 10, () => 1), 130);
 });
 
-test("фейковый клик с задержкой открывает незакрываемое окно с rock.webp", () => {
+test("фейковый клик с задержкой открывает незакрываемое окно с картиной", () => {
   const { clock, controller, popups } = setup();
   assert.deepEqual(
     preclickPopupGeometry({
-      aspectRatio: 2048 / 1692,
+      aspectRatio: 340 / 328,
       centerX: 700,
       centerY: 600,
       screen: {
@@ -194,16 +194,17 @@ test("фейковый клик с задержкой открывает нез�
       },
       width: 120,
     }),
-    { height: 99, left: 640, top: 551, width: 120 },
+    { height: 116, left: 640, top: 542, width: 120 },
   );
 
   assert.equal(
     controller.openPreclickWindow({
-      aspectRatio: 2048 / 1692,
+      aspectRatio: 340 / 328,
       clientX: 600,
       clientY: 400,
       delayMs: 200,
-      imageUrl: "/assets/rock/rock.webp",
+      imageAlt: "Картина 01",
+      imageUrl: "/assets/gogh/01.png",
       width: 120,
     }),
     true,
@@ -215,13 +216,13 @@ test("фейковый клик с задержкой открывает нез�
   clock.tick(1);
   assert.equal(controller.getState().pendingPreclickWindowCount, 0);
   assert.match(popups[0].features, /width=120/);
-  assert.match(popups[0].features, /height=99/);
+  assert.match(popups[0].features, /height=116/);
   assert.match(popups[0].features, /left=640/);
-  assert.match(popups[0].features, /top=551/);
+  assert.match(popups[0].features, /top=542/);
   assert.equal(popups[0].popup.document.body.children.length, 1);
   assert.deepEqual(popups[0].popup.document.body.children[0], {
-    alt: "Камень",
-    src: "/assets/rock/rock.webp",
+    alt: "Картина 01",
+    src: "/assets/gogh/01.png",
     style: {
       display: "block",
       height: "100vh",
