@@ -70,9 +70,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v50", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v51", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v50");
+    localStorage.removeItem("sisyphus-czar-settings-v51");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,7 +91,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v50", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -117,7 +117,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v50", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,11 +125,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v50", 
     .toEqual([47, 13]);
 });
 
-test("настройки popup и берёз мигрируют из localStorage v47 в v50", async ({
+test("настройки popup и берёз мигрируют из localStorage v47 в v51", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v50");
+    localStorage.removeItem("sisyphus-czar-settings-v51");
     localStorage.setItem(
       "sisyphus-czar-settings-v47",
       JSON.stringify({ preclickPopupDelayMs: 345 }),
@@ -142,7 +142,7 @@ test("настройки popup и берёз мигрируют из localStorag
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
         );
         return {
           delay: stored.preclickPopupDelayMs,
@@ -160,11 +160,11 @@ test("настройки popup и берёз мигрируют из localStorag
     });
 });
 
-test("hop-настройки мигрируют из localStorage v39 в v50 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v39 в v51 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v50");
+    localStorage.removeItem("sisyphus-czar-settings-v51");
     localStorage.setItem(
       "sisyphus-czar-settings-v39",
       JSON.stringify({
@@ -184,7 +184,7 @@ test("hop-настройки мигрируют из localStorage v39 в v50 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
         );
         return {
           guardClicks: stored.preclickHopGuardClickCount,
@@ -212,11 +212,11 @@ test("hop-настройки мигрируют из localStorage v39 в v50 б�
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v50", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v51", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v50");
+    localStorage.removeItem("sisyphus-czar-settings-v51");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -229,7 +229,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -247,9 +247,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v50", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v51", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v50");
+    localStorage.removeItem("sisyphus-czar-settings-v51");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -262,7 +262,7 @@ test("настройки руки мигрируют из localStorage v36 в v5
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -278,9 +278,9 @@ test("настройки руки мигрируют из localStorage v36 в v5
     });
 });
 
-test("раскладка Fold мигрирует из localStorage v37 в v50", async ({ page }) => {
+test("раскладка Fold мигрирует из localStorage v37 в v51", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v50");
+    localStorage.removeItem("sisyphus-czar-settings-v51");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -293,7 +293,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v50", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -308,7 +308,7 @@ test("группа Камень показывает десять контрол
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v50");
+    localStorage.removeItem("sisyphus-czar-settings-v51");
   });
 
   await page.goto("/");
@@ -1150,6 +1150,118 @@ test("невидимая линия заменяет popup-препятстви�
     await expect(page.locator("[data-window-obstacle-popup-status]")).toHaveCount(0);
 });
 
+test("стеклянные полосы сцены 2 редактируются, перекрывают камень и отражаются в Fold", async ({
+  page,
+}) => {
+  await page.goto("/");
+  const foldLayer = await waitForFoldReady(page);
+  await navigateToSettings(page);
+  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+
+  const sceneTwo = page.getByRole("button", { name: "Сцена 2. Репка" });
+  await sceneTwo.click();
+  const obstacleGroup = page.locator(".control-group").filter({
+    has: page.locator("summary", { hasText: /^Препятствия$/ }),
+  });
+  await obstacleGroup.evaluate((element) => {
+    element.open = true;
+  });
+  const glassGroup = obstacleGroup.locator(
+    '[aria-label="Препятствия: Стеклянные полосы"]',
+  );
+  await expect(glassGroup).not.toHaveAttribute("hidden", "");
+  await glassGroup.evaluate((element) => {
+    element.open = true;
+  });
+
+  await setSettingValue(page, "sceneHeightScreens", 20);
+  await setSettingValue(page, "sceneTwoGlassEnabled", true);
+  const addStrip = glassGroup.getByTestId("glass-strip-add");
+  await expect(addStrip).toBeEnabled();
+  await addStrip.click();
+  await expect(glassGroup.getByTestId("glass-strip-row")).toHaveCount(1);
+
+  await page.getByLabel("Высота пути полосы 1").fill("70");
+  await page.getByLabel("Положение слева полосы 1").fill("25");
+  await page.getByLabel("Ширина полосы 1").fill("40");
+  await page.getByLabel("Толщина полосы 1").fill("4.5");
+  await setSettingValue(page, "sceneTwoGlassZIndex", 12);
+  await setSettingValue(page, "sceneTwoGlassOpacity", 0.6);
+  await setSettingValue(page, "sceneTwoGlassBlurPx", 24);
+  await setSettingValue(page, "sceneTwoGlassRefractionPercent", 140);
+  await setSettingValue(page, "sceneTwoGlassBorderRadiusPx", 32);
+  await setSettingValue(page, "sceneTwoGlassBounce", 0.75);
+
+  await page
+    .getByRole("button", {
+      name: "Сохранить версию и настройки комнаты",
+    })
+    .click();
+  await expect(page.locator(".settings-production-status")).toContainText(
+    "Версия и настройки комнаты сохранены",
+  );
+  await page.getByRole("link", { name: "← Сцена" }).click();
+  await expect(page).toHaveURL(/\/?\?session=/);
+  await waitForFoldReady(page);
+
+  const layer = page.getByTestId("scene-two-glass-strips");
+  await expect(layer).not.toHaveAttribute("hidden", "");
+  await expect(layer.locator(".scene-two-glass-strip")).toHaveCount(1);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const glass = document.querySelector(".scene-two-glass-strips");
+        const rock = document.querySelector("#root > .world > .rock");
+        const hand = document.querySelector("#root > .world > .hand-cursor");
+        const fold = document.querySelector("[data-fold-layer]");
+        const rect = window.__sisyphusTestApi.getSceneTwoGlassObstacles()[0];
+        return {
+          glassZ: Number(getComputedStyle(glass).zIndex),
+          rockZ: Number(getComputedStyle(rock).zIndex),
+          handZ: Number(getComputedStyle(hand).zIndex),
+          foldZ: Number(getComputedStyle(fold).zIndex),
+          opacity: glass.style.getPropertyValue("--scene-two-glass-opacity"),
+          blur: glass.style.getPropertyValue("--scene-two-glass-blur"),
+          radius: glass.style.getPropertyValue("--scene-two-glass-radius"),
+          rect,
+        };
+      }),
+    )
+    .toMatchObject({
+      glassZ: 12,
+      rockZ: 6,
+      handZ: 20,
+      foldZ: 18,
+      opacity: "0.6",
+      blur: "24px",
+      radius: "32px",
+      rect: {
+        left: 250,
+        right: 650,
+      },
+    });
+  const glassState = await page.evaluate(() => {
+    const rect = window.__sisyphusTestApi.getSceneTwoGlassObstacles()[0];
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      bounce: window.__sisyphusTestApi.params.sceneTwoGlassBounce,
+    };
+  });
+  expect(glassState.top).toBeCloseTo(597.75, 5);
+  expect(glassState.bottom).toBeCloseTo(602.25, 5);
+  expect(glassState.bounce).toBe(0.75);
+  expect(12).toBeGreaterThan(6);
+  expect(12).toBeLessThan(18);
+  expect(12).toBeLessThan(20);
+
+  await expect
+    .poll(() =>
+      foldLayer.locator(".scene-two-glass-strips .scene-two-glass-strip").count(),
+    )
+    .toBe(1);
+});
+
 test("Fold синхронизирует сцену и применяет общие сохраняемые настройки", async ({
   page,
 }) => {
@@ -1204,7 +1316,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v50") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,
@@ -1701,6 +1813,14 @@ test("рейтинг скрывает нулевой результат, а до
     });
 
   await page.evaluate(() => window.scrollTo(0, 50));
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.getSummitRainScrollState().started,
+    ))
+    .toBe(false);
+
+  await page.keyboard.press("ArrowUp");
+  await page.mouse.wheel(0, -200);
   await expect
     .poll(() => page.evaluate(() =>
       window.__sisyphusTestApi.getSummitRainScrollState().started,

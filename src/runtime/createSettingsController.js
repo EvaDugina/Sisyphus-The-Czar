@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 50;
+const SETTINGS_SCHEMA_VERSION = 51;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -1348,6 +1348,14 @@ export function createSettingsController(options) {
         `${params.sceneTwoBarrierHopMissProbabilityPercent.toFixed(0)}%`,
       sceneTwoBarrierHopSpeedPxPerSecond:
         `${params.sceneTwoBarrierHopSpeedPxPerSecond.toFixed(0)} px/s`,
+      sceneTwoGlassZIndex: params.sceneTwoGlassZIndex.toFixed(0),
+      sceneTwoGlassOpacity: `${Math.round(params.sceneTwoGlassOpacity * 100)}%`,
+      sceneTwoGlassBlurPx: `${params.sceneTwoGlassBlurPx.toFixed(1)} px`,
+      sceneTwoGlassRefractionPercent:
+        `${params.sceneTwoGlassRefractionPercent.toFixed(0)}%`,
+      sceneTwoGlassBorderRadiusPx:
+        `${params.sceneTwoGlassBorderRadiusPx.toFixed(0)} px`,
+      sceneTwoGlassBounce: params.sceneTwoGlassBounce.toFixed(2),
       drizzleStartVolume: `${Math.round(params.drizzleStartVolume * 100)}%`,
       drizzleEndVolume: `${Math.round(params.drizzleEndVolume * 100)}%`,
       rainStrength: `${Math.round(params.rainStrength * 100)}%`,

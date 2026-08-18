@@ -752,6 +752,74 @@ input[type="range"] {
   opacity: 0.45;
 }
 
+.glass-strips-control {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.glass-strips-control__list {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.glass-strips-control__row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.45rem;
+  margin: 0;
+  padding: 0.55rem;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.glass-strips-control__row legend {
+  padding: 0 0.25rem;
+  color: var(--ink);
+  font-size: 0.78rem;
+  font-weight: 650;
+}
+
+.glass-strips-control__row label {
+  display: grid;
+  gap: 0.2rem;
+  min-width: 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+}
+
+.glass-strips-control__row input[type="number"] {
+  min-width: 0;
+}
+
+.glass-strips-control__row .glass-strips-control__enabled {
+  grid-column: 1 / -1;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+}
+
+.glass-strips-control__row button,
+.glass-strips-control__add {
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.glass-strips-control__row button {
+  grid-column: 1 / -1;
+  padding: 0.35rem 0.5rem;
+}
+
+.glass-strips-control__add {
+  padding: 0.42rem 0.6rem;
+}
+
+.glass-strips-control__add:disabled {
+  cursor: default;
+  opacity: 0.45;
+}
+
 .control-subgroup {
   display: grid;
   gap: 0.45rem;

@@ -166,6 +166,16 @@ const DEFAULT_CUSTOM_CURSOR_SETTINGS = Object.freeze({
   customCursorSizePx:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.customCursorSizePx,
 });
+const DEFAULT_SCENE_TWO_GLASS_MIGRATION = Object.freeze({
+  sceneTwoGlassEnabled: false,
+  sceneTwoGlassStrips: [],
+  sceneTwoGlassZIndex: 8,
+  sceneTwoGlassOpacity: 0.42,
+  sceneTwoGlassBlurPx: 18,
+  sceneTwoGlassRefractionPercent: 100,
+  sceneTwoGlassBorderRadiusPx: 24,
+  sceneTwoGlassBounce: 0.55,
+});
 const DEFAULT_ROCK_VISUAL_MIGRATION = Object.freeze({
   rockImageId: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockImageId,
   foldRockImageId: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldRockImageId,
@@ -580,8 +590,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v50");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v49");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v51");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v50");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -924,7 +934,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 50);
+  assert.equal(productionSettingsSchemaVersion, 51);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -2599,6 +2609,86 @@ test("невидимая линия сцены 2 имеет независимы
   );
 });
 
+test("стеклянные полосы сцены 2 имеют редактор, безопасную модель и миграцию", () => {
+  const obstacleGroup = SETTINGS_GROUPS.find(
+    (group) => group.title === "Препятствия",
+  );
+  const glassGroup = obstacleGroup?.subgroups?.find(
+    (group) => group.title === "Стеклянные полосы",
+  );
+  const controls = glassGroup?.controls || [];
+
+  assert.ok(glassGroup);
+  assert.deepEqual(
+    controls.map((control) => control.name),
+    [
+      "sceneTwoGlassEnabled",
+      "sceneTwoGlassStrips",
+      "sceneTwoGlassZIndex",
+      "sceneTwoGlassOpacity",
+      "sceneTwoGlassBlurPx",
+      "sceneTwoGlassRefractionPercent",
+      "sceneTwoGlassBorderRadiusPx",
+      "sceneTwoGlassBounce",
+    ],
+  );
+  assert.equal(
+    controls.find((control) => control.name === "sceneTwoGlassStrips")?.type,
+    "glass-strips",
+  );
+
+  const clean = SharedRoomSettings.sanitizeRoomSettings({
+    sceneHeightScreens: 20,
+    sceneTwoGlassEnabled: true,
+    sceneTwoGlassZIndex: 999,
+    sceneTwoGlassBounce: -1,
+    sceneTwoGlassStrips: Array.from({ length: 14 }, (_, index) => ({
+      id: index < 2 ? "same-id" : `strip-${index}`,
+      enabled: index !== 2,
+      heightPercent: index === 0 ? -100 : 70,
+      xPercent: 99,
+      widthPercent: 90,
+      heightVh: index === 0 ? 999 : 10,
+    })),
+  });
+
+  assert.equal(clean.sceneTwoGlassEnabled, true);
+  assert.equal(clean.sceneTwoGlassZIndex, 17);
+  assert.equal(clean.sceneTwoGlassBounce, 0);
+  assert.equal(clean.sceneTwoGlassStrips.length, 12);
+  assert.equal(clean.sceneTwoGlassStrips[0].heightPercent, 1);
+  assert.equal(clean.sceneTwoGlassStrips[0].xPercent, 10);
+  assert.equal(clean.sceneTwoGlassStrips[0].heightVh, 40);
+  assert.equal(clean.sceneTwoGlassStrips[1].id, "same-id-2");
+  assert.equal(clean.sceneTwoGlassStrips[2].enabled, false);
+
+  const rects = SharedRoomSettings.sceneTwoGlassCanonicalRects(clean);
+  assert.equal(rects.length, 11);
+  assert.deepEqual(rects[0], {
+    id: "same-id",
+    left: 100,
+    right: 1000,
+    top: 1960,
+    bottom: 2000,
+  });
+  assert.equal(rects[1].id, "same-id-2");
+  assert.equal(rects[1].left, 100);
+  assert.equal(rects[1].right, 1000);
+  assert.ok(Math.abs(rects[1].top - 595) < 1e-9);
+  assert.ok(Math.abs(rects[1].bottom - 605) < 1e-9);
+
+  const migrated = SharedRoomSettings.migrateRoomSettings(
+    { sceneHeightScreens: 20 },
+    50,
+  );
+  assert.equal(migrated.sceneTwoGlassEnabled, false);
+  assert.deepEqual(migrated.sceneTwoGlassStrips, []);
+  assert.equal(
+    migrated.sceneTwoGlassZIndex,
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassZIndex,
+  );
+});
+
 test("траектория включена по умолчанию и выключается через настройку", () => {
   const trailGroup = SETTINGS_GROUPS.find((group) => group.title === "Траектория");
   const trailStyleGroup = trailGroup?.subgroups?.find(
@@ -2746,7 +2836,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 50);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 51);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3022,6 +3112,7 @@ test("группа дождя содержит общий toggle и blur тём�
     sceneTwoBarrierHopMissProbabilityPercent: 10,
     sceneTwoBarrierHopSpeedPxPerSecond: 1200,
     sceneTwoBarrierHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+    ...DEFAULT_SCENE_TWO_GLASS_MIGRATION,
   });
   assert.deepEqual(
     SharedRoomSettings.migrateRoomSettings({ foldZoneSize: 32 }, 35),
@@ -3049,6 +3140,7 @@ test("группа дождя содержит общий toggle и blur тём�
       sceneTwoBarrierHopMissProbabilityPercent: 10,
       sceneTwoBarrierHopSpeedPxPerSecond: 1200,
       sceneTwoBarrierHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
+      ...DEFAULT_SCENE_TWO_GLASS_MIGRATION,
     },
   );
   assert.deepEqual(

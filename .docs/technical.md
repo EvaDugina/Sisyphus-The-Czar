@@ -34,7 +34,7 @@ React отвечает за структуру UI, imperative runtime — за r
 - `id`, `persistent`, `singleClient`, TTL и empty-grace metadata;
 - `state`: phase, x/y, vx/vy, dragging, controllerId, suspended;
 - `physics`, `physicsVersion=11`;
-- `roomSettings`, `roomSettingsVersion=50`, `settingsRevision`;
+- `roomSettings`, `roomSettingsVersion=51`, `settingsRevision`;
 - `clients: Map<clientId, client>`;
 - `holder: null | {clientId,x,y,vx,vy,acquiredAt,lastMoveAt,slipAt,jumpAt}`;
 - trail, imprint, summit timer, ground touch sequence, final-fall, stationary и height-gate metadata.
@@ -113,6 +113,16 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - Runtime при переходе obstacle count `0 → 1` нейтрально освобождает текущий захват без pointer-импульса. Пока count больше нуля, `startDrag` и shared acquire отклоняются; animation/physics loop не останавливается.
 - Выход из диапазона отменяет только будущий schedule. Уже открытые окна сохраняют свои click/auto-close правила.
 
+## Стеклянные препятствия сцены 2
+
+- `sceneTwoGlassStrips` хранит не более 12 записей `{id, enabled, heightPercent, xPercent, widthPercent, heightVh}`. `sanitizeSceneTwoGlassStrips()` нормализует ID, диапазоны, дубликаты и ограничивает `xPercent` значением `100 - widthPercent`.
+- `sceneTwoGlassCanonicalRects()` переводит видимую геометрию в canonical world `1000×2000`. Процент высоты задаёт центр полосы от низа сцены, `heightVh` пересчитывается относительно `sceneHeightScreens × 100vh`; отключённые полосы исключаются.
+- `shared/physics.js` выполняет swept segment/AABB-проверку между предыдущей и новой canonical-позицией, поэтому тонкое препятствие не туннелируется на одном fixed step. Один resolver используется свободным `stepState()`, drag `stepDragState()`, серверным tick и локальным preview движения.
+- При свободном столкновении нормальная скорость отражается с `sceneTwoGlassBounce`; при drag нормальная скорость обнуляется, позиция фиксируется с contact epsilon, но `dragging/controllerId` не сбрасываются. Движение вне прямоугольника сохраняется.
+- `GlassStripsControl` хранит структурированное значение в hidden versioned input и даёт add/remove/enable плюс четыре геометрических поля на полосу. Общие UI-контролы задают z-index `7–17`, opacity, blur, refraction, border radius и bounce.
+- `.scene-two-glass-strips` рисует прозрачные partial-width слои с `backdrop-filter`; runtime обновляет CSS-переменные и дочерние элементы без React animation state. Z-index всегда выше `.rock` (`6`) и ниже `.fold-layer` (`18`) и `.hand-cursor` (`20`). `FoldLayer` клонирует дочерние полосы при событийной синхронизации.
+- Финальный rain-scroll очищает `touchY` и окно пользовательского intent при arm. Intent отмечают только wheel вниз, swipe вверх по экрану и клавиши `ArrowDown/PageDown/End/Space`; программный scroll и движения вверх дождь не запускают.
+
 ## UI и схемы
 
 - На предыдущем этапе SVG-курсора использовались `ROOM_SETTINGS_VERSION=30`, `SETTINGS_SCHEMA_VERSION=32` и localStorage-ключ `sisyphus-czar-settings-v32`; текущая миграция читает этот ключ как legacy. Та миграция добавляла `customCursorEnabled=false` и `customCursorSizePx=32`, санитайзер ограничивает размер диапазоном `8–128`.
@@ -120,7 +130,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - SVG реализован псевдоэлементом единого `.hand-cursor`: `handopen.svg` меняется на `handgrabbing.svg` по классу `is-grabbing`, а body-класс и CSS-переменная применяют общий флаг и размер. Локальные и remote-руки используют один DOM/CSS-путь, отдельный animation loop не создаётся.
 - Псевдоэлемент активен только при `(pointer: fine)`, имеет `pointer-events: none` и наследует скрытие родительской руки в intro/fall, settings-panel и `.session-panel--toolbar`.
 
-- Shared room settings schema и settings schema — `50`, localStorage настроек — `sisyphus-czar-settings-v50`; цепочка legacy-ключей начинается с `v49` и сохраняет поддержку более ранних версий. Миграция `v48 → v49` разделяет направленное слежение камеры и удаляет legacy автоскролл. Миграция `v49 → v50` добавляет `summitTimerFontFamily=sf-pro-display-bold` и `summitTimerFontSizeRem=32`.
+- Shared room settings schema и settings schema — `51`, localStorage настроек — `sisyphus-czar-settings-v51`; цепочка legacy-ключей начинается с `v50` и сохраняет поддержку более ранних версий. Миграция `v49 → v50` добавляет настройки секундомера, миграция `v50 → v51` — выключенный по умолчанию пустой набор стеклянных полос и безопасные visual/physics defaults.
 - Категория единственной руки называется «Рука» и содержит `handVisibilityMode` (`always|hover|hidden`, default `always`), `handImageChangeDelayMs` (`0–1000`, integer, default `0`) и `rockGrabRadiusVh`. Категория «Камера» содержит `cameraFollowUpEnabled`, `cameraFollowUpLerp`, `cameraFollowDownEnabled`, `cameraFollowDownLerp`, статически выключенный `rockAccelerationEnabled` и `sceneTwoOverflowYVisible`. Оба lerp имеют диапазон `0.01–1` и default `0.1`; каждый использует `enabledWhen` собственного тумблера. Последний параметр ставит inline `overflow-y: hidden|auto` на `<html>`; программный `window.scrollTo` и `cameraFollowDirectionalScrollY()` продолжают работать при `hidden`. «Препятствия → Окна» содержит девять versioned controls и `WindowObstaclePermissionControl` со статусом и test action.
 - В группе «Камень» находятся независимые select-контролы основного и fold-изображения, отдельные проценты уменьшения при нажатии и пульсе, `rockWallPenetrationPercent`, настройки автоматического прыжка и десять scene-1 контролов: `preclickHopGuardClickCount`, `preclickPopupDelayMs`, `preclickPopupSizeMultiplier`, `birchBackgroundEnabled`, `birchScalePercent`, `preclickHopActivationRadiusPercent`, `preclickHopMaxDistancePercent`, `preclickHopMissProbabilityPercent`, `preclickHopSpeedPxPerSecond` и `preclickHopSpeedEasing`. Множитель popup санитизируется как integer `1–4` с default `2`, масштаб берёз — как integer `100–400` с шагом UI `10`; `birchScalePercent` использует `enabledWhen: "birchBackgroundEnabled"`. Числовые диапазоны включают задержку popup `0–1000 ms`; easing проходит общий cubic-bezier sanitizer. Три scene-2 контрола масштаба расположены как `rockMinWidthVw → rockActivatedWidthVw → rockMaxWidthVw`; `rockPulseShrinkPercent` использует `enabledWhen: "rockPulseEnabled"`.
 - `settings.mjs` экспортирует три сцены и декларативно классифицирует контролы как scene-1-only, scene-2-only, scene-3-only или shared. `SettingsPanel` выводит три верхние кнопки с `aria-pressed`, а при переключении меняет `hidden` на контролах, подгруппах и пустых группах. DOM-узлы input не размонтируются, поэтому единые значения, dirty-state и зависимости контроллера сохраняются. Scene 3 содержит только `summitTimerFontFamily` и `summitTimerFontSizeRem`.
@@ -154,7 +164,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - `control.granted` возвращает единственный `holderId`.
 - Второй `control.acquire` получает `control.denied {reason:"already_controlled"}`.
 - `control.slipped` использует причины `slipped`, `jumped` или `stationary`; для `jumped` добавляются `angleDegrees`, `inertiaFactor`, `speed`.
-- `settings.update` использует schema `50` и optimistic `settingsRevision`.
+- `settings.update` использует schema `51` и optimistic `settingsRevision`.
 - Trail-протокол остаётся v1: `trail.history`, `trail.batch`, `trail.append`, `trail.ack`, `trail.resync`. Client append отправляется пакетами до 16 точек или через 50 ms, аварийный flush режет payload максимум по 64.
 
 ## HTTP
@@ -203,7 +213,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - `npm run build` — production Vite bundle.
 - `npm test` — unit и integration.
 - Production smoke проверяет видимость и полный preclick-reset кнопки «Начать сначала», разные session ID двух браузеров, отсутствие взаимного управления и default-видимость руки.
-- UI/Fold smoke проверяет legacy-миграции в `v45`, удаление `trailUnlimited`, максимум 10 000, hop-defaults, четыре новых параметра сцены 2, upward-follow default, `overflow-y: hidden|auto`, программный scroll при hidden, локальный render-профиль, две сценовые кнопки, scene-specific размеры и общий раздел «Траектория».
+- UI/Fold smoke проверяет legacy-миграции, редактор и visual controls стеклянных полос, порядок z-index, canonical hitbox, Fold-клон, а также то, что дождь сцены 3 игнорирует программное движение и пользовательский scroll вверх, но запускается scroll вниз.
 - Dev smoke проверяет три canvas, загрузку 10 000 точек, отсутствие revisions/rAF в idle, session-only проход до checkpoint, history batching не более 50 `stroke()` и WebSocket-пакеты 16 точек/50 ms.
 - Постоянный preclick-hop smoke проверяет guidance, scroll lock, reload/restart, радиус от текущей ширины камня, два обязательных radius-hop со смехом, третий forced miss, поведение `0%`, скорость/кривую, отложенный popup с картинами `01–03` шириной из `rockActivatedWidthVw` и natural aspect ratio, отсутствие auto-close, отсутствие trail в сцене 1, направленный максимум, безопасный X/Y/corner wrap, resize, reduced motion и кликабельность. Отдельные сценарии задают N=3: auto-hop не расходует счётчик и не отправляет `control.acquire`, первые три клика не воспроизводят gachi-звук, последовательно открывают картины `01`, `02`, `03` и отталкивают камень со смехом, четвёртый бесшумно материализует позицию и включает физику, а три следующих клика сцены 2 оставляют одновременно активными три экземпляра выбранного gachi без stop.
 - Collaboration smoke разделяет «Капель», gachi и impact-аудио: pointerdown взводит impact-разрешение, первый физический контакт запускает `СимуляцияОргазма.mov`, дальнейшие отскоки без касания молчат, а новое касание разрешает ровно один следующий play. Та же семантика проверяется для скачка shared `groundTouchSeq`. Также smoke проверяет primary/right/middle, наложение gachi без остановки при release/`FALLING`, доступную с клавиатуры кнопку «Начать сначала», нижний viewport suspended-сессии и восстановление активной сессии с видимым камнем после reload.

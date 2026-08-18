@@ -1,5 +1,6 @@
 import { CubicBezierControl } from "./CubicBezierControl";
 import { HeightGatesControl } from "./HeightGatesControl";
+import { GlassStripsControl } from "./GlassStripsControl";
 import { serializeSettingDependency } from "../lib/settingsDependencies.mjs";
 
 export function SettingsControl({ control, hidden = false }) {
@@ -31,6 +32,10 @@ export function SettingsControl({ control, hidden = false }) {
 
   if (type === "height-gates") {
     return <HeightGatesControl control={control} hidden={hidden} />;
+  }
+
+  if (type === "glass-strips") {
+    return <GlassStripsControl control={control} hidden={hidden} />;
   }
 
   if (type === "checkbox") {

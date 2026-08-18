@@ -50,6 +50,7 @@
   const ROCK_JUMP_IMPULSE_DURATION_SECONDS = 4;
   const ROCK_JUMP_MIN_SPEED = 120;
   const BOUNCE_IMPACT_CAP = 900;
+  const OBSTACLE_CONTACT_EPSILON = 0.01;
   const TURB_ACCEL = 1600;
   const GROUND_FRICTION_DECAY_RATE = 5;
 
@@ -360,6 +361,187 @@
     );
   }
 
+  function sanitizeObstacleRects(input) {
+    if (!Array.isArray(input)) {
+      return [];
+    }
+    return input.flatMap((candidate) => {
+      if (!candidate || typeof candidate !== "object") {
+        return [];
+      }
+      const left = clamp(finiteNumber(candidate.left, 0), 0, WORLD_WIDTH);
+      const right = clamp(
+        finiteNumber(candidate.right, left),
+        left,
+        WORLD_WIDTH
+      );
+      const top = clamp(finiteNumber(candidate.top, 0), 0, WORLD_HEIGHT);
+      const bottom = clamp(
+        finiteNumber(candidate.bottom, top),
+        top,
+        WORLD_HEIGHT
+      );
+      if (right - left <= 0 || bottom - top <= 0) {
+        return [];
+      }
+      return [{
+        id: String(candidate.id || ""),
+        left,
+        right,
+        top,
+        bottom,
+      }];
+    });
+  }
+
+  function pointInsideObstacle(x, y, obstacle) {
+    return (
+      x >= obstacle.left &&
+      x <= obstacle.right &&
+      y >= obstacle.top &&
+      y <= obstacle.bottom
+    );
+  }
+
+  function segmentObstacleHit(fromX, fromY, toX, toY, obstacle) {
+    if (pointInsideObstacle(fromX, fromY, obstacle)) {
+      const exits = [
+        {
+          axis: "x",
+          normal: -1,
+          position: obstacle.left,
+          distance: Math.abs(fromX - obstacle.left),
+        },
+        {
+          axis: "x",
+          normal: 1,
+          position: obstacle.right,
+          distance: Math.abs(obstacle.right - fromX),
+        },
+        {
+          axis: "y",
+          normal: -1,
+          position: obstacle.top,
+          distance: Math.abs(fromY - obstacle.top),
+        },
+        {
+          axis: "y",
+          normal: 1,
+          position: obstacle.bottom,
+          distance: Math.abs(obstacle.bottom - fromY),
+        },
+      ];
+      const exit = exits.sort((left, right) => left.distance - right.distance)[0];
+      return { ...exit, time: 0 };
+    }
+
+    const dx = toX - fromX;
+    const dy = toY - fromY;
+    let nearX = -Infinity;
+    let farX = Infinity;
+    let normalX = 0;
+    if (Math.abs(dx) < 1e-12) {
+      if (fromX < obstacle.left || fromX > obstacle.right) {
+        return null;
+      }
+    } else {
+      const first = (obstacle.left - fromX) / dx;
+      const second = (obstacle.right - fromX) / dx;
+      nearX = Math.min(first, second);
+      farX = Math.max(first, second);
+      normalX = dx > 0 ? -1 : 1;
+    }
+
+    let nearY = -Infinity;
+    let farY = Infinity;
+    let normalY = 0;
+    if (Math.abs(dy) < 1e-12) {
+      if (fromY < obstacle.top || fromY > obstacle.bottom) {
+        return null;
+      }
+    } else {
+      const first = (obstacle.top - fromY) / dy;
+      const second = (obstacle.bottom - fromY) / dy;
+      nearY = Math.min(first, second);
+      farY = Math.max(first, second);
+      normalY = dy > 0 ? -1 : 1;
+    }
+
+    const entryTime = Math.max(nearX, nearY);
+    const exitTime = Math.min(farX, farY);
+    if (entryTime > exitTime || exitTime < 0 || entryTime < 0 || entryTime > 1) {
+      return null;
+    }
+    if (nearX > nearY) {
+      return {
+        axis: "x",
+        normal: normalX,
+        position: normalX < 0 ? obstacle.left : obstacle.right,
+        time: entryTime,
+      };
+    }
+    return {
+      axis: "y",
+      normal: normalY,
+      position: normalY < 0 ? obstacle.top : obstacle.bottom,
+      time: entryTime,
+    };
+  }
+
+  function resolveObstacleCollisions(
+    state,
+    previousX,
+    previousY,
+    options = {}
+  ) {
+    const obstacles = sanitizeObstacleRects(options?.obstacles);
+    if (!state || obstacles.length === 0) {
+      return false;
+    }
+    const fromX = finiteNumber(previousX, state.x);
+    const fromY = finiteNumber(previousY, state.y);
+    let earliest = null;
+    obstacles.forEach((obstacle) => {
+      const hit = segmentObstacleHit(fromX, fromY, state.x, state.y, obstacle);
+      if (hit && (!earliest || hit.time < earliest.time)) {
+        earliest = hit;
+      }
+    });
+    if (!earliest) {
+      return false;
+    }
+
+    const bounce = clamp(finiteNumber(options.obstacleBounce, 0), 0, 1);
+    if (earliest.axis === "x") {
+      state.x = clamp(
+        earliest.position + earliest.normal * OBSTACLE_CONTACT_EPSILON,
+        0,
+        WORLD_WIDTH
+      );
+      const movingInto = state.vx * earliest.normal < 0;
+      state.vx = movingInto && !options.dragging ? -state.vx * bounce : 0;
+      state.y = clamp(
+        fromY + (state.y - fromY) * earliest.time,
+        0,
+        WORLD_HEIGHT
+      );
+    } else {
+      state.y = clamp(
+        earliest.position + earliest.normal * OBSTACLE_CONTACT_EPSILON,
+        0,
+        WORLD_HEIGHT
+      );
+      const movingInto = state.vy * earliest.normal < 0;
+      state.vy = movingInto && !options.dragging ? -state.vy * bounce : 0;
+      state.x = clamp(
+        fromX + (state.x - fromX) * earliest.time,
+        0,
+        WORLD_WIDTH
+      );
+    }
+    return true;
+  }
+
   function stepDragState(state, physics, targetX, targetY, deltaSeconds, options) {
     if (!state || state.phase !== PHASES.PLAY) {
       return false;
@@ -393,6 +575,10 @@
     );
     state.vx = (state.x - previousX) / dt;
     state.vy = (state.y - previousY) / dt;
+    resolveObstacleCollisions(state, previousX, previousY, {
+      ...options,
+      dragging: true,
+    });
     state.dragging = true;
     state.suspended = false;
     return state.x !== previousX || state.y !== previousY;
@@ -612,6 +798,8 @@
       return false;
     }
 
+    const previousX = state.x;
+    const previousY = state.y;
     const wasAboveGround = state.y < WORLD_HEIGHT;
     if (physics.groundFriction >= 1 && !wasAboveGround) {
       state.vx = 0;
@@ -631,6 +819,7 @@
     state.y += state.vy * dt;
 
     state.vx *= Math.pow(AIR_RETENTION_PER_SECOND, dt);
+    resolveObstacleCollisions(state, previousX, previousY, options);
 
     if (state.x <= 0 || state.x >= WORLD_WIDTH) {
       const movingIntoWall =
@@ -717,6 +906,8 @@
     dragDeficitLiftSpeed,
     dragVerticalSpeed,
     dragFollowProgress,
+    sanitizeObstacleRects,
+    resolveObstacleCollisions,
     stepDragState,
     cubicBezierProgress,
     sanitizeImprint,

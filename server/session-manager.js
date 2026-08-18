@@ -81,6 +81,12 @@ function sceneMotionOptions(session) {
     forceDeficitCurve: RoomSettings.parseCubicBezier(
       session.roomSettings.handForceDeficitEasing
     ),
+    obstacles: RoomSettings.sceneTwoGlassCanonicalRects(
+      session.roomSettings,
+      Physics.WORLD_WIDTH,
+      Physics.WORLD_HEIGHT
+    ),
+    obstacleBounce: session.roomSettings.sceneTwoGlassBounce,
   };
 }
 

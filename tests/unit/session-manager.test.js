@@ -1144,6 +1144,42 @@ test("control.release над линией заменяет скорость ру
   assert.ok(Math.abs(session.state.vy) < 4000);
 });
 
+test("серверная физика не пропускает камень сквозь стеклянную полосу сцены 2", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: 500,
+      y: 490,
+      vx: 0,
+      vy: 1000,
+      suspended: false,
+    },
+    physics: { gravity: 0.1, turbulence: 0 },
+    roomSettings: {
+      sceneHeightScreens: 20,
+      sceneTwoGlassEnabled: true,
+      sceneTwoGlassBounce: 0.5,
+      sceneTwoGlassStrips: [
+        {
+          id: "server-glass",
+          enabled: true,
+          heightPercent: 75,
+          xPercent: 20,
+          widthPercent: 60,
+          heightVh: 2,
+        },
+      ],
+    },
+  });
+
+  clock.value = 20;
+  manager.tick();
+
+  assert.equal(session.state.y, 498.99);
+  assert.ok(session.state.vy < 0);
+});
+
 test("сохранённая сессия мигрирует со старой шкалы инерции", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([

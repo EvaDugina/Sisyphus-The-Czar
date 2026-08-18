@@ -1162,3 +1162,69 @@ test("barrier-hop освобождает камень и задаёт случа
   assert.ok(Math.abs(state.vx) < 1e-8);
   assert.ok(state.vy > 0);
 });
+
+test("тонкая стеклянная полоса не туннелируется при свободном падении", () => {
+  const state = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 500,
+    y: 490,
+    vx: 0,
+    vy: 1000,
+  });
+  const physics = Physics.sanitizePhysics({
+    gravity: 0.1,
+    turbulence: 0,
+  });
+
+  Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS, {
+    obstacles: [{ id: "glass", left: 200, right: 800, top: 500, bottom: 502 }],
+    obstacleBounce: 0.5,
+  });
+
+  assert.equal(state.y, 499.99);
+  assert.ok(state.vy < -499 && state.vy > -501);
+});
+
+test("перетаскивание останавливается у стеклянной полосы без отпускания камня", () => {
+  const state = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 500,
+    y: 490,
+    dragging: true,
+    controllerId: "master",
+  });
+  const physics = Physics.sanitizePhysics({ dragResponsiveness: 100 });
+  state.controllerId = "master";
+
+  Physics.stepDragState(state, physics, 500, 700, 0.05, {
+    obstacles: [{ id: "glass", left: 200, right: 800, top: 500, bottom: 502 }],
+    obstacleBounce: 1,
+  });
+
+  assert.equal(state.y, 499.99);
+  assert.equal(state.vy, 0);
+  assert.equal(state.dragging, true);
+  assert.equal(state.controllerId, "master");
+});
+
+test("частичная стеклянная полоса не мешает движению вне своей ширины", () => {
+  const state = Physics.sanitizeState({
+    phase: Physics.PHASES.PLAY,
+    x: 900,
+    y: 490,
+    vx: 0,
+    vy: 1000,
+  });
+  const physics = Physics.sanitizePhysics({
+    gravity: 0.1,
+    turbulence: 0,
+  });
+
+  Physics.stepState(state, physics, Physics.FIXED_STEP_SECONDS, {
+    obstacles: [{ id: "glass", left: 200, right: 800, top: 500, bottom: 502 }],
+    obstacleBounce: 0.5,
+  });
+
+  assert.ok(state.y > 500);
+  assert.ok(state.vy > 0);
+});

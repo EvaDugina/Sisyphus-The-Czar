@@ -1,5 +1,9 @@
 const { defineConfig } = require("@playwright/test");
 
+const baseURL =
+  process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8080";
+const skipWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER === "true";
+
 module.exports = defineConfig({
   testDir: "./tests/smoke",
   testMatch: /ui-fold\.spec\.js/,
@@ -7,11 +11,11 @@ module.exports = defineConfig({
   expect: { timeout: 8_000 },
   workers: 1,
   use: {
-    baseURL: "http://127.0.0.1:8080",
+    baseURL,
     headless: true,
     trace: "retain-on-failure",
   },
-  webServer: {
+  webServer: skipWebServer ? undefined : {
     command: "npm run dev",
     url: "http://127.0.0.1:8080/healthz",
     timeout: 45_000,

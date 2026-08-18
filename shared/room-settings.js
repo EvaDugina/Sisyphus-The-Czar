@@ -12,8 +12,9 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 50;
+  const ROOM_SETTINGS_VERSION = 51;
   const MAX_HEIGHT_GATES = 10;
+  const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
   const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
     "preclickParallaxMaxOffsetVw",
@@ -108,6 +109,16 @@
     sceneTwoBarrierHopMaxDistancePercent: [0, 150],
     sceneTwoBarrierHopMissProbabilityPercent: [0, 100],
     sceneTwoBarrierHopSpeedPxPerSecond: [100, 5000],
+    sceneTwoGlassStripHeightPercent: [1, 99],
+    sceneTwoGlassStripXPercent: [0, 90],
+    sceneTwoGlassStripWidthPercent: [10, 90],
+    sceneTwoGlassStripHeightVh: [1, 40],
+    sceneTwoGlassZIndex: [7, 17],
+    sceneTwoGlassOpacity: [0.1, 0.9],
+    sceneTwoGlassBlurPx: [0, 40],
+    sceneTwoGlassRefractionPercent: [0, 200],
+    sceneTwoGlassBorderRadiusPx: [0, 80],
+    sceneTwoGlassBounce: [0, 1],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     preclickHopGuardClickCount: [0, 10],
     preclickPopupDelayMs: [0, 1000],
@@ -214,6 +225,14 @@
     sceneTwoBarrierHopMissProbabilityPercent: 10,
     sceneTwoBarrierHopSpeedPxPerSecond: 1200,
     sceneTwoBarrierHopSpeedEasing: DEFAULT_PRECLICK_HOP_SPEED_EASING,
+    sceneTwoGlassEnabled: false,
+    sceneTwoGlassStrips: Object.freeze([]),
+    sceneTwoGlassZIndex: 8,
+    sceneTwoGlassOpacity: 0.42,
+    sceneTwoGlassBlurPx: 18,
+    sceneTwoGlassRefractionPercent: 100,
+    sceneTwoGlassBorderRadiusPx: 24,
+    sceneTwoGlassBounce: 0.55,
     handAudioEnabled: true,
     drizzleEnabled: true,
     drizzleStartVolume: 0.1,
@@ -317,6 +336,69 @@
     });
 
     return gates.sort((left, right) => left.heightPercent - right.heightPercent);
+  }
+
+  function sanitizeSceneTwoGlassStrips(input, fallback = []) {
+    const source = Array.isArray(input)
+      ? input
+      : Array.isArray(fallback)
+        ? fallback
+        : [];
+    const [heightMin, heightMax] =
+      ROOM_SETTINGS_LIMITS.sceneTwoGlassStripHeightPercent;
+    const [xMin, xMax] = ROOM_SETTINGS_LIMITS.sceneTwoGlassStripXPercent;
+    const [widthMin, widthMax] =
+      ROOM_SETTINGS_LIMITS.sceneTwoGlassStripWidthPercent;
+    const [stripHeightMin, stripHeightMax] =
+      ROOM_SETTINGS_LIMITS.sceneTwoGlassStripHeightVh;
+    const usedIds = new Set();
+    const strips = [];
+
+    source.slice(0, MAX_SCENE_TWO_GLASS_STRIPS).forEach((candidate, index) => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) {
+        return;
+      }
+      const heightPercent = Math.round(
+        clamp(finiteNumber(candidate.heightPercent, 20), heightMin, heightMax)
+      );
+      const widthPercent = clamp(
+        finiteNumber(candidate.widthPercent, 55),
+        widthMin,
+        widthMax
+      );
+      const xPercent = clamp(
+        finiteNumber(candidate.xPercent, index % 2 === 0 ? 0 : 45),
+        xMin,
+        Math.min(xMax, 100 - widthPercent)
+      );
+      const heightVh = clamp(
+        finiteNumber(candidate.heightVh, 3),
+        stripHeightMin,
+        stripHeightMax
+      );
+      const rawId = String(candidate.id || "").trim();
+      const safeId = /^[A-Za-z0-9_-]{1,64}$/.test(rawId)
+        ? rawId
+        : `glass-strip-${index + 1}-${heightPercent}`;
+      let id = safeId;
+      let suffix = 2;
+      while (usedIds.has(id)) {
+        const suffixText = `-${suffix}`;
+        id = `${safeId.slice(0, 64 - suffixText.length)}${suffixText}`;
+        suffix += 1;
+      }
+      usedIds.add(id);
+      strips.push({
+        id,
+        enabled: candidate.enabled !== false,
+        heightPercent,
+        xPercent,
+        widthPercent,
+        heightVh,
+      });
+    });
+
+    return strips;
   }
 
   function finiteSetting(source, fallbackSource, key, min, max) {
@@ -955,6 +1037,57 @@
         fallbackSource,
         "sceneTwoBarrierHopSpeedEasing"
       ),
+      sceneTwoGlassEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "sceneTwoGlassEnabled"
+      ),
+      sceneTwoGlassStrips: sanitizeSceneTwoGlassStrips(
+        source.sceneTwoGlassStrips,
+        fallbackSource.sceneTwoGlassStrips
+      ),
+      sceneTwoGlassZIndex: integerSetting(
+        source,
+        fallbackSource,
+        "sceneTwoGlassZIndex",
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassZIndex[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassZIndex[1]
+      ),
+      sceneTwoGlassOpacity: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoGlassOpacity",
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassOpacity[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassOpacity[1]
+      ),
+      sceneTwoGlassBlurPx: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoGlassBlurPx",
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassBlurPx[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassBlurPx[1]
+      ),
+      sceneTwoGlassRefractionPercent: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoGlassRefractionPercent",
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassRefractionPercent[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassRefractionPercent[1]
+      ),
+      sceneTwoGlassBorderRadiusPx: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoGlassBorderRadiusPx",
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassBorderRadiusPx[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassBorderRadiusPx[1]
+      ),
+      sceneTwoGlassBounce: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoGlassBounce",
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassBounce[0],
+        ROOM_SETTINGS_LIMITS.sceneTwoGlassBounce[1]
+      ),
       handAudioEnabled: boolSetting(
         source,
         fallbackSource,
@@ -1496,6 +1629,22 @@
         }
       });
     }
+    if (finiteNumber(version, 1) < 51) {
+      [
+        "sceneTwoGlassEnabled",
+        "sceneTwoGlassStrips",
+        "sceneTwoGlassZIndex",
+        "sceneTwoGlassOpacity",
+        "sceneTwoGlassBlurPx",
+        "sceneTwoGlassRefractionPercent",
+        "sceneTwoGlassBorderRadiusPx",
+        "sceneTwoGlassBounce",
+      ].forEach((key) => {
+        if (!Object.hasOwn(current, key)) {
+          current[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
     return current;
   }
 
@@ -1528,11 +1677,46 @@
     );
   }
 
+  function sceneTwoGlassCanonicalRects(
+    settings,
+    worldWidth = 1000,
+    worldHeight = 2000
+  ) {
+    const clean = sanitizeRoomSettings(settings);
+    if (!clean.sceneTwoGlassEnabled) {
+      return [];
+    }
+    const cleanWorldWidth = Math.max(1, finiteNumber(worldWidth, 1000));
+    const cleanWorldHeight = Math.max(1, finiteNumber(worldHeight, 2000));
+    const totalHeightVh = Math.max(100, clean.sceneHeightScreens * 100);
+    return clean.sceneTwoGlassStrips
+      .filter((strip) => strip.enabled)
+      .map((strip) => {
+        const width = cleanWorldWidth * (strip.widthPercent / 100);
+        const height = Math.max(
+          1,
+          cleanWorldHeight * (strip.heightVh / totalHeightVh)
+        );
+        const left = cleanWorldWidth * (strip.xPercent / 100);
+        const centerY =
+          cleanWorldHeight * (1 - strip.heightPercent / 100);
+        const top = clamp(centerY - height / 2, 0, cleanWorldHeight - height);
+        return {
+          id: strip.id,
+          left,
+          right: left + width,
+          top,
+          bottom: top + height,
+        };
+      });
+  }
+
   return Object.freeze({
     DEFAULT_SCENE_HEIGHT_SCREENS,
     SCENE_MOTION_REFERENCE_SCREENS,
     SCENE_MOTION_COMPENSATION_BOOST,
     MAX_HEIGHT_GATES,
+    MAX_SCENE_TWO_GLASS_STRIPS,
     PRECLICK_PARALLAX_RADIUS_PX_PER_VW,
     ROCK_IMAGE_IDS,
     HAND_VISIBILITY_MODES,
@@ -1546,6 +1730,7 @@
     normalizeHexColor,
     parseCubicBezier,
     sanitizeHeightGates,
+    sanitizeSceneTwoGlassStrips,
     migrateFoldSettings,
     migratePreclickHopSettings,
     migrateRockVisualSettings,
@@ -1556,5 +1741,6 @@
     sceneMotionMultiplier,
     sceneTwoBarrierCanonicalY,
     stateAboveSceneTwoBarrier,
+    sceneTwoGlassCanonicalRects,
   });
 });

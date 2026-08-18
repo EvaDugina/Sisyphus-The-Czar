@@ -175,6 +175,8 @@ export function createSisyphusRuntime(elements = {}) {
     elements.summitLeaderboard || document.querySelector(".summit-leaderboard");
   const rock = elements.rock || document.querySelector(".rock");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
+  const glassStripsLayer =
+    elements.glassStripsLayer || document.querySelector(".scene-two-glass-strips");
   const handCursor = elements.handCursor || document.querySelector(".hand-cursor");
   const settingsToggle =
     elements.settingsToggle || document.querySelector(".settings-toggle");
@@ -348,6 +350,22 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockAccelerationEnabled,
     sceneTwoOverflowYVisible:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoOverflowYVisible,
+    sceneTwoGlassEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassEnabled,
+    sceneTwoGlassStrips:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassStrips,
+    sceneTwoGlassZIndex:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassZIndex,
+    sceneTwoGlassOpacity:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassOpacity,
+    sceneTwoGlassBlurPx:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassBlurPx,
+    sceneTwoGlassRefractionPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassRefractionPercent,
+    sceneTwoGlassBorderRadiusPx:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassBorderRadiusPx,
+    sceneTwoGlassBounce:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassBounce,
     summitTimerFontFamily:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.summitTimerFontFamily,
     summitTimerFontSizeRem:
@@ -975,6 +993,11 @@ export function createSisyphusRuntime(elements = {}) {
     if (key === "heightGates") {
       return JSON.stringify(SharedRoomSettings.sanitizeHeightGates(value));
     }
+    if (key === "sceneTwoGlassStrips") {
+      return JSON.stringify(
+        SharedRoomSettings.sanitizeSceneTwoGlassStrips(value),
+      );
+    }
     if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
       const seconds = Number(value) / 1000;
       return Number.isFinite(seconds) ? String(seconds) : "0";
@@ -992,6 +1015,15 @@ export function createSisyphusRuntime(elements = {}) {
     if (key === "heightGates") {
       try {
         return SharedRoomSettings.sanitizeHeightGates(
+          JSON.parse(input.value || "[]"),
+        );
+      } catch {
+        return [];
+      }
+    }
+    if (key === "sceneTwoGlassStrips") {
+      try {
+        return SharedRoomSettings.sanitizeSceneTwoGlassStrips(
           JSON.parse(input.value || "[]"),
         );
       } catch {
@@ -2070,10 +2102,81 @@ export function createSisyphusRuntime(elements = {}) {
       : "hidden";
   }
 
+  function sceneTwoGlassObstacles() {
+    return SharedRoomSettings.sceneTwoGlassCanonicalRects(
+      params,
+      SharedPhysics.WORLD_WIDTH,
+      SharedPhysics.WORLD_HEIGHT,
+    );
+  }
+
+  function renderSceneTwoGlassStrips() {
+    if (!glassStripsLayer) {
+      return;
+    }
+    const strips = SharedRoomSettings.sanitizeSceneTwoGlassStrips(
+      params.sceneTwoGlassStrips,
+    ).filter((strip) => strip.enabled);
+    const refraction = params.sceneTwoGlassRefractionPercent / 100;
+    glassStripsLayer.hidden = !params.sceneTwoGlassEnabled || strips.length === 0;
+    glassStripsLayer.style.setProperty(
+      "--scene-two-glass-z-index",
+      String(params.sceneTwoGlassZIndex),
+    );
+    glassStripsLayer.style.setProperty(
+      "--scene-two-glass-opacity",
+      String(params.sceneTwoGlassOpacity),
+    );
+    glassStripsLayer.style.setProperty(
+      "--scene-two-glass-blur",
+      `${params.sceneTwoGlassBlurPx}px`,
+    );
+    glassStripsLayer.style.setProperty(
+      "--scene-two-glass-saturation",
+      `${100 + refraction * 48}%`,
+    );
+    glassStripsLayer.style.setProperty(
+      "--scene-two-glass-contrast",
+      `${100 + refraction * 10}%`,
+    );
+    glassStripsLayer.style.setProperty(
+      "--scene-two-glass-highlight-opacity",
+      String(Math.min(0.86, 0.18 + refraction * 0.34)),
+    );
+    glassStripsLayer.style.setProperty(
+      "--scene-two-glass-radius",
+      `${params.sceneTwoGlassBorderRadiusPx}px`,
+    );
+    glassStripsLayer.replaceChildren(
+      ...strips.map((strip) => {
+        const element = document.createElement("div");
+        element.className = "scene-two-glass-strip";
+        element.dataset.glassStripId = strip.id;
+        element.style.setProperty("--glass-strip-x", String(strip.xPercent));
+        element.style.setProperty(
+          "--glass-strip-height",
+          String(strip.heightPercent),
+        );
+        element.style.setProperty(
+          "--glass-strip-width",
+          String(strip.widthPercent),
+        );
+        element.style.setProperty(
+          "--glass-strip-thickness",
+          String(strip.heightVh),
+        );
+        return element;
+      }),
+    );
+    requestFoldSync();
+  }
+
   function sceneMotionOptions() {
     return {
       forceDeficitCurve: handForceDeficitCurve,
       motionScale: SharedRoomSettings.sceneMotionMultiplier(params),
+      obstacles: sceneTwoGlassObstacles(),
+      obstacleBounce: params.sceneTwoGlassBounce,
     };
   }
 
@@ -2403,6 +2506,8 @@ export function createSisyphusRuntime(elements = {}) {
     rain.scrollStarted = false;
     rain.scrollUnlocked = true;
     rain.lastScrollY = window.scrollY;
+    rain.touchY = null;
+    rain.userIntentUntil = 0;
     rain.returnRequested = false;
     rainLayer?.classList.add("is-rain-scroll-driven");
     rainLayer?.style.setProperty("--rain-scroll-opacity", "0");
@@ -2430,7 +2535,11 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function markSummitRainScrollIntent() {
+    if (!rain.scrollArmed || rain.scrollStarted || rain.scrollCompleted) {
+      return false;
+    }
     rain.userIntentUntil = performance.now() + 750;
+    return true;
   }
 
   function syncSummitRainScroll() {
@@ -2793,6 +2902,19 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (shouldHandleChange("sceneTwoOverflowYVisible")) {
       applySceneTwoOverflowY();
+    }
+    if (
+      shouldHandleChange(
+        "sceneTwoGlassEnabled",
+        "sceneTwoGlassStrips",
+        "sceneTwoGlassZIndex",
+        "sceneTwoGlassOpacity",
+        "sceneTwoGlassBlurPx",
+        "sceneTwoGlassRefractionPercent",
+        "sceneTwoGlassBorderRadiusPx",
+      )
+    ) {
+      renderSceneTwoGlassStrips();
     }
     if (preservedState) {
       applyCanonicalMotion(preservedState);
@@ -3920,6 +4042,26 @@ export function createSisyphusRuntime(elements = {}) {
     motion.dragTargetY = targetY;
   }
 
+  function constrainLocalGlassMovement(fromX, fromY, desiredX, desiredY) {
+    if (!params.sceneTwoGlassEnabled) {
+      return { x: desiredX, y: desiredY };
+    }
+    const from = localToCanonical(fromX, fromY);
+    const desired = localToCanonical(desiredX, desiredY);
+    const state = {
+      x: desired.x,
+      y: desired.y,
+      vx: desired.x - from.x,
+      vy: desired.y - from.y,
+    };
+    SharedPhysics.resolveObstacleCollisions(state, from.x, from.y, {
+      obstacles: sceneTwoGlassObstacles(),
+      obstacleBounce: params.sceneTwoGlassBounce,
+      dragging: true,
+    });
+    return canonicalToLocal(state.x, state.y);
+  }
+
   function applyDragTargetMovement(deltaSeconds) {
     if (!motion.dragging) {
       return;
@@ -3931,10 +4073,13 @@ export function createSisyphusRuntime(elements = {}) {
     const nextX = motion.x + (motion.dragTargetX - motion.x) * progress;
     const desiredY = motion.y + (motion.dragTargetY - motion.y) * progress;
     const nextY = constrainLocalHeightGateY(motion.y, desiredY);
-    setPosition(
+    const constrained = constrainLocalGlassMovement(
+      motion.x,
+      motion.y,
       nextX,
       nextY,
     );
+    setPosition(constrained.x, constrained.y);
   }
 
   function initialLocalPosition() {
@@ -4551,6 +4696,16 @@ export function createSisyphusRuntime(elements = {}) {
       return (
         JSON.stringify(SharedRoomSettings.sanitizeHeightGates(left)) ===
         JSON.stringify(SharedRoomSettings.sanitizeHeightGates(right))
+      );
+    }
+    if (key === "sceneTwoGlassStrips") {
+      return (
+        JSON.stringify(
+          SharedRoomSettings.sanitizeSceneTwoGlassStrips(left),
+        ) ===
+        JSON.stringify(
+          SharedRoomSettings.sanitizeSceneTwoGlassStrips(right),
+        )
       );
     }
     if (BOOLEAN_ROOM_SETTING_KEYS.has(key)) {
@@ -7564,6 +7719,8 @@ export function createSisyphusRuntime(elements = {}) {
         volume: rainLoopAudio.volume,
         visible: Boolean(rainLayer?.classList.contains("is-rain-visible")),
       }),
+      getSceneTwoGlassObstacles: sceneTwoGlassObstacles,
+      renderSceneTwoGlassStrips,
       armSummitRainScroll,
       armGroundImpactSound,
       applyTestSettings,

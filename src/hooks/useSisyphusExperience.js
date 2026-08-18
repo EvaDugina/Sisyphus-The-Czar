@@ -17,6 +17,7 @@ export function useSisyphusExperience() {
     remoteCursorLayerRef: useRef(null),
     hintRef: useRef(null),
     heightGateStatusRef: useRef(null),
+    glassStripsRef: useRef(null),
     summitLeaderboardRef: useRef(null),
   };
   const trail = {
@@ -42,6 +43,7 @@ export function useSisyphusExperience() {
   } = realtime;
   const {
     handCursorRef,
+    glassStripsRef,
     heightGateStatusRef,
     hintRef,
     remoteCursorLayerRef,
@@ -65,6 +67,7 @@ export function useSisyphusExperience() {
       summitLeaderboard: summitLeaderboardRef.current,
       handCursor: handCursorRef.current,
       heightGateStatus: heightGateStatusRef.current,
+      glassStripsLayer: glassStripsRef.current,
       remoteCursorLayer: remoteCursorLayerRef.current,
       settingsToggle: settingsLinkRef.current,
       settingsLink: settingsLinkRef.current,
@@ -84,6 +87,7 @@ export function useSisyphusExperience() {
     return () => runtime.dispose();
   }, [
     handCursorRef,
+    glassStripsRef,
     heightGateStatusRef,
     foldSettingsRef,
     hintRef,

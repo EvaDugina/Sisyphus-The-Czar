@@ -16,7 +16,7 @@ import {
   writeStoredRoomSession,
 } from "../lib/roomSessionStorage.mjs";
 import { createSettingsController } from "./createSettingsController.js";
-const SETTINGS_SCHEMA_VERSION = 50;
+const SETTINGS_SCHEMA_VERSION = 51;
 
 function randomRequestId() {
   const random =
@@ -90,6 +90,11 @@ export function createSettingsPageRuntime(elements = {}) {
     if (key === "heightGates") {
       return JSON.stringify(SharedRoomSettings.sanitizeHeightGates(value));
     }
+    if (key === "sceneTwoGlassStrips") {
+      return JSON.stringify(
+        SharedRoomSettings.sanitizeSceneTwoGlassStrips(value),
+      );
+    }
     if (key === "rainEnterMs" || key === "rainExitMs") {
       return String(Number(value) / 1000);
     }
@@ -106,6 +111,15 @@ export function createSettingsPageRuntime(elements = {}) {
     if (key === "heightGates") {
       try {
         return SharedRoomSettings.sanitizeHeightGates(JSON.parse(input.value || "[]"));
+      } catch {
+        return [];
+      }
+    }
+    if (key === "sceneTwoGlassStrips") {
+      try {
+        return SharedRoomSettings.sanitizeSceneTwoGlassStrips(
+          JSON.parse(input.value || "[]"),
+        );
       } catch {
         return [];
       }
