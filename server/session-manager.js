@@ -36,10 +36,24 @@ const TSAR_NAMES = Object.freeze([
   "Илья", "Савва", "Филипп", "Тимофей", "Прохор", "Емельян", "Лука", "Макар",
   "Тарас", "Захар", "Евсей", "Демьян", "Антон", "Виктор", "Валентин", "Гавриил",
 ]);
+const CZAR_NAME_PATTERN = /^Царь ([^\s\d]+) ([1-9]\d*)$/u;
+const LEGACY_CZAR_NAME_PATTERN = /^Царь([^\s\d]+)([1-9]\d*)$/u;
 
 function finite(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function parseCzarName(value) {
+  const text = String(value || "");
+  const match =
+    CZAR_NAME_PATTERN.exec(text) || LEGACY_CZAR_NAME_PATTERN.exec(text);
+  if (!match) {
+    return null;
+  }
+  return {
+    baseName: match[1],
+  };
 }
 
 function roundNetworkNumber(value, fallback = 0) {
@@ -180,6 +194,7 @@ class SessionManager {
       options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS;
     this.now = options.now || Date.now;
     this.random = options.random || Math.random;
+    this.identityRandom = options.identityRandom || Math.random;
     this.soundRandom = options.soundRandom || Math.random;
     this.slipDelayMinMs = Math.max(
       0,
@@ -226,6 +241,7 @@ class SessionManager {
     this.sessions = new Map();
     this.leaderboardEntries = new Map();
     this.czarSequence = 0;
+    this.czarNameCounts = new Map();
     this.sharedTrailHub = null;
     this.sharedTrailRevision = 0;
     this.sharedTrailEvents = [];
@@ -234,11 +250,17 @@ class SessionManager {
 
   nextCzarIdentity() {
     const sequence = ++this.czarSequence;
-    const name = TSAR_NAMES[(sequence - 1) % TSAR_NAMES.length];
+    const randomIndex = Math.floor(
+      finite(this.identityRandom(), 0) * TSAR_NAMES.length
+    );
+    const baseName =
+      TSAR_NAMES[Math.min(TSAR_NAMES.length - 1, Math.max(0, randomIndex))];
+    const nameNumber = (this.czarNameCounts.get(baseName) || 0) + 1;
+    this.czarNameCounts.set(baseName, nameNumber);
     return {
       id: `czar-${sequence}`,
       sequence,
-      name: `Царь${name}${sequence}`,
+      name: `Царь ${baseName} ${nameNumber}`,
     };
   }
 
@@ -266,28 +288,42 @@ class SessionManager {
   restoreLeaderboard(state = {}) {
     const entries = Array.isArray(state.entries) ? state.entries : [];
     this.leaderboardEntries.clear();
+    this.czarNameCounts.clear();
     this.czarSequence = Math.max(0, Math.floor(finite(state.czarSequence, 0)));
-    entries.forEach((source) => {
-      const sequence = Math.max(1, Math.floor(finite(source?.sequence, 0)));
-      const id = String(source?.id || "");
-      const name = String(source?.name || "");
-      if (!/^czar-[1-9]\d*$/.test(id) || !/^Царь[^\s\d]+[1-9]\d*$/.test(name)) {
-        return;
-      }
-      const entry = {
-        id,
-        sequence,
-        name,
-        bestMs: Math.min(
-          Number.MAX_SAFE_INTEGER,
-          Math.max(0, Math.floor(finite(source.bestMs, 0))),
-        ),
-        createdAt: Math.max(0, finite(source.createdAt, this.now())),
-        updatedAt: Math.max(0, finite(source.updatedAt, this.now())),
-      };
-      this.leaderboardEntries.set(entry.id, entry);
-      this.czarSequence = Math.max(this.czarSequence, sequence);
-    });
+    entries
+      .map((source, index) => ({
+        source,
+        index,
+        sequence: Math.max(1, Math.floor(finite(source?.sequence, 0))),
+        id: String(source?.id || ""),
+        parsedName: parseCzarName(source?.name),
+      }))
+      .filter(({ id, parsedName }) => /^czar-[1-9]\d*$/.test(id) && parsedName)
+      .sort(
+        (left, right) =>
+          left.sequence - right.sequence || left.index - right.index
+      )
+      .forEach(({ source, sequence, id, parsedName }) => {
+        if (this.leaderboardEntries.has(id)) {
+          return;
+        }
+        const nameNumber =
+          (this.czarNameCounts.get(parsedName.baseName) || 0) + 1;
+        this.czarNameCounts.set(parsedName.baseName, nameNumber);
+        const entry = {
+          id,
+          sequence,
+          name: `Царь ${parsedName.baseName} ${nameNumber}`,
+          bestMs: Math.min(
+            Number.MAX_SAFE_INTEGER,
+            Math.max(0, Math.floor(finite(source.bestMs, 0))),
+          ),
+          createdAt: Math.max(0, finite(source.createdAt, this.now())),
+          updatedAt: Math.max(0, finite(source.updatedAt, this.now())),
+        };
+        this.leaderboardEntries.set(entry.id, entry);
+        this.czarSequence = Math.max(this.czarSequence, sequence);
+      });
     return this.leaderboardEntries.size;
   }
 
@@ -335,9 +371,10 @@ class SessionManager {
       rank,
     });
     return {
-      top: ranked.slice(0, 9).map((entry, index) => row(entry, index + 1)),
-      current: row(currentEntry, currentIndex >= 0 ? currentIndex + 1 : null),
-      total: this.leaderboardEntries.size,
+      top: ranked.slice(0, 10).map((entry, index) => row(entry, index + 1)),
+      current: currentIndex >= 0 ? row(currentEntry, currentIndex + 1) : null,
+      last: ranked.length > 0 ? row(ranked.at(-1), ranked.length) : null,
+      total: ranked.length,
     };
   }
 

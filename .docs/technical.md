@@ -3,7 +3,7 @@
 ## Паспорт
 
 - **Стадия:** POC B
-- **Последнее обновление:** 2026-08-17
+- **Последнее обновление:** 2026-08-18
 - **Runtime:** Node.js 24, Express 5, WebSocket `ws`, React 19, Vite 8
 - **Развёртывание:** один Docker-контейнер приложения; nginx/HTTPS находятся на хосте
 
@@ -127,6 +127,8 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - Контролы используют декларативный `enabledWhen`: строка означает checkbox-зависимость, объект `{name, values}` — допустимые значения select. Постоянный `disabled: true` имеет приоритет над зависимостями. Controller синхронизирует native `disabled`, `.is-disabled`, `aria-disabled` и пояснение после input/change, загрузки и remote settings.
 - `trailRenderProfile`, `glowOptimizationMode`, `glowTargetFps`, `glowBufferScalePercent`, `glowUpdateFps`, `glowMaxPoints` и `glowDecimation` имеют `scope: "local"`: сохраняются в `v45`, но фильтруются из version snapshots, server templates и broadcast.
 - `scene.css` регистрирует `@font-face` `Comico`, `Droid 1997`, `Aksent` и `SF Pro Display Bold` из локальных ассетов. `Comico` остаётся у `.title/.title2`, а runtime задаёт секундомеру `--summit-timer-font-family` и `--summit-timer-font-size`; таблица рекордов сохраняет свой шрифт.
+- `SessionManager` использует глобальный `czarSequence` только для уникальных `czar-N` и tie-break рейтинга. Базовое имя выбирает отдельный `identityRandom`, а `czarNameCounts` ведёт независимые номера имён. `restoreLeaderboard()` принимает `ЦарьИмяN` и `Царь <Имя> <N>`, сортирует записи по `sequence`, перенумеровывает каждое имя с `1` и сохраняет `bestMs`/timestamps; следующий номер восстанавливается из нормализованного набора.
+- `leaderboardSnapshot()` ранжирует только записи с `bestMs > 0`, возвращает top-10, положительный `current`, `last` и число квалифицированных участников. Клиентский `composeSummitLeaderboardRows()` повторно отбрасывает нули, дедуплицирует ID в порядке top-10 → current → last и назначает роли `first`, `top-ten`, `current`, `last`; CSS задаёт им красный, кислотно-розовый, серый и белый цвета в том же порядке приоритета.
 - `BirchLayer` импортирует девять прозрачных PNG, полученных разделением `assets/background/background_01.png` по alpha-компонентам, и равномерно раскладывает их по нижним `100 svh`. Два неинтерактивных абсолютных слоя имеют `z-index: 5` и `7` вокруг камня с `z-index: 6`; берёзы `5` и `6` входят в передний слой, а `pointer-events: none` сохраняет hit-test камня. Слои скрыты без body-класса `birch-background-enabled`; runtime применяет его live и задаёт `--birch-scale=birchScalePercent/100`. Каждое дерево позиционируется по `top: 50%` и `translateY(-50%)`, поэтому изменение высоты сохраняет вертикальный центр; отдельный animation loop не создаётся.
 - `rockImages.mjs` сопоставляет разрешённые ID с Vite asset URL. Runtime синхронно меняет `src` основного `.rock` и `.rock-imprint`; после загрузки нового основного файла пересчитывает bounds/scale/imprint. При событийной синхронизации `FoldLayer` копирует presentation source и явно переопределяет `src` зеркального `.rock` по `foldRockImageId`, поэтому clone и Fast Refresh не возвращают устаревший asset.
 - Пульс рассчитывает `rockPulseScaleFactor` из `rockPulseShrinkPercent`. `visualShrinkScaleFactor()` возвращает press-factor, пока `rockPressActive`, иначе pulse-factor; проценты не складываются и не перемножаются.

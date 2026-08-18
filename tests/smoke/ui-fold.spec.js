@@ -1632,7 +1632,7 @@ test("state-machine сцены 2 меняет размер камня и сох�
   ).toBeLessThanOrEqual(10);
 });
 
-test("рейтинг отображает текущего царя, а дождь ждёт пользовательский scroll", async ({
+test("рейтинг скрывает нулевой результат, а дождь ждёт пользовательский scroll", async ({
   page,
 }) => {
   await page.goto("/");
@@ -1640,15 +1640,46 @@ test("рейтинг отображает текущего царя, а дожд
   await expect(page.getByTestId("session-status")).toContainText("В сессии");
 
   const leaderboard = page.getByTestId("summit-leaderboard");
-  const current = leaderboard.locator(".summit-leaderboard__row.is-current");
-  await expect(current).toHaveCount(1);
-  await expect(current.locator(".summit-leaderboard__rank")).toHaveText("—");
-  await expect(current.locator(".summit-leaderboard__name")).toHaveText(
-    /^Царь[^\s\d]+\d+$/,
-  );
-  await expect(current.locator(".summit-leaderboard__score")).toHaveText(
-    "00:00:00",
-  );
+  await expect(leaderboard.locator(".summit-leaderboard__row")).toHaveCount(0);
+  await expect(leaderboard).not.toContainText("00:00:00");
+
+  const renderedRanking = await page.evaluate(() => {
+    const entry = (rank, scoreMs = (14 - rank) * 1000) => ({
+      id: `czar-${rank}`,
+      name: `Царь Иван ${rank}`,
+      rank,
+      scoreMs,
+    });
+    window.__sisyphusTestApi.renderSummitLeaderboard({
+      top: Array.from({ length: 10 }, (_, index) => entry(index + 1)),
+      current: entry(12),
+      last: entry(13),
+    });
+    return [...document.querySelectorAll(".summit-leaderboard__row")].map(
+      (row) => ({
+        className: row.className,
+        color: getComputedStyle(row).color,
+        rank: row.querySelector(".summit-leaderboard__rank")?.textContent,
+      }),
+    );
+  });
+  expect(renderedRanking).toHaveLength(12);
+  expect(renderedRanking[0]).toEqual({
+    className: "summit-leaderboard__row is-first",
+    color: "rgb(255, 42, 42)",
+    rank: "#1",
+  });
+  expect(renderedRanking[1].color).toBe("rgb(255, 43, 214)");
+  expect(renderedRanking[10]).toEqual({
+    className: "summit-leaderboard__row is-current",
+    color: "rgb(140, 140, 140)",
+    rank: "#12",
+  });
+  expect(renderedRanking[11]).toEqual({
+    className: "summit-leaderboard__row is-last",
+    color: "rgb(255, 255, 255)",
+    rank: "#13",
+  });
 
   await page.evaluate(() => {
     window.scrollTo(0, 0);

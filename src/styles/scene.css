@@ -171,8 +171,20 @@
   white-space: nowrap;
 }
 
+.summit-leaderboard__row.is-last {
+  color: #fff;
+}
+
 .summit-leaderboard__row.is-current {
-  color: #c43a52;
+  color: #8c8c8c;
+}
+
+.summit-leaderboard__row.is-top-ten {
+  color: #ff2bd6;
+}
+
+.summit-leaderboard__row.is-first {
+  color: #ff2a2a;
 }
 
 .title2 {

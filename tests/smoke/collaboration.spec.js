@@ -2486,12 +2486,8 @@ test("reload восстанавливает активную сессию и в�
     });
 
   const identity = await page.evaluate(() => ({
-    name: document.querySelector(
-      ".summit-leaderboard__row.is-current .summit-leaderboard__name",
-    )?.textContent || "",
     sessionId: collab.sessionId,
   }));
-  expect(identity.name).toMatch(/^Царь/);
   await page.close();
 
   const reopenedPage = await context.newPage();
@@ -2502,10 +2498,6 @@ test("reload восстанавливает активную сессию и в�
   await expect
     .poll(() =>
       reopenedPage.evaluate(() => ({
-        name:
-          document.querySelector(
-            ".summit-leaderboard__row.is-current .summit-leaderboard__name",
-          )?.textContent || "",
         sessionId: window.__sisyphusTestApi.getCollaborationDebugState()
           .sessionId,
         storedSessionId: JSON.parse(
@@ -2514,7 +2506,6 @@ test("reload восстанавливает активную сессию и в�
       })),
     )
     .toEqual({
-      name: identity.name,
       sessionId: identity.sessionId,
       storedSessionId: identity.sessionId,
     });

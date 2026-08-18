@@ -84,6 +84,7 @@ import {
 } from "../../src/lib/trailOptimization.mjs";
 import { shouldStartRainExit } from "../../src/lib/rainState.mjs";
 import { deriveSessionStatus } from "../../src/lib/sessionStatus.mjs";
+import { composeSummitLeaderboardRows } from "../../src/lib/summitLeaderboard.mjs";
 import { formatSummitElapsedMs } from "../../src/lib/summitTimer.mjs";
 import {
   formatSettingsVersionOptionLabel,
@@ -3171,6 +3172,66 @@ test("секундомер вершины форматирует накопле�
   assert.equal(formatSummitElapsedMs(3_661_000), "01:01:01");
   assert.equal(formatSummitElapsedMs(25 * 60 * 60 * 1000), "25:00:00");
   assert.equal(formatSummitElapsedMs(-1000), "00:00:00");
+});
+
+test("таблица вершины компонует top-10, текущего и последнего без дублей", () => {
+  const entry = (rank, scoreMs = (14 - rank) * 1000) => ({
+    id: `czar-${rank}`,
+    name: `Царь Иван ${rank}`,
+    rank,
+    scoreMs,
+  });
+  const rows = composeSummitLeaderboardRows({
+    top: Array.from({ length: 11 }, (_, index) => entry(index + 1)),
+    current: entry(12),
+    last: entry(13),
+  });
+
+  assert.equal(rows.length, 12);
+  assert.equal(new Set(rows.map(({ entry: row }) => row.id)).size, 12);
+  assert.deepEqual(rows.map(({ entry: row }) => row.rank), [
+    1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13,
+  ]);
+  assert.deepEqual(rows.map(({ role }) => role), [
+    "first",
+    "top-ten",
+    "top-ten",
+    "top-ten",
+    "top-ten",
+    "top-ten",
+    "top-ten",
+    "top-ten",
+    "top-ten",
+    "top-ten",
+    "current",
+    "last",
+  ]);
+  assert.equal(rows.find(({ role }) => role === "current").isCurrent, true);
+});
+
+test("таблица вершины скрывает нули и сохраняет приоритет top над current", () => {
+  const topCurrent = {
+    id: "czar-2",
+    name: "Царь Константин 1",
+    rank: 2,
+    scoreMs: 2000,
+  };
+  const rows = composeSummitLeaderboardRows({
+    top: [
+      { id: "czar-zero", name: "Царь Иван 1", rank: 1, scoreMs: 0 },
+      topCurrent,
+    ],
+    current: topCurrent,
+    last: { id: "czar-last", name: "Царь Пётр 1", rank: 3, scoreMs: 0 },
+  });
+
+  assert.deepEqual(rows, [
+    {
+      entry: topCurrent,
+      role: "top-ten",
+      isCurrent: true,
+    },
+  ]);
 });
 
 test("профиль дождя различает светлую и тёмную тему", () => {

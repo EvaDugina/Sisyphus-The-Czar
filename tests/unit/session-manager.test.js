@@ -42,6 +42,7 @@ function setup(options = {}) {
     emptyGraceMs: options.emptyGraceMs ?? DEFAULT_EMPTY_SESSION_GRACE_MS,
     now: () => clock.value,
     random: options.random || (() => 0.5),
+    identityRandom: options.identityRandom || (() => 0.5),
     soundRandom: options.soundRandom || (() => 0.5),
     slipDelayMinMs: options.slipDelayMinMs,
     slipDelayMaxMs: options.slipDelayMaxMs,
@@ -340,35 +341,99 @@ test("секундомер вершины останавливается с по
   assert.equal(restarted.summitTimerRunning, true);
 });
 
-test("рейтинг хранит всех царей, показывает top-9 и абсолютное место текущего", () => {
-  const { clock, manager } = setup();
-  const sessions = Array.from({ length: 11 }, () => manager.createSession());
+test("ники царей выбираются случайно и нумеруются отдельно для каждого имени", () => {
+  const randomValues = [10 / 64, 10 / 64, 0];
+  const { manager } = setup({
+    identityRandom: () => randomValues.shift() ?? 0,
+  });
+
+  manager.createSession();
+  manager.createSession();
+  manager.createSession();
+
+  assert.deepEqual(
+    manager.serializeLeaderboard().entries.map((entry) => entry.name),
+    ["Царь Константин 1", "Царь Константин 2", "Царь Иван 1"],
+  );
+});
+
+test("рейтинг показывает top-10, текущего и последнее абсолютное место", () => {
+  const { manager } = setup({ identityRandom: () => 0 });
+  const sessions = Array.from({ length: 13 }, () => manager.createSession());
 
   const initial = manager.leaderboardSnapshot(sessions[0]);
-  assert.equal(initial.current.name, "ЦарьИван1");
-  assert.equal(initial.current.scoreMs, 0);
-  assert.equal(initial.current.rank, null);
+  assert.equal(initial.current, null);
+  assert.equal(initial.last, null);
+  assert.equal(initial.total, 0);
   assert.deepEqual(initial.top, []);
 
   sessions.forEach((session, index) => {
     session.summitElapsedMs = (index + 1) * 1000;
     manager.commitLeaderboardResult(session, session.summitElapsedMs);
   });
-  const leaderboard = manager.leaderboardSnapshot(sessions[0]);
-  assert.equal(leaderboard.total, 11);
-  assert.equal(leaderboard.top.length, 9);
-  assert.equal(leaderboard.top[0].scoreMs, 11_000);
-  assert.equal(leaderboard.top.at(-1).scoreMs, 3_000);
-  assert.equal(leaderboard.current.rank, 11);
+  const leaderboard = manager.leaderboardSnapshot(sessions[1]);
+  assert.equal(leaderboard.total, 13);
+  assert.equal(leaderboard.top.length, 10);
+  assert.equal(leaderboard.top[0].scoreMs, 13_000);
+  assert.equal(leaderboard.top.at(-1).scoreMs, 4_000);
+  assert.equal(leaderboard.current.rank, 12);
+  assert.equal(leaderboard.current.name, "Царь Иван 2");
+  assert.equal(leaderboard.last.rank, 13);
+  assert.equal(leaderboard.last.name, "Царь Иван 1");
 
-  const restored = setup().manager;
+  const restored = setup({ identityRandom: () => 0 }).manager;
   restored.restoreLeaderboard(manager.serializeLeaderboard());
-  clock.value = 500;
   const next = restored.createSession();
-  assert.match(
-    restored.leaderboardSnapshot(next).current.name,
-    /^Царь[^\s\d]+12$/,
+  assert.equal(next.leaderboardId, "czar-14");
+  assert.equal(restored.serializeLeaderboard().entries.at(-1).name, "Царь Иван 14");
+});
+
+test("legacy-рейтинг мигрирует в новый формат и сохраняет результаты", () => {
+  const { manager } = setup({ identityRandom: () => 0 });
+  manager.restoreLeaderboard({
+    czarSequence: 65,
+    entries: [
+      {
+        id: "czar-65",
+        sequence: 65,
+        name: "ЦарьИван65",
+        bestMs: 3000,
+        createdAt: 65,
+        updatedAt: 65,
+      },
+      {
+        id: "czar-1",
+        sequence: 1,
+        name: "ЦарьИван1",
+        bestMs: 1000,
+        createdAt: 1,
+        updatedAt: 1,
+      },
+      {
+        id: "czar-11",
+        sequence: 11,
+        name: "Царь Константин 99",
+        bestMs: 2000,
+        createdAt: 11,
+        updatedAt: 11,
+      },
+    ],
+  });
+
+  assert.deepEqual(
+    manager.serializeLeaderboard().entries.map(({ name, bestMs }) => ({
+      name,
+      bestMs,
+    })),
+    [
+      { name: "Царь Иван 1", bestMs: 1000 },
+      { name: "Царь Константин 1", bestMs: 2000 },
+      { name: "Царь Иван 2", bestMs: 3000 },
+    ],
   );
+
+  manager.createSession();
+  assert.equal(manager.serializeLeaderboard().entries.at(-1).name, "Царь Иван 3");
 });
 
 test("невидимая линия запрещает захват и выбрасывает камень случайным импульсом", () => {

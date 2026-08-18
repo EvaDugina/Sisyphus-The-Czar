@@ -50,6 +50,7 @@ import {
   writeStoredRoomSession,
 } from "../lib/roomSessionStorage.mjs";
 import { deriveSessionStatus } from "../lib/sessionStatus.mjs";
+import { composeSummitLeaderboardRows } from "../lib/summitLeaderboard.mjs";
 import { formatSummitElapsedMs } from "../lib/summitTimer.mjs";
 import {
   normalizeRainSettings,
@@ -799,21 +800,12 @@ export function createSisyphusRuntime(elements = {}) {
     if (!summitLeaderboardElement) {
       return;
     }
-    const current = payload.current && typeof payload.current === "object"
-      ? payload.current
-      : null;
-    const currentId = typeof current?.id === "string" ? current.id : null;
-    const top = Array.isArray(payload.top) ? payload.top.slice(0, 9) : [];
-    const currentInTop = currentId && top.some((entry) => entry?.id === currentId);
-    const entries = [...top, ...(current && !currentInTop ? [current] : [])];
     const fragment = document.createDocumentFragment();
-    entries.forEach((entry) => {
-      if (!entry || typeof entry.name !== "string") {
-        return;
-      }
+    composeSummitLeaderboardRows(payload).forEach(({ entry, role, isCurrent }) => {
       const row = document.createElement("li");
       row.className = "summit-leaderboard__row";
-      if (entry.id === currentId) {
+      row.classList.add(`is-${role}`);
+      if (isCurrent) {
         row.classList.add("is-current");
         row.setAttribute("aria-current", "true");
       }
@@ -7575,6 +7567,7 @@ export function createSisyphusRuntime(elements = {}) {
       armSummitRainScroll,
       armGroundImpactSound,
       applyTestSettings,
+      renderSummitLeaderboard,
       receiveSharedSnapshot,
       syncSharedGroundTouchSeq,
       getPreclickHopState: () => ({
