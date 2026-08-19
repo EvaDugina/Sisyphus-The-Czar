@@ -61,13 +61,24 @@ function reloadSharedPhysics() {
   };
 }
 
-function serveSettingsPage() {
+function serveScenePages() {
   return {
-    name: "serve-settings-page",
+    name: "serve-scene-pages",
     configureServer(server) {
       server.middlewares.use((request, _response, next) => {
         const url = new URL(request.url || "/", "http://vite.local");
-        if (url.pathname === "/settings" || url.pathname === "/settings/") {
+        if (
+          [
+            "/settings",
+            "/settings/",
+            "/scene-1",
+            "/scene-1/",
+            "/scene-2",
+            "/scene-2/",
+            "/scene-3",
+            "/scene-3/",
+          ].includes(url.pathname)
+        ) {
           request.url = `/index.html${url.search}`;
         }
         next();
@@ -84,7 +95,7 @@ export default defineConfig(({ command }) => {
   return {
     appType: "mpa",
     base: "./",
-    plugins: [react(), serveSettingsPage(), reloadSharedPhysics()],
+    plugins: [react(), serveScenePages(), reloadSharedPhysics()],
     resolve: {
       alias: isProductionBuild && !debugUiEnabled
         ? [

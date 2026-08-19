@@ -57,6 +57,18 @@ export function createSettingsController(options) {
     stageControlChange = () => {},
     draftOnly = false,
   } = options;
+  const settingsStorageKey = options.settingsStorageKey || SETTINGS_STORAGE_KEY;
+  const settingsVersionsStorageKey =
+    options.settingsVersionsStorageKey || SETTINGS_VERSIONS_STORAGE_KEY;
+  const settingsNamespace = String(options.settingsNamespace || "default")
+    .replace(/[^A-Za-z0-9_-]/g, "") || "default";
+  const settingsVersionIdPrefix = `${settingsNamespace}--`;
+  const legacySettingsStorageKeys = options.migrateLegacySettings
+    ? LEGACY_SETTINGS_STORAGE_KEYS
+    : [];
+  const settingsTemplatesImportKey = `${SETTINGS_TEMPLATES_IMPORT_KEY}:${
+    settingsNamespace
+  }`;
   const settingsPanel =
     options.settingsPanel || document.querySelector(".settings-panel");
   const settingsVersionName =
@@ -112,6 +124,17 @@ export function createSettingsController(options) {
       updatedAt: entry.updatedAt,
       settings: { ...entry.settings },
     };
+  }
+
+  function namespacedSettingsVersionId(id) {
+    const normalized = String(id || "").trim();
+    return normalized.startsWith(settingsVersionIdPrefix)
+      ? normalized
+      : `${settingsVersionIdPrefix}${normalized}`;
+  }
+
+  function settingsVersionBelongsToNamespace(entry) {
+    return String(entry?.id || "").startsWith(settingsVersionIdPrefix);
   }
 
   function settingValuesEqual(left, right) {
@@ -309,7 +332,7 @@ export function createSettingsController(options) {
 
   function saveSettings() {
     try {
-      localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(params));
+      localStorage.setItem(settingsStorageKey, JSON.stringify(params));
     } catch {
       /* localStorage недоступен — тихо игнорируем */
     }
@@ -422,8 +445,8 @@ export function createSettingsController(options) {
     let migratedLegacySettings = false;
     let legacyKey = null;
     try {
-      const current = localStorage.getItem(SETTINGS_STORAGE_KEY);
-      const legacyEntry = LEGACY_SETTINGS_STORAGE_KEYS.map((key) => [
+      const current = localStorage.getItem(settingsStorageKey);
+      const legacyEntry = legacySettingsStorageKeys.map((key) => [
         key,
         localStorage.getItem(key),
       ]).find(([, value]) => value !== null);
@@ -492,7 +515,7 @@ export function createSettingsController(options) {
 
     if (migratedLegacySettings) {
       try {
-        localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(stored));
+        localStorage.setItem(settingsStorageKey, JSON.stringify(stored));
         if (legacyKey) {
           localStorage.removeItem(legacyKey);
         }
@@ -525,8 +548,11 @@ export function createSettingsController(options) {
     return loadedKeys;
   }
 
-  function normalizeSettingsVersionEntry(entry) {
+  function normalizeSettingsVersionEntry(entry, options = {}) {
     if (!entry || typeof entry !== "object") {
+      return null;
+    }
+    if (options.requireNamespace && !settingsVersionBelongsToNamespace(entry)) {
       return null;
     }
     const settings =
@@ -570,7 +596,7 @@ export function createSettingsController(options) {
     let stored = null;
     try {
       stored = JSON.parse(
-        localStorage.getItem(SETTINGS_VERSIONS_STORAGE_KEY) || "null",
+        localStorage.getItem(settingsVersionsStorageKey) || "null",
       );
     } catch {
       stored = null;
@@ -593,7 +619,7 @@ export function createSettingsController(options) {
   function saveSettingsVersions() {
     try {
       localStorage.setItem(
-        SETTINGS_VERSIONS_STORAGE_KEY,
+        settingsVersionsStorageKey,
         JSON.stringify({
           selectedId: settingsVersions.selectedId,
           entries: settingsVersions.entries,
@@ -605,7 +631,7 @@ export function createSettingsController(options) {
   }
 
   function settingsTemplatesImportMarker() {
-    return `${SETTINGS_TEMPLATES_IMPORT_KEY}:${window.location.origin}`;
+    return `${settingsTemplatesImportKey}:${window.location.origin}`;
   }
 
   function settingsTemplatesImported() {
@@ -633,7 +659,9 @@ export function createSettingsController(options) {
     );
     const changed = [];
     entries.forEach((rawEntry) => {
-      const entry = normalizeSettingsVersionEntry(rawEntry);
+      const entry = normalizeSettingsVersionEntry(rawEntry, {
+        requireNamespace: true,
+      });
       if (!entry) {
         return;
       }
@@ -679,7 +707,12 @@ export function createSettingsController(options) {
     }
     const batches = [];
     for (let index = 0; index < entries.length; index += 10) {
-      batches.push(entries.slice(index, index + 10).map(copySettingsVersionEntry));
+      batches.push(
+        entries.slice(index, index + 10).map((entry) => ({
+          ...copySettingsVersionEntry(entry),
+          id: namespacedSettingsVersionId(entry.id),
+        })),
+      );
     }
     settingsVersions.pendingImportBatches = batches.length;
     let sentBatches = 0;
@@ -702,7 +735,11 @@ export function createSettingsController(options) {
       settingsVersions.catalogPages = [];
     }
     const entries = Array.isArray(payload.entries)
-      ? payload.entries.map(normalizeSettingsVersionEntry).filter(Boolean)
+      ? payload.entries
+          .map((entry) =>
+            normalizeSettingsVersionEntry(entry, { requireNamespace: true }),
+          )
+          .filter(Boolean)
       : [];
     settingsVersions.catalogPages.push(...entries);
     settingsVersions.catalogRevision = Math.max(
@@ -1094,7 +1131,7 @@ export function createSettingsController(options) {
       typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
         ? crypto.randomUUID()
         : Math.random().toString(36).slice(2);
-    return `settings-version-${Date.now().toString(36)}-${random}`;
+    return `${settingsVersionIdPrefix}settings-version-${Date.now().toString(36)}-${random}`;
   }
 
   function saveCurrentSettingsVersion() {
@@ -1392,8 +1429,10 @@ export function createSettingsController(options) {
   }
 
   function readPhysicsControls() {
-    const number = (name) =>
-      Number(settingsPanel.querySelector(`[name="${name}"]`).value);
+    const number = (name) => {
+      const input = settingsPanel?.querySelector(`[name="${name}"]`);
+      return input ? Number(input.value) : Number(params[name]);
+    };
     return {
       mass: number("mass"),
       gravity: number("gravity"),

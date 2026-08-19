@@ -424,14 +424,16 @@ function createService(options = {}) {
   };
   app.get("/", sendIndex);
   app.get("/index.html", sendIndex);
+  app.get(/^\/scene-[123]\/$/, (request, response) => {
+    const queryIndex = request.originalUrl.indexOf("?");
+    const query = queryIndex >= 0 ? request.originalUrl.slice(queryIndex) : "";
+    response.redirect(308, `${request.path.replace(/\/$/, "")}${query}`);
+  });
+  app.get(["/scene-1", "/scene-2", "/scene-3"], sendIndex);
   app.get(["/settings", "/settings/"], (request, response) => {
-    if (request.path === "/settings/") {
-      const queryIndex = request.originalUrl.indexOf("?");
-      const query = queryIndex >= 0 ? request.originalUrl.slice(queryIndex) : "";
-      response.redirect(308, `/settings${query}`);
-      return;
-    }
-    sendIndex(request, response);
+    const queryIndex = request.originalUrl.indexOf("?");
+    const query = queryIndex >= 0 ? request.originalUrl.slice(queryIndex) : "";
+    response.redirect(308, `/scene-1${query}`);
   });
 
   app.use((error, _request, response, next) => {

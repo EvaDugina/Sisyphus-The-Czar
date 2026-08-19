@@ -2,11 +2,16 @@
   display: none;
 }
 
-.session-restart--production {
+.scene-actions--production {
   position: fixed;
   top: 1rem;
   left: 1rem;
   z-index: 30;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.session-restart--production {
   padding: 0.65rem 0.85rem;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -22,6 +27,22 @@
     background 180ms ease,
     border-color 180ms ease,
     transform 180ms ease;
+}
+
+.scene-next-link--production {
+  display: block;
+  max-width: 15rem;
+  margin-top: 0;
+  padding: 0.35rem 0.55rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 76%, transparent);
+  color: var(--ink);
+  box-shadow: 0 0.5rem 1.2rem color-mix(in srgb, var(--shadow) 30%, transparent);
+  backdrop-filter: blur(12px);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  text-align: center;
+  text-decoration: none;
 }
 
 .session-restart--production:hover {

@@ -45,7 +45,7 @@
   --draft-blue: #4f9dff;
   position: fixed;
   right: 1rem;
-  top: 4.25rem;
+  top: 1rem;
   z-index: 29;
   width: min(19rem, calc(100vw - 2rem));
   max-height: calc(100dvh - 5.5rem);
@@ -752,6 +752,15 @@ input[type="range"] {
   opacity: 0.45;
 }
 
+.settings-panel__scene-title {
+  margin: 0 0 0.75rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 0.95rem;
+  line-height: 1.25;
+}
+
 .glass-strips-control {
   display: grid;
   gap: 0.55rem;
@@ -1048,6 +1057,20 @@ body.settings-page .settings-panel {
 
 .session-panel--toolbar .session-restart {
   margin-top: 0;
+}
+
+.scene-next-link {
+  display: block;
+  margin-top: 0.55rem;
+  color: var(--accent);
+  font-size: 0.78rem;
+  line-height: 1.25;
+  text-align: center;
+  text-decoration: none;
+}
+
+.scene-next-link:hover {
+  text-decoration: underline;
 }
 
 .hint {

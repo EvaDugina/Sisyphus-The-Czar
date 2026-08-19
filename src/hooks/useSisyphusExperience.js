@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { createSisyphusRuntime } from "../runtime/createSisyphusRuntime";
 import { useSettings } from "./useSettings";
 
-export function useSisyphusExperience() {
+export function useSisyphusExperience(sceneId) {
   const settings = useSettings();
   const realtime = {
     sessionPanelRef: useRef(null),
@@ -35,7 +35,7 @@ export function useSisyphusExperience() {
   };
   const { settingsRef: foldSettingsRef } = fold;
 
-  const { settingsLinkRef } = settings;
+  const { settingsPanelRef } = settings;
   const {
     sessionPanelRef,
     sessionRestartButtonRef,
@@ -62,6 +62,7 @@ export function useSisyphusExperience() {
   useEffect(() => {
     const runtime = createSisyphusRuntime({
       world: worldRef.current,
+      sceneId,
       rock: rockRef.current,
       rockImprint: rockImprintRef.current,
       summitLeaderboard: summitLeaderboardRef.current,
@@ -69,8 +70,7 @@ export function useSisyphusExperience() {
       heightGateStatus: heightGateStatusRef.current,
       glassStripsLayer: glassStripsRef.current,
       remoteCursorLayer: remoteCursorLayerRef.current,
-      settingsToggle: settingsLinkRef.current,
-      settingsLink: settingsLinkRef.current,
+      settingsPanel: settingsPanelRef.current,
       trailCanvas: trailCanvasRef.current,
       trailSessionCanvas: trailSessionCanvasRef.current,
       trailGlowCanvas: trailGlowCanvasRef.current,
@@ -100,7 +100,8 @@ export function useSisyphusExperience() {
     sessionRestartButtonRef,
     sessionPanelRef,
     sessionStatusRef,
-    settingsLinkRef,
+    sceneId,
+    settingsPanelRef,
     summitLeaderboardRef,
     trailCanvasRef,
     trailSessionCanvasRef,

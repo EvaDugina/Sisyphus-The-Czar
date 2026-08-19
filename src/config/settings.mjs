@@ -35,6 +35,14 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
     label: "Сцена 3. Соки",
   }),
 ]);
+
+export function settingsStorageKeyForScene(sceneId) {
+  return `${SETTINGS_STORAGE_KEY}:${sceneId}`;
+}
+
+export function settingsVersionsStorageKeyForScene(sceneId) {
+  return `${SETTINGS_VERSIONS_STORAGE_KEY}:${sceneId}`;
+}
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
   "sisyphus-czar-settings-v50",
   "sisyphus-czar-settings-v49",
@@ -459,21 +467,11 @@ const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
 const JUICES_ONLY_SETTING_NAMES = new Set([
   "summitTimerFontFamily",
   "summitTimerFontSizeRem",
+  "finalFallEnabled",
+  "finalFallDelaySeconds",
 ]);
 
-const TRAIL_SCENE_SETTING_NAMES = [
-  "trailEnabled",
-  "trailAnchorHeightPercent",
-  "lineDelay",
-  "lineWidth",
-  "trailReset",
-  "trailMaxPoints",
-  "trailRenderProfile",
-  "trailSampleDist",
-  ...TRAIL_STYLE_CONTROLS.map((control) => control.name),
-];
-
-const SHARED_SCENE_SETTING_NAMES = new Set([
+const PER_SCENE_VISUAL_SETTING_NAMES = new Set([
   "themeMode",
   "lightBackgroundColor",
   "lightBackgroundDeepColor",
@@ -490,6 +488,9 @@ const SHARED_SCENE_SETTING_NAMES = new Set([
   "foldBlendCurve",
   "rockImageId",
   "foldRockImageId",
+  "rockScaleEasing",
+  "rockPressShrinkPercent",
+  "rockWallPenetrationPercent",
   "rockPulseEnabled",
   "rockPulseShrinkPercent",
   "rockPulseBpm",
@@ -497,10 +498,28 @@ const SHARED_SCENE_SETTING_NAMES = new Set([
   "customCursorSizePx",
   "handVisibilityMode",
   "handImageChangeDelayMs",
+  "handWidthVw",
+  "rockMinWidthVw",
+  "rockActivatedWidthVw",
+  "rockMaxWidthVw",
+]);
+
+const TURNIP_AND_JUICES_SETTING_NAMES = new Set([
+  "cameraFollowDownEnabled",
+  "cameraFollowDownLerp",
+  "gravity",
+  "bounce",
+  "wallBounce",
+  "inertia",
+  "horizontalInertia",
+  "groundFriction",
+  "turbulence",
+  "mass",
   "rockGrabRadiusVh",
   "handAudioEnabled",
-  "handWidthVw",
-  ...TRAIL_SCENE_SETTING_NAMES,
+  "handForce",
+  "handForceDeficitEasing",
+  "pointerInfluence",
 ]);
 
 const CATS_AND_MICE_SCENES = Object.freeze([
@@ -508,9 +527,14 @@ const CATS_AND_MICE_SCENES = Object.freeze([
 ]);
 const TURNIP_SCENES = Object.freeze([SETTINGS_SCENES.TURNIP]);
 const JUICES_SCENES = Object.freeze([SETTINGS_SCENES.JUICES]);
-const SHARED_SCENES = Object.freeze([
+const TURNIP_AND_JUICES_SCENES = Object.freeze([
+  SETTINGS_SCENES.TURNIP,
+  SETTINGS_SCENES.JUICES,
+]);
+const ALL_SCENES = Object.freeze([
   SETTINGS_SCENES.CATS_AND_MICE,
   SETTINGS_SCENES.TURNIP,
+  SETTINGS_SCENES.JUICES,
 ]);
 
 export function settingsControlScenes(control) {
@@ -521,8 +545,14 @@ export function settingsControlScenes(control) {
   if (JUICES_ONLY_SETTING_NAMES.has(name)) {
     return JUICES_SCENES;
   }
-  if (SHARED_SCENE_SETTING_NAMES.has(name)) {
-    return SHARED_SCENES;
+  if (typeof name === "string" && name.startsWith("rain")) {
+    return JUICES_SCENES;
+  }
+  if (PER_SCENE_VISUAL_SETTING_NAMES.has(name)) {
+    return ALL_SCENES;
+  }
+  if (TURNIP_AND_JUICES_SETTING_NAMES.has(name)) {
+    return TURNIP_AND_JUICES_SCENES;
   }
   return TURNIP_SCENES;
 }
@@ -1818,3 +1848,42 @@ export const SETTINGS_GROUPS = [
     ],
   },
 ];
+
+function sceneOwnedControl(control, sceneId) {
+  return Object.freeze({ ...control, ownerSceneId: sceneId });
+}
+
+function sceneOwnedGroup(group, sceneId) {
+  const controls = (group.controls || [])
+    .filter((control) => settingsControlVisibleInScene(control, sceneId))
+    .map((control) => sceneOwnedControl(control, sceneId));
+  const subgroups = (group.subgroups || []).flatMap((subgroup) => {
+    const ownedControls = settingsGroupControls(subgroup)
+      .filter((control) => settingsControlVisibleInScene(control, sceneId))
+      .map((control) => sceneOwnedControl(control, sceneId));
+    return ownedControls.length > 0
+      ? [{ ...subgroup, controls: ownedControls, subgroups: [] }]
+      : [];
+  });
+  if (controls.length === 0 && subgroups.length === 0) {
+    return null;
+  }
+  return Object.freeze({
+    ...group,
+    controls,
+    subgroups,
+    sceneId,
+  });
+}
+
+export function settingsGroupsForScene(sceneId) {
+  const normalizedSceneId = SETTINGS_SCENE_OPTIONS.some(
+    (scene) => scene.id === sceneId,
+  )
+    ? sceneId
+    : SETTINGS_SCENES.CATS_AND_MICE;
+  return SETTINGS_GROUPS.flatMap((group) => {
+    const owned = sceneOwnedGroup(group, normalizedSceneId);
+    return owned ? [owned] : [];
+  });
+}

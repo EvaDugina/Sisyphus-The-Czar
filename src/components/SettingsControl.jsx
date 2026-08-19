@@ -14,6 +14,7 @@ export function SettingsControl({ control, hidden = false }) {
     hint,
     label,
     name,
+    ownerSceneId,
     inactiveLabel,
     options,
     output,
@@ -21,6 +22,7 @@ export function SettingsControl({ control, hidden = false }) {
     type,
     ...inputProps
   } = control;
+  void ownerSceneId;
   const formulasAttr =
     Array.isArray(formulas) && formulas.length > 0
       ? JSON.stringify(formulas)

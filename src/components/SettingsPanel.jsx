@@ -1,23 +1,18 @@
-import { useState } from "react";
 import {
-  SETTINGS_GROUPS,
-  SETTINGS_SCENES,
-  SETTINGS_SCENE_OPTIONS,
-  settingsControlVisibleInScene,
-  settingsGroupVisibleInScene,
+  settingsGroupsForScene,
   settingsGroupControls,
 } from "../config/settings.mjs";
 import { SettingsControl } from "./SettingsControl";
 
 export function SettingsPanel({
   panelRef,
+  sceneId,
+  sceneLabel,
   sessionStatusRef,
   isOpen,
   settingsAvailable,
 }) {
-  const [activeScene, setActiveScene] = useState(
-    SETTINGS_SCENES.CATS_AND_MICE,
-  );
+  const sceneGroups = settingsGroupsForScene(sceneId);
 
   return (
     <aside
@@ -26,25 +21,9 @@ export function SettingsPanel({
       id="settings-panel"
       aria-hidden={String(!settingsAvailable || !isOpen)}
       hidden={!settingsAvailable}
-      data-settings-scene={activeScene}
+      data-settings-scene={sceneId}
     >
-      <div
-        className="settings-scene-switcher"
-        role="group"
-        aria-label="Игровая сцена настроек"
-      >
-        {SETTINGS_SCENE_OPTIONS.map((scene) => (
-          <button
-            className="settings-scene-switcher__button"
-            type="button"
-            key={scene.id}
-            aria-pressed={String(activeScene === scene.id)}
-            onClick={() => setActiveScene(scene.id)}
-          >
-            {scene.label}
-          </button>
-        ))}
-      </div>
+      <h2 className="settings-panel__scene-title">Параметры · {sceneLabel}</h2>
 
       <section className="settings-versions" aria-label="Версии настроек">
         <div
@@ -119,13 +98,11 @@ export function SettingsPanel({
         </div>
       </section>
 
-      {SETTINGS_GROUPS.map((group) => {
-        const groupVisible = settingsGroupVisibleInScene(group, activeScene);
+      {sceneGroups.map((group) => {
         return (
           <details
             className="control-group"
             key={group.title}
-            hidden={!groupVisible}
           >
             <summary>{group.title}</summary>
             {group.controls?.length
@@ -133,33 +110,22 @@ export function SettingsPanel({
                   <SettingsControl
                     control={control}
                     key={control.name}
-                    hidden={
-                      !settingsControlVisibleInScene(control, activeScene)
-                    }
                   />
                 ))
               : null}
             {group.subgroups?.map((subgroup) => {
-              const subgroupVisible = settingsGroupVisibleInScene(
-                subgroup,
-                activeScene,
-              );
               return (
                 <details
                   className="control-subgroup"
                   key={subgroup.title}
                   aria-label={`${group.title}: ${subgroup.title}`}
                   open
-                  hidden={!subgroupVisible}
                 >
                   <summary>{subgroup.title}</summary>
                   {settingsGroupControls(subgroup).map((control) => (
                     <SettingsControl
                       control={control}
                       key={control.name}
-                      hidden={
-                        !settingsControlVisibleInScene(control, activeScene)
-                      }
                     />
                   ))}
                 </details>

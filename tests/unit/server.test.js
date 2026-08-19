@@ -82,7 +82,7 @@ test("backend публикует shared-модули клиента", async (con
   }
 });
 
-test("backend канонизирует settings route и не восстанавливает drafts", async (context) => {
+test("backend обслуживает три scene route, канонизирует slash и удаляет settings", async (context) => {
   const service = createService({
     port: 0,
     host: "127.0.0.1",
@@ -98,8 +98,18 @@ test("backend канонизирует settings route и не восстанав
     redirect: "manual",
   });
   assert.equal(settingsWithSlash.status, 308);
-  assert.equal(settingsWithSlash.headers.get("location"), "/settings?source=test");
-  assert.equal((await fetch(`${baseUrl}/settings`)).status, 200);
+  assert.equal(settingsWithSlash.headers.get("location"), "/scene-1?source=test");
+  const settings = await fetch(`${baseUrl}/settings`, { redirect: "manual" });
+  assert.equal(settings.status, 308);
+  assert.equal(settings.headers.get("location"), "/scene-1");
+  for (const scenePath of ["/scene-1", "/scene-2", "/scene-3"]) {
+    assert.equal((await fetch(`${baseUrl}${scenePath}`)).status, 200);
+    const withSlash = await fetch(`${baseUrl}${scenePath}/?source=test`, {
+      redirect: "manual",
+    });
+    assert.equal(withSlash.status, 308);
+    assert.equal(withSlash.headers.get("location"), `${scenePath}?source=test`);
+  }
   assert.equal((await fetch(`${baseUrl}/drafts`)).status, 404);
   assert.equal((await fetch(`${baseUrl}/drafts/`)).status, 404);
   assert.equal((await fetch(`${baseUrl}/drafts/assets/missing.js`)).status, 404);

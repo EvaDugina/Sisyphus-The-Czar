@@ -11,6 +11,7 @@ import {
   clearStoredRoomSession,
   readStoredRoomSession,
   ROOM_SESSION_STORAGE_KEY,
+  roomSessionStorageKey,
   writeStoredRoomSession,
 } from "../../src/lib/roomSessionStorage.mjs";
 import {
@@ -121,9 +122,18 @@ import {
   SETTINGS_VERSIONS_STORAGE_KEY,
   settingsControlScenes,
   settingsControlVisibleInScene,
+  settingsGroupsForScene,
   settingsGroupVisibleInScene,
   settingsGroupControls,
+  settingsStorageKeyForScene,
+  settingsVersionsStorageKeyForScene,
 } from "../../src/config/settings.mjs";
+import {
+  SCENE_ROUTES,
+  sceneRouteForId,
+  sceneRouteForPath,
+  sceneStorageNamespace,
+} from "../../src/config/sceneRoutes.mjs";
 import {
   createSettingsController as createProductionSettingsController,
 } from "../../src/runtime/createSettingsController.prod.js";
@@ -310,6 +320,14 @@ test("legacy room-session мигрирует и чужая новая запис
     readStoredRoomSession({ localStorage, sessionStorage, now: 3000 })?.sessionId,
     "zyxwvutsrqponmlkjihgfe",
   );
+});
+
+test("room-session ключи изолированы по страницам сцен", () => {
+  const keys = ["scene-1", "scene-2", "scene-3"].map(roomSessionStorageKey);
+
+  assert.equal(new Set(keys).size, 3);
+  assert.equal(keys[0], `${ROOM_SESSION_STORAGE_KEY}:scene-1`);
+  assert.equal(roomSessionStorageKey(), ROOM_SESSION_STORAGE_KEY);
 });
 
 test("координаты сохраняют каноническое положение между viewport", () => {
@@ -773,7 +791,7 @@ test("настройки инерции и hop отображают актуал
   );
 });
 
-test("UI классифицирует параметры по сценам без копирования значений", () => {
+test("UI материализует параметры отдельно для каждой scene page", () => {
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const physicsGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Физика"
@@ -824,24 +842,34 @@ test("UI классифицирует параметры по сценам бе�
     ]
   );
   assert.deepEqual(settingsControlScenes("rockMinWidthVw"), [
+    SETTINGS_SCENES.CATS_AND_MICE,
     SETTINGS_SCENES.TURNIP,
+    SETTINGS_SCENES.JUICES,
   ]);
   assert.deepEqual(settingsControlScenes("rockActivatedWidthVw"), [
+    SETTINGS_SCENES.CATS_AND_MICE,
     SETTINGS_SCENES.TURNIP,
+    SETTINGS_SCENES.JUICES,
   ]);
   assert.deepEqual(settingsControlScenes("rockMaxWidthVw"), [
+    SETTINGS_SCENES.CATS_AND_MICE,
     SETTINGS_SCENES.TURNIP,
+    SETTINGS_SCENES.JUICES,
   ]);
   [
     "cameraFollowUpEnabled",
     "cameraFollowUpLerp",
-    "cameraFollowDownEnabled",
-    "cameraFollowDownLerp",
     "rockAccelerationEnabled",
     "sceneTwoOverflowYVisible",
     "gachiClickSoundFilename",
   ].forEach((name) => {
     assert.deepEqual(settingsControlScenes(name), [SETTINGS_SCENES.TURNIP]);
+  });
+  ["cameraFollowDownEnabled", "cameraFollowDownLerp"].forEach((name) => {
+    assert.deepEqual(settingsControlScenes(name), [
+      SETTINGS_SCENES.TURNIP,
+      SETTINGS_SCENES.JUICES,
+    ]);
   });
   assert.deepEqual(
     rockGroup.controls
@@ -858,13 +886,11 @@ test("UI классифицирует параметры по сценам бе�
     assert.deepEqual(settingsControlScenes(control), [
       SETTINGS_SCENES.CATS_AND_MICE,
       SETTINGS_SCENES.TURNIP,
+      SETTINGS_SCENES.JUICES,
     ]);
   });
   settingsGroupControls(trailGroup).forEach((control) => {
-    assert.deepEqual(settingsControlScenes(control), [
-      SETTINGS_SCENES.CATS_AND_MICE,
-      SETTINGS_SCENES.TURNIP,
-    ]);
+    assert.deepEqual(settingsControlScenes(control), [SETTINGS_SCENES.TURNIP]);
   });
   assert.equal(
     settingsControlVisibleInScene("gravity", SETTINGS_SCENES.CATS_AND_MICE),
@@ -892,7 +918,7 @@ test("UI классифицирует параметры по сценам бе�
   );
   assert.equal(
     settingsGroupVisibleInScene(trailGroup, SETTINGS_SCENES.CATS_AND_MICE),
-    true
+    false
   );
   assert.equal(
     settingsGroupVisibleInScene(trailGroup, SETTINGS_SCENES.TURNIP),
@@ -904,12 +930,57 @@ test("UI классифицирует параметры по сценам бе�
   );
   assert.equal(
     settingsGroupVisibleInScene(physicsGroup, SETTINGS_SCENES.JUICES),
-    false,
+    true,
   );
   assert.equal(
     controls.every((control) => settingsControlScenes(control).length > 0),
     true
   );
+
+  const pageControls = (sceneId) =>
+    settingsGroupsForScene(sceneId).flatMap(settingsGroupControls);
+  SETTINGS_SCENE_OPTIONS.forEach(({ id }) => {
+    const groups = settingsGroupsForScene(id);
+    assert.equal(groups.every((group) => group.sceneId === id), true);
+    assert.equal(
+      pageControls(id).every((control) => control.ownerSceneId === id),
+      true,
+    );
+  });
+  const sceneThemes = SETTINGS_SCENE_OPTIONS.map(({ id }) =>
+    pageControls(id).find((control) => control.name === "themeMode"),
+  );
+  assert.notEqual(sceneThemes[0], sceneThemes[1]);
+  assert.notEqual(sceneThemes[1], sceneThemes[2]);
+  assert.deepEqual(
+    sceneThemes.map((control) => control.ownerSceneId),
+    SETTINGS_SCENE_OPTIONS.map(({ id }) => id),
+  );
+  const settingKeys = SETTINGS_SCENE_OPTIONS.map(({ id }) =>
+    settingsStorageKeyForScene(id),
+  );
+  const versionKeys = SETTINGS_SCENE_OPTIONS.map(({ id }) =>
+    settingsVersionsStorageKeyForScene(id),
+  );
+  assert.equal(new Set(settingKeys).size, 3);
+  assert.equal(new Set(versionKeys).size, 3);
+});
+
+test("scene routes имеют прямые URL и циклическую навигацию", () => {
+  assert.deepEqual(
+    SCENE_ROUTES.map(({ path, nextPath }) => [path, nextPath]),
+    [
+      ["/scene-1", "/scene-2"],
+      ["/scene-2", "/scene-3"],
+      ["/scene-3", "/scene-1"],
+    ],
+  );
+  SCENE_ROUTES.forEach((route) => {
+    assert.equal(sceneRouteForPath(`${route.path}/`), route);
+    assert.equal(sceneRouteForId(route.id), route);
+    assert.equal(sceneStorageNamespace(route.id), `scene-${route.number}`);
+  });
+  assert.equal(sceneRouteForPath("/settings"), null);
 });
 
 test("сохраненная версия настроек показывает дату без года в option select", () => {

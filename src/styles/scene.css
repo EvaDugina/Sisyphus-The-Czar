@@ -175,6 +175,30 @@
   color: #fff;
 }
 
+body[data-scene="scene-1"] .summit,
+body[data-scene="scene-1"] .summit-timer,
+body[data-scene="scene-1"] .summit-leaderboard,
+body[data-scene="scene-1"] .rock-imprint,
+body[data-scene="scene-1"] .scene-two-glass-strips,
+body[data-scene="scene-1"] .weather-rain,
+body[data-scene="scene-1"] .trail,
+body[data-scene="scene-1"] .trail-session,
+body[data-scene="scene-1"] .trail-glow,
+body[data-scene="scene-2"] .summit-timer,
+body[data-scene="scene-2"] .summit-leaderboard,
+body[data-scene="scene-2"] .weather-rain,
+body[data-scene="scene-3"] .scene-two-glass-strips {
+  display: none;
+}
+
+body.scene-complete .rock {
+  pointer-events: none;
+}
+
+body[data-scene="scene-3"] .rock.is-scene-start-held {
+  filter: drop-shadow(0 0.7rem 1rem rgba(255, 255, 255, 0.2));
+}
+
 .summit-leaderboard__row.is-current {
   color: #8c8c8c;
 }
