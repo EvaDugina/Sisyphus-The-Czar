@@ -877,7 +877,12 @@ export function createSisyphusRuntime(elements = {}) {
       summitTimerElement.dataset.running = String(summitTimer.running);
     }
     renderSummitTimer();
-    if (wasRunning && !summitTimer.running && payload.dragging === false) {
+    if (
+      isSceneThree &&
+      wasRunning &&
+      !summitTimer.running &&
+      payload.dragging === false
+    ) {
       armSummitRainScroll();
     }
   }
@@ -2123,12 +2128,16 @@ export function createSisyphusRuntime(elements = {}) {
 
   function applySceneTwoOverflowY() {
     document.documentElement.style.overflowY =
-      rain.scrollUnlocked || params.sceneTwoOverflowYVisible
+      (isSceneThree && rain.scrollUnlocked) ||
+      (isSceneTwo && params.sceneTwoOverflowYVisible)
       ? "auto"
       : "hidden";
   }
 
   function sceneTwoGlassObstacles() {
+    if (!isSceneTwo) {
+      return [];
+    }
     return SharedRoomSettings.sceneTwoGlassCanonicalRects(
       params,
       SharedPhysics.WORLD_WIDTH,
@@ -2144,7 +2153,8 @@ export function createSisyphusRuntime(elements = {}) {
       params.sceneTwoGlassStrips,
     ).filter((strip) => strip.enabled);
     const refraction = params.sceneTwoGlassRefractionPercent / 100;
-    glassStripsLayer.hidden = !params.sceneTwoGlassEnabled || strips.length === 0;
+    glassStripsLayer.hidden =
+      !isSceneTwo || !params.sceneTwoGlassEnabled || strips.length === 0;
     glassStripsLayer.style.setProperty(
       "--scene-two-glass-z-index",
       String(params.sceneTwoGlassZIndex),
@@ -2403,7 +2413,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function shouldShowRain() {
-    if (rain.scrollCompleted) {
+    if (!isSceneThree || rain.scrollCompleted) {
       return false;
     }
     if (rain.scrollArmed || rain.scrollStarted) {
@@ -2525,7 +2535,12 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function armSummitRainScroll() {
-    if (rain.scrollCompleted || rain.scrollArmed || rain.scrollStarted) {
+    if (
+      !isSceneThree ||
+      rain.scrollCompleted ||
+      rain.scrollArmed ||
+      rain.scrollStarted
+    ) {
       return false;
     }
     rain.scrollArmed = true;
@@ -2552,7 +2567,7 @@ export function createSisyphusRuntime(elements = {}) {
     rain.returnRequested = false;
     rainLayer?.classList.remove("is-rain-scroll-driven");
     rainLayer?.style.removeProperty("--rain-scroll-opacity");
-    if (params.rainEnabled) {
+    if (isSceneThree && params.rainEnabled) {
       showRainLayer();
     } else {
       hideRainLayer({ immediate: true });
@@ -2664,7 +2679,7 @@ export function createSisyphusRuntime(elements = {}) {
   function applyBirchBackgroundSettings() {
     body.classList.toggle(
       "birch-background-enabled",
-      params.birchBackgroundEnabled,
+      isSceneOne && params.birchBackgroundEnabled,
     );
     body.style.setProperty(
       "--birch-scale",
@@ -4069,7 +4084,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function constrainLocalGlassMovement(fromX, fromY, desiredX, desiredY) {
-    if (!params.sceneTwoGlassEnabled) {
+    if (!isSceneTwo || !params.sceneTwoGlassEnabled) {
       return { x: desiredX, y: desiredY };
     }
     const from = localToCanonical(fromX, fromY);
@@ -6149,9 +6164,6 @@ export function createSisyphusRuntime(elements = {}) {
     collab.pendingControl = false;
     collab.hasControl = false;
     cancelSharedLocalDrag();
-    if (releasedInImprint && !isSceneThree) {
-      armSummitRainScroll();
-    }
     syncReturnTheme();
     updateSessionStatus();
   }
@@ -6165,8 +6177,6 @@ export function createSisyphusRuntime(elements = {}) {
       releaseRockPress();
       return;
     }
-    const releasedInImprint =
-      motion.phase === PHASES.PLAY && rockInsideImprint();
     const canReleaseWithImpulse = !neutral && sharedDragActive();
     const pointerVelocity = canReleaseWithImpulse
       ? currentPointerVelocity()
@@ -6196,9 +6206,6 @@ export function createSisyphusRuntime(elements = {}) {
     collab.pendingControl = false;
     collab.hasControl = false;
     cancelSharedLocalDrag();
-    if (releasedInImprint && !isSceneThree) {
-      armSummitRainScroll();
-    }
     syncReturnTheme();
     if (hidePointer) {
       hideHandCursor();
@@ -7193,7 +7200,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function constrainLocalHeightGateY(fromY, desiredY) {
-    if (!collab.enabled || desiredY >= fromY) {
+    if (!isSceneTwo || !collab.enabled || desiredY >= fromY) {
       return desiredY;
     }
     const fromCanonicalY = localToCanonical(0, fromY).y;
@@ -7251,6 +7258,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function beginFinalReturnFall() {
+    if (!isSceneThree) {
+      return false;
+    }
     const state = SharedPhysics.sanitizeState(currentSharedState());
     if (!SharedPhysics.beginFinalFall(state)) {
       return false;
@@ -7258,12 +7268,8 @@ export function createSisyphusRuntime(elements = {}) {
     resetFinalFallGate();
     setPhase(state.phase);
     applyCanonicalMotion(state);
-    if (isSceneThree) {
-      sceneFlow.finalFallStarted = true;
-      startSceneThreeRain();
-    } else {
-      armSummitRainScroll();
-    }
+    sceneFlow.finalFallStarted = true;
+    startSceneThreeRain();
     return true;
   }
 
@@ -7481,16 +7487,17 @@ export function createSisyphusRuntime(elements = {}) {
       applyReleaseImpulse();
     }
     setHandToGrab();
-    if (releasedInImprint && !isSceneThree) {
-      armSummitRainScroll();
-    }
     rock.classList.add("is-falling");
     syncReturnTheme();
     startLoop();
   }
 
   function localRockAboveSceneTwoBarrier() {
-    if (!preclickRockGuidance.completed || !params.sceneTwoBarrierEnabled) {
+    if (
+      !isSceneTwo ||
+      !preclickRockGuidance.completed ||
+      !params.sceneTwoBarrierEnabled
+    ) {
       return false;
     }
     const position = localToCanonical(motion.x, motion.y);
@@ -7734,9 +7741,6 @@ export function createSisyphusRuntime(elements = {}) {
       applyReleaseImpulse(pointerVelocity);
     }
     setHandToGrab();
-    if (releasedInImprint && !isSceneThree) {
-      armSummitRainScroll();
-    }
     rock.classList.add("is-falling");
     syncReturnTheme();
     startLoop();

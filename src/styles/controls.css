@@ -43,14 +43,19 @@
 
 .settings-panel {
   --draft-blue: #4f9dff;
+  --settings-panel-default-width: min(19rem, calc(100vw - 2rem));
+  --settings-panel-min-width: min(16rem, calc(100vw - 2rem));
+  --settings-panel-width: var(--settings-panel-default-width);
   position: fixed;
   right: 1rem;
   top: 1rem;
   z-index: 29;
-  width: min(19rem, calc(100vw - 2rem));
-  max-height: calc(100dvh - 5.5rem);
-  overflow-y: auto;
-  padding: 1rem;
+  width: var(--settings-panel-width);
+  min-width: var(--settings-panel-min-width);
+  max-width: min(52rem, calc(100vw - 2rem));
+  height: calc(100dvh - 2rem);
+  max-height: calc(100dvh - 2rem);
+  overflow: visible;
   border: 1px solid var(--line);
   border-radius: 8px;
   background: var(--panel);
@@ -68,7 +73,7 @@
 .settings-panel.is-open {
   opacity: 1;
   pointer-events: auto;
-  transform: translateY(0);
+  transform: none;
 }
 
 .settings-scene-switcher {
@@ -400,16 +405,76 @@
 
 .control-label {
   display: flex;
-  align-items: baseline;
+  align-items: flex-start;
   justify-content: space-between;
-  gap: 1rem;
+  gap: 0.75rem;
   color: var(--ink);
   font-size: 0.92rem;
 }
 
+.settings-panel__resize-handle {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -0.3rem;
+  z-index: 1;
+  width: 0.6rem;
+  border-radius: 999px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.settings-panel__scroll {
+  width: 100%;
+  height: 100%;
+  max-height: 100%;
+  padding: 1rem;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border-radius: inherit;
+  scrollbar-gutter: stable;
+}
+
+.settings-panel__resize-handle::after {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 0.2rem;
+  height: 3rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--muted) 58%, transparent);
+  content: "";
+  opacity: 0;
+  transform: translate(-50%, -50%);
+  transition: opacity 160ms ease;
+}
+
+.settings-panel__resize-handle:hover::after,
+.settings-panel__resize-handle:focus-visible::after,
+.settings-panel.is-resizing .settings-panel__resize-handle::after {
+  opacity: 1;
+}
+
+.settings-panel__resize-handle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.settings-panel.is-resizing {
+  user-select: none;
+}
+
+.control-label > :first-child {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .control-value {
+  flex: 0 0 auto;
   color: var(--muted);
   font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 input[type="range"] {
@@ -999,11 +1064,25 @@ body.settings-page .settings-panel {
   top: auto;
   right: auto;
   width: min(52rem, 100%);
+  min-width: 0;
+  max-width: min(52rem, 100%);
+  height: auto;
   max-height: none;
   margin: 3.5rem auto 2rem;
   opacity: 1;
   pointer-events: auto;
   transform: none;
+}
+
+body.settings-page .settings-panel__resize-handle {
+  display: none;
+}
+
+body.settings-page .settings-panel__scroll {
+  height: auto;
+  max-height: none;
+  overflow: visible;
+  scrollbar-gutter: auto;
 }
 
 .settings-page__back {
@@ -1038,6 +1117,21 @@ body.settings-page .settings-panel {
 
 body.settings-page .settings-panel {
   --settings-panel-width: min(52rem, 100%);
+}
+
+@media (max-width: 36rem) {
+  .settings-panel {
+    --settings-panel-default-width: calc(100vw - 2rem);
+    --settings-panel-min-width: 0;
+    --settings-panel-width: var(--settings-panel-default-width);
+    width: calc(100vw - 2rem);
+    min-width: 0;
+    max-width: calc(100vw - 2rem);
+  }
+
+  .settings-panel__resize-handle {
+    display: none;
+  }
 }
 
 .session-panel--toolbar {

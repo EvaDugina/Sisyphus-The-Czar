@@ -258,6 +258,7 @@ test("секундомер вершины останавливается с по
   const { clock, manager } = setup();
   clock.value = 1000;
   const session = manager.createSession({
+    sceneId: "juices",
     state: {
       phase: Physics.PHASES.PLAY,
       x: Physics.WORLD_WIDTH / 2,
@@ -472,6 +473,7 @@ test("активный секундомер вершины сохраняетс�
   const firstSetup = setup();
   firstSetup.clock.value = 1000;
   const session = firstSetup.manager.createSession({
+    sceneId: "juices",
     state: {
       phase: Physics.PHASES.PLAY,
       x: Physics.WORLD_WIDTH / 2,
@@ -510,6 +512,7 @@ test("явный нулевой reset таймера на вершине нач�
     restoredSetup.manager.restoreSessions([
       {
         id: "SisyphusGlobalRoom0000",
+        sceneId: "juices",
         state: {
           phase: Physics.PHASES.PLAY,
           x: Physics.WORLD_WIDTH / 2,
@@ -540,6 +543,7 @@ test("остановленный секундомер сохраняется и 
   const summitY = Physics.createSummitImprint().y;
   firstSetup.clock.value = 1000;
   const stopped = firstSetup.manager.createSession({
+    sceneId: "juices",
     state: {
       phase: Physics.PHASES.PLAY,
       x: Physics.WORLD_WIDTH / 2,
@@ -561,6 +565,7 @@ test("остановленный секундомер сохраняется и 
       stoppedRecord,
       {
         id: "timerfallen00000000000",
+        sceneId: "juices",
         state: {
           phase: Physics.PHASES.PLAY,
           x: Physics.WORLD_WIDTH / 2,
@@ -575,6 +580,7 @@ test("остановленный секундомер сохраняется и 
       },
       {
         id: "timerdragged0000000000",
+        sceneId: "juices",
         state: {
           phase: Physics.PHASES.PLAY,
           x: Physics.WORLD_WIDTH / 2,
@@ -649,6 +655,7 @@ test("старая сессия внутри вершины получает н�
   const restored = manager.restoreSessions([
     {
       id: "timerlegacy00000000000",
+      sceneId: "juices",
       state: {
         phase: Physics.PHASES.PLAY,
         x: Physics.WORLD_WIDTH / 2,
@@ -1180,6 +1187,63 @@ test("серверная физика не пропускает камень с�
   assert.ok(session.state.vy < 0);
 });
 
+test("сцена 3 сохраняет sceneId и игнорирует препятствия сцены 2", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    sceneId: "juices",
+    state: {
+      phase: Physics.PHASES.PLAY,
+      x: 500,
+      y: 490,
+      vx: 0,
+      vy: 1000,
+      suspended: false,
+    },
+    physics: { gravity: 0.1, turbulence: 0 },
+    roomSettings: {
+      sceneHeightScreens: 20,
+      sceneTwoBarrierEnabled: true,
+      sceneTwoBarrierHeightVh: 1500,
+      sceneTwoGlassEnabled: true,
+      sceneTwoGlassBounce: 0.5,
+      sceneTwoGlassStrips: [
+        {
+          id: "foreign-glass",
+          enabled: true,
+          heightPercent: 75,
+          xPercent: 20,
+          widthPercent: 60,
+          heightVh: 2,
+        },
+      ],
+      heightGates: [
+        { id: "foreign-gate", heightPercent: 75, durationSeconds: 10 },
+      ],
+    },
+  });
+
+  assert.equal(session.sceneId, "juices");
+  assert.equal(manager.snapshot(session).sceneId, "juices");
+  assert.equal(manager.serializeSessions()[0].sceneId, "juices");
+  assert.equal(manager.constrainHeightGateMovement(session, 900, 300), 300);
+  assert.equal(session.activeHeightGate, null);
+
+  clock.value = 20;
+  manager.tick();
+  assert.ok(session.state.y > 498.99);
+  assert.ok(session.state.vy > 0);
+
+  session.state.y = 400;
+  session.state.vx = 0;
+  session.state.vy = 0;
+  session.state.suspended = true;
+  const holder = connect(manager, session, "client-scene3-scope1");
+  assert.equal(
+    manager.acquireControl(session, holder.client, { x: 500, y: 400 }),
+    true,
+  );
+});
+
 test("сохранённая сессия мигрирует со старой шкалы инерции", () => {
   const { manager } = setup();
   const restored = manager.restoreSessions([
@@ -1629,6 +1693,7 @@ test("пустой ensureDefaultSession сохраняет замороженн�
     manager.restoreSessions([
       {
         id: DEFAULT_SESSION_ID,
+        sceneId: "juices",
         persistent: true,
         state: {
           phase: Physics.PHASES.PLAY,
@@ -2248,6 +2313,7 @@ test("неподвижный камень в воздухе выпадает и�
     stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
     physics: { turbulence: 0 },
   });
@@ -2375,6 +2441,7 @@ test("победный отпечаток не блокирует stationary-в�
     stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
     imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
   });
@@ -2401,6 +2468,7 @@ test("победный отпечаток не блокирует случайн
     stationaryHoldReleaseMs: 10_000,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
     imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
   });
@@ -2562,9 +2630,77 @@ test("финальное падение по умолчанию выключен
   assert.ok(session.state.vy < 0);
 });
 
+test("скрытые настройки удержания не действуют в сцене 1", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 100,
+    slipDelayMaxMs: 100,
+    stationaryHoldReleaseMs: 50,
+  });
+  const session = manager.createSession({
+    sceneId: "cats-and-mice",
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
+    roomSettings: {
+      stationaryAutoSlipEnabled: true,
+      randomDropEnabled: true,
+      rockJumpEnabled: true,
+      rockJumpIntervalSeconds: 1,
+    },
+  });
+  const holder = connect(manager, session, "client-scene1-scope1");
+
+  assert.equal(
+    manager.acquireControl(session, holder.client, { x: 500, y: 700 }),
+    true,
+  );
+  assert.equal(session.holder.slipAt, null);
+  assert.equal(session.holder.jumpAt, null);
+
+  clock.value = 2000;
+  manager.tick();
+  assert.equal(session.holder.clientId, holder.client.id);
+});
+
+test("скрытые финальные настройки не действуют в сцене 2", () => {
+  const { clock, manager } = setup();
+  const session = manager.createSession({
+    sceneId: "turnip",
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
+    roomSettings: {
+      finalFallEnabled: true,
+      finalFallDelaySeconds: 0,
+      stationaryAutoSlipEnabled: false,
+      randomDropEnabled: false,
+      rockJumpEnabled: false,
+    },
+    imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
+  });
+  const holder = connect(manager, session, "client-scene2-scope1");
+
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
+  assert.equal(
+    manager.acquireControl(session, holder.client, { x: 500, y: 100 }),
+    true,
+  );
+  clock.value = 1000;
+  manager.tick();
+  assert.equal(
+    manager.releaseControl(session, holder.client, {
+      x: 500,
+      y: 100,
+      vx: 0,
+      vy: -1000,
+    }),
+    true,
+  );
+  assert.equal(session.state.phase, Physics.PHASES.PLAY);
+  assert.equal(manager.snapshot(session).summitElapsedMs, 0);
+  assert.equal(manager.snapshot(session).summitTimerRunning, false);
+});
+
 test("финальное падение включается только после выдержки на вершине", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
     physics: { bounce: 0, gravity: 20, turbulence: 0 },
     roomSettings: {
@@ -2615,6 +2751,7 @@ test("финальное падение включается только пос
 test("выход с вершины сбрасывает таймер финального падения", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 100 },
     physics: { mass: 1, gravity: 1, handForce: 100 },
     roomSettings: {
@@ -2657,6 +2794,7 @@ test("движущийся камень сохраняет независимо�
     stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
   });
   const holder = connect(manager, session, "client-moving-slip01");

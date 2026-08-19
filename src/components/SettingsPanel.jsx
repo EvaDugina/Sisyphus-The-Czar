@@ -1,8 +1,16 @@
+import { useEffect, useRef } from "react";
 import {
   settingsGroupsForScene,
   settingsGroupControls,
 } from "../config/settings.mjs";
 import { SettingsControl } from "./SettingsControl";
+
+function panelWidthBounds(panel) {
+  const style = getComputedStyle(panel);
+  const minWidth = Number.parseFloat(style.minWidth) || 0;
+  const maxWidth = Number.parseFloat(style.maxWidth) || window.innerWidth;
+  return { minWidth, maxWidth };
+}
 
 export function SettingsPanel({
   panelRef,
@@ -13,6 +21,93 @@ export function SettingsPanel({
   settingsAvailable,
 }) {
   const sceneGroups = settingsGroupsForScene(sceneId);
+  const resizeStateRef = useRef(null);
+
+  useEffect(() => {
+    function movePanelResize(event) {
+      const state = resizeStateRef.current;
+      if (!state || state.pointerId !== event.pointerId) {
+        return;
+      }
+      const { minWidth, maxWidth } = panelWidthBounds(state.panel);
+      const width = state.startWidth + state.startX - event.clientX;
+      const nextWidth = Math.min(maxWidth, Math.max(minWidth, width));
+      state.panel.style.setProperty(
+        "--settings-panel-width",
+        `${nextWidth}px`,
+      );
+      state.handle.setAttribute("aria-valuenow", String(Math.round(nextWidth)));
+    }
+
+    function endPanelResize(event) {
+      const state = resizeStateRef.current;
+      if (!state || state.pointerId !== event.pointerId) {
+        return;
+      }
+      state.panel.classList.remove("is-resizing");
+      resizeStateRef.current = null;
+    }
+
+    window.addEventListener("pointermove", movePanelResize);
+    window.addEventListener("pointerup", endPanelResize);
+    window.addEventListener("pointercancel", endPanelResize);
+    return () => {
+      window.removeEventListener("pointermove", movePanelResize);
+      window.removeEventListener("pointerup", endPanelResize);
+      window.removeEventListener("pointercancel", endPanelResize);
+      resizeStateRef.current?.panel.classList.remove("is-resizing");
+      resizeStateRef.current = null;
+    };
+  }, []);
+
+  function applyPanelWidth(panel, handle, width) {
+    const { minWidth, maxWidth } = panelWidthBounds(panel);
+    const nextWidth = Math.min(maxWidth, Math.max(minWidth, width));
+    panel.style.setProperty("--settings-panel-width", `${nextWidth}px`);
+    handle.setAttribute("aria-valuenow", String(Math.round(nextWidth)));
+  }
+
+  function beginPanelResize(event) {
+    if (event.button !== 0) {
+      return;
+    }
+    const handle = event.currentTarget;
+    const panel = handle.closest(".settings-panel");
+    if (!panel) {
+      return;
+    }
+    event.preventDefault();
+    resizeStateRef.current = {
+      handle,
+      panel,
+      pointerId: event.pointerId,
+      startWidth: panel.getBoundingClientRect().width,
+      startX: event.clientX,
+    };
+    panel.classList.add("is-resizing");
+  }
+
+  function resizePanelWithKeyboard(event) {
+    const direction = event.key === "ArrowLeft"
+      ? 1
+      : event.key === "ArrowRight"
+        ? -1
+        : 0;
+    if (!direction) {
+      return;
+    }
+    const handle = event.currentTarget;
+    const panel = handle.closest(".settings-panel");
+    if (!panel) {
+      return;
+    }
+    event.preventDefault();
+    applyPanelWidth(
+      panel,
+      handle,
+      panel.getBoundingClientRect().width + direction * 16,
+    );
+  }
 
   return (
     <aside
@@ -23,9 +118,20 @@ export function SettingsPanel({
       hidden={!settingsAvailable}
       data-settings-scene={sceneId}
     >
-      <h2 className="settings-panel__scene-title">Параметры · {sceneLabel}</h2>
+      <div
+        className="settings-panel__resize-handle"
+        role="separator"
+        aria-controls="settings-panel"
+        aria-label="Изменить ширину панели параметров"
+        aria-orientation="vertical"
+        tabIndex="0"
+        onKeyDown={resizePanelWithKeyboard}
+        onPointerDown={beginPanelResize}
+      />
+      <div className="settings-panel__scroll">
+        <h2 className="settings-panel__scene-title">Параметры · {sceneLabel}</h2>
 
-      <section className="settings-versions" aria-label="Версии настроек">
+        <section className="settings-versions" aria-label="Версии настроек">
         <div
           className="settings-versions__field"
           data-hint="Выбор версии сразу применяет сохранённые значения ко всем настройкам панели."
@@ -83,9 +189,9 @@ export function SettingsPanel({
           role="status"
           aria-live="polite"
         />
-      </section>
+        </section>
 
-      <section className="session-panel" aria-label="Совместная сессия">
+        <section className="session-panel" aria-label="Совместная сессия">
         <div
           ref={sessionStatusRef}
           className="session-state"
@@ -96,14 +202,14 @@ export function SettingsPanel({
         >
           Локальная сессия
         </div>
-      </section>
+        </section>
 
-      {sceneGroups.map((group) => {
-        return (
-          <details
-            className="control-group"
-            key={group.title}
-          >
+        {sceneGroups.map((group) => {
+          return (
+            <details
+              className="control-group"
+              key={group.title}
+            >
             <summary>{group.title}</summary>
             {group.controls?.length
               ? group.controls.map((control) => (
@@ -140,9 +246,10 @@ export function SettingsPanel({
                 {group.action.label}
               </button>
             )}
-          </details>
-        );
-      })}
+            </details>
+          );
+        })}
+      </div>
     </aside>
   );
 }

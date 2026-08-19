@@ -26,6 +26,12 @@ const SLIP_DELAY_MAX_MS = 2000;
 const STATIONARY_HOLD_RELEASE_MS = 200;
 const STATIONARY_POSITION_EPSILON = 0.01;
 const DEFAULT_AUDIO_LEAD_MS = 200;
+const SESSION_SCENES = Object.freeze({
+  CATS_AND_MICE: "cats-and-mice",
+  TURNIP: "turnip",
+  JUICES: "juices",
+});
+const SESSION_SCENE_IDS = new Set(Object.values(SESSION_SCENES));
 const TSAR_NAMES = Object.freeze([
   "Иван", "Пётр", "Алексей", "Михаил", "Фёдор", "Дмитрий", "Василий", "Николай",
   "Александр", "Павел", "Константин", "Борис", "Симеон", "Всеволод", "Ярослав", "Святослав",
@@ -42,6 +48,22 @@ const LEGACY_CZAR_NAME_PATTERN = /^Царь([^\s\d]+)([1-9]\d*)$/u;
 function finite(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function normalizeSceneId(value) {
+  return SESSION_SCENE_IDS.has(value) ? value : SESSION_SCENES.TURNIP;
+}
+
+function isSceneTwoSession(session) {
+  return session?.sceneId === SESSION_SCENES.TURNIP;
+}
+
+function isSceneThreeSession(session) {
+  return session?.sceneId === SESSION_SCENES.JUICES;
+}
+
+function hasHoldBehavior(session) {
+  return isSceneTwoSession(session) || isSceneThreeSession(session);
 }
 
 function parseCzarName(value) {
@@ -81,11 +103,13 @@ function sceneMotionOptions(session) {
     forceDeficitCurve: RoomSettings.parseCubicBezier(
       session.roomSettings.handForceDeficitEasing
     ),
-    obstacles: RoomSettings.sceneTwoGlassCanonicalRects(
-      session.roomSettings,
-      Physics.WORLD_WIDTH,
-      Physics.WORLD_HEIGHT
-    ),
+    obstacles: isSceneTwoSession(session)
+      ? RoomSettings.sceneTwoGlassCanonicalRects(
+          session.roomSettings,
+          Physics.WORLD_WIDTH,
+          Physics.WORLD_HEIGHT
+        )
+      : [],
     obstacleBounce: session.roomSettings.sceneTwoGlassBounce,
   };
 }
@@ -389,6 +413,7 @@ class SessionManager {
     const id = options.id || crypto.randomBytes(16).toString("base64url");
     const persistent = Boolean(options.persistent || id === DEFAULT_SESSION_ID);
     const singleClient = options.singleClient === true;
+    const sceneId = normalizeSceneId(payload.sceneId);
     const state = Physics.sanitizeState(
       payload.state ?? {
         phase: Physics.PHASES.PLAY,
@@ -400,7 +425,9 @@ class SessionManager {
     const physics = Physics.sanitizePhysics(payload.physics);
     const roomSettings = RoomSettings.sanitizeRoomSettings(payload.roomSettings);
     const imprint = Physics.createSummitImprint(payload.imprint);
-    const summitInside = Physics.stateInsideImprint(state, imprint);
+    const summitInside =
+      sceneId === SESSION_SCENES.JUICES &&
+      Physics.stateInsideImprint(state, imprint);
 
     if (state.phase === Physics.PHASES.WON) {
       state.vx = 0;
@@ -409,6 +436,7 @@ class SessionManager {
 
     const session = {
       id,
+      sceneId,
       state,
       physics,
       roomSettings,
@@ -449,7 +477,7 @@ class SessionManager {
     }
 
     this.sessions.set(id, session);
-    this.logger("session_created", { session: id.slice(0, 8) });
+    this.logger("session_created", { session: id.slice(0, 8), sceneId });
     return session;
   }
 
@@ -589,6 +617,7 @@ class SessionManager {
   serializeSessions() {
     return [...this.sessions.values()].map((session) => ({
       id: session.id,
+      sceneId: session.sceneId,
       state: { ...session.state },
       physics: { ...session.physics },
       physicsVersion: Physics.PHYSICS_VERSION,
@@ -665,8 +694,11 @@ class SessionManager {
           record.roomSettingsVersion
         )
       );
+      const sceneId = normalizeSceneId(record.sceneId);
       const imprint = Physics.createSummitImprint(record.imprint);
-      const summitInside = Physics.stateInsideImprint(state, imprint);
+      const summitInside =
+        sceneId === SESSION_SCENES.JUICES &&
+        Physics.stateInsideImprint(state, imprint);
       const hasSummitRunningSince = Object.hasOwn(
         record,
         "summitRunningSince"
@@ -698,8 +730,10 @@ class SessionManager {
       };
       const lastPointerAt = finite(record.lastPointerAt, 0);
       const releasePointer = pointerVelocityAt(lastPointer, lastPointerAt, now);
+      const configuredHeightGates =
+        sceneId === SESSION_SCENES.TURNIP ? roomSettings.heightGates : [];
       const configuredHeightGateIds = new Set(
-        roomSettings.heightGates.map((gate) => gate.id)
+        configuredHeightGates.map((gate) => gate.id)
       );
       const passedHeightGateIds = new Set(
         Array.isArray(record.heightGateProgress?.passedGateIds)
@@ -709,7 +743,7 @@ class SessionManager {
           : []
       );
       const storedActiveGate = record.heightGateProgress?.activeGate;
-      const configuredActiveGate = roomSettings.heightGates.find(
+      const configuredActiveGate = configuredHeightGates.find(
         (gate) => gate.id === storedActiveGate?.id
       );
       const activeHeightGate =
@@ -749,6 +783,7 @@ class SessionManager {
 
       const session = {
         id: record.id,
+        sceneId,
         state,
         physics,
         roomSettings,
@@ -903,6 +938,11 @@ class SessionManager {
     if (!holder) {
       return;
     }
+    if (!hasHoldBehavior(session)) {
+      holder.slipAt = null;
+      holder.jumpAt = null;
+      return;
+    }
     const previous = previousSettings || session.roomSettings;
     const next = session.roomSettings;
 
@@ -978,6 +1018,16 @@ class SessionManager {
   }
 
   syncSummitTimer(session, now = this.now()) {
+    if (!isSceneThreeSession(session)) {
+      const changed =
+        session.summitRunningSince !== null ||
+        session.summitElapsedMs !== 0 ||
+        session.summitWasInside;
+      session.summitElapsedMs = 0;
+      session.summitRunningSince = null;
+      session.summitWasInside = false;
+      return Boolean(changed);
+    }
     const wasInside = session.summitWasInside;
     const inside = Physics.stateInsideImprint(session.state, session.imprint);
     const changedInsideState = inside !== wasInside;
@@ -1000,6 +1050,7 @@ class SessionManager {
 
   syncFinalFallGate(session, now = this.now()) {
     const insideWhileHeld =
+      isSceneThreeSession(session) &&
       session.roomSettings.finalFallEnabled &&
       session.state.dragging &&
       Physics.stateInsideImprint(session.state, session.imprint);
@@ -1038,6 +1089,13 @@ class SessionManager {
   }
 
   reconcileHeightGateProgress(session, now = this.now()) {
+    if (!isSceneTwoSession(session)) {
+      const hadProgress =
+        session.passedHeightGateIds.size > 0 || Boolean(session.activeHeightGate);
+      session.passedHeightGateIds.clear();
+      session.activeHeightGate = null;
+      return hadProgress;
+    }
     const configuredIds = new Set(
       session.roomSettings.heightGates.map((gate) => gate.id)
     );
@@ -1089,6 +1147,9 @@ class SessionManager {
   }
 
   constrainHeightGateMovement(session, fromY, desiredY, now = this.now()) {
+    if (!isSceneTwoSession(session)) {
+      return desiredY;
+    }
     this.completeActiveHeightGate(session, now);
     const active = session.activeHeightGate;
     if (active) {
@@ -1117,7 +1178,10 @@ class SessionManager {
   }
 
   updateStationaryHold(session, now = this.now()) {
-    if (session.roomSettings?.stationaryAutoSlipEnabled === false) {
+    if (
+      !hasHoldBehavior(session) ||
+      session.roomSettings?.stationaryAutoSlipEnabled === false
+    ) {
       this.clearStationaryHold(session);
       return false;
     }
@@ -1592,6 +1656,7 @@ class SessionManager {
       return false;
     }
     if (
+      isSceneTwoSession(session) &&
       RoomSettings.stateAboveSceneTwoBarrier(
         state,
         session.roomSettings,
@@ -1622,10 +1687,10 @@ class SessionManager {
       vy: 0,
       acquiredAt: now,
       lastMoveAt: now,
-      slipAt: session.roomSettings.randomDropEnabled
+      slipAt: hasHoldBehavior(session) && session.roomSettings.randomDropEnabled
         ? now + this.slipDelayMs()
         : null,
-      jumpAt: session.roomSettings.rockJumpEnabled
+      jumpAt: hasHoldBehavior(session) && session.roomSettings.rockJumpEnabled
         ? now + session.roomSettings.rockJumpIntervalSeconds * 1000
         : null,
     };
@@ -1686,6 +1751,7 @@ class SessionManager {
       this.updatePointer(session, client, payload.pointer);
     }
     const barrierHop =
+      isSceneTwoSession(session) &&
       payload.barrierHop === true &&
       RoomSettings.stateAboveSceneTwoBarrier(
         holder,
@@ -2427,6 +2493,7 @@ class SessionManager {
             session.state.vy = 0;
           }
           if (
+            isSceneTwoSession(session) &&
             RoomSettings.stateAboveSceneTwoBarrier(
               session.state,
               session.roomSettings,
@@ -2480,6 +2547,7 @@ class SessionManager {
           };
     const serverTime = this.now();
     const payload = {
+      sceneId: session.sceneId,
       phase: session.state.phase,
       x: roundNetworkNumber(session.state.x),
       y: roundNetworkNumber(session.state.y),

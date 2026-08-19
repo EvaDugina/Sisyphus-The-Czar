@@ -471,7 +471,7 @@ const JUICES_ONLY_SETTING_NAMES = new Set([
   "finalFallDelaySeconds",
 ]);
 
-const PER_SCENE_VISUAL_SETTING_NAMES = new Set([
+const ALL_SCENE_SETTING_NAMES = new Set([
   "themeMode",
   "lightBackgroundColor",
   "lightBackgroundDeepColor",
@@ -498,6 +498,7 @@ const PER_SCENE_VISUAL_SETTING_NAMES = new Set([
   "customCursorSizePx",
   "handVisibilityMode",
   "handImageChangeDelayMs",
+  "handAudioEnabled",
   "handWidthVw",
   "rockMinWidthVw",
   "rockActivatedWidthVw",
@@ -505,8 +506,16 @@ const PER_SCENE_VISUAL_SETTING_NAMES = new Set([
 ]);
 
 const TURNIP_AND_JUICES_SETTING_NAMES = new Set([
+  "cameraFollowUpEnabled",
+  "cameraFollowUpLerp",
   "cameraFollowDownEnabled",
   "cameraFollowDownLerp",
+  "stationaryAutoSlipEnabled",
+  "randomDropEnabled",
+  "rockJumpEnabled",
+  "rockJumpIntervalSeconds",
+  "rockJumpAngleSpreadDegrees",
+  "rockJumpInertiaSpreadPercent",
   "gravity",
   "bounce",
   "wallBounce",
@@ -516,10 +525,40 @@ const TURNIP_AND_JUICES_SETTING_NAMES = new Set([
   "turbulence",
   "mass",
   "rockGrabRadiusVh",
-  "handAudioEnabled",
   "handForce",
   "handForceDeficitEasing",
   "pointerInfluence",
+  "drizzleEnabled",
+  "drizzleStartVolume",
+  "drizzleEndVolume",
+  "drizzleVolumeEasing",
+  "trailEnabled",
+  "trailAnchorHeightPercent",
+  "lineDelay",
+  "lineWidth",
+  "trailReset",
+  "trailMaxPoints",
+  "trailRenderProfile",
+  "trailSampleDist",
+  "blendMode",
+  "lineColor",
+  "lineColorTail",
+  "useGradient",
+  "lineOpacity",
+  "linePassOpacity",
+  "dashStyle",
+  "dashLength",
+  "dashGap",
+  "lineCap",
+  "lineJoin",
+  "glow",
+  "glowColor",
+  "glowOptimizationMode",
+  "glowTargetFps",
+  "glowBufferScalePercent",
+  "glowUpdateFps",
+  "glowMaxPoints",
+  "glowDecimation",
 ]);
 
 const CATS_AND_MICE_SCENES = Object.freeze([
@@ -548,7 +587,7 @@ export function settingsControlScenes(control) {
   if (typeof name === "string" && name.startsWith("rain")) {
     return JUICES_SCENES;
   }
-  if (PER_SCENE_VISUAL_SETTING_NAMES.has(name)) {
+  if (ALL_SCENE_SETTING_NAMES.has(name)) {
     return ALL_SCENES;
   }
   if (TURNIP_AND_JUICES_SETTING_NAMES.has(name)) {
@@ -1300,6 +1339,13 @@ export const SETTINGS_GROUPS = [
         type: "checkbox",
         defaultChecked: DEFAULT_ROOM_SETTINGS.handAudioEnabled,
         hint: "Включает звуки наведения руки на камень и захвата камня.",
+      },
+      {
+        name: "stationaryAutoSlipEnabled",
+        label: "Неподвижное автовыскальзывание",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.stationaryAutoSlipEnabled,
+        hint: "Автоматически освобождает камень, если удерживаемая рука остаётся неподвижной.",
       },
       {
         name: "handForce",

@@ -857,15 +857,28 @@ test("UI материализует параметры отдельно для �
     SETTINGS_SCENES.JUICES,
   ]);
   [
-    "cameraFollowUpEnabled",
-    "cameraFollowUpLerp",
     "rockAccelerationEnabled",
     "sceneTwoOverflowYVisible",
     "gachiClickSoundFilename",
   ].forEach((name) => {
     assert.deepEqual(settingsControlScenes(name), [SETTINGS_SCENES.TURNIP]);
   });
-  ["cameraFollowDownEnabled", "cameraFollowDownLerp"].forEach((name) => {
+  [
+    "cameraFollowUpEnabled",
+    "cameraFollowUpLerp",
+    "cameraFollowDownEnabled",
+    "cameraFollowDownLerp",
+    "stationaryAutoSlipEnabled",
+    "randomDropEnabled",
+    "rockJumpEnabled",
+    "rockJumpIntervalSeconds",
+    "rockJumpAngleSpreadDegrees",
+    "rockJumpInertiaSpreadPercent",
+    "drizzleEnabled",
+    "drizzleStartVolume",
+    "drizzleEndVolume",
+    "drizzleVolumeEasing",
+  ].forEach((name) => {
     assert.deepEqual(settingsControlScenes(name), [
       SETTINGS_SCENES.TURNIP,
       SETTINGS_SCENES.JUICES,
@@ -881,7 +894,12 @@ test("UI материализует параметры отдельно для �
       .map((control) => control.name),
     ["rockMinWidthVw", "rockActivatedWidthVw", "rockMaxWidthVw"],
   );
-  ["themeMode", "rockImageId", "handVisibilityMode"].forEach((name) => {
+  [
+    "themeMode",
+    "rockImageId",
+    "handVisibilityMode",
+    "handAudioEnabled",
+  ].forEach((name) => {
     const control = controls.find((candidate) => candidate.name === name);
     assert.deepEqual(settingsControlScenes(control), [
       SETTINGS_SCENES.CATS_AND_MICE,
@@ -890,7 +908,10 @@ test("UI материализует параметры отдельно для �
     ]);
   });
   settingsGroupControls(trailGroup).forEach((control) => {
-    assert.deepEqual(settingsControlScenes(control), [SETTINGS_SCENES.TURNIP]);
+    assert.deepEqual(settingsControlScenes(control), [
+      SETTINGS_SCENES.TURNIP,
+      SETTINGS_SCENES.JUICES,
+    ]);
   });
   assert.equal(
     settingsControlVisibleInScene("gravity", SETTINGS_SCENES.CATS_AND_MICE),
@@ -939,6 +960,14 @@ test("UI материализует параметры отдельно для �
 
   const pageControls = (sceneId) =>
     settingsGroupsForScene(sceneId).flatMap(settingsGroupControls);
+  assert.deepEqual(
+    SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
+    [
+      [SETTINGS_SCENES.CATS_AND_MICE, 41],
+      [SETTINGS_SCENES.TURNIP, 103],
+      [SETTINGS_SCENES.JUICES, 104],
+    ],
+  );
   SETTINGS_SCENE_OPTIONS.forEach(({ id }) => {
     const groups = settingsGroupsForScene(id);
     assert.equal(groups.every((group) => group.sceneId === id), true);
@@ -2552,6 +2581,7 @@ test("параметры единственной руки вынесены в �
       "handImageChangeDelayMs",
       "rockGrabRadiusVh",
       "handAudioEnabled",
+      "stationaryAutoSlipEnabled",
       "handForce",
       "handForceDeficitEasing",
       "pointerInfluence",
@@ -2564,6 +2594,11 @@ test("параметры единственной руки вынесены в �
   );
   assert.equal(handAudioEnabled.type, "checkbox");
   assert.equal(handAudioEnabled.defaultChecked, true);
+  const stationaryAutoSlipEnabled = controls.find(
+    (control) => control.name === "stationaryAutoSlipEnabled",
+  );
+  assert.equal(stationaryAutoSlipEnabled.type, "checkbox");
+  assert.equal(stationaryAutoSlipEnabled.defaultChecked, true);
   assert.equal(heightGates.type, "height-gates");
   assert.equal(heightGates.defaultValue, "[]");
   assert.deepEqual(
