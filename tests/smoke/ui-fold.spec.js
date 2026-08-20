@@ -8,7 +8,15 @@ async function waitForFoldReady(page) {
 }
 
 async function navigateToSettings(page) {
-  const href = await page.locator(".settings-toggle").getAttribute("href");
+  const settingsToggle = page.locator(".settings-toggle");
+  if ((await settingsToggle.count()) === 0) {
+    await expect(page.locator("#settings-panel")).toHaveAttribute(
+      "aria-hidden",
+      "false",
+    );
+    return;
+  }
+  const href = await settingsToggle.getAttribute("href");
   expect(href).toMatch(/^\/settings\//);
   await page.goto(href);
   await expect(page).toHaveURL(/\/settings\//);
@@ -70,9 +78,9 @@ test("legacy drafts маршруты возвращают 404", async ({ request
   }
 });
 
-test("Fold-настройки мигрируют из localStorage v32 в v51", async ({ page }) => {
+test("Fold-настройки мигрируют из localStorage v32 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v51");
+    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -91,7 +99,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v51", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -117,7 +125,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v51", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -125,11 +133,11 @@ test("Fold-настройки мигрируют из localStorage v32 в v51", 
     .toEqual([47, 13]);
 });
 
-test("настройки popup и берёз мигрируют из localStorage v47 в v51", async ({
+test("настройки popup и берёз мигрируют из localStorage v47 в v52", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v51");
+    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v47",
       JSON.stringify({ preclickPopupDelayMs: 345 }),
@@ -142,11 +150,11 @@ test("настройки popup и берёз мигрируют из localStorag
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
         );
         return {
           delay: stored.preclickPopupDelayMs,
-          popupSize: stored.preclickPopupSizeMultiplier,
+          popupWidth: stored.preclickPopupWidthViewportFraction,
           birchesEnabled: stored.birchBackgroundEnabled,
           birchScale: stored.birchScalePercent,
         };
@@ -154,17 +162,17 @@ test("настройки popup и берёз мигрируют из localStorag
     )
     .toEqual({
       delay: 345,
-      popupSize: 2,
+      popupWidth: 0.2,
       birchesEnabled: false,
       birchScale: 100,
     });
 });
 
-test("hop-настройки мигрируют из localStorage v39 в v51 без legacy-полей", async ({
+test("hop-настройки мигрируют из localStorage v39 в v52 без legacy-полей", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v51");
+    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v39",
       JSON.stringify({
@@ -184,7 +192,7 @@ test("hop-настройки мигрируют из localStorage v39 в v51 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
         );
         return {
           guardClicks: stored.preclickHopGuardClickCount,
@@ -212,11 +220,11 @@ test("hop-настройки мигрируют из localStorage v39 в v51 б�
     });
 });
 
-test("визуальные настройки камня мигрируют из localStorage v34 в v51", async ({
+test("визуальные настройки камня мигрируют из localStorage v34 в v52", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v51");
+    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -229,7 +237,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -247,9 +255,9 @@ test("визуальные настройки камня мигрируют из
     });
 });
 
-test("настройки руки мигрируют из localStorage v36 в v51", async ({ page }) => {
+test("настройки руки мигрируют из localStorage v36 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v51");
+    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -262,7 +270,7 @@ test("настройки руки мигрируют из localStorage v36 в v5
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -278,9 +286,9 @@ test("настройки руки мигрируют из localStorage v36 в v5
     });
 });
 
-test("раскладка Fold мигрирует из localStorage v37 в v51", async ({ page }) => {
+test("раскладка Fold мигрирует из localStorage v37 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v51");
+    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -293,7 +301,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v51", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -304,11 +312,11 @@ test("раскладка Fold мигрирует из localStorage v37 в v51", 
     .toEqual({ foldPanelHeightVh: 14, foldPositionPercent: 0 });
 });
 
-test("группа Камень показывает десять контролов сцены 1", async ({
+test("группы Камень и След камня показывают контролы сцены 1", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v51");
+    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
   });
 
   await page.goto("/");
@@ -317,7 +325,9 @@ test("группа Камень показывает десять контрол
 
   const guardClicks = page.locator('[name="preclickHopGuardClickCount"]');
   const popupDelay = page.locator('[name="preclickPopupDelayMs"]');
-  const popupSize = page.locator('[name="preclickPopupSizeMultiplier"]');
+  const popupWidth = page.locator(
+    '[name="preclickPopupWidthViewportFraction"]',
+  );
   const birchesEnabled = page.locator('[name="birchBackgroundEnabled"]');
   const birchScale = page.locator('[name="birchScalePercent"]');
   const birchScaleOutput = page.locator('[data-output="birchScalePercent"]');
@@ -340,10 +350,13 @@ test("группа Камень показывает десять контрол
   await expect(
     popupDelay.locator("xpath=ancestor::*[@data-setting-control]")
   ).toContainText("Задержка всплывающего окна, мс");
-  await expect(popupSize).toHaveValue("2");
-  await expect(popupSize).toHaveAttribute("min", "1");
-  await expect(popupSize).toHaveAttribute("max", "4");
-  await expect(popupSize).toHaveAttribute("step", "1");
+  await expect(popupWidth).toHaveValue("0.2");
+  await expect(popupWidth).toHaveAttribute("min", "0.01");
+  await expect(popupWidth).toHaveAttribute("max", "1");
+  await expect(popupWidth).toHaveAttribute("step", "0.01");
+  await expect(
+    popupWidth.locator("xpath=ancestor::*[@data-setting-control]"),
+  ).toContainText("Ширина окон с картинами");
   await expect(birchesEnabled).not.toBeChecked();
   await expect(birchScale).toHaveValue("100");
   await expect(birchScale).toHaveAttribute("min", "100");
@@ -363,6 +376,28 @@ test("группа Камень показывает десять контрол
   await expect(distance).toHaveAttribute("max", "150");
   await expect(distance).toHaveAttribute("step", "0.1");
   await expect(page.locator('[name^="preclickParallax"]')).toHaveCount(0);
+
+  const echoEnabled = page.locator('[name="rockEchoTrailEnabled"]');
+  const echoCopies = page.locator('[name="rockEchoTrailCopies"]');
+  const echoInterval = page.locator('[name="rockEchoTrailIntervalMs"]');
+  const echoOpacity = page.locator('[name="rockEchoTrailOpacity"]');
+  const echoLifetime = page.locator('[name="rockEchoTrailLifetimeMs"]');
+  const echoGroup = echoEnabled.locator(
+    "xpath=ancestor::details[contains(@class, 'control-group')]",
+  );
+  await expect(echoGroup.locator("summary")).toContainText("След камня");
+  await expect(echoEnabled).toBeChecked();
+  await expect(echoCopies).toHaveValue("16");
+  await expect(echoCopies).toHaveAttribute("min", "1");
+  await expect(echoCopies).toHaveAttribute("max", "40");
+  await expect(echoInterval).toHaveValue("50");
+  await expect(echoOpacity).toHaveValue("0.55");
+  await expect(echoLifetime).toHaveValue("900");
+  await setSettingValue(page, "rockEchoTrailEnabled", false);
+  await expect(echoCopies).toBeDisabled();
+  await expect(echoInterval).toBeDisabled();
+  await expect(echoOpacity).toBeDisabled();
+  await expect(echoLifetime).toBeDisabled();
 
   await setSettingValue(page, "preclickHopMaxDistancePercent", 149.3);
 
@@ -566,7 +601,9 @@ test("overflow-y сцены 2 переключается без блокиров
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/");
   await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
 
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
@@ -596,7 +633,9 @@ test("изображения камня и сжатие пульса настр�
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await page.evaluate(() => {
     applySharedRoomSettings({
       foldRockImageId: "rock",
@@ -739,7 +778,9 @@ test("постоянная рука показывает нативный кур
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({ handVisibilityMode: "always" });
   });
@@ -858,7 +899,9 @@ test("session toolbar показывает нативный курсор вме�
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({ handVisibilityMode: "always" });
   });
@@ -1036,7 +1079,9 @@ test("mouse захватывает камень внутри расширенн�
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await page.evaluate(() => {
     window.__sisyphusTestApi.params.preclickHopGuardClickCount = 0;
     window.__sisyphusTestApi.params.preclickHopActivationRadiusPercent = 0;
@@ -1156,7 +1201,9 @@ test("стеклянные полосы сцены 2 редактируются,
   await page.goto("/");
   const foldLayer = await waitForFoldReady(page);
   await navigateToSettings(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
 
   const sceneTwo = page.getByRole("button", { name: "Сцена 2. Репка" });
   await sceneTwo.click();
@@ -1316,7 +1363,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v51") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,
@@ -1565,7 +1612,9 @@ test("state-machine сцены 2 меняет размер камня и сох�
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
 
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
@@ -1749,7 +1798,9 @@ test("рейтинг скрывает нулевой результат, а до
 }) => {
   await page.goto("/");
   await waitForFoldReady(page);
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
 
   const leaderboard = page.getByTestId("summit-leaderboard");
   await expect(leaderboard.locator(".summit-leaderboard__row")).toHaveCount(0);

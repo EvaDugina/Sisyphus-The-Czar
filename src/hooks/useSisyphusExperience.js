@@ -24,6 +24,7 @@ export function useSisyphusExperience(sceneId) {
     trailCanvasRef: useRef(null),
     trailSessionCanvasRef: useRef(null),
     trailGlowCanvasRef: useRef(null),
+    rockEchoTrailLayerRef: useRef(null),
   };
   const rain = {
     rainLayerRef: useRef(null),
@@ -52,7 +53,12 @@ export function useSisyphusExperience(sceneId) {
     summitLeaderboardRef,
     worldRef,
   } = scene;
-  const { trailCanvasRef, trailSessionCanvasRef, trailGlowCanvasRef } = trail;
+  const {
+    rockEchoTrailLayerRef,
+    trailCanvasRef,
+    trailSessionCanvasRef,
+    trailGlowCanvasRef,
+  } = trail;
   const {
     rainFallbackCanvasRef,
     rainFxCanvasRef,
@@ -74,6 +80,7 @@ export function useSisyphusExperience(sceneId) {
       trailCanvas: trailCanvasRef.current,
       trailSessionCanvas: trailSessionCanvasRef.current,
       trailGlowCanvas: trailGlowCanvasRef.current,
+      rockEchoTrailLayer: rockEchoTrailLayerRef.current,
       rainLayer: rainLayerRef.current,
       rainFxCanvas: rainFxCanvasRef.current,
       rainFallbackCanvas: rainFallbackCanvasRef.current,
@@ -103,6 +110,7 @@ export function useSisyphusExperience(sceneId) {
     sceneId,
     settingsPanelRef,
     summitLeaderboardRef,
+    rockEchoTrailLayerRef,
     trailCanvasRef,
     trailSessionCanvasRef,
     trailGlowCanvasRef,

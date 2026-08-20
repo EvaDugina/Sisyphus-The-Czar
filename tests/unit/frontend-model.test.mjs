@@ -581,7 +581,7 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "preclickPopupDelayMs"
   );
   const preclickPopupSize = controls.find(
-    (control) => control.name === "preclickPopupSizeMultiplier"
+    (control) => control.name === "preclickPopupWidthViewportFraction"
   );
   const birchBackgroundEnabled = controls.find(
     (control) => control.name === "birchBackgroundEnabled"
@@ -608,8 +608,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v51");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v50");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v52");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v51");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -709,11 +709,11 @@ test("настройки инерции и hop отображают актуал
       defaultValue: preclickPopupSize.defaultValue,
     },
     {
-      label: "Размер окон с картинами",
-      min: 1,
-      max: 4,
-      step: 1,
-      defaultValue: 2,
+      label: "Ширина окон с картинами",
+      min: 0.01,
+      max: 1,
+      step: 0.01,
+      defaultValue: 0.2,
     },
   );
   assert.deepEqual(
@@ -831,7 +831,7 @@ test("UI материализует параметры отдельно для �
     [
       "preclickHopGuardClickCount",
       "preclickPopupDelayMs",
-      "preclickPopupSizeMultiplier",
+      "preclickPopupWidthViewportFraction",
       "birchBackgroundEnabled",
       "birchScalePercent",
       "preclickHopActivationRadiusPercent",
@@ -839,6 +839,11 @@ test("UI материализует параметры отдельно для �
       "preclickHopMissProbabilityPercent",
       "preclickHopSpeedPxPerSecond",
       "preclickHopSpeedEasing",
+      "rockEchoTrailEnabled",
+      "rockEchoTrailCopies",
+      "rockEchoTrailIntervalMs",
+      "rockEchoTrailOpacity",
+      "rockEchoTrailLifetimeMs",
     ]
   );
   assert.deepEqual(settingsControlScenes("rockMinWidthVw"), [
@@ -963,7 +968,7 @@ test("UI материализует параметры отдельно для �
   assert.deepEqual(
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
-      [SETTINGS_SCENES.CATS_AND_MICE, 41],
+      [SETTINGS_SCENES.CATS_AND_MICE, 46],
       [SETTINGS_SCENES.TURNIP, 103],
       [SETTINGS_SCENES.JUICES, 104],
     ],
@@ -1034,7 +1039,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 51);
+  assert.equal(productionSettingsSchemaVersion, 52);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1723,7 +1728,7 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseBpm",
       "preclickHopGuardClickCount",
       "preclickPopupDelayMs",
-      "preclickPopupSizeMultiplier",
+      "preclickPopupWidthViewportFraction",
       "birchBackgroundEnabled",
       "birchScalePercent",
       "preclickHopActivationRadiusPercent",
@@ -2942,7 +2947,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 51);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 52);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2957,7 +2962,12 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickParallaxMaxOffsetPx: 9999,
     preclickHopGuardClickCount: 999,
     preclickPopupDelayMs: 9999,
-    preclickPopupSizeMultiplier: 999,
+    preclickPopupWidthViewportFraction: 999,
+    rockEchoTrailEnabled: "true",
+    rockEchoTrailCopies: 999,
+    rockEchoTrailIntervalMs: 1,
+    rockEchoTrailOpacity: 999,
+    rockEchoTrailLifetimeMs: 99999,
     birchBackgroundEnabled: "true",
     birchScalePercent: 9999,
     preclickHopActivationRadiusPercent: -1,
@@ -3004,7 +3014,12 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickHopGuardClickCount, 10);
   assert.equal(visualSettings.preclickPopupDelayMs, 1000);
-  assert.equal(visualSettings.preclickPopupSizeMultiplier, 4);
+  assert.equal(visualSettings.preclickPopupWidthViewportFraction, 1);
+  assert.equal(visualSettings.rockEchoTrailEnabled, true);
+  assert.equal(visualSettings.rockEchoTrailCopies, 40);
+  assert.equal(visualSettings.rockEchoTrailIntervalMs, 16);
+  assert.equal(visualSettings.rockEchoTrailOpacity, 1);
+  assert.equal(visualSettings.rockEchoTrailLifetimeMs, 5000);
   assert.equal(visualSettings.birchBackgroundEnabled, true);
   assert.equal(visualSettings.birchScalePercent, 400);
   assert.equal(visualSettings.preclickHopActivationRadiusPercent, 0);
@@ -3059,7 +3074,9 @@ test("группа дождя содержит общий toggle и blur тём�
   const legacyV45 = SharedRoomSettings.migrateRoomSettings({}, 45);
   assert.equal(legacyV45.preclickPopupDelayMs, 200);
   const legacyV47 = SharedRoomSettings.migrateRoomSettings({}, 47);
-  assert.equal(legacyV47.preclickPopupSizeMultiplier, 2);
+  assert.equal(legacyV47.preclickPopupWidthViewportFraction, 0.2);
+  assert.equal(Object.hasOwn(legacyV47, "preclickPopupSizeMultiplier"), false);
+  assert.equal(legacyV47.rockEchoTrailEnabled, true);
   assert.equal(legacyV47.birchBackgroundEnabled, false);
   assert.equal(legacyV47.birchScalePercent, 100);
   const legacyV48 = SharedRoomSettings.migrateRoomSettings(
@@ -3199,7 +3216,12 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopSpeedPxPerSecond: 1200,
     preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     preclickPopupDelayMs: 200,
-    preclickPopupSizeMultiplier: 2,
+    preclickPopupWidthViewportFraction: 0.2,
+    rockEchoTrailEnabled: true,
+    rockEchoTrailCopies: 16,
+    rockEchoTrailIntervalMs: 50,
+    rockEchoTrailOpacity: 0.55,
+    rockEchoTrailLifetimeMs: 900,
     birchBackgroundEnabled: false,
     birchScalePercent: 100,
     cameraFollowUpEnabled: true,
@@ -3227,7 +3249,12 @@ test("группа дождя содержит общий toggle и blur тём�
       foldPositionPercent: 0,
       foldPanelHeightVh: 32,
       ...DEFAULT_PRECLICK_HOP_SETTINGS,
-      preclickPopupSizeMultiplier: 2,
+      preclickPopupWidthViewportFraction: 0.2,
+      rockEchoTrailEnabled: true,
+      rockEchoTrailCopies: 16,
+      rockEchoTrailIntervalMs: 50,
+      rockEchoTrailOpacity: 0.55,
+      rockEchoTrailLifetimeMs: 900,
       birchBackgroundEnabled: false,
       birchScalePercent: 100,
       cameraFollowUpEnabled: true,

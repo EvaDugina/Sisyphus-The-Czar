@@ -1,6 +1,6 @@
 const { test, expect } = require("@playwright/test");
 
-const SOURCE_ROCK = "#root > .world > .rock";
+const SOURCE_ROCK = "#root > .scene-page > .world > .rock";
 
 async function watchLaughPlayCalls(page) {
   await page.addInitScript(() => {
@@ -34,6 +34,9 @@ async function watchLaughPlayCalls(page) {
 }
 
 async function scrollToRock(page) {
+  await page.locator("#settings-panel").evaluate((panel) => {
+    panel.style.display = "none";
+  });
   await page.locator(SOURCE_ROCK).evaluate((rock) => {
     const rect = rock.getBoundingClientRect();
     window.scrollTo(
@@ -220,7 +223,9 @@ test("камера независимо следует за камнем вве�
 }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.goto("/");
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
 
   const directionalCamera = await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
@@ -282,13 +287,15 @@ test("камера независимо следует за камнем вве�
   );
 });
 
-test("камень прыгает накопительно, сохраняет guidance и завершается первым захватом", async ({
+test("камень прыгает накопительно, сохраняет guidance и завершается первым настоящим кликом", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 2000, height: 1200 });
   await watchLaughPlayCalls(page);
   await page.goto("/");
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await expect
     .poll(() =>
       page.evaluate(() => ({
@@ -327,7 +334,9 @@ test("камень прыгает накопительно, сохраняет g
   expect(await page.evaluate(() => scrollY)).toBe(scrollBeforeWheel);
 
   await page.reload();
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await expect(body).toHaveClass(/preclick-rock-guidance/);
   await expect(html).toHaveClass(/is-manual-scroll-disabled/);
   await page.evaluate(() => {
@@ -457,10 +466,7 @@ test("камень прыгает накопительно, сохраняет g
 
   const fakeClickPoint = await rockCenter(page);
   const expectedPopupWidth = await page.evaluate(() =>
-    Math.round(
-      (innerWidth * params.rockActivatedWidthVw) / 100 *
-        params.preclickPopupSizeMultiplier,
-    ),
+    Math.round(innerWidth * params.preclickPopupWidthViewportFraction),
   );
   const expectedPopupHeight = Math.round(expectedPopupWidth / (340 / 328));
   const popupPromise = page.waitForEvent("popup");
@@ -551,37 +557,12 @@ test("камень прыгает накопительно, сохраняет g
   await expect(body).not.toHaveClass(/preclick-rock-guidance/);
   await expect(body).not.toHaveClass(/is-manual-scroll-disabled/);
   await expect(html).not.toHaveClass(/is-manual-scroll-disabled/);
-  await expect
-    .poll(() =>
-      page.evaluate(() => window.__controlAcquireMessages.at(-1) || null),
-    )
-    .not.toBeNull();
-  const acquiredLocalPosition = await page.evaluate(() => {
-    const payload = window.__controlAcquireMessages.at(-1);
-    return window.__sisyphusTestApi.canonicalToLocal(payload.x, payload.y);
+  expect(await page.evaluate(() => window.__controlAcquireMessages.length)).toBe(0);
+  expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
+    completed: true,
+    completionReason: "first-real-rock-press",
   });
-  expect(acquiredLocalPosition.x).toBeCloseTo(afterGrabMotion.x, 5);
-  expect(acquiredLocalPosition.y).toBeCloseTo(afterGrabMotion.y, 5);
-  const scrollAtActivation = await page.evaluate(() => scrollY);
-  await page.mouse.move(
-    afterGrabCenter.x,
-    50,
-    { steps: 80 },
-  );
-  if (scrollAtActivation > 0) {
-    await expect
-      .poll(() => page.evaluate(() => scrollY))
-      .toBeLessThan(scrollAtActivation);
-  } else {
-    await expect.poll(() => page.evaluate(() => scrollY)).toBe(0);
-  }
   await page.mouse.up();
-  await page.mouse.move(10, 10);
-  await page.mouse.move(point.x, point.y);
-  expect(await hopState(page)).toMatchObject({
-    audioPlayCount: beforeGrab.audioPlayCount,
-    hopCount: beforeGrab.hopCount,
-  });
 
   await page.getByTestId("restart-session").click();
   await expect(body).toHaveClass(/preclick-rock-guidance/);
@@ -602,7 +583,9 @@ test("камень бесшовно переносится по обеим ос�
   await page.emulateMedia({ reducedMotion: "reduce" });
   await watchLaughPlayCalls(page);
   await page.goto("/");
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await scrollToRock(page);
   await page.evaluate(() => {
     params.preclickHopGuardClickCount = 0;
@@ -709,14 +692,16 @@ test("камень бесшовно переносится по обеим ос�
   await cdp.detach();
 });
 
-test("N фейковых кликов отталкивают камень, а клик N+1 включает физику", async ({
+test("N фейковых кликов открывают картины, а клик N+1 поднимает окна и завершает сцену", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
   await page.emulateMedia({ reducedMotion: "reduce" });
   await watchLaughPlayCalls(page);
   await page.goto("/");
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await page.getByTestId("restart-session").click();
   await expect.poll(() => page.evaluate(() => motion.phase)).toBe("play");
   await scrollToRock(page);
@@ -727,7 +712,7 @@ test("N фейковых кликов отталкивают камень, а к
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
       preclickPopupDelayMs: 0,
-      preclickPopupSizeMultiplier: 2,
+      preclickPopupWidthViewportFraction: 0.2,
       birchBackgroundEnabled: true,
       birchScalePercent: 400,
       handAudioEnabled: true,
@@ -742,12 +727,12 @@ test("N фейковых кликов отталкивают камень, а к
     .poll(() =>
       page.evaluate(() => {
         const layer = document.querySelector(
-          "#root > .world > .birch-layer--front",
+          "#root > .scene-page > .world > .birch-layer--front",
         );
         const layerRect = layer.getBoundingClientRect();
         const trees = [
           ...document.querySelectorAll(
-            "#root > .world > .birch-layer .birch-layer__tree",
+            "#root > .scene-page > .world > .birch-layer .birch-layer__tree",
           ),
         ];
         const targetCenterY = layerRect.top + layerRect.height / 2;
@@ -789,6 +774,13 @@ test("N фейковых кликов отталкивают камень, а к
   await expect
     .poll(() =>
       page.evaluate(
+        () => window.__sisyphusTestApi.getRockEchoTrailState().echoCount,
+      ),
+    )
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      page.evaluate(
         () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
       ),
     )
@@ -800,19 +792,20 @@ test("N фейковых кликов отталкивают камень, а к
     });
   });
   const cdp = await page.context().newCDPSession(page);
-  const popupMultipliers = [1, 2, 4];
+  const popupWidthFractions = [0.1, 0.2, 0.4];
   const artworkSizes = [
     { height: 328, width: 340 },
     { height: 330, width: 341 },
     { height: 328, width: 334 },
   ];
+  const fakeClickPopups = [];
   for (let click = 1; click <= 3; click += 1) {
-    const multiplier = popupMultipliers[click - 1];
-    await page.evaluate((nextMultiplier) => {
+    const widthFraction = popupWidthFractions[click - 1];
+    await page.evaluate((nextWidthFraction) => {
       window.__sisyphusTestApi.applyTestSettings({
-        preclickPopupSizeMultiplier: nextMultiplier,
+        preclickPopupWidthViewportFraction: nextWidthFraction,
       });
-    }, multiplier);
+    }, widthFraction);
     const point = await visibleRockPoint(page);
     const popupPromise = page.waitForEvent("popup");
     await cdp.send("Input.dispatchMouseEvent", {
@@ -823,13 +816,14 @@ test("N фейковых кликов отталкивают камень, а к
       clickCount: 1,
     });
     const popup = await popupPromise;
+    fakeClickPopups.push(popup);
     const popupImage = popup.locator("img");
     await expect(popupImage).toHaveAttribute(
       "src",
       new RegExp(`0${click}[^/]*\\.png`),
     );
     await expect(popupImage).toHaveAttribute("alt", `Картина 0${click}`);
-    const expectedWidth = 120 * multiplier;
+    const expectedWidth = 1200 * widthFraction;
     const artworkSize = artworkSizes[click - 1];
     const expectedHeight = Math.round(
       expectedWidth / (artworkSize.width / artworkSize.height),
@@ -854,7 +848,6 @@ test("N фейковых кликов отталкивают камень, а к
         innerWidth: expectedWidth,
         objectFit: "fill",
       });
-    await popup.close();
     await page.bringToFront();
     await cdp.send("Input.dispatchMouseEvent", {
       type: "mouseReleased",
@@ -897,8 +890,16 @@ test("N фейковых кликов отталкивают камень, а к
     offset: { x: 0, y: 0 },
   });
   await expect
+    .poll(() =>
+      page.evaluate(() => window.__sisyphusTestApi.getPreclickPopupState()),
+    )
+    .toMatchObject({
+      preclickWindowCount: 3,
+      preclickWindowsRevealed: true,
+    });
+  await expect
     .poll(() => page.evaluate(() => window.__controlAcquireMessages.length))
-    .toBe(1);
+    .toBe(0);
   await expect
     .poll(() =>
       page.evaluate(
@@ -914,56 +915,13 @@ test("N фейковых кликов отталкивают камень, а к
     clickCount: 1,
   });
 
+  await Promise.all(fakeClickPopups.map((popup) => popup.close()));
+
   expect(await page.evaluate(() => window.__laughPlayCount)).toBe(4);
-  const sceneTwoClickPoint = await visibleRockPoint(page);
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mousePressed",
-    x: sceneTwoClickPoint.x,
-    y: sceneTwoClickPoint.y,
-    button: "left",
-    clickCount: 1,
+  expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
+    completed: true,
+    completionReason: "first-real-rock-press",
   });
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        window.__sisyphusTestApi.getGachiClickAudioState(),
-      ),
-    )
-    .toMatchObject({ playCount: 1, lastFilename: "Aaaaaa.mp3" });
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(4);
-  await cdp.send("Input.dispatchMouseEvent", {
-    type: "mouseReleased",
-    x: sceneTwoClickPoint.x,
-    y: sceneTwoClickPoint.y,
-    button: "left",
-    clickCount: 1,
-  });
-  for (let click = 2; click <= 3; click += 1) {
-    await rock.dispatchEvent("pointerdown", {
-      pointerType: "mouse",
-      pointerId: click + 10,
-      button: 0,
-      buttons: 1,
-      isPrimary: true,
-    });
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
-        ),
-      )
-      .toBe(click);
-  }
-  await expect
-    .poll(() =>
-      page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
-    )
-    .toMatchObject({
-      activeCount: 3,
-      playCount: 3,
-      stopCount: 0,
-      lastFilename: "Aaaaaa.mp3",
-    });
   await cdp.detach();
 
   await page.getByTestId("restart-session").click();
@@ -980,7 +938,9 @@ test("фейковый отскок первой сцены не создаёт 
   await page.setViewportSize({ width: 1200, height: 800 });
   await watchLaughPlayCalls(page);
   await page.goto("/");
-  await expect(page.getByTestId("session-status")).toContainText("В сессии");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
   await scrollToRock(page);
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({

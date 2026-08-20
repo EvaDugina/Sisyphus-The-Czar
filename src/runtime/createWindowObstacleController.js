@@ -149,6 +149,7 @@ export function createWindowObstacleController(options = {}) {
   let nextWindowId = 1;
   let previousObstacleCount = 0;
   let previousSettingsSignature = "";
+  let preclickWindowsRevealed = false;
   let wasInsideRange = false;
   const trackedWindows = new Map();
   const pendingPreclickTimerIds = new Set();
@@ -162,6 +163,16 @@ export function createWindowObstacleController(options = {}) {
     let count = 0;
     trackedWindows.forEach((entry) => {
       if (entry.kind === "obstacle") {
+        count += 1;
+      }
+    });
+    return count;
+  }
+
+  function activePreclickWindowCount() {
+    let count = 0;
+    trackedWindows.forEach((entry) => {
+      if (entry.kind === "preclick") {
         count += 1;
       }
     });
@@ -334,6 +345,24 @@ export function createWindowObstacleController(options = {}) {
     }
   }
 
+  function revealPreclickWindow(entry) {
+    if (entry.kind !== "preclick") {
+      return false;
+    }
+    try {
+      if (entry.popup.closed) {
+        return false;
+      }
+      fitPreclickWindow(entry);
+      if (typeof entry.popup.focus === "function") {
+        entry.popup.focus();
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
   function trackWindow(
     popup,
     kind,
@@ -361,7 +390,25 @@ export function createWindowObstacleController(options = {}) {
     fitPreclickWindow(entry);
     ensureClosedPoll();
     notifyActiveObstacleCount();
+    if (kind === "preclick" && preclickWindowsRevealed) {
+      revealPreclickWindow(entry);
+    }
     return entry;
+  }
+
+  function revealPreclickWindows() {
+    if (disposed) {
+      return 0;
+    }
+    preclickWindowsRevealed = true;
+    sweepClosedWindows();
+    let revealedCount = 0;
+    trackedWindows.forEach((entry) => {
+      if (revealPreclickWindow(entry)) {
+        revealedCount += 1;
+      }
+    });
+    return revealedCount;
   }
 
   function screenGeometry(currentSettings, test = false) {
@@ -604,6 +651,8 @@ export function createWindowObstacleController(options = {}) {
         heightVh: currentRange.heightVh,
         pendingPreclickWindowCount: pendingPreclickTimerIds.size,
         permission,
+        preclickWindowCount: activePreclickWindowCount(),
+        preclickWindowsRevealed,
         schedulePending: scheduleTimerId !== null,
         trackedWindowCount: trackedWindows.size,
         wasInsideRange,
@@ -611,6 +660,7 @@ export function createWindowObstacleController(options = {}) {
     },
     isControlBlocked: () => activeObstacleCount() > 0,
     openPreclickWindow,
+    revealPreclickWindows,
     refresh,
     testPopupPermission,
   });

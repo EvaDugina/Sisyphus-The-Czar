@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 51;
+  const ROOM_SETTINGS_VERSION = 52;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -122,7 +122,11 @@
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
     preclickHopGuardClickCount: [0, 10],
     preclickPopupDelayMs: [0, 1000],
-    preclickPopupSizeMultiplier: [1, 4],
+    preclickPopupWidthViewportFraction: [0.01, 1],
+    rockEchoTrailCopies: [1, 40],
+    rockEchoTrailIntervalMs: [16, 500],
+    rockEchoTrailOpacity: [0.05, 1],
+    rockEchoTrailLifetimeMs: [100, 5000],
     birchScalePercent: [100, 400],
     preclickHopActivationRadiusPercent: [0, 300],
     preclickHopMaxDistancePercent: [0, 150],
@@ -202,7 +206,12 @@
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickHopGuardClickCount: 1,
     preclickPopupDelayMs: 200,
-    preclickPopupSizeMultiplier: 2,
+    preclickPopupWidthViewportFraction: 0.2,
+    rockEchoTrailEnabled: true,
+    rockEchoTrailCopies: 16,
+    rockEchoTrailIntervalMs: 50,
+    rockEchoTrailOpacity: 0.55,
+    rockEchoTrailLifetimeMs: 900,
     birchBackgroundEnabled: false,
     birchScalePercent: 100,
     preclickHopActivationRadiusPercent: 50,
@@ -897,12 +906,45 @@
         ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[0],
         ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[1]
       ),
-      preclickPopupSizeMultiplier: integerSetting(
+      preclickPopupWidthViewportFraction: finiteSetting(
         source,
         fallbackSource,
-        "preclickPopupSizeMultiplier",
-        ROOM_SETTINGS_LIMITS.preclickPopupSizeMultiplier[0],
-        ROOM_SETTINGS_LIMITS.preclickPopupSizeMultiplier[1]
+        "preclickPopupWidthViewportFraction",
+        ROOM_SETTINGS_LIMITS.preclickPopupWidthViewportFraction[0],
+        ROOM_SETTINGS_LIMITS.preclickPopupWidthViewportFraction[1]
+      ),
+      rockEchoTrailEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "rockEchoTrailEnabled"
+      ),
+      rockEchoTrailCopies: integerSetting(
+        source,
+        fallbackSource,
+        "rockEchoTrailCopies",
+        ROOM_SETTINGS_LIMITS.rockEchoTrailCopies[0],
+        ROOM_SETTINGS_LIMITS.rockEchoTrailCopies[1]
+      ),
+      rockEchoTrailIntervalMs: integerSetting(
+        source,
+        fallbackSource,
+        "rockEchoTrailIntervalMs",
+        ROOM_SETTINGS_LIMITS.rockEchoTrailIntervalMs[0],
+        ROOM_SETTINGS_LIMITS.rockEchoTrailIntervalMs[1]
+      ),
+      rockEchoTrailOpacity: finiteSetting(
+        source,
+        fallbackSource,
+        "rockEchoTrailOpacity",
+        ROOM_SETTINGS_LIMITS.rockEchoTrailOpacity[0],
+        ROOM_SETTINGS_LIMITS.rockEchoTrailOpacity[1]
+      ),
+      rockEchoTrailLifetimeMs: integerSetting(
+        source,
+        fallbackSource,
+        "rockEchoTrailLifetimeMs",
+        ROOM_SETTINGS_LIMITS.rockEchoTrailLifetimeMs[0],
+        ROOM_SETTINGS_LIMITS.rockEchoTrailLifetimeMs[1]
       ),
       birchBackgroundEnabled: boolSetting(
         source,
@@ -1639,6 +1681,39 @@
         "sceneTwoGlassRefractionPercent",
         "sceneTwoGlassBorderRadiusPx",
         "sceneTwoGlassBounce",
+      ].forEach((key) => {
+        if (!Object.hasOwn(current, key)) {
+          current[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
+    if (finiteNumber(version, 1) < 52) {
+      if (!Object.hasOwn(current, "preclickPopupWidthViewportFraction")) {
+        current.preclickPopupWidthViewportFraction = Object.hasOwn(
+          current,
+          "preclickPopupSizeMultiplier"
+        )
+          ? Math.round(
+              clamp(
+                (finiteNumber(
+                  current.rockActivatedWidthVw,
+                  DEFAULT_ROOM_SETTINGS.rockActivatedWidthVw
+                ) /
+                  100) *
+                  finiteNumber(current.preclickPopupSizeMultiplier, 2),
+                ROOM_SETTINGS_LIMITS.preclickPopupWidthViewportFraction[0],
+                ROOM_SETTINGS_LIMITS.preclickPopupWidthViewportFraction[1]
+              ) * 100
+            ) / 100
+          : DEFAULT_ROOM_SETTINGS.preclickPopupWidthViewportFraction;
+      }
+      delete current.preclickPopupSizeMultiplier;
+      [
+        "rockEchoTrailEnabled",
+        "rockEchoTrailCopies",
+        "rockEchoTrailIntervalMs",
+        "rockEchoTrailOpacity",
+        "rockEchoTrailLifetimeMs",
       ].forEach((key) => {
         if (!Object.hasOwn(current, key)) {
           current[key] = DEFAULT_ROOM_SETTINGS[key];

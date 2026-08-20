@@ -87,6 +87,7 @@ function createPopup(features = "") {
   const chromeHeight = 40;
   const resizeCalls = [];
   const moveCalls = [];
+  const focusCalls = [];
   const requestedOuterWidth = featureNumber(features, "width", 320);
   const requestedOuterHeight = featureNumber(features, "height", 240);
   const body = {
@@ -100,6 +101,7 @@ function createPopup(features = "") {
     closed: false,
     innerHeight: Math.max(1, requestedOuterHeight - chromeHeight),
     innerWidth: Math.max(1, requestedOuterWidth - chromeWidth),
+    focusCalls,
     moveCalls,
     outerHeight: requestedOuterHeight,
     outerWidth: requestedOuterWidth,
@@ -125,6 +127,9 @@ function createPopup(features = "") {
         };
       },
       title: "not-empty",
+    },
+    focus() {
+      focusCalls.push(true);
     },
     moveTo(left, top) {
       moveCalls.push([left, top]);
@@ -295,6 +300,27 @@ test("dispose отменяет только ещё не открытый preclic
   controller.dispose();
   clock.tick(1000);
   assert.equal(popups.length, 0);
+});
+
+test("первый настоящий клик восстанавливает открытые и отложенные окна картин", () => {
+  const { clock, controller, popups } = setup();
+  controller.openPreclickWindow({ delayMs: 0, width: 120 });
+  controller.openPreclickWindow({ delayMs: 100, width: 140 });
+
+  assert.equal(controller.getState().preclickWindowCount, 1);
+  assert.equal(controller.getState().preclickWindowsRevealed, false);
+  assert.equal(controller.revealPreclickWindows(), 1);
+  assert.equal(popups[0].popup.focusCalls.length, 1);
+  assert.equal(controller.getState().preclickWindowsRevealed, true);
+
+  clock.tick(100);
+  assert.equal(controller.getState().preclickWindowCount, 2);
+  assert.equal(popups[1].popup.focusCalls.length, 1);
+
+  popups[0].popup.closed = true;
+  assert.equal(controller.revealPreclickWindows(), 1);
+  assert.equal(controller.getState().preclickWindowCount, 1);
+  assert.equal(popups[1].popup.focusCalls.length, 2);
 });
 
 test("окна перекрываются, закрываются независимо и не создают дублирующий таймер", () => {

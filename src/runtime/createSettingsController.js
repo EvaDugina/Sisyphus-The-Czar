@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 51;
+const SETTINGS_SCHEMA_VERSION = 52;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -63,9 +63,13 @@ export function createSettingsController(options) {
   const settingsNamespace = String(options.settingsNamespace || "default")
     .replace(/[^A-Za-z0-9_-]/g, "") || "default";
   const settingsVersionIdPrefix = `${settingsNamespace}--`;
-  const legacySettingsStorageKeys = options.migrateLegacySettings
-    ? LEGACY_SETTINGS_STORAGE_KEYS
-    : [];
+  const legacySettingsStorageKeys = Array.isArray(
+    options.legacySettingsStorageKeys,
+  )
+    ? options.legacySettingsStorageKeys
+    : options.migrateLegacySettings
+      ? LEGACY_SETTINGS_STORAGE_KEYS
+      : [];
   const settingsTemplatesImportKey = `${SETTINGS_TEMPLATES_IMPORT_KEY}:${
     settingsNamespace
   }`;
@@ -339,7 +343,7 @@ export function createSettingsController(options) {
   }
 
   function settingsStorageKeyVersion(key) {
-    const match = String(key || "").match(/-v(\d+)$/);
+    const match = String(key || "").match(/-v(\d+)(?::[^:]+)?$/);
     return match ? Number(match[1]) : 0;
   }
 
@@ -1343,8 +1347,13 @@ export function createSettingsController(options) {
       rockPulseBpm: `${params.rockPulseBpm.toFixed(0)} BPM`,
       preclickHopGuardClickCount:
         params.preclickHopGuardClickCount.toFixed(0),
-      preclickPopupSizeMultiplier:
-        `${params.preclickPopupSizeMultiplier.toFixed(0)}×`,
+      preclickPopupWidthViewportFraction:
+        `${Math.round(params.preclickPopupWidthViewportFraction * 100)}vw`,
+      rockEchoTrailCopies: params.rockEchoTrailCopies.toFixed(0),
+      rockEchoTrailIntervalMs: `${params.rockEchoTrailIntervalMs.toFixed(0)}мс`,
+      rockEchoTrailOpacity:
+        `${Math.round(params.rockEchoTrailOpacity * 100)}%`,
+      rockEchoTrailLifetimeMs: `${params.rockEchoTrailLifetimeMs.toFixed(0)}мс`,
       birchScalePercent: `${params.birchScalePercent.toFixed(0)}%`,
       preclickHopActivationRadiusPercent:
         `${params.preclickHopActivationRadiusPercent.toFixed(0)}%`,

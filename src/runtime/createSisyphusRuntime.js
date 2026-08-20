@@ -14,6 +14,7 @@ import { rockImageUrl } from "../config/rockImages.mjs";
 import { sceneStorageNamespace } from "../config/sceneRoutes.mjs";
 import {
   SETTINGS_SCENES,
+  legacySettingsStorageKeysForScene,
   settingsStorageKeyForScene,
   settingsVersionsStorageKeyForScene,
 } from "../config/settings.mjs";
@@ -94,6 +95,7 @@ import {
   settings as productionSettings,
 } from "../config/production-preset.mjs";
 import { createSettingsController } from "./createSettingsController.js";
+import { createRockEchoTrailController } from "./createRockEchoTrailController.js";
 import { createWindowObstacleController } from "./createWindowObstacleController.js";
 
 const ROLE_AUDIO_FADE_IN_MS = 300;
@@ -191,6 +193,8 @@ export function createSisyphusRuntime(elements = {}) {
   const summitLeaderboardElement =
     elements.summitLeaderboard || document.querySelector(".summit-leaderboard");
   const rock = elements.rock || document.querySelector(".rock");
+  const rockEchoTrailLayer =
+    elements.rockEchoTrailLayer || document.querySelector(".rock-echo-trail");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
   const glassStripsLayer =
     elements.glassStripsLayer || document.querySelector(".scene-two-glass-strips");
@@ -636,6 +640,7 @@ export function createSisyphusRuntime(elements = {}) {
   applyCustomCursorSettings();
   applyBirchBackgroundSettings();
   applySummitTimerSettings();
+  let rockEchoTrailController = null;
   resetPreclickRockGuidance();
   const finalFallGate = {
     enteredAt: null,
@@ -656,6 +661,9 @@ export function createSisyphusRuntime(elements = {}) {
     "turbulence",
   ];
   const SHARED_ROOM_SETTING_KEYS = SharedRoomSettings.ROOM_SETTINGS_KEYS;
+  const ROCK_ECHO_TRAIL_SETTING_KEYS = SHARED_ROOM_SETTING_KEYS.filter((key) =>
+    key.startsWith("rockEchoTrail"),
+  );
   const RAIN_SETTING_KEYS = SHARED_ROOM_SETTING_KEYS.filter((key) =>
     key.startsWith("rain"),
   );
@@ -1088,11 +1096,18 @@ export function createSisyphusRuntime(elements = {}) {
     settingsNamespace: storageNamespace,
     settingsStorageKey: settingsStorageKeyForScene(sceneId),
     settingsVersionsStorageKey: settingsVersionsStorageKeyForScene(sceneId),
+    legacySettingsStorageKeys: legacySettingsStorageKeysForScene(sceneId),
     migrateLegacySettings: isSceneOne,
     settingsPanel: elements.settingsPanel,
     stageControlChange,
   });
   const preclickPopupController = createWindowObstacleController();
+  rockEchoTrailController = createRockEchoTrailController({
+    container: rockEchoTrailLayer,
+    source: rock,
+    getSettings: () => params,
+    isActive: () => isSceneOne,
+  });
   const settingsUiEnabled = settingsController.enabled;
 
   function fitTopInscription() {
@@ -2874,7 +2889,11 @@ export function createSisyphusRuntime(elements = {}) {
       applyBirchBackgroundSettings();
     }
     if (shouldHandleChange("rockImageId")) {
+      rockEchoTrailController?.clear();
       applyRockImageSettings();
+    }
+    if (shouldHandleChange(...ROCK_ECHO_TRAIL_SETTING_KEYS)) {
+      rockEchoTrailController?.sync();
     }
     if (
       shouldHandleChange(
@@ -3283,6 +3302,7 @@ export function createSisyphusRuntime(elements = {}) {
   function setPreclickRockHopOffset(x, y) {
     rock.style.setProperty("--rock-hop-x", `${x}px`);
     rock.style.setProperty("--rock-hop-y", `${y}px`);
+    rockEchoTrailController?.record();
   }
 
   function preclickRockHopOffset() {
@@ -3588,9 +3608,7 @@ export function createSisyphusRuntime(elements = {}) {
       delayMs: params.preclickPopupDelayMs,
       imageAlt: artwork.alt,
       imageUrl: artwork.url,
-      width:
-        ((window.innerWidth * params.rockActivatedWidthVw) / 100) *
-        params.preclickPopupSizeMultiplier,
+      width: window.innerWidth * params.preclickPopupWidthViewportFraction,
     });
     performPreclickRockHop({
       centerX,
@@ -3975,6 +3993,7 @@ export function createSisyphusRuntime(elements = {}) {
     rock.style.setProperty("--rock-y", `${motion.y}px`);
     requestFoldSync();
     applyRockScale();
+    rockEchoTrailController?.record();
     syncDrizzleLoopVolume();
   }
 
@@ -7600,6 +7619,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (isSceneOne) {
       event.preventDefault();
       completePreclickRockGuidance({ preserveHopPosition: true });
+      preclickPopupController.revealPreclickWindows();
       playRockPointerDownSound();
       showHandCursor(event);
       setGrabbingCursor(true);
@@ -7880,6 +7900,7 @@ export function createSisyphusRuntime(elements = {}) {
   });
 
   function initScene() {
+    rockEchoTrailController?.clear();
     resetSceneFlowState();
     fitTopInscription();
     renderSummitTimer();
@@ -8103,6 +8124,7 @@ export function createSisyphusRuntime(elements = {}) {
         remainingSeconds: activeHeightGateRemainingSeconds(),
       }),
       getPreclickPopupState: preclickPopupController.getState,
+      getRockEchoTrailState: rockEchoTrailController.getState,
       fitTopInscription,
       drawTrail,
       getGlowRenderState: () => ({
@@ -8221,6 +8243,7 @@ export function createSisyphusRuntime(elements = {}) {
         trail.renderFrameId = null;
       }
       settingsController.dispose?.();
+      rockEchoTrailController.dispose();
       preclickPopupController.dispose();
       document.documentElement.classList.remove(
         "is-manual-scroll-disabled",

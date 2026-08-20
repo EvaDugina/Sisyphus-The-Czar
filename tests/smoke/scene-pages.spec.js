@@ -33,14 +33,19 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveCount(1);
   await expect(page.locator('[name="rockActivatedWidthVw"]')).toHaveCount(1);
   await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveCount(1);
+  await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(0);
   await expect(page.locator('[name="gravity"]')).toHaveCount(0);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator(".settings-scene-switcher")).toHaveCount(0);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(41);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(46);
 
   await waitForDebugScene(page, "/scene-2", "turnip");
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
+  await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(0);
+  await expect(
+    page.locator(".scene-page > .world > .rock-echo-trail"),
+  ).toBeHidden();
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="gravity"]')).toHaveCount(1);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
@@ -48,6 +53,10 @@ test("inline UI показывает только параметры текущ�
 
   await waitForDebugScene(page, "/scene-3", "juices");
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
+  await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(0);
+  await expect(
+    page.locator(".scene-page > .world > .rock-echo-trail"),
+  ).toBeHidden();
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="cameraFollowUpEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="rockJumpInertiaSpreadPercent"]')).toHaveCount(1);
@@ -205,12 +214,52 @@ test("скрытые настройки не оказывают клиентск
   });
 });
 
+test("настройки сцены 1 мигрируют из v51 в v52 с новой шириной popup", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.setItem(
+      "sisyphus-czar-settings-v51:cats-and-mice",
+      JSON.stringify({
+        rockActivatedWidthVw: 10,
+        preclickPopupSizeMultiplier: 3,
+      }),
+    );
+  });
+
+  await waitForDebugScene(page, "/scene-1", "cats-and-mice");
+  await expect(
+    page.locator('[name="preclickPopupWidthViewportFraction"]'),
+  ).toHaveValue("0.3");
+  await expect(page.locator('[name="rockEchoTrailEnabled"]')).toBeChecked();
+
+  const migrated = await page.evaluate(() => {
+    const stored = JSON.parse(
+      localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+    );
+    return {
+      hasLegacyPopupSize: Object.hasOwn(
+        stored,
+        "preclickPopupSizeMultiplier",
+      ),
+      popupWidth: stored.preclickPopupWidthViewportFraction,
+      trailEnabled: stored.rockEchoTrailEnabled,
+    };
+  });
+  expect(migrated).toEqual({
+    hasLegacyPopupSize: false,
+    popupWidth: 0.3,
+    trailEnabled: true,
+  });
+});
+
 test("одинаковый визуальный параметр хранит независимые значения сцен", async ({ page }) => {
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
   const sceneOneValue = 30;
   await page.evaluate((value) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v51:cats-and-mice",
+      "sisyphus-czar-settings-v52:cats-and-mice",
       JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
     );
   }, sceneOneValue);
@@ -226,7 +275,7 @@ test("одинаковый визуальный параметр хранит н
   const sceneTwoValue = 20;
   await page.evaluate((value) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v51:turnip",
+      "sisyphus-czar-settings-v52:turnip",
       JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
     );
   }, sceneTwoValue);
@@ -236,10 +285,10 @@ test("одинаковый визуальный параметр хранит н
 
   const snapshots = await page.evaluate(() => ({
     sceneOne: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v51:cats-and-mice") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
     ).handWidthVw,
     sceneTwo: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v51:turnip") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v52:turnip") || "{}",
     ).handWidthVw,
   }));
   expect(snapshots).toEqual({ sceneOne: sceneOneValue, sceneTwo: sceneTwoValue });

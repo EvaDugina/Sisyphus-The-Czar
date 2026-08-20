@@ -14,7 +14,7 @@ import "../../shared/room-settings.js";
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v51";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v52";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -44,6 +44,7 @@ export function settingsVersionsStorageKeyForScene(sceneId) {
   return `${SETTINGS_VERSIONS_STORAGE_KEY}:${sceneId}`;
 }
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v51",
   "sisyphus-czar-settings-v50",
   "sisyphus-czar-settings-v49",
   "sisyphus-czar-settings-v48",
@@ -93,6 +94,15 @@ export const LEGACY_SETTINGS_STORAGE_KEYS = [
   "sisyphus-czar-settings-v3",
   "sisyphus-czar-settings-v2",
 ];
+
+export function legacySettingsStorageKeysForScene(sceneId) {
+  const sceneKeys = LEGACY_SETTINGS_STORAGE_KEYS.map(
+    (key) => `${key}:${sceneId}`,
+  );
+  return sceneId === SETTINGS_SCENES.CATS_AND_MICE
+    ? [...sceneKeys, ...LEGACY_SETTINGS_STORAGE_KEYS]
+    : sceneKeys;
+}
 
 const MIX_BLEND_LABELS = {
   normal: "Обычное",
@@ -454,7 +464,12 @@ export function settingsGroupControls(group) {
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickHopGuardClickCount",
   "preclickPopupDelayMs",
-  "preclickPopupSizeMultiplier",
+  "preclickPopupWidthViewportFraction",
+  "rockEchoTrailEnabled",
+  "rockEchoTrailCopies",
+  "rockEchoTrailIntervalMs",
+  "rockEchoTrailOpacity",
+  "rockEchoTrailLifetimeMs",
   "birchBackgroundEnabled",
   "birchScalePercent",
   "preclickHopActivationRadiusPercent",
@@ -1125,7 +1140,7 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
         output: `${DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount}`,
-        hint: "Первые N кликов по камню вызывают фейковый отскок со смехом и открывают картины 01–03. Следующий клик включает физику и переводит игру в сцену «Репка»; ноль отключает фейковые клики.",
+        hint: "Первые N кликов по камню вызывают фейковый отскок со смехом и открывают картины 01–03. Следующий клик поднимает открытые окна картин и завершает сцену 1; ноль отключает фейковые клики.",
       },
       {
         name: "preclickPopupDelayMs",
@@ -1139,17 +1154,19 @@ export const SETTINGS_GROUPS = [
         hint: "Задержка между фейковым кликом и показом очередной картины 01–03. Ноль показывает окно сразу.",
       },
       {
-        name: "preclickPopupSizeMultiplier",
-        label: "Размер окон с картинами",
+        name: "preclickPopupWidthViewportFraction",
+        label: "Ширина окон с картинами",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickPopupSizeMultiplier[0],
+          .preclickPopupWidthViewportFraction[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickPopupSizeMultiplier[1],
-        step: 1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupSizeMultiplier,
-        output: `${DEFAULT_ROOM_SETTINGS.preclickPopupSizeMultiplier}×`,
-        hint: "Множитель базового размера popup: 1 — прежний размер, 2 — вдвое больше. Если окно не помещается, оно пропорционально уменьшается.",
+          .preclickPopupWidthViewportFraction[1],
+        step: 0.01,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupWidthViewportFraction,
+        output: `${Math.round(
+          DEFAULT_ROOM_SETTINGS.preclickPopupWidthViewportFraction * 100,
+        )}vw`,
+        hint: "Доля ширины viewport: 0.01 соответствует 1vw, а 1 — 100vw. Высота сохраняет пропорции картины.",
       },
       {
         name: "birchBackgroundEnabled",
@@ -1577,6 +1594,66 @@ export const SETTINGS_GROUPS = [
             hint: "Доля нормальной скорости, сохраняемая при отскоке свободного камня от полосы.",
           },
         ],
+      },
+    ],
+  },
+  {
+    title: "След камня",
+    controls: [
+      {
+        name: "rockEchoTrailEnabled",
+        label: "Показывать эхо-след",
+        type: "checkbox",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.rockEchoTrailEnabled,
+        hint: "Показывает за камнем дискретные копии его предыдущих позиций.",
+      },
+      {
+        name: "rockEchoTrailCopies",
+        label: "Количество копий",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockEchoTrailCopies[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockEchoTrailCopies[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockEchoTrailCopies,
+        output: String(DEFAULT_ROOM_SETTINGS.rockEchoTrailCopies),
+        enabledWhen: "rockEchoTrailEnabled",
+        hint: "Максимальное количество одновременно видимых копий камня в эхо-шлейфе.",
+      },
+      {
+        name: "rockEchoTrailIntervalMs",
+        label: "Интервал копий, мс",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockEchoTrailIntervalMs[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockEchoTrailIntervalMs[1],
+        step: 1,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockEchoTrailIntervalMs,
+        output: `${DEFAULT_ROOM_SETTINGS.rockEchoTrailIntervalMs}мс`,
+        enabledWhen: "rockEchoTrailEnabled",
+        hint: "Минимальное время между соседними копиями: меньшее значение делает след плотнее.",
+      },
+      {
+        name: "rockEchoTrailOpacity",
+        label: "Прозрачность копий",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockEchoTrailOpacity[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockEchoTrailOpacity[1],
+        step: 0.05,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockEchoTrailOpacity,
+        output: `${Math.round(DEFAULT_ROOM_SETTINGS.rockEchoTrailOpacity * 100)}%`,
+        enabledWhen: "rockEchoTrailEnabled",
+        hint: "Начальная непрозрачность каждой копии камня.",
+      },
+      {
+        name: "rockEchoTrailLifetimeMs",
+        label: "Время исчезновения, мс",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockEchoTrailLifetimeMs[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS.rockEchoTrailLifetimeMs[1],
+        step: 50,
+        defaultValue: DEFAULT_ROOM_SETTINGS.rockEchoTrailLifetimeMs,
+        output: `${DEFAULT_ROOM_SETTINGS.rockEchoTrailLifetimeMs}мс`,
+        enabledWhen: "rockEchoTrailEnabled",
+        hint: "Время плавного затухания одной копии после её появления.",
       },
     ],
   },

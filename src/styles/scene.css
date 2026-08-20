@@ -184,6 +184,7 @@ body[data-scene="scene-1"] .weather-rain,
 body[data-scene="scene-1"] .trail,
 body[data-scene="scene-1"] .trail-session,
 body[data-scene="scene-1"] .trail-glow,
+body:not([data-scene="scene-1"]) .rock-echo-trail,
 body[data-scene="scene-2"] .summit-timer,
 body[data-scene="scene-2"] .summit-leaderboard,
 body[data-scene="scene-2"] .weather-rain,
@@ -347,6 +348,36 @@ body.birch-background-enabled .birch-layer {
   transition: opacity 220ms ease;
   user-select: none;
   will-change: transform, opacity;
+}
+
+.rock-echo-trail {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.rock-echo {
+  position: absolute;
+  display: block;
+  max-width: none;
+  opacity: var(--rock-echo-opacity, 0.55);
+  pointer-events: none;
+  user-select: none;
+  animation: rock-echo-fade var(--rock-echo-lifetime, 900ms) linear forwards;
+  will-change: opacity;
+  -webkit-user-drag: none;
+}
+
+@keyframes rock-echo-fade {
+  from {
+    opacity: var(--rock-echo-opacity, 0.55);
+  }
+
+  to {
+    opacity: 0;
+  }
 }
 
 .scene-two-glass-strips {
