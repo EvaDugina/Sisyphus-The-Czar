@@ -284,6 +284,25 @@ export function createWindowObstacleController(options = {}) {
         image.style.height = "100%";
         image.style.objectFit = "fill";
         image.style.width = "100%";
+        if (typeof image.addEventListener === "function") {
+          image.addEventListener(
+            "load",
+            () => {
+              if (
+                image.naturalWidth > 0 &&
+                image.naturalHeight > 0 &&
+                entry.geometryInput
+              ) {
+                entry.geometryInput = {
+                  ...entry.geometryInput,
+                  aspectRatio: image.naturalWidth / image.naturalHeight,
+                };
+                fitPreclickWindow(entry);
+              }
+            },
+            { once: true },
+          );
+        }
         body.replaceChildren(image);
       } else {
         body.replaceChildren();

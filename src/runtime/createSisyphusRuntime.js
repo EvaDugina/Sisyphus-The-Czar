@@ -5,11 +5,9 @@ import "../../shared/chain-sounds.js";
 import drizzleAudioUrl from "../../assets/audio/Капель.mp3?url";
 import groundImpactAudioUrl from "../../assets/audio/СимуляцияОргазма.mov?url";
 import preclickHopAudioUrl from "../../assets/audio/Смех.mp3?url";
-import gogh01Url from "../../assets/gogh/01.png?url";
-import gogh02Url from "../../assets/gogh/02.png?url";
-import gogh03Url from "../../assets/gogh/03.png?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
+import { GOGH_ARTWORKS } from "../config/goghArtworks.mjs";
 import { rockImageUrl } from "../config/rockImages.mjs";
 import { sceneStorageNamespace } from "../config/sceneRoutes.mjs";
 import {
@@ -50,6 +48,10 @@ import {
   preclickRadiusHopDecision,
   wrapPreclickHopCenter,
 } from "../lib/preclickHop.mjs";
+import {
+  createGoghArtworkSelector,
+  resolveGoghArtwork,
+} from "../lib/goghArtworkSelection.mjs";
 import { cursorCircleIntersectsRect } from "../lib/rockGrab.mjs";
 import {
   clearStoredRoomSession,
@@ -105,11 +107,6 @@ const TRAIL_NETWORK_BATCH_POINTS = 16;
 const TRAIL_NETWORK_FLUSH_MS = 50;
 const ROCK_ACTIVATION_SCALE_DURATION_MS = 300;
 const PRECLICK_HOP_EASING_CURVE = Object.freeze([0.22, 1, 0.36, 1]);
-const PRECLICK_POPUP_ARTWORKS = Object.freeze([
-  Object.freeze({ alt: "Картина 01", fallbackAspectRatio: 340 / 328, url: gogh01Url }),
-  Object.freeze({ alt: "Картина 02", fallbackAspectRatio: 341 / 330, url: gogh02Url }),
-  Object.freeze({ alt: "Картина 03", fallbackAspectRatio: 334 / 328, url: gogh03Url }),
-]);
 const SECOND_UI_MS_SETTING_KEYS = new Set(["rainEnterMs", "rainExitMs"]);
 const THEME_BACKGROUND_SETTING_KEYS = [
   "lightBackgroundColor",
@@ -445,6 +442,10 @@ export function createSisyphusRuntime(elements = {}) {
     rockPulseBpm: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseBpm,
     preclickHopGuardClickCount:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
+    preclickPopupArtworkMode:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickPopupArtworkMode,
+    preclickPopupArtworkId:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickPopupArtworkId,
     preclickHopActivationRadiusPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS
         .preclickHopActivationRadiusPercent,
@@ -621,14 +622,19 @@ export function createSisyphusRuntime(elements = {}) {
     playCount: 0,
     stopCount: 0,
   };
-  const preclickPopupArtworkImages = PRECLICK_POPUP_ARTWORKS.map((artwork) => {
-    const image = typeof Image === "function" ? new Image() : null;
-    if (image) {
-      image.decoding = "async";
-      image.src = artwork.url;
-    }
-    return image;
+  const preclickPopupArtworkSelector = createGoghArtworkSelector({
+    artworks: GOGH_ARTWORKS,
   });
+  const preclickPopupArtworkImages = new Map(
+    GOGH_ARTWORKS.map((artwork) => {
+      const image = typeof Image === "function" ? new Image() : null;
+      if (image) {
+        image.decoding = "async";
+        image.src = artwork.url;
+      }
+      return [artwork.id, image];
+    }),
+  );
   body.classList.toggle(
     "hand-always-visible",
     params.handVisibilityMode === "always",
@@ -2760,6 +2766,13 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.sanitizeRoomSettings(params, params),
       sanitizeGlowOptimizationSettings(params, params),
     );
+    const selectedGoghArtwork = resolveGoghArtwork(
+      GOGH_ARTWORKS,
+      params.preclickPopupArtworkId,
+    );
+    if (selectedGoghArtwork) {
+      params.preclickPopupArtworkId = selectedGoghArtwork.id;
+    }
     handForceDeficitCurve =
       SharedRoomSettings.parseCubicBezier(params.handForceDeficitEasing) ||
       SharedPhysics.DEFAULT_FORCE_DEFICIT_CURVE;
@@ -3338,6 +3351,7 @@ export function createSisyphusRuntime(elements = {}) {
   function resetPreclickRockGuidance() {
     stopPreclickHopSounds();
     resetPreclickRockHop();
+    preclickPopupArtworkSelector.reset();
     Object.assign(preclickRockGuidance, {
       completed: false,
       pointerX: null,
@@ -3594,22 +3608,25 @@ export function createSisyphusRuntime(elements = {}) {
       params.preclickHopActivationRadiusPercent > 0;
     preclickRockGuidance.outsideRadius = false;
     syncHandCursorForPointer(event);
-    const artworkIndex =
-      (preclickRockGuidance.guardClicksUsed - 1) % PRECLICK_POPUP_ARTWORKS.length;
-    const artwork = PRECLICK_POPUP_ARTWORKS[artworkIndex];
-    const artworkImage = preclickPopupArtworkImages[artworkIndex];
-    preclickPopupController.openPreclickWindow({
-      aspectRatio:
-        artworkImage?.naturalWidth > 0 && artworkImage?.naturalHeight > 0
-          ? artworkImage.naturalWidth / artworkImage.naturalHeight
-          : artwork.fallbackAspectRatio,
-      clientX: pointerX,
-      clientY: pointerY,
-      delayMs: params.preclickPopupDelayMs,
-      imageAlt: artwork.alt,
-      imageUrl: artwork.url,
-      width: window.innerWidth * params.preclickPopupWidthViewportFraction,
+    const artwork = preclickPopupArtworkSelector.select({
+      mode: params.preclickPopupArtworkMode,
+      artworkId: params.preclickPopupArtworkId,
     });
+    if (artwork) {
+      const artworkImage = preclickPopupArtworkImages.get(artwork.id);
+      preclickPopupController.openPreclickWindow({
+        aspectRatio:
+          artworkImage?.naturalWidth > 0 && artworkImage?.naturalHeight > 0
+            ? artworkImage.naturalWidth / artworkImage.naturalHeight
+            : 1,
+        clientX: pointerX,
+        clientY: pointerY,
+        delayMs: params.preclickPopupDelayMs,
+        imageAlt: artwork.alt,
+        imageUrl: artwork.url,
+        width: window.innerWidth * params.preclickPopupWidthViewportFraction,
+      });
+    }
     performPreclickRockHop({
       centerX,
       centerY,
@@ -8124,6 +8141,12 @@ export function createSisyphusRuntime(elements = {}) {
         remainingSeconds: activeHeightGateRemainingSeconds(),
       }),
       getPreclickPopupState: preclickPopupController.getState,
+      getPreclickPopupArtworkState: () => ({
+        ...preclickPopupArtworkSelector.getState(),
+        artworkId: params.preclickPopupArtworkId,
+        availableIds: GOGH_ARTWORKS.map((artwork) => artwork.id),
+        mode: params.preclickPopupArtworkMode,
+      }),
       getRockEchoTrailState: rockEchoTrailController.getState,
       fitTopInscription,
       drawTrail,

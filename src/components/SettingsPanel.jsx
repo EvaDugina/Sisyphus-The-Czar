@@ -3,6 +3,7 @@ import {
   settingsGroupsForScene,
   settingsGroupControls,
 } from "../config/settings.mjs";
+import { GOGH_ARTWORK_OPTIONS } from "../config/goghArtworks.mjs";
 import { SettingsControl } from "./SettingsControl";
 
 function panelWidthBounds(panel) {
@@ -20,7 +21,9 @@ export function SettingsPanel({
   isOpen,
   settingsAvailable,
 }) {
-  const sceneGroups = settingsGroupsForScene(sceneId);
+  const sceneGroups = settingsGroupsForScene(sceneId, {
+    goghArtworkOptions: GOGH_ARTWORK_OPTIONS,
+  });
   const resizeStateRef = useRef(null);
 
   useEffect(() => {

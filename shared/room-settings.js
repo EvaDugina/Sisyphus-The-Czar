@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 52;
+  const ROOM_SETTINGS_VERSION = 53;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -65,6 +65,12 @@
     "thats-amazing.mp3",
   ]);
   const DEFAULT_GACHI_CLICK_SOUND_FILENAME = "Camen.mp3";
+  const PRECLICK_POPUP_ARTWORK_MODES = Object.freeze([
+    "random",
+    "shuffle",
+    "single",
+  ]);
+  const DEFAULT_PRECLICK_POPUP_ARTWORK_ID = "01.png";
 
   const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
   const MIX_BLEND_MODES = Object.freeze([
@@ -207,6 +213,8 @@
     preclickHopGuardClickCount: 1,
     preclickPopupDelayMs: 200,
     preclickPopupWidthViewportFraction: 0.2,
+    preclickPopupArtworkMode: "shuffle",
+    preclickPopupArtworkId: DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
     rockEchoTrailEnabled: true,
     rockEchoTrailCopies: 16,
     rockEchoTrailIntervalMs: 50,
@@ -446,6 +454,19 @@
     }
     const fallback = String(fallbackSource[key] || "").trim();
     return optionSet.has(fallback) ? fallback : DEFAULT_ROOM_SETTINGS[key];
+  }
+
+  function goghArtworkIdSetting(source, fallbackSource) {
+    const validId = (value) => {
+      const normalized = String(value || "").trim();
+      return normalized.length <= 255 &&
+        /^[^\\/\0]+\.(?:avif|gif|jpe?g|png|webp)$/i.test(normalized)
+        ? normalized
+        : "";
+    };
+    return validId(source.preclickPopupArtworkId) ||
+      validId(fallbackSource.preclickPopupArtworkId) ||
+      DEFAULT_PRECLICK_POPUP_ARTWORK_ID;
   }
 
   function normalizeHexColor(value, fallback = DEFAULT_ROOM_SETTINGS.rainDropColor) {
@@ -913,6 +934,13 @@
         ROOM_SETTINGS_LIMITS.preclickPopupWidthViewportFraction[0],
         ROOM_SETTINGS_LIMITS.preclickPopupWidthViewportFraction[1]
       ),
+      preclickPopupArtworkMode: enumSetting(
+        source,
+        fallbackSource,
+        "preclickPopupArtworkMode",
+        PRECLICK_POPUP_ARTWORK_MODES
+      ),
+      preclickPopupArtworkId: goghArtworkIdSetting(source, fallbackSource),
       rockEchoTrailEnabled: boolSetting(
         source,
         fallbackSource,
@@ -1720,6 +1748,13 @@
         }
       });
     }
+    if (finiteNumber(version, 1) < 53) {
+      ["preclickPopupArtworkMode", "preclickPopupArtworkId"].forEach((key) => {
+        if (!Object.hasOwn(current, key)) {
+          current[key] = DEFAULT_ROOM_SETTINGS[key];
+        }
+      });
+    }
     return current;
   }
 
@@ -1798,6 +1833,8 @@
     SUMMIT_TIMER_FONT_FAMILIES,
     GACHI_SOUND_FILENAMES,
     DEFAULT_GACHI_CLICK_SOUND_FILENAME,
+    PRECLICK_POPUP_ARTWORK_MODES,
+    DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,

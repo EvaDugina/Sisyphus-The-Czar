@@ -355,6 +355,8 @@ test("камень прыгает накопительно, сохраняет g
   await expect(rock).toHaveClass(/is-preclick-hop/);
   await page.evaluate(() => {
     params.preclickHopGuardClickCount = 1;
+    params.preclickPopupArtworkMode = "single";
+    params.preclickPopupArtworkId = "01.png";
     params.preclickHopActivationRadiusPercent = 50;
     params.preclickHopMaxDistancePercent = 10;
     params.preclickHopMissProbabilityPercent = 0;
@@ -713,6 +715,8 @@ test("N фейковых кликов открывают картины, а кл
       preclickHopMaxDistancePercent: 25,
       preclickPopupDelayMs: 0,
       preclickPopupWidthViewportFraction: 0.2,
+      preclickPopupArtworkMode: "single",
+      preclickPopupArtworkId: "01.png",
       birchBackgroundEnabled: true,
       birchScalePercent: 400,
       handAudioEnabled: true,
@@ -793,19 +797,18 @@ test("N фейковых кликов открывают картины, а кл
   });
   const cdp = await page.context().newCDPSession(page);
   const popupWidthFractions = [0.1, 0.2, 0.4];
-  const artworkSizes = [
-    { height: 328, width: 340 },
-    { height: 330, width: 341 },
-    { height: 328, width: 334 },
-  ];
   const fakeClickPopups = [];
   for (let click = 1; click <= 3; click += 1) {
     const widthFraction = popupWidthFractions[click - 1];
-    await page.evaluate((nextWidthFraction) => {
+    await page.evaluate(({ nextArtworkId, nextWidthFraction }) => {
       window.__sisyphusTestApi.applyTestSettings({
+        preclickPopupArtworkId: nextArtworkId,
         preclickPopupWidthViewportFraction: nextWidthFraction,
       });
-    }, widthFraction);
+    }, {
+      nextArtworkId: `0${click}.png`,
+      nextWidthFraction: widthFraction,
+    });
     const point = await visibleRockPoint(page);
     const popupPromise = page.waitForEvent("popup");
     await cdp.send("Input.dispatchMouseEvent", {
@@ -823,8 +826,14 @@ test("N фейковых кликов открывают картины, а кл
       new RegExp(`0${click}[^/]*\\.png`),
     );
     await expect(popupImage).toHaveAttribute("alt", `Картина 0${click}`);
+    await expect.poll(() => popupImage.evaluate(
+      (image) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0,
+    )).toBe(true);
     const expectedWidth = 1200 * widthFraction;
-    const artworkSize = artworkSizes[click - 1];
+    const artworkSize = await popupImage.evaluate((image) => ({
+      height: image.naturalHeight,
+      width: image.naturalWidth,
+    }));
     const expectedHeight = Math.round(
       expectedWidth / (artworkSize.width / artworkSize.height),
     );

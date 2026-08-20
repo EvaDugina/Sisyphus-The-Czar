@@ -29,16 +29,36 @@ test("inline UI показывает только параметры текущ�
     "Параметры · Сцена 1. Кошки-мышки",
   );
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(1);
+  const artworkMode = page.locator('[name="preclickPopupArtworkMode"]');
+  const artworkId = page.locator('[name="preclickPopupArtworkId"]');
+  await artworkMode.evaluate((element) => {
+    const group = element.closest("details");
+    if (group) group.open = true;
+  });
+  await expect(artworkMode).toHaveValue("shuffle");
+  await expect(artworkId).toBeDisabled();
+  await expect(artworkId.locator("option")).toHaveCount(3);
+  await artworkMode.selectOption("single");
+  await expect(artworkId).toBeEnabled();
+  await artworkId.selectOption("03.png");
+  await expect.poll(() => page.evaluate(() => ({
+    id: window.__sisyphusTestApi.params.preclickPopupArtworkId,
+    mode: window.__sisyphusTestApi.params.preclickPopupArtworkMode,
+  }))).toEqual({ id: "03.png", mode: "single" });
   await expect(page.locator('[name="handAudioEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="rockMinWidthVw"]')).toHaveCount(1);
-  await expect(page.locator('[name="rockActivatedWidthVw"]')).toHaveCount(1);
-  await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveCount(1);
+  await expect(page.locator('[name="sceneHeightScreens"]')).toHaveCount(0);
+  await expect(page.locator('[name="foldRockImageId"]')).toHaveCount(0);
+  await expect(page.locator('[name="rockWallPenetrationPercent"]')).toHaveCount(0);
+  await expect(page.locator('[name="rockActivatedWidthVw"]')).toHaveCount(0);
+  await expect(page.locator('[name="rockMaxWidthVw"]')).toHaveCount(0);
+  await expect(page.getByText("3D Fold", { exact: true })).toHaveCount(0);
   await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(0);
   await expect(page.locator('[name="gravity"]')).toHaveCount(0);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator(".settings-scene-switcher")).toHaveCount(0);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(46);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(37);
 
   await waitForDebugScene(page, "/scene-2", "turnip");
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
@@ -214,16 +234,15 @@ test("скрытые настройки не оказывают клиентск
   });
 });
 
-test("настройки сцены 1 мигрируют из v51 в v52 с новой шириной popup", async ({
+test("настройки сцены 1 мигрируют из v52 в v53 с режимом выбора картин", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
     localStorage.setItem(
-      "sisyphus-czar-settings-v51:cats-and-mice",
+      "sisyphus-czar-settings-v52:cats-and-mice",
       JSON.stringify({
-        rockActivatedWidthVw: 10,
-        preclickPopupSizeMultiplier: 3,
+        preclickPopupWidthViewportFraction: 0.3,
       }),
     );
   });
@@ -233,10 +252,16 @@ test("настройки сцены 1 мигрируют из v51 в v52 с но
     page.locator('[name="preclickPopupWidthViewportFraction"]'),
   ).toHaveValue("0.3");
   await expect(page.locator('[name="rockEchoTrailEnabled"]')).toBeChecked();
+  await expect(page.locator('[name="preclickPopupArtworkMode"]')).toHaveValue(
+    "shuffle",
+  );
+  await expect(page.locator('[name="preclickPopupArtworkId"]')).toHaveValue(
+    "01.png",
+  );
 
   const migrated = await page.evaluate(() => {
     const stored = JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
     );
     return {
       hasLegacyPopupSize: Object.hasOwn(
@@ -244,12 +269,16 @@ test("настройки сцены 1 мигрируют из v51 в v52 с но
         "preclickPopupSizeMultiplier",
       ),
       popupWidth: stored.preclickPopupWidthViewportFraction,
+      artworkMode: stored.preclickPopupArtworkMode,
+      artworkId: stored.preclickPopupArtworkId,
       trailEnabled: stored.rockEchoTrailEnabled,
     };
   });
   expect(migrated).toEqual({
     hasLegacyPopupSize: false,
     popupWidth: 0.3,
+    artworkMode: "shuffle",
+    artworkId: "01.png",
     trailEnabled: true,
   });
 });
@@ -259,7 +288,7 @@ test("одинаковый визуальный параметр хранит н
   const sceneOneValue = 30;
   await page.evaluate((value) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v52:cats-and-mice",
+      "sisyphus-czar-settings-v53:cats-and-mice",
       JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
     );
   }, sceneOneValue);
@@ -275,7 +304,7 @@ test("одинаковый визуальный параметр хранит н
   const sceneTwoValue = 20;
   await page.evaluate((value) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v52:turnip",
+      "sisyphus-czar-settings-v53:turnip",
       JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
     );
   }, sceneTwoValue);
@@ -285,10 +314,10 @@ test("одинаковый визуальный параметр хранит н
 
   const snapshots = await page.evaluate(() => ({
     sceneOne: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
     ).handWidthVw,
     sceneTwo: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v52:turnip") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v53:turnip") || "{}",
     ).handWidthVw,
   }));
   expect(snapshots).toEqual({ sceneOne: sceneOneValue, sceneTwo: sceneTwoValue });

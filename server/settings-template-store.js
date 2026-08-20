@@ -91,6 +91,9 @@ function normalizeSettings(settings, settingsSchemaVersion) {
   if (Number(settingsSchemaVersion) < 52) {
     migratedSettings = RoomSettings.migrateRoomSettings(migratedSettings, 51);
   }
+  if (Number(settingsSchemaVersion) < 53) {
+    migratedSettings = RoomSettings.migrateRoomSettings(migratedSettings, 52);
+  }
   return {
     ...RoomSettings.sanitizeRoomSettings(migratedSettings),
     ...Physics.sanitizePhysics(migratedSettings),

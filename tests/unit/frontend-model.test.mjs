@@ -583,6 +583,12 @@ test("настройки инерции и hop отображают актуал
   const preclickPopupSize = controls.find(
     (control) => control.name === "preclickPopupWidthViewportFraction"
   );
+  const preclickPopupArtworkMode = controls.find(
+    (control) => control.name === "preclickPopupArtworkMode",
+  );
+  const preclickPopupArtworkId = controls.find(
+    (control) => control.name === "preclickPopupArtworkId",
+  );
   const birchBackgroundEnabled = controls.find(
     (control) => control.name === "birchBackgroundEnabled"
   );
@@ -608,8 +614,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v52");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v51");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v53");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v52");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -714,6 +720,41 @@ test("настройки инерции и hop отображают актуал
       max: 1,
       step: 0.01,
       defaultValue: 0.2,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickPopupArtworkMode.label,
+      type: preclickPopupArtworkMode.type,
+      options: preclickPopupArtworkMode.options,
+      defaultValue: preclickPopupArtworkMode.defaultValue,
+    },
+    {
+      label: "Режим выбора картин",
+      type: "select",
+      options: [
+        ["random", "Случайная картинка"],
+        ["shuffle", "Случайно циклично"],
+        ["single", "Одна картинка"],
+      ],
+      defaultValue: "shuffle",
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickPopupArtworkId.label,
+      type: preclickPopupArtworkId.type,
+      defaultValue: preclickPopupArtworkId.defaultValue,
+      enabledWhen: preclickPopupArtworkId.enabledWhen,
+    },
+    {
+      label: "Картинка для одиночного режима",
+      type: "select",
+      defaultValue: "01.png",
+      enabledWhen: {
+        name: "preclickPopupArtworkMode",
+        values: ["single"],
+      },
     },
   );
   assert.deepEqual(
@@ -832,6 +873,8 @@ test("UI материализует параметры отдельно для �
       "preclickHopGuardClickCount",
       "preclickPopupDelayMs",
       "preclickPopupWidthViewportFraction",
+      "preclickPopupArtworkMode",
+      "preclickPopupArtworkId",
       "birchBackgroundEnabled",
       "birchScalePercent",
       "preclickHopActivationRadiusPercent",
@@ -852,15 +895,29 @@ test("UI материализует параметры отдельно для �
     SETTINGS_SCENES.JUICES,
   ]);
   assert.deepEqual(settingsControlScenes("rockActivatedWidthVw"), [
-    SETTINGS_SCENES.CATS_AND_MICE,
     SETTINGS_SCENES.TURNIP,
     SETTINGS_SCENES.JUICES,
   ]);
   assert.deepEqual(settingsControlScenes("rockMaxWidthVw"), [
-    SETTINGS_SCENES.CATS_AND_MICE,
     SETTINGS_SCENES.TURNIP,
     SETTINGS_SCENES.JUICES,
   ]);
+  [
+    "sceneHeightScreens",
+    "foldPositionPercent",
+    "foldPanelHeightVh",
+    "foldAngle",
+    "foldZoneSize",
+    "foldBlendEnabled",
+    "foldBlendCurve",
+    "foldRockImageId",
+    "rockWallPenetrationPercent",
+  ].forEach((name) => {
+    assert.deepEqual(settingsControlScenes(name), [
+      SETTINGS_SCENES.TURNIP,
+      SETTINGS_SCENES.JUICES,
+    ]);
+  });
   [
     "rockAccelerationEnabled",
     "sceneTwoOverflowYVisible",
@@ -968,7 +1025,7 @@ test("UI материализует параметры отдельно для �
   assert.deepEqual(
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
-      [SETTINGS_SCENES.CATS_AND_MICE, 46],
+      [SETTINGS_SCENES.CATS_AND_MICE, 37],
       [SETTINGS_SCENES.TURNIP, 103],
       [SETTINGS_SCENES.JUICES, 104],
     ],
@@ -981,6 +1038,34 @@ test("UI материализует параметры отдельно для �
       true,
     );
   });
+  const sceneOneGroups = settingsGroupsForScene(SETTINGS_SCENES.CATS_AND_MICE);
+  const sceneOneControls = sceneOneGroups.flatMap(settingsGroupControls);
+  assert.equal(sceneOneGroups.some((group) => group.title === "3D Fold"), false);
+  [
+    "sceneHeightScreens",
+    "foldRockImageId",
+    "rockWallPenetrationPercent",
+    "rockActivatedWidthVw",
+    "rockMaxWidthVw",
+  ].forEach((name) => {
+    assert.equal(sceneOneControls.some((control) => control.name === name), false);
+  });
+  const hydratedArtworkControl = settingsGroupsForScene(
+    SETTINGS_SCENES.CATS_AND_MICE,
+    {
+      goghArtworkOptions: [
+        ["alpha.png", "alpha.png"],
+        ["beta.webp", "beta.webp"],
+      ],
+    },
+  )
+    .flatMap(settingsGroupControls)
+    .find((control) => control.name === "preclickPopupArtworkId");
+  assert.deepEqual(hydratedArtworkControl.options, [
+    ["alpha.png", "alpha.png"],
+    ["beta.webp", "beta.webp"],
+  ]);
+  assert.equal(hydratedArtworkControl.defaultValue, "alpha.png");
   const sceneThemes = SETTINGS_SCENE_OPTIONS.map(({ id }) =>
     pageControls(id).find((control) => control.name === "themeMode"),
   );
@@ -1039,7 +1124,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 52);
+  assert.equal(productionSettingsSchemaVersion, 53);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1729,6 +1814,8 @@ test("настройки размера камня есть в UI и получ�
       "preclickHopGuardClickCount",
       "preclickPopupDelayMs",
       "preclickPopupWidthViewportFraction",
+      "preclickPopupArtworkMode",
+      "preclickPopupArtworkId",
       "birchBackgroundEnabled",
       "birchScalePercent",
       "preclickHopActivationRadiusPercent",
@@ -2947,7 +3034,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 52);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 53);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -2963,6 +3050,8 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopGuardClickCount: 999,
     preclickPopupDelayMs: 9999,
     preclickPopupWidthViewportFraction: 999,
+    preclickPopupArtworkMode: "invalid",
+    preclickPopupArtworkId: "../missing.png",
     rockEchoTrailEnabled: "true",
     rockEchoTrailCopies: 999,
     rockEchoTrailIntervalMs: 1,
@@ -3015,6 +3104,8 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.preclickHopGuardClickCount, 10);
   assert.equal(visualSettings.preclickPopupDelayMs, 1000);
   assert.equal(visualSettings.preclickPopupWidthViewportFraction, 1);
+  assert.equal(visualSettings.preclickPopupArtworkMode, "shuffle");
+  assert.equal(visualSettings.preclickPopupArtworkId, "01.png");
   assert.equal(visualSettings.rockEchoTrailEnabled, true);
   assert.equal(visualSettings.rockEchoTrailCopies, 40);
   assert.equal(visualSettings.rockEchoTrailIntervalMs, 16);
@@ -3217,6 +3308,8 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     preclickPopupDelayMs: 200,
     preclickPopupWidthViewportFraction: 0.2,
+    preclickPopupArtworkMode: "shuffle",
+    preclickPopupArtworkId: "01.png",
     rockEchoTrailEnabled: true,
     rockEchoTrailCopies: 16,
     rockEchoTrailIntervalMs: 50,
@@ -3250,6 +3343,8 @@ test("группа дождя содержит общий toggle и blur тём�
       foldPanelHeightVh: 32,
       ...DEFAULT_PRECLICK_HOP_SETTINGS,
       preclickPopupWidthViewportFraction: 0.2,
+      preclickPopupArtworkMode: "shuffle",
+      preclickPopupArtworkId: "01.png",
       rockEchoTrailEnabled: true,
       rockEchoTrailCopies: 16,
       rockEchoTrailIntervalMs: 50,
@@ -3417,6 +3512,15 @@ test("таблица вершины компонует top-10, текущего 
   assert.deepEqual(rows.map(({ entry: row }) => row.rank), [
     1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 12, 13,
   ]);
+  assert.deepEqual(SharedRoomSettings.PRECLICK_POPUP_ARTWORK_MODES, [
+    "random",
+    "shuffle",
+    "single",
+  ]);
+  assert.equal(SharedRoomSettings.DEFAULT_PRECLICK_POPUP_ARTWORK_ID, "01.png");
+  const legacyV52 = SharedRoomSettings.migrateRoomSettings({}, 52);
+  assert.equal(legacyV52.preclickPopupArtworkMode, "shuffle");
+  assert.equal(legacyV52.preclickPopupArtworkId, "01.png");
   assert.deepEqual(rows.map(({ role }) => role), [
     "first",
     "top-ten",

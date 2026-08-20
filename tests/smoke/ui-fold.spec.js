@@ -80,7 +80,7 @@ test("legacy drafts маршруты возвращают 404", async ({ request
 
 test("Fold-настройки мигрируют из localStorage v32 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -99,7 +99,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v52", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -125,7 +125,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v52", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -137,7 +137,7 @@ test("настройки popup и берёз мигрируют из localStorag
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v47",
       JSON.stringify({ preclickPopupDelayMs: 345 }),
@@ -150,7 +150,7 @@ test("настройки popup и берёз мигрируют из localStorag
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
         );
         return {
           delay: stored.preclickPopupDelayMs,
@@ -172,7 +172,7 @@ test("hop-настройки мигрируют из localStorage v39 в v52 б�
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v39",
       JSON.stringify({
@@ -192,7 +192,7 @@ test("hop-настройки мигрируют из localStorage v39 в v52 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
         );
         return {
           guardClicks: stored.preclickHopGuardClickCount,
@@ -224,7 +224,7 @@ test("визуальные настройки камня мигрируют из
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -237,7 +237,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -257,7 +257,7 @@ test("визуальные настройки камня мигрируют из
 
 test("настройки руки мигрируют из localStorage v36 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -270,7 +270,7 @@ test("настройки руки мигрируют из localStorage v36 в v5
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -288,7 +288,7 @@ test("настройки руки мигрируют из localStorage v36 в v5
 
 test("раскладка Fold мигрирует из localStorage v37 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -301,7 +301,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v52", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -316,7 +316,7 @@ test("группы Камень и След камня показывают ко
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v52:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
   });
 
   await page.goto("/");
@@ -1363,7 +1363,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v52:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,

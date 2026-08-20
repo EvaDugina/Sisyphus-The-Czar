@@ -13,8 +13,14 @@ import "../../shared/room-settings.js";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
 const DEFAULT_ROOM_SETTINGS = SharedRoomSettings.DEFAULT_ROOM_SETTINGS;
+const GOGH_ARTWORK_FALLBACK_OPTIONS = Object.freeze([
+  Object.freeze([
+    SharedRoomSettings.DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
+    SharedRoomSettings.DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
+  ]),
+]);
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v52";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v53";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -44,6 +50,7 @@ export function settingsVersionsStorageKeyForScene(sceneId) {
   return `${SETTINGS_VERSIONS_STORAGE_KEY}:${sceneId}`;
 }
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v52",
   "sisyphus-czar-settings-v51",
   "sisyphus-czar-settings-v50",
   "sisyphus-czar-settings-v49",
@@ -465,6 +472,8 @@ const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickHopGuardClickCount",
   "preclickPopupDelayMs",
   "preclickPopupWidthViewportFraction",
+  "preclickPopupArtworkMode",
+  "preclickPopupArtworkId",
   "rockEchoTrailEnabled",
   "rockEchoTrailCopies",
   "rockEchoTrailIntervalMs",
@@ -576,6 +585,20 @@ const TURNIP_AND_JUICES_SETTING_NAMES = new Set([
   "glowDecimation",
 ]);
 
+const CATS_AND_MICE_HIDDEN_SETTING_NAMES = new Set([
+  "sceneHeightScreens",
+  "foldPositionPercent",
+  "foldPanelHeightVh",
+  "foldAngle",
+  "foldZoneSize",
+  "foldBlendEnabled",
+  "foldBlendCurve",
+  "foldRockImageId",
+  "rockWallPenetrationPercent",
+  "rockActivatedWidthVw",
+  "rockMaxWidthVw",
+]);
+
 const CATS_AND_MICE_SCENES = Object.freeze([
   SETTINGS_SCENES.CATS_AND_MICE,
 ]);
@@ -598,6 +621,9 @@ export function settingsControlScenes(control) {
   }
   if (JUICES_ONLY_SETTING_NAMES.has(name)) {
     return JUICES_SCENES;
+  }
+  if (CATS_AND_MICE_HIDDEN_SETTING_NAMES.has(name)) {
+    return TURNIP_AND_JUICES_SCENES;
   }
   if (typeof name === "string" && name.startsWith("rain")) {
     return JUICES_SCENES;
@@ -1167,6 +1193,30 @@ export const SETTINGS_GROUPS = [
           DEFAULT_ROOM_SETTINGS.preclickPopupWidthViewportFraction * 100,
         )}vw`,
         hint: "Доля ширины viewport: 0.01 соответствует 1vw, а 1 — 100vw. Высота сохраняет пропорции картины.",
+      },
+      {
+        name: "preclickPopupArtworkMode",
+        label: "Режим выбора картин",
+        type: "select",
+        options: [
+          ["random", "Случайная картинка"],
+          ["shuffle", "Случайно циклично"],
+          ["single", "Одна картинка"],
+        ],
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupArtworkMode,
+        hint: "Случайный режим допускает повторы; цикличный показывает все картины в случайном порядке без повторов внутри цикла; одиночный всегда открывает выбранный файл.",
+      },
+      {
+        name: "preclickPopupArtworkId",
+        label: "Картинка для одиночного режима",
+        type: "select",
+        options: GOGH_ARTWORK_FALLBACK_OPTIONS,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupArtworkId,
+        enabledWhen: {
+          name: "preclickPopupArtworkMode",
+          values: ["single"],
+        },
+        hint: "Конкретное изображение из assets/gogh, которое открывается при каждом фейковом клике в режиме одной картинки.",
       },
       {
         name: "birchBackgroundEnabled",
@@ -1972,18 +2022,29 @@ export const SETTINGS_GROUPS = [
   },
 ];
 
-function sceneOwnedControl(control, sceneId) {
-  return Object.freeze({ ...control, ownerSceneId: sceneId });
+function sceneOwnedControl(control, sceneId, options = {}) {
+  const owned = { ...control, ownerSceneId: sceneId };
+  if (
+    control.name === "preclickPopupArtworkId" &&
+    Array.isArray(options.goghArtworkOptions) &&
+    options.goghArtworkOptions.length > 0
+  ) {
+    owned.options = options.goghArtworkOptions;
+    if (!owned.options.some(([value]) => value === owned.defaultValue)) {
+      owned.defaultValue = owned.options[0][0];
+    }
+  }
+  return Object.freeze(owned);
 }
 
-function sceneOwnedGroup(group, sceneId) {
+function sceneOwnedGroup(group, sceneId, options) {
   const controls = (group.controls || [])
     .filter((control) => settingsControlVisibleInScene(control, sceneId))
-    .map((control) => sceneOwnedControl(control, sceneId));
+    .map((control) => sceneOwnedControl(control, sceneId, options));
   const subgroups = (group.subgroups || []).flatMap((subgroup) => {
     const ownedControls = settingsGroupControls(subgroup)
       .filter((control) => settingsControlVisibleInScene(control, sceneId))
-      .map((control) => sceneOwnedControl(control, sceneId));
+      .map((control) => sceneOwnedControl(control, sceneId, options));
     return ownedControls.length > 0
       ? [{ ...subgroup, controls: ownedControls, subgroups: [] }]
       : [];
@@ -1999,14 +2060,14 @@ function sceneOwnedGroup(group, sceneId) {
   });
 }
 
-export function settingsGroupsForScene(sceneId) {
+export function settingsGroupsForScene(sceneId, options = {}) {
   const normalizedSceneId = SETTINGS_SCENE_OPTIONS.some(
     (scene) => scene.id === sceneId,
   )
     ? sceneId
     : SETTINGS_SCENES.CATS_AND_MICE;
   return SETTINGS_GROUPS.flatMap((group) => {
-    const owned = sceneOwnedGroup(group, normalizedSceneId);
+    const owned = sceneOwnedGroup(group, normalizedSceneId, options);
     return owned ? [owned] : [];
   });
 }
