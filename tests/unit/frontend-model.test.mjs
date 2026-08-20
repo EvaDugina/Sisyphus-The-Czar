@@ -614,8 +614,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v53");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v52");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v54");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v53");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -1027,7 +1027,7 @@ test("UI материализует параметры отдельно для �
     [
       [SETTINGS_SCENES.CATS_AND_MICE, 37],
       [SETTINGS_SCENES.TURNIP, 103],
-      [SETTINGS_SCENES.JUICES, 104],
+      [SETTINGS_SCENES.JUICES, 105],
     ],
   );
   SETTINGS_SCENE_OPTIONS.forEach(({ id }) => {
@@ -1124,7 +1124,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 53);
+  assert.equal(productionSettingsSchemaVersion, 54);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -3034,7 +3034,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 53);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 54);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3717,6 +3717,41 @@ test("history window квантуется по viewport и sampling сохран
   });
   assert.ok(ratio < 1.5);
   assert.ok(1920 * 3240 * ratio * ratio <= 12_000_001);
+});
+
+test("сцена 3 предоставляет пять конфигураций линзы с Brandon Mercer по умолчанию", () => {
+  assert.deepEqual(
+    SharedRoomSettings.ROCK_LENS_EFFECTS,
+    ["brandon-mercer", "liquid-bulge", "vortex-lens", "pinch-tunnel", "ripple-glass"],
+  );
+  assert.deepEqual(SharedRoomSettings.DEFAULT_ROCK_LENS_CONFIG, {
+    effect: "brandon-mercer",
+    radius: 0.3,
+    strength: 0.49,
+    softness: 1,
+    twistDegrees: 0,
+    trail: 0.15,
+    dissipation: 0.96,
+    activation: "hover",
+  });
+
+  const lensControl = settingsGroupsForScene(SETTINGS_SCENES.JUICES)
+    .flatMap((group) => group.controls)
+    .find((control) => control.name === "rockLensConfig");
+  assert.equal(lensControl?.type, "rock-lens");
+  assert.deepEqual(
+    SharedRoomSettings.sanitizeRockLensConfig({
+      effect: "unknown",
+      radius: 10,
+      strength: -2,
+      activation: "unknown",
+    }),
+    {
+      ...SharedRoomSettings.DEFAULT_ROCK_LENS_CONFIG,
+      radius: 0.75,
+      strength: 0,
+    },
+  );
 });
 
 test("sampling видимых trail-участков соблюдает общий бюджет без склейки", () => {

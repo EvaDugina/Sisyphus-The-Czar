@@ -2748,6 +2748,52 @@ test("финальное падение включается только пос
   );
 });
 
+test("сцена 3 фиксирует первое попадание в центре до явного scroll-release", () => {
+  const { manager } = setup();
+  const session = manager.createSession({
+    sceneId: "juices",
+    state: { phase: Physics.PHASES.PLAY, x: 515, y: 112 },
+    roomSettings: {
+      stationaryAutoSlipEnabled: false,
+      randomDropEnabled: false,
+      rockJumpEnabled: false,
+    },
+    imprint: { x: 500, y: 100, toleranceX: 40, toleranceY: 30 },
+  });
+  const holder = connect(manager, session, "client-scene3-lock01");
+
+  assert.equal(
+    manager.acquireControl(session, holder.client, { x: 515, y: 112 }),
+    true,
+  );
+  assert.equal(
+    manager.lockSceneThreeRock(session, holder.client, { x: 515, y: 112 }),
+    true,
+  );
+  assert.equal(session.sceneThreeLocked, true);
+  assert.deepEqual(
+    {
+      x: session.state.x,
+      y: session.state.y,
+      vx: session.state.vx,
+      vy: session.state.vy,
+      dragging: session.state.dragging,
+    },
+    { x: 500, y: 100, vx: 0, vy: 0, dragging: false },
+  );
+  assert.equal(
+    manager.acquireControl(session, holder.client, { x: 500, y: 100 }),
+    false,
+  );
+  assert.equal(manager.snapshot(session).sceneThreeLocked, true);
+  assert.equal(manager.serializeSessions()[0].sceneThreeLocked, true);
+
+  assert.equal(manager.releaseSceneThreeRock(session, holder.client), true);
+  assert.equal(session.sceneThreeLocked, false);
+  assert.equal(session.state.phase, Physics.PHASES.FALLING);
+  assert.equal(manager.releaseSceneThreeRock(session, holder.client), false);
+});
+
 test("выход с вершины сбрасывает таймер финального падения", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({

@@ -1,6 +1,10 @@
 const { defineConfig } = require("@playwright/test");
+const os = require("node:os");
+const path = require("node:path");
 
 const smokeRunId = `${process.pid}-${Date.now()}`;
+const smokePath = (name) =>
+  path.join(os.tmpdir(), `sisyphus-scene-pages-${name}-${smokeRunId}.json`);
 
 module.exports = defineConfig({
   testDir: "./tests/smoke",
@@ -23,11 +27,9 @@ module.exports = defineConfig({
       SESSION_TTL_SECONDS: "86400",
       EMPTY_SESSION_GRACE_SECONDS: "2",
       SESSION_CREATE_RATE_LIMIT: "50",
-      SESSION_STORE_PATH: `/tmp/sisyphus-scene-pages-${smokeRunId}.json`,
-      PRODUCTION_PRESET_PATH:
-        `/tmp/sisyphus-scene-pages-preset-${smokeRunId}.json`,
-      SETTINGS_TEMPLATE_STORE_PATH:
-        `/tmp/sisyphus-scene-pages-settings-${smokeRunId}.json`,
+      SESSION_STORE_PATH: smokePath("sessions"),
+      PRODUCTION_PRESET_PATH: smokePath("preset"),
+      SETTINGS_TEMPLATE_STORE_PATH: smokePath("settings"),
       SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },

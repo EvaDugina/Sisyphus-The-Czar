@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 53;
+  const ROOM_SETTINGS_VERSION = 54;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -71,6 +71,67 @@
     "single",
   ]);
   const DEFAULT_PRECLICK_POPUP_ARTWORK_ID = "01.png";
+  const ROCK_LENS_EFFECTS = Object.freeze([
+    "brandon-mercer",
+    "liquid-bulge",
+    "vortex-lens",
+    "pinch-tunnel",
+    "ripple-glass",
+  ]);
+  const ROCK_LENS_ACTIVATION_MODES = Object.freeze(["hover", "hold"]);
+  const ROCK_LENS_PRESETS = Object.freeze({
+    "brandon-mercer": Object.freeze({
+      effect: "brandon-mercer",
+      radius: 0.3,
+      strength: 0.49,
+      softness: 1,
+      twistDegrees: 0,
+      trail: 0.15,
+      dissipation: 0.96,
+      activation: "hover",
+    }),
+    "liquid-bulge": Object.freeze({
+      effect: "liquid-bulge",
+      radius: 0.4,
+      strength: 0.72,
+      softness: 1.35,
+      twistDegrees: 0,
+      trail: 0.08,
+      dissipation: 0.92,
+      activation: "hover",
+    }),
+    "vortex-lens": Object.freeze({
+      effect: "vortex-lens",
+      radius: 0.44,
+      strength: 0.95,
+      softness: 1.8,
+      twistDegrees: 165,
+      trail: 0.12,
+      dissipation: 0.94,
+      activation: "hover",
+    }),
+    "pinch-tunnel": Object.freeze({
+      effect: "pinch-tunnel",
+      radius: 0.38,
+      strength: 0.82,
+      softness: 1.5,
+      twistDegrees: 75,
+      trail: 0.1,
+      dissipation: 0.93,
+      activation: "hold",
+    }),
+    "ripple-glass": Object.freeze({
+      effect: "ripple-glass",
+      radius: 0.46,
+      strength: 0.58,
+      softness: 2.1,
+      twistDegrees: 30,
+      trail: 0.08,
+      dissipation: 0.91,
+      activation: "hover",
+    }),
+  });
+  const DEFAULT_ROCK_LENS_CONFIG = ROCK_LENS_PRESETS["brandon-mercer"];
 
   const THEME_MODES = Object.freeze(["auto", "dark", "light"]);
   const MIX_BLEND_MODES = Object.freeze([
@@ -103,6 +164,12 @@
     foldAngle: [0, 180],
     foldZoneSize: [0, 50],
     finalFallDelaySeconds: [0, 10],
+    rockLensRadius: [0.05, 0.75],
+    rockLensStrength: [0, 1.5],
+    rockLensSoftness: [0.2, 3],
+    rockLensTwistDegrees: [-220, 220],
+    rockLensTrail: [0, 0.5],
+    rockLensDissipation: [0.75, 0.99],
     drizzleVolume: [0, 1],
     customCursorSizePx: [8, 128],
     handImageChangeDelayMs: [0, 1000],
@@ -194,6 +261,7 @@
     foldBlendCurve: DEFAULT_FOLD_BLEND_CURVE,
     finalFallEnabled: false,
     finalFallDelaySeconds: 2,
+    rockLensConfig: DEFAULT_ROCK_LENS_CONFIG,
     randomDropEnabled: true,
     rockJumpEnabled: true,
     rockJumpIntervalSeconds: 5,
@@ -304,6 +372,65 @@
   function finiteNumber(value, fallback) {
     const number = Number(value);
     return Number.isFinite(number) ? number : fallback;
+  }
+
+  function parseRockLensConfig(value) {
+    if (value && typeof value === "object" && !Array.isArray(value)) {
+      return value;
+    }
+    if (typeof value !== "string") {
+      return null;
+    }
+    try {
+      const parsed = JSON.parse(value);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+        ? parsed
+        : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function sanitizeRockLensConfig(input, fallback = DEFAULT_ROCK_LENS_CONFIG) {
+    const source = parseRockLensConfig(input) || {};
+    const fallbackSource = parseRockLensConfig(fallback) || DEFAULT_ROCK_LENS_CONFIG;
+    const effect = ROCK_LENS_EFFECTS.includes(source.effect)
+      ? source.effect
+      : ROCK_LENS_EFFECTS.includes(fallbackSource.effect)
+        ? fallbackSource.effect
+        : DEFAULT_ROCK_LENS_CONFIG.effect;
+    const preset = ROCK_LENS_PRESETS[effect];
+    const sameEffectFallback = fallbackSource.effect === effect
+      ? fallbackSource
+      : preset;
+    const bounded = (key, limits) => clamp(
+      finiteNumber(
+        source[key],
+        finiteNumber(sameEffectFallback[key], preset[key]),
+      ),
+      limits[0],
+      limits[1],
+    );
+    return {
+      effect,
+      radius: bounded("radius", ROOM_SETTINGS_LIMITS.rockLensRadius),
+      strength: bounded("strength", ROOM_SETTINGS_LIMITS.rockLensStrength),
+      softness: bounded("softness", ROOM_SETTINGS_LIMITS.rockLensSoftness),
+      twistDegrees: bounded(
+        "twistDegrees",
+        ROOM_SETTINGS_LIMITS.rockLensTwistDegrees,
+      ),
+      trail: bounded("trail", ROOM_SETTINGS_LIMITS.rockLensTrail),
+      dissipation: bounded(
+        "dissipation",
+        ROOM_SETTINGS_LIMITS.rockLensDissipation,
+      ),
+      activation: ROCK_LENS_ACTIVATION_MODES.includes(source.activation)
+        ? source.activation
+        : ROCK_LENS_ACTIVATION_MODES.includes(sameEffectFallback.activation)
+          ? sameEffectFallback.activation
+          : preset.activation,
+    };
   }
 
   function sanitizeHeightGates(input, fallback = []) {
@@ -824,6 +951,10 @@
         "finalFallDelaySeconds",
         finalFallDelayMin,
         finalFallDelayMax
+      ),
+      rockLensConfig: sanitizeRockLensConfig(
+        source.rockLensConfig,
+        fallbackSource.rockLensConfig
       ),
       randomDropEnabled: boolSetting(
         source,
@@ -1835,6 +1966,10 @@
     DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     PRECLICK_POPUP_ARTWORK_MODES,
     DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
+    ROCK_LENS_EFFECTS,
+    ROCK_LENS_ACTIVATION_MODES,
+    ROCK_LENS_PRESETS,
+    DEFAULT_ROCK_LENS_CONFIG,
     ROOM_SETTINGS_VERSION,
     ROOM_SETTINGS_KEYS,
     ROOM_SETTINGS_LIMITS,
@@ -1843,6 +1978,7 @@
     parseCubicBezier,
     sanitizeHeightGates,
     sanitizeSceneTwoGlassStrips,
+    sanitizeRockLensConfig,
     migrateFoldSettings,
     migratePreclickHopSettings,
     migrateRockVisualSettings,

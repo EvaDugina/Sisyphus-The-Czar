@@ -175,7 +175,6 @@
   color: #fff;
 }
 
-body[data-scene="scene-1"] .summit,
 body[data-scene="scene-1"] .summit-timer,
 body[data-scene="scene-1"] .summit-leaderboard,
 body[data-scene="scene-1"] .rock-imprint,
@@ -301,6 +300,38 @@ body.birch-background-enabled .birch-layer {
     filter 160ms ease,
     opacity 240ms ease;
   will-change: transform;
+}
+
+.rock-lens-canvas {
+  position: absolute;
+  z-index: 6;
+  display: none;
+  width: 0;
+  height: 0;
+  filter: drop-shadow(0 1.05rem 1.1rem var(--shadow));
+  opacity: 0;
+  pointer-events: none;
+}
+
+body[data-scene="scene-3"] .rock-lens-canvas.is-ready {
+  display: block;
+  opacity: 1;
+}
+
+body[data-scene="scene-3"] .rock.is-lens-rendered {
+  opacity: 0;
+  transition: none;
+}
+
+body[data-scene="scene-3"]:has(.rock.is-dragging) .rock-lens-canvas {
+  filter: drop-shadow(0 1.35rem 1.3rem var(--shadow));
+}
+
+body[data-scene="scene-3"] .rock.is-lens-rendered.is-imprint-magnetizing {
+  transition:
+    transform 360ms cubic-bezier(0.22, 1, 0.36, 1),
+    filter 160ms ease,
+    opacity 0ms linear;
 }
 
 .rock.is-preclick-hop {
@@ -788,6 +819,49 @@ body.hand-hidden .hand-cursor {
 
   .hand-cursor {
     display: block;
+  }
+}
+
+@media (pointer: fine) {
+  body[data-scene="scene-3"] .hand-cursor {
+    --cursor-width: 32px;
+    --cursor-height: var(--cursor-width);
+    --hotspot-x: 0px;
+    --hotspot-y: 0px;
+
+    width: var(--cursor-width);
+    height: var(--cursor-height);
+    background-image: url("../../assets/cursor/handopen.svg");
+    background-position: left top;
+    filter: none;
+    transform: translate3d(var(--cursor-x), var(--cursor-y), 0);
+  }
+
+  body[data-scene="scene-3"] .hand-cursor::after {
+    display: none;
+  }
+
+  body[data-scene="scene-3"] .hand-cursor.is-visible {
+    transform: translate3d(var(--cursor-x), var(--cursor-y), 0);
+  }
+
+  body[data-scene="scene-3"] .hand-cursor.is-alternate,
+  body[data-scene="scene-3"] .hand-cursor.is-grabbing {
+    --hotspot-x: 0px;
+    --hotspot-y: 0px;
+
+    background-image: url("../../assets/cursor/handgrabbing.svg");
+    filter: none;
+    transform: translate3d(var(--cursor-x), var(--cursor-y), 0);
+  }
+
+  body[data-scene="scene-3"].is-settings-pointer-active
+    .hand-cursor:not(.is-remote) {
+    opacity: 0;
+  }
+
+  body[data-scene="scene-3"]:not(.hand-hidden) .rock {
+    cursor: none;
   }
 }
 

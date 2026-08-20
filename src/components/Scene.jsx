@@ -1,6 +1,7 @@
 import { BirchLayer } from "./BirchLayer";
 import { GlassStrips } from "./GlassStrips";
 import { Rock } from "./Rock";
+import { RockLensCanvas } from "./RockLensCanvas";
 import { RockEchoTrail } from "./RockEchoTrail";
 import { RockImprint } from "./RockImprint";
 import { TrailCanvas } from "./TrailCanvas";
@@ -45,6 +46,7 @@ export function Scene({ scene, trail, rain }) {
       <RockEchoTrail layerRef={trail.rockEchoTrailLayerRef} />
       <RockImprint rockImprintRef={scene.rockImprintRef} />
       <Rock rockRef={scene.rockRef} />
+      <RockLensCanvas canvasRef={scene.rockLensCanvasRef} />
       <GlassStrips layerRef={scene.glassStripsRef} />
       <BirchLayer depth="front" />
       <div

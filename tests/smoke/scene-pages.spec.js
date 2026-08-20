@@ -25,6 +25,20 @@ async function waitForDebugScene(page, path, sceneId) {
 
 test("inline UI показывает только параметры текущей сцены", async ({ page }) => {
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
+  await expect(page.getByRole("heading", {
+    name: "miniature",
+    exact: true,
+  })).toBeVisible();
+  await expect(page.getByRole("heading", {
+    name: "The Path of Tzarey",
+    exact: true,
+  })).toBeVisible();
+  const world = page.locator(".scene-page > .world");
+  await expect(world.locator(":scope > .summit-timer")).toBeHidden();
+  await expect(world.locator(":scope > .summit-leaderboard")).toBeHidden();
+  await expect(world.locator(":scope > .rock-imprint")).toBeHidden();
+  await expect(world.locator(":scope > .trail")).toBeHidden();
+  await expect(world.locator(":scope > .rock-echo-trail")).toBeVisible();
   await expect(page.locator(".settings-panel__scene-title")).toHaveText(
     "Параметры · Сцена 1. Кошки-мышки",
   );
@@ -72,6 +86,27 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator("[data-setting-control]")).toHaveCount(103);
 
   await waitForDebugScene(page, "/scene-3", "juices");
+  const cursorAssets = await page.locator(
+    ".scene-page > .world > .hand-cursor:not(.is-remote)",
+  ).evaluate(
+    (cursor) => {
+      const originalClassName = cursor.className;
+      cursor.classList.remove("is-alternate", "is-grabbing");
+      const open = getComputedStyle(cursor);
+      const result = {
+        open: open.backgroundImage,
+        width: open.width,
+      };
+      cursor.classList.add("is-grabbing");
+      result.grabbing = getComputedStyle(cursor).backgroundImage;
+      cursor.className = originalClassName;
+      return result;
+    },
+  );
+  expect(cursorAssets.width).toBe("32px");
+  expect(cursorAssets.open).toContain("data:image/svg+xml");
+  expect(cursorAssets.grabbing).toContain("handgrabbing");
+  expect(cursorAssets.grabbing).not.toBe(cursorAssets.open);
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
   await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(0);
   await expect(
@@ -86,7 +121,122 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="gravity"]')).toHaveCount(1);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="finalFallEnabled"]')).toHaveCount(1);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(104);
+  await expect(page.locator('[name="rockLensConfig"]')).toHaveCount(1);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(105);
+});
+
+test("scene 3 показывает пять WebGL-линз и восстанавливает Brandon Mercer flowmap", async ({ page }) => {
+  await waitForDebugScene(page, "/scene-3", "juices");
+  const canvas = page.getByTestId("rock-lens-canvas");
+  await expect(canvas).toHaveClass(/is-ready/);
+  await expect(canvas).toHaveAttribute("data-lens-effect", "brandon-mercer");
+
+  const defaultState = await page.evaluate(() =>
+    window.__sisyphusTestApi.getRockLensState(),
+  );
+  expect(defaultState).toMatchObject({
+    available: true,
+    flowmapSize: 512,
+    imageReady: true,
+    config: {
+      effect: "brandon-mercer",
+      radius: 0.3,
+      strength: 0.49,
+      softness: 1,
+      trail: 0.15,
+      dissipation: 0.96,
+      activation: "hover",
+    },
+  });
+
+  const effect = page.getByLabel("Эффект линзы");
+  await expect(effect.locator("option")).toHaveCount(5);
+  await effect.evaluate((element) => {
+    const group = element.closest("details");
+    if (group) group.open = true;
+  });
+  await expect(effect).toBeVisible();
+  await effect.selectOption("vortex-lens");
+  await expect(canvas).toHaveAttribute("data-lens-effect", "vortex-lens");
+  const vortexConfig = await page.locator('[name="rockLensConfig"]').inputValue();
+  expect(JSON.parse(vortexConfig)).toMatchObject({
+    effect: "vortex-lens",
+    radius: 0.44,
+    twistDegrees: 165,
+  });
+
+  const rockBox = await page.locator(ROCK).boundingBox();
+  await page.mouse.move(
+    rockBox.x + rockBox.width * 0.25,
+    rockBox.y + rockBox.height * 0.5,
+  );
+  await page.mouse.move(
+    rockBox.x + rockBox.width * 0.75,
+    rockBox.y + rockBox.height * 0.5,
+    { steps: 8 },
+  );
+  await expect.poll(() => page.evaluate(() =>
+    window.__sisyphusTestApi.getRockLensState().flowEnergy,
+  )).toBeGreaterThan(0);
+  await page.mouse.move(1, 1);
+  await expect.poll(() => page.evaluate(() => {
+    const state = window.__sisyphusTestApi.getRockLensState();
+    return Math.max(state.amount, state.flowEnergy);
+  }), { timeout: 7000 }).toBe(0);
+
+  await page.getByTestId("rock-lens-reset").click();
+  await expect(effect).toHaveValue("vortex-lens");
+});
+
+test("scene 3 магнитит камень и отпускает его только от настоящего scroll вниз", async ({ page }) => {
+  await waitForDebugScene(page, "/scene-3", "juices");
+  const target = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    const imprint = api.activeLocalImprint();
+    const rock = document.querySelector(".rock");
+    const rect = rock.getBoundingClientRect();
+    return {
+      rockCenterX: rect.left + rect.width / 2,
+      rockCenterY: rect.top + rect.height / 2,
+      targetX: imprint.x + rect.width / 2,
+      targetY: imprint.y + rect.height / 2,
+    };
+  });
+  await page.mouse.move(target.rockCenterX, target.rockCenterY);
+  await page.mouse.down();
+  await page.mouse.move(target.targetX, target.targetY, { steps: 16 });
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-scene-three-rock-locked",
+    "true",
+  );
+  await page.mouse.up();
+
+  const centered = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    const imprint = api.activeLocalImprint();
+    return {
+      dx: Math.abs(api.motion.x - imprint.x),
+      dy: Math.abs(api.motion.y - imprint.y),
+    };
+  });
+  expect(centered.dx).toBeLessThan(0.5);
+  expect(centered.dy).toBeLessThan(0.5);
+
+  await page.evaluate(() => scrollTo(0, 20));
+  await page.waitForTimeout(150);
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-scene-three-rock-locked",
+    "true",
+  );
+
+  await page.mouse.wheel(0, 120);
+  await expect(page.locator("body")).toHaveAttribute(
+    "data-scene-three-rock-locked",
+    "false",
+  );
+  await expect.poll(() => page.evaluate(() =>
+    window.__sisyphusTestApi.motion.phase,
+  )).toBe("fallingToBottom");
 });
 
 test("боковая панель растягивается, прокручивается отдельно и не обрезает значения", async ({ page }) => {
@@ -234,13 +384,13 @@ test("скрытые настройки не оказывают клиентск
   });
 });
 
-test("настройки сцены 1 мигрируют из v52 в v53 с режимом выбора картин", async ({
+test("настройки сцены 1 мигрируют из v53 в v54 с режимом выбора картин", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v54:cats-and-mice");
     localStorage.setItem(
-      "sisyphus-czar-settings-v52:cats-and-mice",
+      "sisyphus-czar-settings-v53:cats-and-mice",
       JSON.stringify({
         preclickPopupWidthViewportFraction: 0.3,
       }),
@@ -261,7 +411,7 @@ test("настройки сцены 1 мигрируют из v52 в v53 с ре
 
   const migrated = await page.evaluate(() => {
     const stored = JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}",
     );
     return {
       hasLegacyPopupSize: Object.hasOwn(
@@ -288,7 +438,7 @@ test("одинаковый визуальный параметр хранит н
   const sceneOneValue = 30;
   await page.evaluate((value) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v53:cats-and-mice",
+      "sisyphus-czar-settings-v54:cats-and-mice",
       JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
     );
   }, sceneOneValue);
@@ -304,7 +454,7 @@ test("одинаковый визуальный параметр хранит н
   const sceneTwoValue = 20;
   await page.evaluate((value) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v53:turnip",
+      "sisyphus-czar-settings-v54:turnip",
       JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
     );
   }, sceneTwoValue);
@@ -314,10 +464,10 @@ test("одинаковый визуальный параметр хранит н
 
   const snapshots = await page.evaluate(() => ({
     sceneOne: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}",
     ).handWidthVw,
     sceneTwo: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v53:turnip") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v54:turnip") || "{}",
     ).handWidthVw,
   }));
   expect(snapshots).toEqual({ sceneOne: sceneOneValue, sceneTwo: sceneTwoValue });

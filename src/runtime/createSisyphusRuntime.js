@@ -98,6 +98,7 @@ import {
 } from "../config/production-preset.mjs";
 import { createSettingsController } from "./createSettingsController.js";
 import { createRockEchoTrailController } from "./createRockEchoTrailController.js";
+import { createRockLensController } from "./createRockLensController.js";
 import { createWindowObstacleController } from "./createWindowObstacleController.js";
 
 const ROLE_AUDIO_FADE_IN_MS = 300;
@@ -190,6 +191,8 @@ export function createSisyphusRuntime(elements = {}) {
   const summitLeaderboardElement =
     elements.summitLeaderboard || document.querySelector(".summit-leaderboard");
   const rock = elements.rock || document.querySelector(".rock");
+  const rockLensCanvas =
+    elements.rockLensCanvas || document.querySelector(".rock-lens-canvas");
   const rockEchoTrailLayer =
     elements.rockEchoTrailLayer || document.querySelector(".rock-echo-trail");
   const rockImprint = elements.rockImprint || document.querySelector(".rock-imprint");
@@ -404,6 +407,8 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.finalFallEnabled,
     finalFallDelaySeconds:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.finalFallDelaySeconds,
+    rockLensConfig:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockLensConfig,
     randomDropEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.randomDropEnabled,
     rockJumpEnabled:
@@ -647,10 +652,24 @@ export function createSisyphusRuntime(elements = {}) {
   applyBirchBackgroundSettings();
   applySummitTimerSettings();
   let rockEchoTrailController = null;
+  const rockLensController = isSceneThree
+    ? createRockLensController({
+        canvas: rockLensCanvas,
+        getConfig: () => params.rockLensConfig,
+        rock,
+        world,
+      })
+    : null;
   resetPreclickRockGuidance();
   const finalFallGate = {
     enteredAt: null,
     ready: false,
+  };
+  const sceneThreePlacement = {
+    locked: false,
+    magnetizing: false,
+    released: false,
+    timerId: null,
   };
 
   const SHARED_PHYSICS_KEYS = [
@@ -1039,6 +1058,9 @@ export function createSisyphusRuntime(elements = {}) {
         SharedRoomSettings.sanitizeSceneTwoGlassStrips(value),
       );
     }
+    if (key === "rockLensConfig") {
+      return JSON.stringify(SharedRoomSettings.sanitizeRockLensConfig(value));
+    }
     if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
       const seconds = Number(value) / 1000;
       return Number.isFinite(seconds) ? String(seconds) : "0";
@@ -1069,6 +1091,15 @@ export function createSisyphusRuntime(elements = {}) {
         );
       } catch {
         return [];
+      }
+    }
+    if (key === "rockLensConfig") {
+      try {
+        return SharedRoomSettings.sanitizeRockLensConfig(
+          JSON.parse(input.value || "{}"),
+        );
+      } catch {
+        return SharedRoomSettings.sanitizeRockLensConfig({});
       }
     }
     if (SECOND_UI_MS_SETTING_KEYS.has(key)) {
@@ -4814,6 +4845,12 @@ export function createSisyphusRuntime(elements = {}) {
         )
       );
     }
+    if (key === "rockLensConfig") {
+      return (
+        JSON.stringify(SharedRoomSettings.sanitizeRockLensConfig(left)) ===
+        JSON.stringify(SharedRoomSettings.sanitizeRockLensConfig(right))
+      );
+    }
     if (BOOLEAN_ROOM_SETTING_KEYS.has(key)) {
       const leftBool = left === true || left === "true";
       const rightBool = right === true || right === "true";
@@ -5239,6 +5276,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function resetSceneFlowState() {
+    resetSceneThreePlacement();
     sceneFlow.completed = false;
     sceneFlow.completionReason = "";
     sceneFlow.finalFallStarted = false;
@@ -5791,6 +5829,7 @@ export function createSisyphusRuntime(elements = {}) {
       dragging: Boolean(payload.dragging),
       controllerId: payload.controllerId || null,
       suspended: Boolean(payload.suspended),
+      sceneThreeLocked: payload.sceneThreeLocked === true,
       holderId,
       revision,
       serverTime: Number(payload.serverTime) || Date.now(),
@@ -5896,6 +5935,13 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       return;
     }
+    setSceneThreePlacementFromSnapshot(snapshot);
+    if (
+      sceneThreePlacement.locked &&
+      snapshot.sceneThreeLocked !== true
+    ) {
+      return;
+    }
     if (preclickRockGuidance.completed) {
       const snapshotOnGround =
         !snapshot.dragging &&
@@ -5942,6 +5988,7 @@ export function createSisyphusRuntime(elements = {}) {
     const visiblyDragging = Boolean(snapshot.dragging && snapshot.holderId);
     const visiblyFalling =
       !visiblyDragging &&
+      snapshot.sceneThreeLocked !== true &&
       !motion.suspended &&
       snapshot.phase !== PHASES.INTRO &&
       snapshot.phase !== PHASES.WON &&
@@ -6067,7 +6114,7 @@ export function createSisyphusRuntime(elements = {}) {
       updateSessionStatus();
       return;
     }
-    if (motion.phase !== PHASES.PLAY) {
+    if (motion.phase !== PHASES.PLAY || sceneThreePlacement.locked) {
       return;
     }
 
@@ -6152,12 +6199,8 @@ export function createSisyphusRuntime(elements = {}) {
     if (reachedImprint && maybeCompleteSceneTwo()) {
       return;
     }
-    if (
-      isSceneThree &&
-      reachedImprint &&
-      syncFinalFallGate()
-    ) {
-      forceReleaseSharedDrag(false, false);
+    if (isSceneThree && reachedImprint) {
+      startSceneThreeMagnetPlacement();
     }
   }
 
@@ -6170,6 +6213,10 @@ export function createSisyphusRuntime(elements = {}) {
       motion.phase === PHASES.PLAY && rockInsideImprint();
     if (isSceneTwo && releasedInImprint) {
       completeScene("rock-touched-imprint");
+      return;
+    }
+    if (isSceneThree && releasedInImprint) {
+      startSceneThreeMagnetPlacement();
       return;
     }
     beginSceneTwoAirborneScale();
@@ -7268,6 +7315,137 @@ export function createSisyphusRuntime(elements = {}) {
     );
   }
 
+  function clearSceneThreePlacementTimer() {
+    if (sceneThreePlacement.timerId !== null) {
+      window.clearTimeout(sceneThreePlacement.timerId);
+      sceneThreePlacement.timerId = null;
+    }
+  }
+
+  function renderSceneThreePlacementState({ animate = false } = {}) {
+    if (!isSceneThree) {
+      return;
+    }
+    clearSceneThreePlacementTimer();
+    body.classList.toggle("scene-three-rock-locked", sceneThreePlacement.locked);
+    body.dataset.sceneThreeRockLocked = String(sceneThreePlacement.locked);
+    rock.classList.toggle("is-imprint-locked", sceneThreePlacement.locked);
+    rock.classList.toggle(
+      "is-imprint-magnetizing",
+      sceneThreePlacement.locked && animate,
+    );
+    sceneThreePlacement.magnetizing = sceneThreePlacement.locked && animate;
+    if (sceneThreePlacement.magnetizing) {
+      sceneThreePlacement.timerId = window.setTimeout(() => {
+        sceneThreePlacement.timerId = null;
+        sceneThreePlacement.magnetizing = false;
+        rock.classList.remove("is-imprint-magnetizing");
+      }, 460);
+    }
+  }
+
+  function resetSceneThreePlacement() {
+    clearSceneThreePlacementTimer();
+    sceneThreePlacement.locked = false;
+    sceneThreePlacement.magnetizing = false;
+    sceneThreePlacement.released = false;
+    body.classList.remove("scene-three-rock-locked");
+    body.removeAttribute("data-scene-three-rock-locked");
+    rock.classList.remove("is-imprint-locked", "is-imprint-magnetizing");
+  }
+
+  function setSceneThreePlacementFromSnapshot(snapshot) {
+    if (!isSceneThree || !snapshot) {
+      return;
+    }
+    const locked = snapshot.sceneThreeLocked === true;
+    if (locked) {
+      const wasLocked = sceneThreePlacement.locked;
+      sceneThreePlacement.locked = true;
+      sceneThreePlacement.released = false;
+      if (!wasLocked) {
+        renderSceneThreePlacementState();
+      }
+      return;
+    }
+    if (sceneThreePlacement.locked && snapshot.phase === PHASES.FALLING) {
+      sceneThreePlacement.locked = false;
+      sceneThreePlacement.released = true;
+      renderSceneThreePlacementState();
+    }
+  }
+
+  function startSceneThreeMagnetPlacement() {
+    if (
+      !isSceneThree ||
+      sceneThreePlacement.locked ||
+      sceneThreePlacement.released ||
+      motion.phase !== PHASES.PLAY ||
+      !rockInsideImprint()
+    ) {
+      return false;
+    }
+    const imprint = activeLocalImprint();
+    if (!imprint) {
+      return false;
+    }
+
+    const pointerId = motion.activePointerId;
+    const canonicalHit = localToCanonical(motion.x, motion.y);
+    sceneThreePlacement.locked = true;
+    motion.dragging = false;
+    motion.activePointerId = null;
+    motion.vx = 0;
+    motion.vy = 0;
+    motion.suspended = false;
+    resetFinalFallGate();
+    stopLoop();
+    rock.classList.remove("is-dragging", "is-falling");
+    setGrabbingCursor(false);
+    setHandToGrab();
+    releasePointerCapture(pointerId);
+    renderSceneThreePlacementState({ animate: true });
+    setPosition(imprint.x, imprint.y);
+    rockLensController?.reset();
+
+    if (collab.enabled) {
+      collab.releasePending = false;
+      collab.pendingControl = false;
+      collab.hasControl = false;
+      collab.snapshots = [];
+      updateLocalSharedPointer(null, "grab", !handIsHidden());
+      sendShared("sceneThree.lock", canonicalHit);
+      updateSessionStatus();
+    }
+    syncReturnTheme();
+    return true;
+  }
+
+  function releaseSceneThreePlacementFromScroll(event) {
+    if (
+      !isSceneThree ||
+      !sceneThreePlacement.locked ||
+      event?.isTrusted !== true
+    ) {
+      return false;
+    }
+
+    if (collab.enabled && !sendShared("sceneThree.release")) {
+      updateSessionStatus();
+      return false;
+    }
+    sceneThreePlacement.locked = false;
+    sceneThreePlacement.released = true;
+    renderSceneThreePlacementState();
+    motion.suspended = false;
+    rock.classList.add("is-falling");
+    if (!collab.enabled) {
+      beginFinalReturnFall();
+      startLoop();
+    }
+    return true;
+  }
+
   function resetFinalFallGate() {
     finalFallGate.enteredAt = null;
     finalFallGate.ready = false;
@@ -7341,7 +7519,11 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function applyPhysics(deltaSeconds) {
-    if (motion.dragging || motion.phase === PHASES.WON) {
+    if (
+      motion.dragging ||
+      motion.phase === PHASES.WON ||
+      sceneThreePlacement.locked
+    ) {
       return;
     }
 
@@ -7398,12 +7580,9 @@ export function createSisyphusRuntime(elements = {}) {
       if (maybeCompleteSceneTwo()) {
         return;
       }
-      if (
-        isSceneThree &&
-        rockInsideImprint() &&
-        syncFinalFallGate()
-      ) {
-        forceReleaseRock();
+      if (isSceneThree && rockInsideImprint()) {
+        startSceneThreeMagnetPlacement();
+        return;
       }
     }
 
@@ -7497,6 +7676,10 @@ export function createSisyphusRuntime(elements = {}) {
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
+    if (isSceneThree && releasedInImprint) {
+      startSceneThreeMagnetPlacement();
+      return;
+    }
     const finalFallReady =
       releasedInImprint && syncFinalFallGate();
     motion.dragging = false;
@@ -7602,7 +7785,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function startDrag(event) {
-    if (sceneFlow.completed) {
+    if (sceneFlow.completed || sceneThreePlacement.locked) {
       return;
     }
     if (event.pointerType === "mouse" && event.button !== 0) {
@@ -7762,6 +7945,10 @@ export function createSisyphusRuntime(elements = {}) {
       completeScene("rock-touched-imprint");
       return;
     }
+    if (isSceneThree && releasedInImprint) {
+      startSceneThreeMagnetPlacement();
+      return;
+    }
     const finalFallReady =
       releasedInImprint && syncFinalFallGate();
     motion.dragging = false;
@@ -7870,6 +8057,7 @@ export function createSisyphusRuntime(elements = {}) {
   listen(window, "pointercancel", releaseAlwaysVisibleHand);
   listen(window, "wheel", (event) => {
     if (event.deltaY > 0) {
+      releaseSceneThreePlacementFromScroll(event);
       markSummitRainScrollIntent();
     }
   }, { passive: true });
@@ -7883,12 +8071,14 @@ export function createSisyphusRuntime(elements = {}) {
       rain.touchY !== null &&
       nextTouchY < rain.touchY
     ) {
+      releaseSceneThreePlacementFromScroll(event);
       markSummitRainScrollIntent();
     }
     rain.touchY = nextTouchY;
   }, { passive: true });
   listen(window, "keydown", (event) => {
     if (["ArrowDown", "PageDown", "End", " "].includes(event.key)) {
+      releaseSceneThreePlacementFromScroll(event);
       markSummitRainScrollIntent();
     }
   });
@@ -7991,6 +8181,7 @@ export function createSisyphusRuntime(elements = {}) {
       }),
       beginSceneTwoAirborneScale,
       beginFinalReturnFall,
+      startSceneThreeMagnetPlacement,
       settleSceneTwoRockScaleOnGround,
       getRoleAudioState: () => {
         const state = roleAudioFade.latest;
@@ -8127,6 +8318,9 @@ export function createSisyphusRuntime(elements = {}) {
         enteredAt: finalFallGate.enteredAt,
         ready: finalFallGate.ready,
       }),
+      getSceneThreePlacementState: () => ({ ...sceneThreePlacement }),
+      getRockLensState: () =>
+        rockLensController?.debugState() || { available: false },
       getSummitTimerState: () => ({
         elapsedMs: currentSummitElapsedMs(),
         running: summitTimer.running,
@@ -8267,6 +8461,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
       settingsController.dispose?.();
       rockEchoTrailController.dispose();
+      rockLensController?.dispose();
       preclickPopupController.dispose();
       document.documentElement.classList.remove(
         "is-manual-scroll-disabled",
@@ -8302,6 +8497,7 @@ export function createSisyphusRuntime(elements = {}) {
       stopDrizzleLoopSound({ immediate: true });
       drizzleLoopController.dispose();
       resetFinalFallGate();
+      resetSceneThreePlacement();
       stopHandInteractionSounds({ immediate: true });
       stopGachiClickSound();
       stopPreclickHopSounds();

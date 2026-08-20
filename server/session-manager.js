@@ -210,10 +210,15 @@ function hasSessionBootstrapPayload(payload) {
 
 function settingsEqual(left, right, keys) {
   return keys.every((key) => {
-    if (Array.isArray(left[key]) || Array.isArray(right[key])) {
-      return JSON.stringify(left[key] || []) === JSON.stringify(right[key] || []);
+    const leftValue = left[key];
+    const rightValue = right[key];
+    if (
+      (leftValue && typeof leftValue === "object") ||
+      (rightValue && typeof rightValue === "object")
+    ) {
+      return JSON.stringify(leftValue ?? null) === JSON.stringify(rightValue ?? null);
     }
-    return Object.is(left[key], right[key]);
+    return Object.is(leftValue, rightValue);
   });
 }
 
@@ -467,6 +472,7 @@ class SessionManager {
       summitRunningSince: summitInside ? now : null,
       summitWasInside: summitInside,
       finalFallEnteredAt: null,
+      sceneThreeLocked: false,
       lastPointer: { vx: 0, vy: 0 },
       lastPointerAt: now,
       dirty: true,
@@ -639,6 +645,7 @@ class SessionManager {
       groundTouchSeq: session.groundTouchSeq,
       summitElapsedMs: session.summitElapsedMs,
       summitRunningSince: session.summitRunningSince,
+      sceneThreeLocked: Boolean(session.sceneThreeLocked),
       leaderboardId: session.leaderboardId,
       heightGateProgress: {
         passedGateIds: [...session.passedHeightGateIds],
@@ -696,6 +703,21 @@ class SessionManager {
       );
       const sceneId = normalizeSceneId(record.sceneId);
       const imprint = Physics.createSummitImprint(record.imprint);
+      const sceneThreeLocked = Boolean(
+        record.sceneThreeLocked === true &&
+        sceneId === SESSION_SCENES.JUICES &&
+        state.phase === Physics.PHASES.PLAY &&
+        Physics.stateInsideImprint(state, imprint)
+      );
+      if (sceneThreeLocked) {
+        state.x = imprint.x;
+        state.y = imprint.y;
+        state.vx = 0;
+        state.vy = 0;
+        state.dragging = false;
+        state.controllerId = null;
+        state.suspended = false;
+      }
       const summitInside =
         sceneId === SESSION_SCENES.JUICES &&
         Physics.stateInsideImprint(state, imprint);
@@ -819,6 +841,7 @@ class SessionManager {
         summitRunningSince,
         summitWasInside: summitInside,
         finalFallEnteredAt: null,
+        sceneThreeLocked,
         lastPointer,
         lastPointerAt,
         dirty: true,
@@ -1522,6 +1545,12 @@ class SessionManager {
       case "control.release":
         this.releaseControl(session, client, payload);
         break;
+      case "sceneThree.lock":
+        this.lockSceneThreeRock(session, client, payload);
+        break;
+      case "sceneThree.release":
+        this.releaseSceneThreeRock(session, client);
+        break;
       case "physics.update":
         this.updatePhysics(session, client, payload);
         break;
@@ -1644,6 +1673,10 @@ class SessionManager {
 
   acquireControl(session, client, payload = {}) {
     const state = session.state;
+    if (session.sceneThreeLocked) {
+      this.sendTo(client, "control.denied", { reason: "scene_three_locked" });
+      return false;
+    }
     if (state.phase !== Physics.PHASES.PLAY) {
       this.sendTo(client, "control.denied", { reason: "phase_locked" });
       return false;
@@ -1765,6 +1798,76 @@ class SessionManager {
       notify: false,
       reason: barrierHop ? "scene_two_barrier" : "released",
     });
+  }
+
+  lockSceneThreeRock(session, client, payload = {}) {
+    const holder = this.activeHolder(session);
+    if (
+      !isSceneThreeSession(session) ||
+      session.sceneThreeLocked ||
+      session.state.phase !== Physics.PHASES.PLAY ||
+      !holder ||
+      holder.clientId !== client.id
+    ) {
+      return false;
+    }
+    const candidate = {
+      phase: Physics.PHASES.PLAY,
+      x: Physics.clamp(finite(payload.x, holder.x), 0, Physics.WORLD_WIDTH),
+      y: Physics.clamp(finite(payload.y, holder.y), 0, Physics.WORLD_HEIGHT),
+    };
+    if (!Physics.stateInsideImprint(candidate, session.imprint)) {
+      return false;
+    }
+
+    const now = this.now();
+    session.holder = null;
+    session.sceneThreeLocked = true;
+    session.finalFallEnteredAt = null;
+    session.state.x = session.imprint.x;
+    session.state.y = session.imprint.y;
+    session.state.vx = 0;
+    session.state.vy = 0;
+    session.state.dragging = false;
+    session.state.controllerId = null;
+    session.state.suspended = false;
+    session.accumulator = 0;
+    session.lastPointer = { vx: 0, vy: 0 };
+    session.lastPointerAt = now;
+    this.clearStationaryHold(session);
+    client.pointer.mode = "grab";
+    client.pointer.updatedAt = now;
+    this.broadcastPointer(session, client);
+    this.syncSummitTimer(session, now);
+    this.markChanged(session);
+    this.broadcastSnapshot(session);
+    this.broadcastPresence(session);
+    return true;
+  }
+
+  releaseSceneThreeRock(session, client) {
+    if (
+      !isSceneThreeSession(session) ||
+      !session.sceneThreeLocked ||
+      session.state.phase !== Physics.PHASES.PLAY ||
+      !this.clientCanEditSettings(session, client)
+    ) {
+      return false;
+    }
+    session.sceneThreeLocked = false;
+    session.state.suspended = false;
+    if (!Physics.beginFinalFall(session.state)) {
+      session.sceneThreeLocked = true;
+      return false;
+    }
+    const now = this.now();
+    session.finalFallEnteredAt = null;
+    this.stopSummitTimer(session, now);
+    session.accumulator = 0;
+    session.lastTickAt = now;
+    this.markChanged(session);
+    this.broadcastSnapshot(session);
+    return true;
   }
 
   clientCanEditSettings(session, client) {
@@ -2147,6 +2250,7 @@ class SessionManager {
     session.trail = [];
     session.imprint = Physics.createSummitImprint(payload.imprint);
     session.holder = null;
+    session.sceneThreeLocked = false;
     session.firstFallAt = null;
     session.passedHeightGateIds = new Set();
     session.activeHeightGate = null;
@@ -2456,11 +2560,15 @@ class SessionManager {
         session.accumulator + elapsed,
         Physics.FIXED_STEP_SECONDS * 5
       );
+      if (session.sceneThreeLocked) {
+        session.accumulator = 0;
+      }
 
       let physicsChanged = false;
       let groundTouched = false;
       while (
         session.accumulator >= Physics.FIXED_STEP_SECONDS &&
+        !session.sceneThreeLocked &&
         Physics.isMoving(session.state)
       ) {
         const previousY = session.state.y;
@@ -2562,6 +2670,7 @@ class SessionManager {
       groundTouchSeq: session.groundTouchSeq,
       summitElapsedMs: this.summitElapsedAt(session, serverTime),
       summitTimerRunning: session.summitRunningSince !== null,
+      sceneThreeLocked: Boolean(session.sceneThreeLocked),
       settingsRevision: session.settingsRevision,
       revision: session.revision,
       serverTime,

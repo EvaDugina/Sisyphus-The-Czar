@@ -20,7 +20,7 @@ const GOGH_ARTWORK_FALLBACK_OPTIONS = Object.freeze([
   ]),
 ]);
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v53";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v54";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -50,6 +50,7 @@ export function settingsVersionsStorageKeyForScene(sceneId) {
   return `${SETTINGS_VERSIONS_STORAGE_KEY}:${sceneId}`;
 }
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v53",
   "sisyphus-czar-settings-v52",
   "sisyphus-czar-settings-v51",
   "sisyphus-czar-settings-v50",
@@ -493,6 +494,7 @@ const JUICES_ONLY_SETTING_NAMES = new Set([
   "summitTimerFontSizeRem",
   "finalFallEnabled",
   "finalFallDelaySeconds",
+  "rockLensConfig",
 ]);
 
 const ALL_SCENE_SETTING_NAMES = new Set([
@@ -874,6 +876,20 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROOM_SETTINGS.foldBlendCurve,
         enabledWhen: "foldBlendEnabled",
         hint: "Кривая изменения непрозрачности от верхнего края Fold-зоны к основной сцене.",
+      },
+    ],
+  },
+  {
+    title: "Линза камня",
+    controls: [
+      {
+        name: "rockLensConfig",
+        label: "Оптическая деформация",
+        type: "rock-lens",
+        defaultValue: JSON.stringify(
+          SharedRoomSettings.DEFAULT_ROCK_LENS_CONFIG,
+        ),
+        hint: "Пять WebGL-линз для rock-03. Brandon Mercer Flowmap использует исходные значения falloff 0.3, alpha 1, dissipation 0.96 и UV-смещение 0.49.",
       },
     ],
   },

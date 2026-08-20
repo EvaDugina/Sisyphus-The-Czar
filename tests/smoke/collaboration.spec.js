@@ -447,7 +447,7 @@ test("camera UI и новые настройки сохраняются вмес
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}",
         );
         return {
           delay: stored.finalFallDelaySeconds,
@@ -1388,7 +1388,7 @@ test("dev при запуске мигрирует прямые legacy-наст�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}",
         );
         return stored.gravity;
       }),
@@ -1400,7 +1400,7 @@ test("локальные настройки v20 мигрируют в v52 без
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v53:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v54:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v20",
       JSON.stringify({
@@ -1423,7 +1423,7 @@ test("локальные настройки v20 мигрируют в v52 без
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}",
         );
         return {
           gravity: stored.gravity,
@@ -2536,7 +2536,7 @@ test("reload высокой сцены открывает низ и сохран
 
   await page.evaluate(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v53:cats-and-mice",
+      "sisyphus-czar-settings-v54:cats-and-mice",
       JSON.stringify({ ...params, sceneHeightScreens: 1 }),
     );
     window.scrollTo(0, 0);
@@ -3000,7 +3000,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}"
         );
         return stored.trailRenderProfile;
       })
@@ -3039,7 +3039,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}"
         );
         return {
           rainEnterEasing: stored.rainEnterEasing,
@@ -3175,7 +3175,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}"
         );
         return stored.rainBackgroundBlurSteps;
       })
@@ -3210,7 +3210,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}"
         );
         return stored.rainEnabled;
       })
@@ -3227,7 +3227,7 @@ test.skip("legacy: два браузера больше не объединяю�
     .poll(() =>
       first.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v53:cats-and-mice") || "{}"
+          localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}"
         );
         return stored.rainEnabled;
       })
