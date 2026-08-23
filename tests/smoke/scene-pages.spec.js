@@ -121,6 +121,7 @@ test("inline UI показывает только параметры текущ�
     "Параметры · Сцена 1. Кошки-мышки",
   );
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(1);
+  const fakeClickSound = page.locator('[name="preclickHopSoundFilename"]');
   const artworkMode = page.locator('[name="preclickPopupArtworkMode"]');
   const artworkId = page.locator('[name="preclickPopupArtworkId"]');
   await artworkMode.evaluate((element) => {
@@ -128,6 +129,19 @@ test("inline UI показывает только параметры текущ�
     if (group) group.open = true;
   });
   await expect(artworkMode).toHaveValue("shuffle");
+  await expect(fakeClickSound).toHaveValue("Смех.mp3");
+  await expect(fakeClickSound.locator("option")).toHaveCount(11);
+  await expect(fakeClickSound.locator('option[value="none"]')).toHaveText(
+    "Без звука",
+  );
+  await fakeClickSound.selectOption("none");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.params.preclickHopSoundFilename,
+      ),
+    )
+    .toBe("none");
   await expect(artworkId).toBeDisabled();
   await expect(artworkId.locator("option")).toHaveCount(3);
   await artworkMode.selectOption("single");
@@ -150,7 +164,27 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="gravity"]')).toHaveCount(0);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator(".settings-scene-switcher")).toHaveCount(0);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(37);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(38);
+
+  const pulseScaleRange = await page.evaluate(async () => {
+    window.__sisyphusTestApi.applyTestSettings({
+      rockPulseEnabled: true,
+      rockPulseBpm: 240,
+      rockPulseShrinkPercent: 30,
+    });
+    const samples = [];
+    for (let index = 0; index < 12; index += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      samples.push(
+        window.__sisyphusTestApi.getRockVisualScaleState().pulseScaleFactor,
+      );
+    }
+    return {
+      max: Math.max(...samples),
+      min: Math.min(...samples),
+    };
+  });
+  expect(pulseScaleRange.max - pulseScaleRange.min).toBeGreaterThan(0.1);
 
   await waitForDebugScene(page, "/scene-2", "turnip");
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
@@ -462,13 +496,13 @@ test("скрытые настройки не оказывают клиентск
   });
 });
 
-test("настройки сцены 1 мигрируют из v53 в v54 с режимом выбора картин", async ({
+test("настройки сцены 1 мигрируют из v54 в v55 со звуком фейкового клика", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v54:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
     localStorage.setItem(
-      "sisyphus-czar-settings-v53:cats-and-mice",
+      "sisyphus-czar-settings-v54:cats-and-mice",
       JSON.stringify({
         preclickPopupWidthViewportFraction: 0.3,
       }),
@@ -486,10 +520,13 @@ test("настройки сцены 1 мигрируют из v53 в v54 с ре
   await expect(page.locator('[name="preclickPopupArtworkId"]')).toHaveValue(
     "01.png",
   );
+  await expect(page.locator('[name="preclickHopSoundFilename"]')).toHaveValue(
+    "Смех.mp3",
+  );
 
   const migrated = await page.evaluate(() => {
     const stored = JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
     );
     return {
       hasLegacyPopupSize: Object.hasOwn(
@@ -499,6 +536,7 @@ test("настройки сцены 1 мигрируют из v53 в v54 с ре
       popupWidth: stored.preclickPopupWidthViewportFraction,
       artworkMode: stored.preclickPopupArtworkMode,
       artworkId: stored.preclickPopupArtworkId,
+      soundFilename: stored.preclickHopSoundFilename,
       trailEnabled: stored.rockEchoTrailEnabled,
     };
   });
@@ -507,6 +545,7 @@ test("настройки сцены 1 мигрируют из v53 в v54 с ре
     popupWidth: 0.3,
     artworkMode: "shuffle",
     artworkId: "01.png",
+    soundFilename: "Смех.mp3",
     trailEnabled: true,
   });
 });
@@ -516,7 +555,7 @@ test("одинаковый визуальный параметр хранит н
   const sceneOneValue = 30;
   await page.evaluate((value) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v54:cats-and-mice",
+      "sisyphus-czar-settings-v55:cats-and-mice",
       JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
     );
   }, sceneOneValue);
@@ -532,7 +571,7 @@ test("одинаковый визуальный параметр хранит н
   const sceneTwoValue = 20;
   await page.evaluate((value) => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v54:turnip",
+      "sisyphus-czar-settings-v55:turnip",
       JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
     );
   }, sceneTwoValue);
@@ -542,10 +581,10 @@ test("одинаковый визуальный параметр хранит н
 
   const snapshots = await page.evaluate(() => ({
     sceneOne: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v54:cats-and-mice") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
     ).handWidthVw,
     sceneTwo: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v54:turnip") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v55:turnip") || "{}",
     ).handWidthVw,
   }));
   expect(snapshots).toEqual({ sceneOne: sceneOneValue, sceneTwo: sceneTwoValue });

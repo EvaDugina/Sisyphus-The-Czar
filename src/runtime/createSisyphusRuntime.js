@@ -145,6 +145,12 @@ const GACHI_AUDIO_LOADERS_BY_FILENAME = new Map(
     loader,
   ]),
 );
+const PRECLICK_HOP_AUDIO_LOADERS_BY_FILENAME = new Map(
+  GACHI_AUDIO_LOADERS_BY_FILENAME,
+);
+PRECLICK_HOP_AUDIO_LOADERS_BY_FILENAME.set("Смех.mp3", () =>
+  Promise.resolve(preclickHopAudioUrl),
+);
 const audioUrlPromises = new Map();
 
 function loadAudioUrl(scope, loadersByFilename, filename) {
@@ -448,6 +454,8 @@ export function createSisyphusRuntime(elements = {}) {
     rockPulseBpm: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseBpm,
     preclickHopGuardClickCount:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
+    preclickHopSoundFilename:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopSoundFilename,
     preclickPopupArtworkMode:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickPopupArtworkMode,
     preclickPopupArtworkId:
@@ -625,6 +633,7 @@ export function createSisyphusRuntime(elements = {}) {
   const preclickHopAudio = {
     elements: new Set(),
     lastFilename: null,
+    playToken: 0,
     playCount: 0,
     stopCount: 0,
   };
@@ -1517,6 +1526,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function stopPreclickHopSounds() {
+    preclickHopAudio.playToken += 1;
     if (preclickHopAudio.elements.size > 0) {
       preclickHopAudio.stopCount += 1;
     }
@@ -1525,29 +1535,44 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function playPreclickHopSound() {
-    if (typeof Audio !== "function") {
+    const filename = params.preclickHopSoundFilename;
+    if (
+      filename === SharedRoomSettings.PRECLICK_HOP_SOUND_DISABLED ||
+      !SharedRoomSettings.PRECLICK_HOP_SOUND_FILENAMES.includes(filename) ||
+      typeof Audio !== "function"
+    ) {
       return;
     }
-    const audio = new Audio(preclickHopAudioUrl);
-    audio.preload = "auto";
-    const releaseAudio = () => {
-      preclickHopAudio.elements.delete(audio);
-    };
-    audio.addEventListener("ended", releaseAudio);
-    audio.addEventListener("error", releaseAudio);
-    preclickHopAudio.elements.add(audio);
-    try {
-      audio.currentTime = 0;
-      audio.volume = 1;
-      const promise = audio.play();
-      if (promise && typeof promise.catch === "function") {
-        promise.catch(releaseAudio);
+    const playToken = preclickHopAudio.playToken;
+    loadAudioUrl(
+      "preclick-hop",
+      PRECLICK_HOP_AUDIO_LOADERS_BY_FILENAME,
+      filename,
+    ).then((url) => {
+      if (disposed || playToken !== preclickHopAudio.playToken || !url) {
+        return;
       }
-      preclickHopAudio.lastFilename = "Смех.mp3";
-      preclickHopAudio.playCount += 1;
-    } catch {
-      releaseAudio();
-    }
+      const audio = new Audio(url);
+      audio.preload = "auto";
+      const releaseAudio = () => {
+        preclickHopAudio.elements.delete(audio);
+      };
+      audio.addEventListener("ended", releaseAudio);
+      audio.addEventListener("error", releaseAudio);
+      preclickHopAudio.elements.add(audio);
+      try {
+        audio.currentTime = 0;
+        audio.volume = 1;
+        const promise = audio.play();
+        if (promise && typeof promise.catch === "function") {
+          promise.catch(releaseAudio);
+        }
+        preclickHopAudio.lastFilename = filename;
+        preclickHopAudio.playCount += 1;
+      } catch {
+        releaseAudio();
+      }
+    });
   }
 
   function playGachiClickSound(
@@ -2952,6 +2977,9 @@ export function createSisyphusRuntime(elements = {}) {
     if (shouldHandleChange("handAudioEnabled") && !params.handAudioEnabled) {
       stopHandInteractionSounds();
     }
+    if (shouldHandleChange("preclickHopSoundFilename")) {
+      stopPreclickHopSounds();
+    }
     if (shouldHandleChange("drizzleEnabled")) {
       if (!params.drizzleEnabled) {
         stopDrizzleLoopSound();
@@ -3294,7 +3322,8 @@ export function createSisyphusRuntime(elements = {}) {
   function releaseAlwaysVisibleHand(event) {
     if (
       (event.pointerType && event.pointerType !== "mouse") ||
-      motion.dragging
+      motion.dragging ||
+      (isSceneOne && sceneFlow.completed)
     ) {
       return;
     }
@@ -3618,6 +3647,38 @@ export function createSisyphusRuntime(elements = {}) {
     updatePreclickRockHop(event);
   }
 
+  function openPreclickArtworkWindow(
+    event,
+    { delayMs = 0, randomPosition = false } = {},
+  ) {
+    const clientX = Number(event.clientX);
+    const clientY = Number(event.clientY);
+    if (!Number.isFinite(clientX) || !Number.isFinite(clientY)) {
+      return false;
+    }
+    const artwork = preclickPopupArtworkSelector.select({
+      mode: params.preclickPopupArtworkMode,
+      artworkId: params.preclickPopupArtworkId,
+    });
+    if (!artwork) {
+      return false;
+    }
+    const artworkImage = preclickPopupArtworkImages.get(artwork.id);
+    return preclickPopupController.openPreclickWindow({
+      aspectRatio:
+        artworkImage?.naturalWidth > 0 && artworkImage?.naturalHeight > 0
+          ? artworkImage.naturalWidth / artworkImage.naturalHeight
+          : 1,
+      clientX,
+      clientY,
+      delayMs,
+      imageAlt: artwork.alt,
+      imageUrl: artwork.url,
+      randomPosition,
+      width: window.innerWidth * params.preclickPopupWidthViewportFraction,
+    });
+  }
+
   function consumePreclickGuardClick(event) {
     const guardClickCount = Math.max(
       0,
@@ -3647,25 +3708,9 @@ export function createSisyphusRuntime(elements = {}) {
       params.preclickHopActivationRadiusPercent > 0;
     preclickRockGuidance.outsideRadius = false;
     syncHandCursorForPointer(event);
-    const artwork = preclickPopupArtworkSelector.select({
-      mode: params.preclickPopupArtworkMode,
-      artworkId: params.preclickPopupArtworkId,
+    openPreclickArtworkWindow(event, {
+      delayMs: params.preclickPopupDelayMs,
     });
-    if (artwork) {
-      const artworkImage = preclickPopupArtworkImages.get(artwork.id);
-      preclickPopupController.openPreclickWindow({
-        aspectRatio:
-          artworkImage?.naturalWidth > 0 && artworkImage?.naturalHeight > 0
-            ? artworkImage.naturalWidth / artworkImage.naturalHeight
-            : 1,
-        clientX: pointerX,
-        clientY: pointerY,
-        delayMs: params.preclickPopupDelayMs,
-        imageAlt: artwork.alt,
-        imageUrl: artwork.url,
-        width: window.innerWidth * params.preclickPopupWidthViewportFraction,
-      });
-    }
     performPreclickRockHop({
       centerX,
       centerY,
@@ -3797,7 +3842,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (
       !params.rockPulseEnabled ||
       document.hidden ||
-      motion.sceneTwoSizeState !== "airborne"
+      (!isSceneOne && motion.sceneTwoSizeState !== "airborne")
     ) {
       motion.rockPulseScaleFactor = 1;
       applyRockScale();
@@ -3815,7 +3860,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (
       !params.rockPulseEnabled ||
       document.hidden ||
-      motion.sceneTwoSizeState !== "airborne"
+      (!isSceneOne && motion.sceneTwoSizeState !== "airborne")
     ) {
       stopRockPulse();
       return;
@@ -7827,9 +7872,12 @@ export function createSisyphusRuntime(elements = {}) {
     if (isSceneOne) {
       event.preventDefault();
       completePreclickRockGuidance({ preserveHopPosition: true });
+      openPreclickArtworkWindow(event);
+      openPreclickArtworkWindow(event, { randomPosition: true });
       preclickPopupController.revealPreclickWindows();
       playRockPointerDownSound();
       showHandCursor(event);
+      scheduleGrabbingHandImage();
       setGrabbingCursor(true);
       completeScene("first-real-rock-press");
       return;
@@ -7991,6 +8039,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function leaveRock(event) {
+    if (isSceneOne && sceneFlow.completed) {
+      return;
+    }
     if (!motion.dragging) {
       if (!handIsAlwaysVisible()) {
         hideHandCursor();

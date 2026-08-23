@@ -577,6 +577,9 @@ test("настройки инерции и hop отображают актуал
   const preclickHopGuardClickCount = controls.find(
     (control) => control.name === "preclickHopGuardClickCount"
   );
+  const preclickHopSound = controls.find(
+    (control) => control.name === "preclickHopSoundFilename",
+  );
   const preclickPopupDelay = controls.find(
     (control) => control.name === "preclickPopupDelayMs"
   );
@@ -614,8 +617,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "gachiClickSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v54");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v53");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v55");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v54");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -667,6 +670,27 @@ test("настройки инерции и hop отображают актуал
   assert.deepEqual(
     gachiClickSound.options.map(([filename]) => filename),
     [...SharedRoomSettings.GACHI_SOUND_FILENAMES],
+  );
+  assert.deepEqual(
+    {
+      label: preclickHopSound.label,
+      type: preclickHopSound.type,
+      options: preclickHopSound.options,
+      defaultValue: preclickHopSound.defaultValue,
+    },
+    {
+      label: "Звук фейкового клика",
+      type: "select",
+      options: [
+        ["none", "Без звука"],
+        ["Смех.mp3", "Смех"],
+        ...SharedRoomSettings.GACHI_SOUND_FILENAMES.map((filename) => [
+          filename,
+          filename.replace(/\.mp3$/i, ""),
+        ]),
+      ],
+      defaultValue: "Смех.mp3",
+    },
   );
   assert.deepEqual(
     {
@@ -734,7 +758,7 @@ test("настройки инерции и hop отображают актуал
       type: "select",
       options: [
         ["random", "Случайная картинка"],
-        ["shuffle", "Случайно циклично"],
+        ["shuffle", "Циклично"],
         ["single", "Одна картинка"],
       ],
       defaultValue: "shuffle",
@@ -871,6 +895,7 @@ test("UI материализует параметры отдельно для �
       .map((control) => control.name),
     [
       "preclickHopGuardClickCount",
+      "preclickHopSoundFilename",
       "preclickPopupDelayMs",
       "preclickPopupWidthViewportFraction",
       "preclickPopupArtworkMode",
@@ -1025,7 +1050,7 @@ test("UI материализует параметры отдельно для �
   assert.deepEqual(
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
-      [SETTINGS_SCENES.CATS_AND_MICE, 37],
+      [SETTINGS_SCENES.CATS_AND_MICE, 38],
       [SETTINGS_SCENES.TURNIP, 103],
       [SETTINGS_SCENES.JUICES, 105],
     ],
@@ -1124,7 +1149,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 54);
+  assert.equal(productionSettingsSchemaVersion, 55);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1812,6 +1837,7 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseShrinkPercent",
       "rockPulseBpm",
       "preclickHopGuardClickCount",
+      "preclickHopSoundFilename",
       "preclickPopupDelayMs",
       "preclickPopupWidthViewportFraction",
       "preclickPopupArtworkMode",
@@ -3034,7 +3060,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 54);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 55);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3048,6 +3074,7 @@ test("группа дождя содержит общий toggle и blur тём�
     rockPulseBpm: 999,
     preclickParallaxMaxOffsetPx: 9999,
     preclickHopGuardClickCount: 999,
+    preclickHopSoundFilename: "missing.mp3",
     preclickPopupDelayMs: 9999,
     preclickPopupWidthViewportFraction: 999,
     preclickPopupArtworkMode: "invalid",
@@ -3102,6 +3129,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockPulseEnabled, true);
   assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickHopGuardClickCount, 10);
+  assert.equal(visualSettings.preclickHopSoundFilename, "Смех.mp3");
   assert.equal(visualSettings.preclickPopupDelayMs, 1000);
   assert.equal(visualSettings.preclickPopupWidthViewportFraction, 1);
   assert.equal(visualSettings.preclickPopupArtworkMode, "shuffle");
@@ -3310,6 +3338,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickPopupWidthViewportFraction: 0.2,
     preclickPopupArtworkMode: "shuffle",
     preclickPopupArtworkId: "01.png",
+    preclickHopSoundFilename: "Смех.mp3",
     rockEchoTrailEnabled: true,
     rockEchoTrailCopies: 16,
     rockEchoTrailIntervalMs: 50,
@@ -3345,6 +3374,7 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickPopupWidthViewportFraction: 0.2,
       preclickPopupArtworkMode: "shuffle",
       preclickPopupArtworkId: "01.png",
+      preclickHopSoundFilename: "Смех.mp3",
       rockEchoTrailEnabled: true,
       rockEchoTrailCopies: 16,
       rockEchoTrailIntervalMs: 50,
@@ -3518,6 +3548,14 @@ test("таблица вершины компонует top-10, текущего 
     "single",
   ]);
   assert.equal(SharedRoomSettings.DEFAULT_PRECLICK_POPUP_ARTWORK_ID, "01.png");
+  assert.deepEqual(SharedRoomSettings.PRECLICK_HOP_SOUND_FILENAMES, [
+    "none",
+    "Смех.mp3",
+    ...SharedRoomSettings.GACHI_SOUND_FILENAMES,
+  ]);
+  assert.equal(SharedRoomSettings.DEFAULT_PRECLICK_HOP_SOUND_FILENAME, "Смех.mp3");
+  const legacyV54 = SharedRoomSettings.migrateRoomSettings({}, 54);
+  assert.equal(legacyV54.preclickHopSoundFilename, "Смех.mp3");
   const legacyV52 = SharedRoomSettings.migrateRoomSettings({}, 52);
   assert.equal(legacyV52.preclickPopupArtworkMode, "shuffle");
   assert.equal(legacyV52.preclickPopupArtworkId, "01.png");

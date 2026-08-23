@@ -302,6 +302,28 @@ test("dispose отменяет только ещё не открытый preclic
   assert.equal(popups.length, 0);
 });
 
+test("preclick-popup можно открыть в случайной позиции рабочей области", () => {
+  const { controller, popups } = setup();
+
+  assert.equal(
+    controller.openPreclickWindow({
+      aspectRatio: 1,
+      clientX: 600,
+      clientY: 400,
+      randomPosition: true,
+      width: 120,
+    }),
+    true,
+  );
+
+  assert.equal(popups.length, 1);
+  assert.match(popups[0].features, /width=120/);
+  assert.match(popups[0].features, /height=120/);
+  assert.match(popups[0].features, /left=10/);
+  assert.match(popups[0].features, /top=20/);
+  assert.deepEqual(popups[0].popup.moveCalls, [[10, 20]]);
+});
+
 test("первый настоящий клик восстанавливает открытые и отложенные окна картин", () => {
   const { clock, controller, popups } = setup();
   controller.openPreclickWindow({ delayMs: 0, width: 120 });

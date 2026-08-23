@@ -495,6 +495,7 @@ export function createWindowObstacleController(options = {}) {
     delayMs = 0,
     imageAlt = "",
     imageUrl = "",
+    randomPosition = false,
     width = PRECLICK_POPUP_WIDTH_PX,
   } = {}) {
     if (disposed) {
@@ -505,13 +506,36 @@ export function createWindowObstacleController(options = {}) {
         return false;
       }
       const origin = getViewportScreenOrigin() || {};
+      const screen = getScreen();
       const geometryInput = {
         aspectRatio,
         centerX: finite(origin.x, 0) + finite(clientX, 0),
         centerY: finite(origin.y, 0) + finite(clientY, 0),
-        screen: getScreen(),
+        screen,
         width,
       };
+      if (randomPosition) {
+        const rawScreen = screen && typeof screen === "object" ? screen : {};
+        const availWidth = Math.max(
+          1,
+          Math.round(finite(rawScreen.availWidth, 1)),
+        );
+        const availHeight = Math.max(
+          1,
+          Math.round(finite(rawScreen.availHeight, 1)),
+        );
+        const availLeft = Math.round(finite(rawScreen.availLeft, 0));
+        const availTop = Math.round(finite(rawScreen.availTop, 0));
+        const fittedSize = preclickPopupGeometry(geometryInput);
+        geometryInput.centerX =
+          availLeft +
+          fittedSize.width / 2 +
+          randomBetween(0, availWidth - fittedSize.width, random);
+        geometryInput.centerY =
+          availTop +
+          fittedSize.height / 2 +
+          randomBetween(0, availHeight - fittedSize.height, random);
+      }
       const geometry = preclickPopupGeometry(geometryInput);
       const features = [
         "popup=yes",

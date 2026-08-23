@@ -5,6 +5,7 @@ const SOURCE_ROCK = "#root > .scene-page > .world > .rock";
 async function watchLaughPlayCalls(page) {
   await page.addInitScript(() => {
     window.__laughPlayCount = 0;
+    window.__playedAudioFilenames = [];
     window.__controlAcquireMessages = [];
     const sendWebSocketMessage = WebSocket.prototype.send;
     WebSocket.prototype.send = function send(data) {
@@ -25,6 +26,8 @@ async function watchLaughPlayCalls(page) {
       } catch {
         // URL уже может быть декодирован.
       }
+      const filename = decodedSrc.split("/").at(-1).split("?")[0];
+      window.__playedAudioFilenames.push(filename);
       if (decodedSrc.includes("Смех.mp3")) {
         window.__laughPlayCount += 1;
       }
@@ -466,6 +469,12 @@ test("камень прыгает накопительно, сохраняет g
     animating: false,
   });
 
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopSoundFilename: "none",
+    });
+  });
+  const beforeSilentClick = await hopState(page);
   const fakeClickPoint = await rockCenter(page);
   const expectedPopupWidth = await page.evaluate(() =>
     Math.round(innerWidth * params.preclickPopupWidthViewportFraction),
@@ -506,9 +515,9 @@ test("камень прыгает накопительно, сохраняет g
   await page.bringToFront();
   await expect.poll(() => hopState(page)).toMatchObject({
     guardClicksUsed: 1,
-    hopCount: beforeReducedHop.hopCount + 1,
-    audioPlayCount: beforeReducedHop.audioPlayCount + 1,
-    lastFilename: "Смех.mp3",
+    hopCount: beforeSilentClick.hopCount + 1,
+    audioPlayCount: beforeSilentClick.audioPlayCount,
+    activeAudioCount: 0,
   });
   const point = await rockCenter(page);
   await page.mouse.move(point.x, point.y);
@@ -519,8 +528,8 @@ test("камень прыгает накопительно, сохраняет g
     x: window.__sisyphusTestApi.motion.x,
     y: window.__sisyphusTestApi.motion.y,
   }));
-  expect(beforeGrab.audioPlayCount).toBe(beforeReducedHop.audioPlayCount + 1);
-  expect(beforeGrab.activeAudioCount).toBe(beforeReducedHop.activeAudioCount + 1);
+  expect(beforeGrab.audioPlayCount).toBe(beforeSilentClick.audioPlayCount);
+  expect(beforeGrab.activeAudioCount).toBe(0);
   expect(await page.evaluate(() => window.__laughPlayCount)).toBe(
     beforeGrab.audioPlayCount,
   );
@@ -694,7 +703,7 @@ test("камень бесшовно переносится по обеим ос�
   await cdp.detach();
 });
 
-test("N фейковых кликов открывают картины, а клик N+1 поднимает окна и завершает сцену", async ({
+test("N фейковых кликов открывают картины, а клик N+1 добавляет два окна и завершает сцену", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -713,6 +722,7 @@ test("N фейковых кликов открывают картины, а кл
       preclickHopGuardClickCount: 3,
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
+      preclickHopSoundFilename: "Aaaaaa.mp3",
       preclickPopupDelayMs: 0,
       preclickPopupWidthViewportFraction: 0.2,
       preclickPopupArtworkMode: "single",
@@ -880,10 +890,20 @@ test("N фейковых кликов открывают картины, а кл
         page.evaluate(() => window.__sisyphusTestApi.getGachiClickAudioState()),
       )
       .toMatchObject({ playCount: 0, lastFilename: null });
-    expect(await page.evaluate(() => window.__laughPlayCount)).toBe(click + 1);
+    expect(
+      await page.evaluate(
+        () =>
+          window.__playedAudioFilenames.filter(
+            (filename) => filename === "Aaaaaa.mp3",
+          ).length,
+      ),
+    ).toBe(click + 1);
   }
 
   const realClickPoint = await visibleRockPoint(page);
+  const finalPopups = [];
+  const captureFinalPopup = (popup) => finalPopups.push(popup);
+  page.on("popup", captureFinalPopup);
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mousePressed",
     x: realClickPoint.x,
@@ -891,6 +911,13 @@ test("N фейковых кликов открывают картины, а кл
     button: "left",
     clickCount: 1,
   });
+  await expect.poll(() => finalPopups.length).toBe(2);
+  page.off("popup", captureFinalPopup);
+  for (const finalPopup of finalPopups) {
+    const finalPopupImage = finalPopup.locator("img");
+    await expect(finalPopupImage).toHaveAttribute("alt", "Картина 03");
+    await expect(finalPopupImage).toHaveAttribute("src", /03[^/]*\.png/);
+  }
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,
     guardClickCount: 3,
@@ -903,7 +930,7 @@ test("N фейковых кликов открывают картины, а кл
       page.evaluate(() => window.__sisyphusTestApi.getPreclickPopupState()),
     )
     .toMatchObject({
-      preclickWindowCount: 3,
+      preclickWindowCount: 5,
       preclickWindowsRevealed: true,
     });
   await expect
@@ -923,10 +950,25 @@ test("N фейковых кликов открывают картины, а кл
     button: "left",
     clickCount: 1,
   });
+  const sourceHand = page.locator(
+    "#root > .scene-page > .world > .hand-cursor",
+  );
+  await expect(sourceHand).toHaveClass(/is-grabbing/);
+  await expect(sourceHand).toHaveClass(/is-visible/);
 
-  await Promise.all(fakeClickPopups.map((popup) => popup.close()));
+  await Promise.all(
+    [...fakeClickPopups, ...finalPopups].map((popup) => popup.close()),
+  );
 
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(4);
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(0);
+  expect(
+    await page.evaluate(
+      () =>
+        window.__playedAudioFilenames.filter(
+          (filename) => filename === "Aaaaaa.mp3",
+        ).length,
+    ),
+  ).toBe(4);
   expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
     completed: true,
     completionReason: "first-real-rock-press",

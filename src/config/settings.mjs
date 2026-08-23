@@ -20,7 +20,7 @@ const GOGH_ARTWORK_FALLBACK_OPTIONS = Object.freeze([
   ]),
 ]);
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v54";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v55";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -50,6 +50,7 @@ export function settingsVersionsStorageKeyForScene(sceneId) {
   return `${SETTINGS_VERSIONS_STORAGE_KEY}:${sceneId}`;
 }
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v54",
   "sisyphus-czar-settings-v53",
   "sisyphus-czar-settings-v52",
   "sisyphus-czar-settings-v51",
@@ -144,6 +145,13 @@ const ROCK_IMAGE_OPTIONS = SharedRoomSettings.ROCK_IMAGE_IDS.map((value) => [
 const GACHI_SOUND_OPTIONS = SharedRoomSettings.GACHI_SOUND_FILENAMES.map(
   (filename) => [filename, filename.replace(/\.mp3$/i, "")],
 );
+const PRECLICK_HOP_SOUND_OPTIONS =
+  SharedRoomSettings.PRECLICK_HOP_SOUND_FILENAMES.map((filename) => [
+    filename,
+    filename === SharedRoomSettings.PRECLICK_HOP_SOUND_DISABLED
+      ? "Без звука"
+      : filename.replace(/\.mp3$/i, ""),
+  ]);
 
 const PHYSICS_FORMULAS = {
   mass: [
@@ -471,6 +479,7 @@ export function settingsGroupControls(group) {
 
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickHopGuardClickCount",
+  "preclickHopSoundFilename",
   "preclickPopupDelayMs",
   "preclickPopupWidthViewportFraction",
   "preclickPopupArtworkMode",
@@ -1182,7 +1191,15 @@ export const SETTINGS_GROUPS = [
         step: 1,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
         output: `${DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount}`,
-        hint: "Первые N кликов по камню вызывают фейковый отскок со смехом и открывают картины 01–03. Следующий клик поднимает открытые окна картин и завершает сцену 1; ноль отключает фейковые клики.",
+        hint: "Первые N кликов по камню вызывают фейковый отскок с выбранным звуком и открывают картины. Следующий клик создаёт ещё одну картину, поднимает открытые окна и завершает сцену 1; ноль отключает фейковые клики.",
+      },
+      {
+        name: "preclickHopSoundFilename",
+        label: "Звук фейкового клика",
+        type: "select",
+        options: PRECLICK_HOP_SOUND_OPTIONS,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopSoundFilename,
+        hint: "Звук каждого засчитанного фейкового клика. Вариант «Без звука» сохраняет отскок и popup без воспроизведения аудио.",
       },
       {
         name: "preclickPopupDelayMs",
@@ -1216,7 +1233,7 @@ export const SETTINGS_GROUPS = [
         type: "select",
         options: [
           ["random", "Случайная картинка"],
-          ["shuffle", "Случайно циклично"],
+          ["shuffle", "Циклично"],
           ["single", "Одна картинка"],
         ],
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupArtworkMode,

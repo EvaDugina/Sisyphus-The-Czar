@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 54;
+  const ROOM_SETTINGS_VERSION = 55;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -65,6 +65,13 @@
     "thats-amazing.mp3",
   ]);
   const DEFAULT_GACHI_CLICK_SOUND_FILENAME = "Camen.mp3";
+  const PRECLICK_HOP_SOUND_DISABLED = "none";
+  const PRECLICK_HOP_SOUND_FILENAMES = Object.freeze([
+    PRECLICK_HOP_SOUND_DISABLED,
+    "Смех.mp3",
+    ...GACHI_SOUND_FILENAMES,
+  ]);
+  const DEFAULT_PRECLICK_HOP_SOUND_FILENAME = "Смех.mp3";
   const PRECLICK_POPUP_ARTWORK_MODES = Object.freeze([
     "random",
     "shuffle",
@@ -279,6 +286,7 @@
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickHopGuardClickCount: 1,
+    preclickHopSoundFilename: DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     preclickPopupDelayMs: 200,
     preclickPopupWidthViewportFraction: 0.2,
     preclickPopupArtworkMode: "shuffle",
@@ -1050,6 +1058,12 @@
         "preclickHopGuardClickCount",
         preclickHopGuardClickMin,
         preclickHopGuardClickMax
+      ),
+      preclickHopSoundFilename: enumSetting(
+        source,
+        fallbackSource,
+        "preclickHopSoundFilename",
+        PRECLICK_HOP_SOUND_FILENAMES
       ),
       preclickPopupDelayMs: integerSetting(
         source,
@@ -1886,6 +1900,12 @@
         }
       });
     }
+    if (finiteNumber(version, 1) < 55) {
+      if (!Object.hasOwn(current, "preclickHopSoundFilename")) {
+        current.preclickHopSoundFilename =
+          DEFAULT_ROOM_SETTINGS.preclickHopSoundFilename;
+      }
+    }
     return current;
   }
 
@@ -1964,6 +1984,9 @@
     SUMMIT_TIMER_FONT_FAMILIES,
     GACHI_SOUND_FILENAMES,
     DEFAULT_GACHI_CLICK_SOUND_FILENAME,
+    PRECLICK_HOP_SOUND_DISABLED,
+    PRECLICK_HOP_SOUND_FILENAMES,
+    DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     PRECLICK_POPUP_ARTWORK_MODES,
     DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
     ROCK_LENS_EFFECTS,
