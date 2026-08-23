@@ -9,6 +9,9 @@
   },
   "settings": {
     "gravity": 6.5,
-    "sceneHeightScreens": 14
+    "randomDropEnabled": false,
+    "rockJumpEnabled": false,
+    "sceneHeightScreens": 14,
+    "stationaryAutoSlipEnabled": false
   }
 }
