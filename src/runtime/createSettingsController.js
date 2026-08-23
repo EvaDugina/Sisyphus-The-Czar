@@ -1370,6 +1370,8 @@ export function createSettingsController(options) {
       cameraFollowUpLerp: params.cameraFollowUpLerp.toFixed(2),
       cameraFollowDownLerp: params.cameraFollowDownLerp.toFixed(2),
       summitTimerFontSizeRem: `${params.summitTimerFontSizeRem.toFixed(0)} rem`,
+      summitTimerFontWidthPercent:
+        `${params.summitTimerFontWidthPercent.toFixed(0)}%`,
       foldPositionPercent: `${params.foldPositionPercent.toFixed(0)}%`,
       foldPanelHeightVh: `${params.foldPanelHeightVh.toFixed(0)} vh`,
       foldAngle: `${params.foldAngle.toFixed(0)}°`,

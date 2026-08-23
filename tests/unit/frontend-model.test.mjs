@@ -884,7 +884,11 @@ test("UI материализует параметры отдельно для �
     { id: SETTINGS_SCENES.TURNIP, label: "Сцена 2. Репка" },
     { id: SETTINGS_SCENES.JUICES, label: "Сцена 3. Соки" },
   ]);
-  ["summitTimerFontFamily", "summitTimerFontSizeRem"].forEach((name) => {
+  [
+    "summitTimerFontFamily",
+    "summitTimerFontSizeRem",
+    "summitTimerFontWidthPercent",
+  ].forEach((name) => {
     assert.deepEqual(settingsControlScenes(name), [SETTINGS_SCENES.JUICES]);
   });
   assert.deepEqual(
@@ -1056,7 +1060,7 @@ test("UI материализует параметры отдельно для �
     [
       [SETTINGS_SCENES.CATS_AND_MICE, 38],
       [SETTINGS_SCENES.TURNIP, 103],
-      [SETTINGS_SCENES.JUICES, 105],
+      [SETTINGS_SCENES.JUICES, 106],
     ],
   );
   SETTINGS_SCENE_OPTIONS.forEach(({ id }) => {
@@ -1195,7 +1199,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 55);
+  assert.equal(productionSettingsSchemaVersion, 56);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -3106,7 +3110,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 55);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 56);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3159,6 +3163,7 @@ test("группа дождя содержит общий toggle и blur тём�
     sceneTwoOverflowYVisible: "true",
     summitTimerFontFamily: "missing",
     summitTimerFontSizeRem: 999,
+    summitTimerFontWidthPercent: 999,
     gachiClickSoundFilename: "missing.mp3",
   });
   assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
@@ -3212,6 +3217,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.sceneTwoOverflowYVisible, true);
   assert.equal(visualSettings.summitTimerFontFamily, "sf-pro-display-bold");
   assert.equal(visualSettings.summitTimerFontSizeRem, 64);
+  assert.equal(visualSettings.summitTimerFontWidthPercent, 300);
   assert.equal(visualSettings.gachiClickSoundFilename, "Camen.mp3");
   assert.equal(
     SharedRoomSettings.sanitizeRoomSettings({
@@ -3303,6 +3309,7 @@ test("группа дождя содержит общий toggle и blur тём�
   const legacyV49 = SharedRoomSettings.migrateRoomSettings({}, 49);
   assert.equal(legacyV49.summitTimerFontFamily, "sf-pro-display-bold");
   assert.equal(legacyV49.summitTimerFontSizeRem, 32);
+  assert.equal(legacyV49.summitTimerFontWidthPercent, 100);
   assert.deepEqual(
     SharedRoomSettings.migrateRockVisualSettings({
       rockPressShrinkPercent: 17,
@@ -3424,6 +3431,7 @@ test("группа дождя содержит общий toggle и blur тём�
     sceneTwoOverflowYVisible: false,
     summitTimerFontFamily: "sf-pro-display-bold",
     summitTimerFontSizeRem: 32,
+    summitTimerFontWidthPercent: 100,
     gachiClickSoundFilename: "Camen.mp3",
     sceneTwoBarrierEnabled: false,
     sceneTwoBarrierHeightVh: 1250,
@@ -3460,6 +3468,7 @@ test("группа дождя содержит общий toggle и blur тём�
       sceneTwoOverflowYVisible: false,
       summitTimerFontFamily: "sf-pro-display-bold",
       summitTimerFontSizeRem: 32,
+      summitTimerFontWidthPercent: 100,
       gachiClickSoundFilename: "Camen.mp3",
       sceneTwoBarrierEnabled: false,
       sceneTwoBarrierHeightVh: 1250,

@@ -403,6 +403,8 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.summitTimerFontFamily,
     summitTimerFontSizeRem:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.summitTimerFontSizeRem,
+    summitTimerFontWidthPercent:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.summitTimerFontWidthPercent,
     foldPositionPercent:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.foldPositionPercent,
     foldPanelHeightVh:
@@ -2214,8 +2216,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function applySceneTwoOverflowY() {
     document.documentElement.style.overflowY =
-      (isSceneThree && rain.scrollUnlocked) ||
-      (isSceneTwo && params.sceneTwoOverflowYVisible)
+      isSceneTwo && params.sceneTwoOverflowYVisible
       ? "auto"
       : "hidden";
   }
@@ -2589,9 +2590,19 @@ export function createSisyphusRuntime(elements = {}) {
     if (!rain.scrollStarted || rain.scrollCompleted) {
       return null;
     }
+    const scrollHeight = Math.max(
+      window.innerHeight + 1,
+      document.documentElement.scrollHeight,
+    );
+    const scrollable = Math.max(1, scrollHeight - window.innerHeight);
+    const fallProgress = clamp(
+      motion.y / Math.max(1, bounds.maxY),
+      0,
+      1,
+    );
     const profile = rainScrollProfile({
-      scrollY: window.scrollY,
-      scrollHeight: document.documentElement.scrollHeight,
+      scrollY: fallProgress * scrollable,
+      scrollHeight,
       viewportHeight: window.innerHeight,
     });
     rainLayer?.style.setProperty("--rain-scroll-opacity", `${profile.opacity}`);
@@ -2750,6 +2761,10 @@ export function createSisyphusRuntime(elements = {}) {
     summitTimerElement.style.setProperty(
       "--summit-timer-font-size",
       `${params.summitTimerFontSizeRem}rem`,
+    );
+    summitTimerElement.style.setProperty(
+      "--summit-timer-scale-x",
+      String(params.summitTimerFontWidthPercent / 100),
     );
     summitTimerElement.dataset.fontFamily = fontKey;
   }
@@ -2961,7 +2976,11 @@ export function createSisyphusRuntime(elements = {}) {
       applyHandVisibilitySetting();
     }
     if (
-      shouldHandleChange("summitTimerFontFamily", "summitTimerFontSizeRem")
+      shouldHandleChange(
+        "summitTimerFontFamily",
+        "summitTimerFontSizeRem",
+        "summitTimerFontWidthPercent",
+      )
     ) {
       applySummitTimerSettings();
     }
@@ -4335,6 +4354,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function updateCameraFollow({ immediate = false } = {}) {
     if (
+      (isSceneThree && sceneFlow.finalFallStarted) ||
       !preclickRockGuidance.completed ||
       motion.phase === PHASES.INTRO
     ) {
@@ -4357,8 +4377,8 @@ export function createSisyphusRuntime(elements = {}) {
           downLerp: params.cameraFollowDownLerp,
           followUp: params.cameraFollowUpEnabled,
           followDown:
-            params.cameraFollowDownEnabled ||
-            (isSceneThree && sceneFlow.finalFallStarted),
+            params.cameraFollowDownEnabled &&
+            !(isSceneThree && sceneFlow.finalFallStarted),
         });
     if (nextScrollY === window.scrollY) {
       return;
@@ -5343,6 +5363,20 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function sharedSnapshotTheme(snapshot) {
+    if (
+      isSceneThree &&
+      (snapshot.phase === PHASES.FALLING || sceneFlow.finalFallStarted)
+    ) {
+      return resolveTheme("light");
+    }
+    if (
+      isSceneThree &&
+      snapshot.sceneThreeLocked !== true &&
+      snapshot.phase !== PHASES.FALLING &&
+      !sceneFlow.finalFallStarted
+    ) {
+      return "dark";
+    }
     return resolveTheme(sharedSnapshotAtReturnPlace(snapshot) ? "light" : "dark");
   }
 
@@ -5371,19 +5405,14 @@ export function createSisyphusRuntime(elements = {}) {
     rock.classList.add("is-scene-start-held");
   }
 
-  function startSceneThreeRain() {
+  function startSceneThreeFallRain() {
     if (!isSceneThree) {
-      return;
+      return false;
     }
-    rain.scrollArmed = false;
-    rain.scrollCompleted = false;
-    rain.scrollStarted = false;
-    rain.scrollUnlocked = true;
-    rain.returnRequested = true;
-    rainLayer?.classList.remove("is-rain-scroll-driven");
-    rainLayer?.style.removeProperty("--rain-scroll-opacity");
-    applySceneTwoOverflowY();
-    showRainLayer();
+    if (!rain.scrollArmed && !rain.scrollStarted && !rain.scrollCompleted) {
+      armSummitRainScroll();
+    }
+    return rain.scrollStarted || startSummitRainScroll();
   }
 
   function completeScene(reason) {
@@ -5426,7 +5455,10 @@ export function createSisyphusRuntime(elements = {}) {
     if (!isSceneThree) {
       resetSummitRainScroll();
     } else {
-      startSceneThreeRain();
+      if (sceneFlow.finalFallStarted) {
+        setTheme(resolveTheme("light"));
+      }
+      hideRainLayer({ immediate: true });
     }
     body.dispatchEvent(
       new CustomEvent("sisyphus:scene-complete", {
@@ -5455,15 +5487,8 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       return false;
     }
-    updateCameraFollow({ immediate: true });
-    const maxScrollY = Math.max(
-      0,
-      document.documentElement.scrollHeight - window.innerHeight,
-    );
-    if (window.scrollY < maxScrollY - 1) {
-      return false;
-    }
-    return completeScene("rock-fell-camera-followed-rain-started");
+    applySummitRainScrollProfile();
+    return completeScene("rock-fell-rain-finished");
   }
 
   function resetLocalExperience() {
@@ -5512,7 +5537,7 @@ export function createSisyphusRuntime(elements = {}) {
       syncRockPulse();
     }
     showInitialHandCursor();
-    setTheme(resolveTheme(isSceneThree ? "light" : "dark"));
+    setTheme(resolveTheme("dark"));
     resetSummitRainScroll();
     resetTrail();
     renderImprint();
@@ -5963,7 +5988,7 @@ export function createSisyphusRuntime(elements = {}) {
     setPhase(snapshot.phase);
     if (isSceneThree && snapshot.phase === PHASES.FALLING) {
       sceneFlow.finalFallStarted = true;
-      startSceneThreeRain();
+      startSceneThreeFallRain();
     }
     setTheme(sharedSnapshotTheme(snapshot), {
       durationMs: returnThemeTransitionDuration(snapshotAtReturnPlace, {
@@ -6080,7 +6105,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
     if (isSceneThree && snapshot.phase === PHASES.FALLING) {
       sceneFlow.finalFallStarted = true;
-      startSceneThreeRain();
+      startSceneThreeFallRain();
     }
   }
 
@@ -7498,6 +7523,16 @@ export function createSisyphusRuntime(elements = {}) {
     return true;
   }
 
+  function markSceneThreePlacementReleased() {
+    if (!isSceneThree || !sceneThreePlacement.locked) {
+      return false;
+    }
+    sceneThreePlacement.locked = false;
+    sceneThreePlacement.released = true;
+    renderSceneThreePlacementState();
+    return true;
+  }
+
   function releaseSceneThreePlacementFromScroll(event) {
     if (
       !isSceneThree ||
@@ -7511,9 +7546,7 @@ export function createSisyphusRuntime(elements = {}) {
       updateSessionStatus();
       return false;
     }
-    sceneThreePlacement.locked = false;
-    sceneThreePlacement.released = true;
-    renderSceneThreePlacementState();
+    markSceneThreePlacementReleased();
     motion.suspended = false;
     rock.classList.add("is-falling");
     if (!collab.enabled) {
@@ -7557,10 +7590,12 @@ export function createSisyphusRuntime(elements = {}) {
       return false;
     }
     resetFinalFallGate();
+    markSceneThreePlacementReleased();
     setPhase(state.phase);
     applyCanonicalMotion(state);
     sceneFlow.finalFallStarted = true;
-    startSceneThreeRain();
+    syncReturnTheme();
+    startSceneThreeFallRain();
     return true;
   }
 
@@ -7575,7 +7610,11 @@ export function createSisyphusRuntime(elements = {}) {
       (motion.phase === PHASES.PLAY || motion.phase === PHASES.WON) &&
       rockInsideImprint();
     syncFinalFallGate();
-    const nextTheme = resolveTheme(atReturnPlace ? "light" : "dark");
+    const nextTheme = isSceneThree && sceneFlow.finalFallStarted
+      ? resolveTheme("light")
+      : isSceneThree && !sceneThreePlacement.locked
+        ? "dark"
+        : resolveTheme(atReturnPlace ? "light" : "dark");
     motion.wasAtReturnPlace = atReturnPlace;
     setTheme(nextTheme, {
       durationMs: returnThemeTransitionDuration(atReturnPlace),
@@ -7584,7 +7623,9 @@ export function createSisyphusRuntime(elements = {}) {
 
   function enterPlayPhase() {
     setPhase(PHASES.PLAY);
-    setTheme(resolveTheme("dark"));
+    setTheme(
+      resolveTheme(isSceneThree && sceneFlow.finalFallStarted ? "light" : "dark"),
+    );
     rock.classList.remove("is-falling");
   }
 
@@ -7619,6 +7660,9 @@ export function createSisyphusRuntime(elements = {}) {
     const touchedGroundCanonical =
       wasAboveGround && state.y >= SharedPhysics.WORLD_HEIGHT - 0.01;
     applyCanonicalMotion(state);
+    if (isSceneThree && sceneFlow.finalFallStarted) {
+      applySummitRainScrollProfile();
+    }
     const touchedGround =
       touchedGroundCanonical ||
       (previousY < bounds.maxY - 0.75 && motion.y >= bounds.maxY - 0.75);
@@ -8140,10 +8184,16 @@ export function createSisyphusRuntime(elements = {}) {
   listen(window, "pointercancel", releaseAlwaysVisibleHand);
   listen(window, "wheel", (event) => {
     if (event.deltaY > 0) {
-      releaseSceneThreePlacementFromScroll(event);
       markSummitRainScrollIntent();
+      const released = releaseSceneThreePlacementFromScroll(event);
+      if (
+        event.cancelable &&
+        (released || (isSceneThree && sceneFlow.finalFallStarted))
+      ) {
+        event.preventDefault();
+      }
     }
-  }, { passive: true });
+  }, { passive: false });
   listen(window, "touchstart", (event) => {
     rain.touchY = event.touches[0]?.clientY ?? null;
   }, { passive: true });
@@ -8154,15 +8204,27 @@ export function createSisyphusRuntime(elements = {}) {
       rain.touchY !== null &&
       nextTouchY < rain.touchY
     ) {
-      releaseSceneThreePlacementFromScroll(event);
       markSummitRainScrollIntent();
+      const released = releaseSceneThreePlacementFromScroll(event);
+      if (
+        event.cancelable &&
+        (released || (isSceneThree && sceneFlow.finalFallStarted))
+      ) {
+        event.preventDefault();
+      }
     }
     rain.touchY = nextTouchY;
-  }, { passive: true });
+  }, { passive: false });
   listen(window, "keydown", (event) => {
     if (["ArrowDown", "PageDown", "End", " "].includes(event.key)) {
-      releaseSceneThreePlacementFromScroll(event);
       markSummitRainScrollIntent();
+      const released = releaseSceneThreePlacementFromScroll(event);
+      if (
+        event.cancelable &&
+        (released || (isSceneThree && sceneFlow.finalFallStarted))
+      ) {
+        event.preventDefault();
+      }
     }
   });
   listen(window, "blur", cancelDragAndCursor);
@@ -8207,7 +8269,7 @@ export function createSisyphusRuntime(elements = {}) {
     if (!isSceneOne) {
       completePreclickRockGuidance();
     }
-    setTheme(resolveTheme(isSceneThree ? "light" : "dark"));
+    setTheme(resolveTheme("dark"));
     resetSummitRainScroll();
     motion.sceneReady = true;
     showInitialHandCursor();
@@ -8471,7 +8533,7 @@ export function createSisyphusRuntime(elements = {}) {
       resetTrail,
       sendShared,
       setPosition,
-      startSceneThreeRain,
+      startSceneThreeFallRain,
       syncFinalFallGate,
       syncReturnTheme,
       trail,

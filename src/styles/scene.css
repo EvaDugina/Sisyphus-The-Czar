@@ -110,13 +110,13 @@
 }
 
 .summit-timer {
-  position: absolute;
+  position: fixed;
   top: 9.5rem;
-  left: 50vw;
+  left: 50%;
   z-index: 1;
-  width: calc(100vw - 2rem);
+  width: max-content;
   margin: 0;
-  overflow: hidden;
+  overflow: visible;
   color: color-mix(in srgb, var(--ink) 20%, transparent);
   font-family: var(
     --summit-timer-font-family,
@@ -129,9 +129,14 @@
   line-height: 1;
   text-align: center;
   white-space: nowrap;
-  transform: translateX(-50%);
+  transform: translate(-50%, -50%) scaleX(var(--summit-timer-scale-x, 1));
+  transform-origin: center;
   transition: color 420ms ease;
   pointer-events: none;
+}
+
+body[data-scene="scene-3"].theme-dark .summit-timer {
+  visibility: hidden;
 }
 
 .summit-leaderboard {

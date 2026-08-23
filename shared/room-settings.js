@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 55;
+  const ROOM_SETTINGS_VERSION = 56;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -236,6 +236,7 @@
     rainZIndex: [0, 30],
     rainTimingMs: [0, 20000],
     summitTimerFontSizeRem: [4, 64],
+    summitTimerFontWidthPercent: [25, 300],
     lineDelay: [0, 1],
     trailAnchorHeightPercent: [0, 100],
     trailMaxPoints: [20, 10000],
@@ -356,6 +357,7 @@
     rainExitMs: 2000,
     summitTimerFontFamily: "sf-pro-display-bold",
     summitTimerFontSizeRem: 32,
+    summitTimerFontWidthPercent: 100,
     trailEnabled: true,
     trailReset: false,
     lineDelay: 0.5,
@@ -774,6 +776,8 @@
     const [timingMin, timingMax] = ROOM_SETTINGS_LIMITS.rainTimingMs;
     const [summitTimerFontSizeMin, summitTimerFontSizeMax] =
       ROOM_SETTINGS_LIMITS.summitTimerFontSizeRem;
+    const [summitTimerFontWidthMin, summitTimerFontWidthMax] =
+      ROOM_SETTINGS_LIMITS.summitTimerFontWidthPercent;
     const [lineDelayMin, lineDelayMax] = ROOM_SETTINGS_LIMITS.lineDelay;
     const [trailAnchorMin, trailAnchorMax] =
       ROOM_SETTINGS_LIMITS.trailAnchorHeightPercent;
@@ -904,6 +908,13 @@
         "summitTimerFontSizeRem",
         summitTimerFontSizeMin,
         summitTimerFontSizeMax
+      ),
+      summitTimerFontWidthPercent: finiteSetting(
+        source,
+        fallbackSource,
+        "summitTimerFontWidthPercent",
+        summitTimerFontWidthMin,
+        summitTimerFontWidthMax
       ),
       rockAccelerationEnabled: false,
       sceneTwoOverflowYVisible: boolSetting(
@@ -1911,6 +1922,12 @@
       if (!Object.hasOwn(current, "preclickHopSoundFilename")) {
         current.preclickHopSoundFilename =
           DEFAULT_ROOM_SETTINGS.preclickHopSoundFilename;
+      }
+    }
+    if (finiteNumber(version, 1) < 56) {
+      if (!Object.hasOwn(current, "summitTimerFontWidthPercent")) {
+        current.summitTimerFontWidthPercent =
+          DEFAULT_ROOM_SETTINGS.summitTimerFontWidthPercent;
       }
     }
     return current;

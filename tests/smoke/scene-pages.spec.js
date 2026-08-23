@@ -250,7 +250,7 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="finalFallEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="rockLensConfig"]')).toHaveCount(1);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(105);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(106);
 });
 
 test("scene 1 запускает сохранённый дробный пульс без изменения UI", async ({
@@ -367,26 +367,21 @@ test("scene 3 показывает пять WebGL-линз и восстанав
 
 test("scene 3 магнитит камень и отпускает его только от настоящего scroll вниз", async ({ page }) => {
   await waitForDebugScene(page, "/scene-3", "juices");
-  const target = await page.evaluate(() => {
+  const magnetized = await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
     const imprint = api.activeLocalImprint();
-    const rock = document.querySelector(".rock");
-    const rect = rock.getBoundingClientRect();
-    return {
-      rockCenterX: rect.left + rect.width / 2,
-      rockCenterY: rect.top + rect.height / 2,
-      targetX: imprint.x + rect.width / 2,
-      targetY: imprint.y + rect.height / 2,
-    };
+    api.collab.enabled = false;
+    api.motion.imprint = { ...imprint };
+    api.motion.phase = api.SharedPhysics.PHASES.PLAY;
+    api.motion.dragging = true;
+    api.setPosition(imprint.x, imprint.y);
+    return api.startSceneThreeMagnetPlacement();
   });
-  await page.mouse.move(target.rockCenterX, target.rockCenterY);
-  await page.mouse.down();
-  await page.mouse.move(target.targetX, target.targetY, { steps: 16 });
+  expect(magnetized).toBe(true);
   await expect(page.locator("body")).toHaveAttribute(
     "data-scene-three-rock-locked",
     "true",
   );
-  await page.mouse.up();
 
   const centered = await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
@@ -405,15 +400,24 @@ test("scene 3 магнитит камень и отпускает его тол�
     "data-scene-three-rock-locked",
     "true",
   );
+  await expect(page.locator("body")).toHaveClass(/theme-light/);
+  await expect(page.getByTestId("summit-timer")).toBeVisible();
 
+  const scrollBeforeRelease = await page.evaluate(() => scrollY);
   await page.mouse.wheel(0, 120);
   await expect(page.locator("body")).toHaveAttribute(
     "data-scene-three-rock-locked",
     "false",
   );
   await expect.poll(() => page.evaluate(() =>
-    window.__sisyphusTestApi.motion.phase,
-  )).toBe("fallingToBottom");
+    window.__sisyphusTestApi.sceneFlow.finalFallStarted,
+  )).toBe(true);
+  await expect(page.locator("body")).toHaveClass(/theme-light/);
+  await expect(page.getByTestId("summit-timer")).toBeVisible();
+  expect(await page.evaluate(() => scrollY)).toBe(scrollBeforeRelease);
+  await expect.poll(() => page.evaluate(() =>
+    window.__sisyphusTestApi.getSummitRainScrollState().started,
+  )).toBe(true);
 });
 
 test("боковая панель растягивается, прокручивается отдельно и не обрезает значения", async ({ page }) => {
@@ -916,45 +920,132 @@ test("scene 2 завершается при первом контакте с о�
   expect(centerOffset.y).toBeLessThan(2);
 });
 
-test("scene 3 завершается только после падения, спуска камеры и запуска дождя", async ({ page }) => {
+test("scene 3 скрывает таймер в тёмной теме и сохраняет светлую тему после отпускания", async ({ page }) => {
   await waitForDebugScene(page, "/scene-3", "juices");
+  const timer = page.getByTestId("summit-timer");
+  const leaderboard = page.getByTestId("summit-leaderboard");
+  await expect(page.locator("body")).toHaveClass(/theme-dark/);
+  await expect(timer).toBeHidden();
+  await expect(leaderboard).toHaveCSS("display", "grid");
+  await expect(leaderboard).toHaveCSS("visibility", "visible");
+
+  const darkLeaderboardPosition = await leaderboard.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { left: rect.left, top: rect.top };
+  });
+
+  const placementStarted = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    const imprint = api.activeLocalImprint();
+    api.motion.phase = api.SharedPhysics.PHASES.PLAY;
+    api.motion.dragging = true;
+    api.setPosition(imprint.x, imprint.y);
+    return api.startSceneThreeMagnetPlacement();
+  });
+  expect(placementStarted).toBe(true);
+  await expect(page.locator("body")).toHaveClass(/theme-light/);
+  await expect(timer).toBeVisible();
+
+  const lightLeaderboardPosition = await leaderboard.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return { left: rect.left, top: rect.top };
+  });
+  expect(lightLeaderboardPosition.left).toBeCloseTo(
+    darkLeaderboardPosition.left,
+    1,
+  );
+  expect(lightLeaderboardPosition.top).toBeCloseTo(
+    darkLeaderboardPosition.top,
+    1,
+  );
+
+  const timerGeometry = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    const timer = document.querySelector('[data-testid="summit-timer"]');
+    const measure = () => {
+      const rect = timer.getBoundingClientRect();
+      return {
+        centerX: rect.left + rect.width / 2,
+        centerY: rect.top + rect.height / 2,
+        width: rect.width,
+      };
+    };
+    api.applyTestSettings({
+      summitTimerFontSizeRem: 12,
+      summitTimerFontWidthPercent: 100,
+    });
+    const compact = measure();
+    api.applyTestSettings({
+      summitTimerFontSizeRem: 24,
+      summitTimerFontWidthPercent: 175,
+    });
+    return { compact, expanded: measure(), viewportCenterX: innerWidth / 2 };
+  });
+  expect(
+    Math.abs(timerGeometry.compact.centerX - timerGeometry.viewportCenterX),
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(timerGeometry.expanded.centerX - timerGeometry.viewportCenterX),
+  ).toBeLessThan(1);
+  expect(
+    Math.abs(timerGeometry.expanded.centerY - timerGeometry.compact.centerY),
+  ).toBeLessThan(1);
+  expect(timerGeometry.expanded.width).toBeGreaterThan(
+    timerGeometry.compact.width * 3,
+  );
+
   const beforeFall = await page.evaluate(() =>
     window.__sisyphusTestApi.maybeCompleteSceneThree(),
   );
   expect(beforeFall).toBe(false);
 
-  const finalFallStarted = await page.evaluate(() => {
-    const api = window.__sisyphusTestApi;
-    const imprint = api.activeLocalImprint();
-    api.params.finalFallEnabled = true;
-    api.params.finalFallDelaySeconds = 0;
-    api.motion.phase = api.SharedPhysics.PHASES.PLAY;
-    api.motion.dragging = true;
-    api.setPosition(imprint.x, imprint.y);
-    api.syncFinalFallGate();
-    return api.beginFinalReturnFall();
-  });
+  const finalFallStarted = await page.evaluate(() =>
+    window.__sisyphusTestApi.beginFinalReturnFall(),
+  );
   expect(finalFallStarted).toBe(true);
+  await expect(page.locator("body")).toHaveClass(/theme-light/);
+  await expect(timer).toBeVisible();
   await expect(page.getByTestId("weather-rain")).toHaveClass(/is-rain-visible/);
   await expect(page.locator("body")).toHaveAttribute("data-scene-complete", "false");
 
-  const completed = await page.evaluate(() => {
+  const fallProfile = await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
     api.updateBounds();
+    const scrollBefore = scrollY;
+    let peak = api.getSummitRainScrollState();
+    for (let step = 1; step < 20; step += 1) {
+      api.setPosition(api.motion.x, api.bounds.maxY * (step / 20));
+      api.applyPhysics(0);
+      const sample = api.getSummitRainScrollState();
+      if (sample.opacity > peak.opacity) {
+        peak = sample;
+      }
+    }
+    api.updateCameraFollow({ immediate: true });
     api.setPosition(api.motion.x, api.bounds.maxY);
-    scrollTo(0, document.documentElement.scrollHeight);
-    return api.maybeCompleteSceneThree();
+    api.applyPhysics(0);
+    const completed = api.maybeCompleteSceneThree();
+    return {
+      completed,
+      peak,
+      scrollBefore,
+      scrollAfter: scrollY,
+    };
   });
-  expect(completed).toBe(true);
+  expect(fallProfile.peak.opacity).toBeGreaterThan(0.99);
+  expect(fallProfile.peak.volume).toBeCloseTo(fallProfile.peak.maxVolume, 2);
+  expect(fallProfile.scrollAfter).toBe(fallProfile.scrollBefore);
+  expect(fallProfile.completed).toBe(true);
   await expect(page.locator("body")).toHaveAttribute("data-scene-complete", "true");
   await expect(page.locator("body")).toHaveAttribute(
     "data-scene-completion-reason",
-    "rock-fell-camera-followed-rain-started",
+    "rock-fell-rain-finished",
   );
+  await expect(page.locator("body")).toHaveClass(/theme-light/);
+  await expect(timer).toBeVisible();
   await expect(page).toHaveURL(/\/scene-3$/);
-  await expect.poll(() => page.evaluate(() => {
-    const max = document.documentElement.scrollHeight - innerHeight;
-    return Math.abs(scrollY - max);
-  })).toBeLessThan(2);
-  await expect(page.getByTestId("weather-rain")).toHaveClass(/is-rain-visible/);
+  await expect(page.getByTestId("weather-rain")).not.toHaveClass(/is-rain-visible/);
+  await expect.poll(() => page.evaluate(() =>
+    window.__sisyphusTestApi.getSummitRainScrollState().volume,
+  )).toBe(0);
 });
