@@ -618,6 +618,9 @@ test("настройки инерции и hop отображают актуал
   const gachiClickSound = controls.find(
     (control) => control.name === "gachiClickSoundFilename",
   );
+  const wallImpactSound = controls.find(
+    (control) => control.name === "wallImpactSoundFilename",
+  );
 
   assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v55");
   assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v54");
@@ -674,6 +677,25 @@ test("настройки инерции и hop отображают актуал
     [...SharedRoomSettings.GACHI_CLICK_SOUND_FILENAMES],
   );
   assert.deepEqual(gachiClickSound.options[0], ["none", "Без звука"]);
+  assert.deepEqual(
+    {
+      type: wallImpactSound.type,
+      defaultValue: wallImpactSound.defaultValue,
+      options: wallImpactSound.options,
+    },
+    {
+      type: "select",
+      defaultValue: "СимуляцияОргазма.mov",
+      options: [
+        ["none", "Без звука"],
+        ["СимуляцияОргазма.mov", "Симуляция оргазма"],
+        ...SharedRoomSettings.GACHI_SOUND_FILENAMES.map((filename) => [
+          filename,
+          filename.replace(/\.mp3$/i, ""),
+        ]),
+      ],
+    },
+  );
   assert.deepEqual(
     {
       label: preclickHopSound.label,
@@ -1059,7 +1081,7 @@ test("UI материализует параметры отдельно для �
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
       [SETTINGS_SCENES.CATS_AND_MICE, 38],
-      [SETTINGS_SCENES.TURNIP, 103],
+      [SETTINGS_SCENES.TURNIP, 104],
       [SETTINGS_SCENES.JUICES, 106],
     ],
   );
@@ -1199,7 +1221,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 56);
+  assert.equal(productionSettingsSchemaVersion, 57);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1872,6 +1894,7 @@ test("настройки размера камня есть в UI и получ�
     rockSizeGroup.controls.map((control) => control.name),
     [
       "gachiClickSoundFilename",
+      "wallImpactSoundFilename",
       "randomDropEnabled",
       "rockJumpEnabled",
       "rockJumpIntervalSeconds",
@@ -2150,9 +2173,9 @@ test("настройки размера камня есть в UI и получ�
     {
       label: "Разброс силы",
       min: 0,
-      max: 100,
-      step: 1,
-      defaultValue: 25,
+      max: 1,
+      step: 0.01,
+      defaultValue: 0.25,
       enabledWhen: "rockJumpEnabled",
     },
   );
@@ -3110,7 +3133,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 56);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 57);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3165,6 +3188,8 @@ test("группа дождя содержит общий toggle и blur тём�
     summitTimerFontSizeRem: 999,
     summitTimerFontWidthPercent: 999,
     gachiClickSoundFilename: "missing.mp3",
+    wallImpactSoundFilename: "missing.mp3",
+    rockJumpInertiaSpreadPercent: 999,
   });
   assert.equal(visualSettings.lightBackgroundColor, "#aabbcc");
   assert.equal(
@@ -3220,6 +3245,11 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.summitTimerFontWidthPercent, 300);
   assert.equal(visualSettings.gachiClickSoundFilename, "Camen.mp3");
   assert.equal(
+    visualSettings.wallImpactSoundFilename,
+    "СимуляцияОргазма.mov",
+  );
+  assert.equal(visualSettings.rockJumpInertiaSpreadPercent, 1);
+  assert.equal(
     SharedRoomSettings.sanitizeRoomSettings({
       gachiClickSoundFilename: SharedRoomSettings.GACHI_CLICK_SOUND_DISABLED,
     }).gachiClickSoundFilename,
@@ -3230,6 +3260,25 @@ test("группа дождя содержит общий toggle и blur тём�
     "none",
     ...SharedRoomSettings.GACHI_SOUND_FILENAMES,
   ]);
+  assert.equal(SharedRoomSettings.WALL_IMPACT_SOUND_DISABLED, "none");
+  assert.deepEqual(SharedRoomSettings.WALL_IMPACT_SOUND_FILENAMES, [
+    "none",
+    "СимуляцияОргазма.mov",
+    ...SharedRoomSettings.GACHI_SOUND_FILENAMES,
+  ]);
+  assert.equal(
+    SharedRoomSettings.sanitizeRoomSettings({
+      wallImpactSoundFilename: "none",
+      rockJumpInertiaSpreadPercent: 0.37,
+    }).wallImpactSoundFilename,
+    "none",
+  );
+  assert.equal(
+    SharedRoomSettings.sanitizeRoomSettings({
+      rockJumpInertiaSpreadPercent: 0.37,
+    }).rockJumpInertiaSpreadPercent,
+    0.37,
+  );
   assert.deepEqual(SharedRoomSettings.GACHI_SOUND_FILENAMES, [
     "Aaaaaa.mp3",
     "Aaaaah.mp3",
@@ -3310,6 +3359,19 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(legacyV49.summitTimerFontFamily, "sf-pro-display-bold");
   assert.equal(legacyV49.summitTimerFontSizeRem, 32);
   assert.equal(legacyV49.summitTimerFontWidthPercent, 100);
+  const legacyV56 = SharedRoomSettings.migrateRoomSettings(
+    { rockJumpInertiaSpreadPercent: 25 },
+    56,
+  );
+  assert.equal(legacyV56.rockJumpInertiaSpreadPercent, 0.25);
+  assert.equal(legacyV56.wallImpactSoundFilename, "СимуляцияОргазма.mov");
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { rockJumpInertiaSpreadPercent: 100 },
+      56,
+    ).rockJumpInertiaSpreadPercent,
+    1,
+  );
   assert.deepEqual(
     SharedRoomSettings.migrateRockVisualSettings({
       rockPressShrinkPercent: 17,
@@ -3433,6 +3495,8 @@ test("группа дождя содержит общий toggle и blur тём�
     summitTimerFontSizeRem: 32,
     summitTimerFontWidthPercent: 100,
     gachiClickSoundFilename: "Camen.mp3",
+    wallImpactSoundFilename: "СимуляцияОргазма.mov",
+    rockJumpInertiaSpreadPercent: 0.25,
     sceneTwoBarrierEnabled: false,
     sceneTwoBarrierHeightVh: 1250,
     sceneTwoBarrierHopActivationRadiusPercent: 11,
@@ -3470,6 +3534,8 @@ test("группа дождя содержит общий toggle и blur тём�
       summitTimerFontSizeRem: 32,
       summitTimerFontWidthPercent: 100,
       gachiClickSoundFilename: "Camen.mp3",
+      wallImpactSoundFilename: "СимуляцияОргазма.mov",
+      rockJumpInertiaSpreadPercent: 0.25,
       sceneTwoBarrierEnabled: false,
       sceneTwoBarrierHeightVh: 1250,
       sceneTwoBarrierHopActivationRadiusPercent: 50,

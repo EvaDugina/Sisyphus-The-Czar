@@ -1574,36 +1574,39 @@ test("Fold синхронизирует сцену и применяет общ�
 test("настройки выпадения и выпрыгивания доступны на странице настроек", async ({
   page,
 }) => {
-  await page.goto("/");
-    await waitForFoldReady(page);
-    await navigateToSettings(page);
-    const randomDrop = page.locator('[name="randomDropEnabled"]');
-    const rockJump = page.locator('[name="rockJumpEnabled"]');
-    const jumpInterval = page.locator('[name="rockJumpIntervalSeconds"]');
-    const jumpAngleSpread = page.locator(
-      '[name="rockJumpAngleSpreadDegrees"]',
-    );
-    const jumpSpread = page.locator(
-      '[name="rockJumpInertiaSpreadPercent"]',
-    );
+  await page.goto("/scene-2");
+  await waitForFoldReady(page);
+  await expect(page.locator("#settings-panel")).toHaveAttribute(
+    "aria-hidden",
+    "false",
+  );
+  const randomDrop = page.locator('[name="randomDropEnabled"]');
+  const rockJump = page.locator('[name="rockJumpEnabled"]');
+  const jumpInterval = page.locator('[name="rockJumpIntervalSeconds"]');
+  const jumpAngleSpread = page.locator(
+    '[name="rockJumpAngleSpreadDegrees"]',
+  );
+  const jumpSpread = page.locator(
+    '[name="rockJumpInertiaSpreadPercent"]',
+  );
 
-    await setSettingValue(page, "randomDropEnabled", true);
-    await setSettingValue(page, "rockJumpEnabled", true);
-    await expect(randomDrop).toBeChecked();
-    await expect(rockJump).toBeChecked();
-    await expect(jumpInterval).toBeEnabled();
-    await expect(jumpAngleSpread).toBeEnabled();
-    await expect(jumpSpread).toBeEnabled();
+  await setSettingValue(page, "randomDropEnabled", true);
+  await setSettingValue(page, "rockJumpEnabled", true);
+  await expect(randomDrop).toBeChecked();
+  await expect(rockJump).toBeChecked();
+  await expect(jumpInterval).toBeEnabled();
+  await expect(jumpAngleSpread).toBeEnabled();
+  await expect(jumpSpread).toBeEnabled();
 
-    await setSettingValue(page, "rockJumpAngleSpreadDegrees", 180);
-    await setSettingValue(page, "rockJumpInertiaSpreadPercent", 40);
-    await expect(jumpAngleSpread).toHaveValue("180");
-    await expect(jumpSpread).toHaveValue("40");
+  await setSettingValue(page, "rockJumpAngleSpreadDegrees", 180);
+  await setSettingValue(page, "rockJumpInertiaSpreadPercent", 0.4);
+  await expect(jumpAngleSpread).toHaveValue("180");
+  await expect(jumpSpread).toHaveValue("0.4");
 
-    await setSettingValue(page, "rockJumpEnabled", false);
-    await expect(rockJump).not.toBeChecked();
-    await expect(jumpInterval).toBeDisabled();
-    await expect(jumpAngleSpread).toBeDisabled();
+  await setSettingValue(page, "rockJumpEnabled", false);
+  await expect(rockJump).not.toBeChecked();
+  await expect(jumpInterval).toBeDisabled();
+  await expect(jumpAngleSpread).toBeDisabled();
   await expect(jumpSpread).toBeDisabled();
 });
 
@@ -1912,8 +1915,8 @@ test("рейтинг скрывает нулевой результат, а до
     .toMatchObject({ completed: true, started: false, visible: false, volume: 0 });
 });
 
-test("удар камня о боковую стену включает симуляцию оргазма", async ({ page }) => {
-  await page.goto("/");
+test("звук боковой стены в scene 2 выбирается отдельно и поддерживает тишину", async ({ page }) => {
+  await page.goto("/scene-2");
   await waitForFoldReady(page);
   await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
@@ -1935,6 +1938,43 @@ test("удар камня о боковую стену включает симу
       lastFilename: "СимуляцияОргазма.mov",
       playCount: before + 1,
     });
+  await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.setPosition(0, api.bounds.maxY / 2);
+  });
+  expect(
+    await page.evaluate(() =>
+      window.__sisyphusTestApi.getWallImpactAudioState().playCount,
+    ),
+  ).toBe(before + 1);
+
+  await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.params.wallImpactSoundFilename = "Camen.mp3";
+    api.setPosition(api.bounds.maxX / 2, api.bounds.maxY / 2);
+    api.setPosition(api.bounds.maxX, api.bounds.maxY / 2);
+  });
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.getWallImpactAudioState(),
+    ))
+    .toMatchObject({
+      lastFilename: "Camen.mp3",
+      playCount: before + 2,
+    });
+
+  await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.params.wallImpactSoundFilename = "none";
+    api.setPosition(api.bounds.maxX / 2, api.bounds.maxY / 2);
+    api.setPosition(0, api.bounds.maxY / 2);
+  });
+  await page.waitForTimeout(150);
+  expect(
+    await page.evaluate(() =>
+      window.__sisyphusTestApi.getWallImpactAudioState().playCount,
+    ),
+  ).toBe(before + 2);
 });
 
 test("glow-профили и зависимости select работают на странице настроек", async ({

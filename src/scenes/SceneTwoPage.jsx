@@ -3,8 +3,6 @@ import { ScenePage } from "../components/ScenePage";
 import { SETTINGS_SCENES } from "../config/settings.mjs";
 
 const STICKY_ROCK_SETTINGS = Object.freeze({
-  randomDropEnabled: false,
-  rockJumpEnabled: false,
   sceneTwoBarrierEnabled: false,
   stationaryAutoSlipEnabled: false,
 });

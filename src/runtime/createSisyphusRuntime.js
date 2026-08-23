@@ -156,6 +156,13 @@ PRECLICK_HOP_AUDIO_LOADERS_BY_FILENAME.set(
   "СимуляцияОргазма.mov",
   () => Promise.resolve(groundImpactAudioUrl),
 );
+const WALL_IMPACT_AUDIO_LOADERS_BY_FILENAME = new Map(
+  GACHI_AUDIO_LOADERS_BY_FILENAME,
+);
+WALL_IMPACT_AUDIO_LOADERS_BY_FILENAME.set(
+  "СимуляцияОргазма.mov",
+  () => Promise.resolve(groundImpactAudioUrl),
+);
 const audioUrlPromises = new Map();
 
 function loadAudioUrl(scope, loadersByFilename, filename) {
@@ -383,6 +390,8 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockAccelerationEnabled,
     sceneTwoOverflowYVisible:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoOverflowYVisible,
+    wallImpactSoundFilename:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.wallImpactSoundFilename,
     sceneTwoGlassEnabled:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.sceneTwoGlassEnabled,
     sceneTwoGlassStrips:
@@ -1660,30 +1669,50 @@ export function createSisyphusRuntime(elements = {}) {
     }
   }
 
-  function playWallImpactSound() {
+  function playWallImpactSound(
+    requestedFilename = params.wallImpactSoundFilename,
+  ) {
+    const requested = String(requestedFilename || "");
+    if (requested === SharedRoomSettings.WALL_IMPACT_SOUND_DISABLED) {
+      return;
+    }
     if (typeof Audio !== "function") {
       return;
     }
-    const audio = new Audio(groundImpactAudioUrl);
-    audio.preload = "auto";
-    const releaseAudio = () => {
-      wallImpactAudio.elements.delete(audio);
-    };
-    audio.addEventListener("ended", releaseAudio);
-    audio.addEventListener("error", releaseAudio);
-    wallImpactAudio.elements.add(audio);
-    try {
-      audio.currentTime = 0;
-      audio.volume = 1;
-      const promise = audio.play();
-      if (promise && typeof promise.catch === "function") {
-        promise.catch(releaseAudio);
+    const filename = SharedRoomSettings.WALL_IMPACT_SOUND_FILENAMES.includes(
+      requested,
+    )
+      ? requested
+      : SharedRoomSettings.DEFAULT_ROOM_SETTINGS.wallImpactSoundFilename;
+    loadAudioUrl(
+      "wall-impact",
+      WALL_IMPACT_AUDIO_LOADERS_BY_FILENAME,
+      filename,
+    ).then((url) => {
+      if (disposed || !url) {
+        return;
       }
-      wallImpactAudio.lastFilename = "СимуляцияОргазма.mov";
-      wallImpactAudio.playCount += 1;
-    } catch {
-      releaseAudio();
-    }
+      const audio = new Audio(url);
+      audio.preload = "auto";
+      const releaseAudio = () => {
+        wallImpactAudio.elements.delete(audio);
+      };
+      audio.addEventListener("ended", releaseAudio);
+      audio.addEventListener("error", releaseAudio);
+      wallImpactAudio.elements.add(audio);
+      try {
+        audio.currentTime = 0;
+        audio.volume = 1;
+        const promise = audio.play();
+        if (promise && typeof promise.catch === "function") {
+          promise.catch(releaseAudio);
+        }
+        wallImpactAudio.lastFilename = filename;
+        wallImpactAudio.playCount += 1;
+      } catch {
+        releaseAudio();
+      }
+    });
   }
 
   function armGroundImpactSound() {
@@ -6317,6 +6346,12 @@ export function createSisyphusRuntime(elements = {}) {
       completeScene("rock-touched-imprint");
       return;
     }
+    if (isSceneTwo) {
+      if (event?.cancelable) {
+        event.preventDefault();
+      }
+      return;
+    }
     if (isSceneThree && releasedInImprint) {
       startSceneThreeMagnetPlacement();
       return;
@@ -8061,7 +8096,6 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.dragging) {
       return;
     }
-    beginSceneTwoAirborneScale();
     const phaseAtRelease = motion.phase;
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
@@ -8069,6 +8103,13 @@ export function createSisyphusRuntime(elements = {}) {
       completeScene("rock-touched-imprint");
       return;
     }
+    if (isSceneTwo) {
+      if (event?.cancelable) {
+        event.preventDefault();
+      }
+      return;
+    }
+    beginSceneTwoAirborneScale();
     if (isSceneThree && releasedInImprint) {
       startSceneThreeMagnetPlacement();
       return;
@@ -8126,6 +8167,9 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function cancelDragAndCursor() {
+    if (isSceneTwo && motion.dragging) {
+      return;
+    }
     releaseRockPress();
     if (collab.enabled && motion.dragging) {
       forceReleaseSharedDrag(true);
@@ -8172,6 +8216,9 @@ export function createSisyphusRuntime(elements = {}) {
   listen(rock, "pointercancel", stopDrag);
   listen(rock, "lostpointercapture", () => {
     if (motion.dragging) {
+      if (isSceneTwo) {
+        return;
+      }
       forceReleaseRock();
     } else {
       releaseRockPress();

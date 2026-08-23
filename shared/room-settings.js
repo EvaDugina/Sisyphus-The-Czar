@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 56;
+  const ROOM_SETTINGS_VERSION = 57;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -72,6 +72,14 @@
   const DEFAULT_GACHI_CLICK_SOUND_FILENAME = "Camen.mp3";
   const PRECLICK_HOP_SOUND_DISABLED = "none";
   const PRECLICK_HOP_ORGASM_SOUND_FILENAME = "СимуляцияОргазма.mov";
+  const WALL_IMPACT_SOUND_DISABLED = "none";
+  const WALL_IMPACT_SOUND_FILENAMES = Object.freeze([
+    WALL_IMPACT_SOUND_DISABLED,
+    PRECLICK_HOP_ORGASM_SOUND_FILENAME,
+    ...GACHI_SOUND_FILENAMES,
+  ]);
+  const DEFAULT_WALL_IMPACT_SOUND_FILENAME =
+    PRECLICK_HOP_ORGASM_SOUND_FILENAME;
   const PRECLICK_HOP_SOUND_FILENAMES = Object.freeze([
     PRECLICK_HOP_SOUND_DISABLED,
     "Смех.mp3",
@@ -226,7 +234,7 @@
     rockPulseBpm: [20, 240],
     rockJumpIntervalSeconds: [1, 10],
     rockJumpAngleSpreadDegrees: [0, 180],
-    rockJumpInertiaSpreadPercent: [0, 100],
+    rockJumpInertiaSpreadPercent: [0, 1],
     rainStrength: [0.25, 1.5],
     rainMaxVolume: [0, 3],
     rainBackgroundBlurSteps: [0, 8],
@@ -268,6 +276,7 @@
     rockAccelerationEnabled: false,
     sceneTwoOverflowYVisible: false,
     gachiClickSoundFilename: DEFAULT_GACHI_CLICK_SOUND_FILENAME,
+    wallImpactSoundFilename: DEFAULT_WALL_IMPACT_SOUND_FILENAME,
     foldPositionPercent: 0,
     foldPanelHeightVh: 20,
     foldAngle: 30,
@@ -281,7 +290,7 @@
     rockJumpEnabled: true,
     rockJumpIntervalSeconds: 5,
     rockJumpAngleSpreadDegrees: 90,
-    rockJumpInertiaSpreadPercent: 25,
+    rockJumpInertiaSpreadPercent: 0.25,
     rockImageId: "rock-03",
     foldRockImageId: "rock-03",
     rockScaleEasing: DEFAULT_ROCK_SCALE_EASING,
@@ -928,6 +937,12 @@
         "gachiClickSoundFilename",
         GACHI_CLICK_SOUND_FILENAMES
       ),
+      wallImpactSoundFilename: enumSetting(
+        source,
+        fallbackSource,
+        "wallImpactSoundFilename",
+        WALL_IMPACT_SOUND_FILENAMES
+      ),
       foldPositionPercent: integerSetting(
         source,
         fallbackSource,
@@ -1006,7 +1021,7 @@
         rockJumpAngleSpreadMin,
         rockJumpAngleSpreadMax
       ),
-      rockJumpInertiaSpreadPercent: integerSetting(
+      rockJumpInertiaSpreadPercent: finiteSetting(
         source,
         fallbackSource,
         "rockJumpInertiaSpreadPercent",
@@ -1930,6 +1945,22 @@
           DEFAULT_ROOM_SETTINGS.summitTimerFontWidthPercent;
       }
     }
+    if (finiteNumber(version, 1) < 57) {
+      if (!Object.hasOwn(current, "wallImpactSoundFilename")) {
+        current.wallImpactSoundFilename =
+          DEFAULT_ROOM_SETTINGS.wallImpactSoundFilename;
+      }
+      if (Object.hasOwn(current, "rockJumpInertiaSpreadPercent")) {
+        current.rockJumpInertiaSpreadPercent = clamp(
+          finiteNumber(current.rockJumpInertiaSpreadPercent, 25) / 100,
+          ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent[0],
+          ROOM_SETTINGS_LIMITS.rockJumpInertiaSpreadPercent[1]
+        );
+      } else {
+        current.rockJumpInertiaSpreadPercent =
+          DEFAULT_ROOM_SETTINGS.rockJumpInertiaSpreadPercent;
+      }
+    }
     return current;
   }
 
@@ -2012,6 +2043,9 @@
     DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     PRECLICK_HOP_SOUND_DISABLED,
     PRECLICK_HOP_ORGASM_SOUND_FILENAME,
+    WALL_IMPACT_SOUND_DISABLED,
+    WALL_IMPACT_SOUND_FILENAMES,
+    DEFAULT_WALL_IMPACT_SOUND_FILENAME,
     PRECLICK_HOP_SOUND_FILENAMES,
     DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     PRECLICK_POPUP_ARTWORK_MODES,

@@ -1383,7 +1383,7 @@ export function createSettingsController(options) {
       rockJumpAngleSpreadDegrees:
         `${params.rockJumpAngleSpreadDegrees.toFixed(0)}°`,
       rockJumpInertiaSpreadPercent:
-        `${params.rockJumpInertiaSpreadPercent.toFixed(0)}%`,
+        `${params.rockJumpInertiaSpreadPercent.toFixed(2)}%`,
       handWidthVw: `${params.handWidthVw.toFixed(1)}vw`,
       handImageChangeDelayMs: `${params.handImageChangeDelayMs.toFixed(0)}мс`,
       rockGrabRadiusVh: `${params.rockGrabRadiusVh.toFixed(1)}vh`,

@@ -163,6 +163,15 @@ const GACHI_SOUND_OPTIONS =
       ? "Без звука"
       : filename.replace(/\.mp3$/i, ""),
   ]);
+const WALL_IMPACT_SOUND_OPTIONS =
+  SharedRoomSettings.WALL_IMPACT_SOUND_FILENAMES.map((filename) => [
+    filename,
+    filename === SharedRoomSettings.WALL_IMPACT_SOUND_DISABLED
+      ? "Без звука"
+      : filename === SharedRoomSettings.PRECLICK_HOP_ORGASM_SOUND_FILENAME
+        ? "Симуляция оргазма"
+        : filename.replace(/\.mp3$/i, ""),
+  ]);
 const PRECLICK_HOP_SOUND_OPTIONS =
   SharedRoomSettings.PRECLICK_HOP_SOUND_FILENAMES.map((filename) => [
     filename,
@@ -1058,6 +1067,14 @@ export const SETTINGS_GROUPS = [
         hint: "Звук из папки gachi, который воспроизводится один раз при клике по камню в сцене 2.",
       },
       {
+        name: "wallImpactSoundFilename",
+        label: "Звук касания боковой стены",
+        type: "select",
+        defaultValue: DEFAULT_ROOM_SETTINGS.wallImpactSoundFilename,
+        options: WALL_IMPACT_SOUND_OPTIONS,
+        hint: "Независимый звук нового контакта камня с левой или правой стеной. Непрерывное касание не перезапускает его.",
+      },
+      {
         name: "randomDropEnabled",
         label: "Случайное выпадение",
         type: "checkbox",
@@ -1109,7 +1126,7 @@ export const SETTINGS_GROUPS = [
           .rockJumpInertiaSpreadPercent[0],
         max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
           .rockJumpInertiaSpreadPercent[1],
-        step: 1,
+        step: 0.01,
         defaultValue: DEFAULT_ROOM_SETTINGS.rockJumpInertiaSpreadPercent,
         output: `${DEFAULT_ROOM_SETTINGS.rockJumpInertiaSpreadPercent}%`,
         enabledWhen: "rockJumpEnabled",

@@ -2201,7 +2201,7 @@ test("камень выпрыгивает в настроенном симмет
       rockJumpEnabled: true,
       rockJumpIntervalSeconds: 5,
       rockJumpAngleSpreadDegrees: 180,
-      rockJumpInertiaSpreadPercent: 25,
+      rockJumpInertiaSpreadPercent: 0.25,
     },
   });
   const holder = connect(manager, session, "client-jump-timer01");
@@ -2222,7 +2222,7 @@ test("камень выпрыгивает в настроенном симмет
   assert.equal(session.holder, null);
   assert.equal(jumpMessage.payload.reason, "jumped");
   assert.equal(jumpMessage.payload.angleDegrees, 90);
-  assert.equal(jumpMessage.payload.inertiaFactor, 1.25);
+  assert.equal(jumpMessage.payload.inertiaFactor, 1.0025);
   assert.ok(session.state.vy < 0);
   assert.ok(session.state.vx > 0);
 });

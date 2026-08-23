@@ -762,10 +762,36 @@ test("scene 2 пульсирует без руки и допускает пов�
 }) => {
   await waitForDebugScene(page, "/scene-2", "turnip");
   const rock = page.locator(ROCK);
+  const wallImpactSound = page.locator('[name="wallImpactSoundFilename"]');
+  const jumpSpread = page.locator('[name="rockJumpInertiaSpreadPercent"]');
+
+  expect(
+    await wallImpactSound.locator("option").evaluateAll((options) =>
+      options.map((option) => [option.value, option.textContent]),
+    ),
+  ).toEqual([
+    ["none", "Без звука"],
+    ["СимуляцияОргазма.mov", "Симуляция оргазма"],
+    ["Aaaaaa.mp3", "Aaaaaa"],
+    ["Aaaaah.mp3", "Aaaaah"],
+    ["Camen.mp3", "Camen"],
+    ["Deep dark fantasies.mp3", "Deep dark fantasies"],
+    ["Dungeon master.mp3", "Dungeon master"],
+    ["Get your ass down for me now boy.mp3", "Get your ass down for me now boy"],
+    ["Like that.mp3", "Like that"],
+    ["ahhhhhhh.mp3", "ahhhhhhh"],
+    ["thats-amazing.mp3", "thats-amazing"],
+  ]);
+  await expect(jumpSpread).toHaveAttribute("min", "0");
+  await expect(jumpSpread).toHaveAttribute("max", "1");
+  await expect(jumpSpread).toHaveAttribute("step", "0.01");
 
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
       gachiClickSoundFilename: "none",
+      randomDropEnabled: false,
+      rockJumpEnabled: false,
+      rockJumpInertiaSpreadPercent: 0.37,
       rockPulseBpm: 240,
       rockPulseEnabled: true,
       rockPulseShrinkPercent: 30,
@@ -834,10 +860,21 @@ test("scene 2 пульсирует без руки и допускает пов�
     )
     .toBe(audioPlayCount);
 
+  await page.mouse.up();
+  await expect(rock).toHaveAttribute("data-sticky-to-hand", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        dragging: window.__sisyphusTestApi.motion.dragging,
+        state:
+          window.__sisyphusTestApi.getRockVisualScaleState().sceneTwoSizeState,
+      })),
+    )
+    .toEqual({ dragging: true, state: "held" });
+
   await page.evaluate(() => {
     window.__sisyphusTestApi.forceReleaseRock({ neutral: true });
   });
-  await page.mouse.up();
   await expect(rock).not.toHaveAttribute("data-sticky-to-hand", "true");
   await expect
     .poll(() =>
@@ -886,7 +923,6 @@ test("scene 2 пульсирует без руки и допускает пов�
   await page.evaluate(() => {
     window.__sisyphusTestApi.forceReleaseRock({ neutral: true });
   });
-  await page.mouse.up();
 });
 
 test("scene 2 завершается при первом контакте с отпечатком и остаётся там", async ({ page }) => {
