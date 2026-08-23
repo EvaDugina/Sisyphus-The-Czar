@@ -196,6 +196,19 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="gravity"]')).toHaveCount(1);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator("[data-setting-control]")).toHaveCount(103);
+  const rockClickSound = page.locator('[name="gachiClickSoundFilename"]');
+  await expect(rockClickSound.locator("option")).toHaveCount(10);
+  await expect(rockClickSound.locator('option[value="none"]')).toHaveText(
+    "Без звука",
+  );
+  await setSettingValue(page, "gachiClickSoundFilename", "none");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.params.gachiClickSoundFilename,
+      ),
+    )
+    .toBe("none");
 
   await waitForDebugScene(page, "/scene-3", "juices");
   const cursorAssets = await page.locator(
@@ -686,6 +699,138 @@ test("кнопка сохраняет полный Git-снимок настро
       ),
     versionName)).toBe(true);
   }
+});
+
+test("scene 2 пульсирует без руки и допускает повторный захват после выпадения", async ({
+  page,
+}) => {
+  await waitForDebugScene(page, "/scene-2", "turnip");
+  const rock = page.locator(ROCK);
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      gachiClickSoundFilename: "none",
+      rockPulseBpm: 240,
+      rockPulseEnabled: true,
+      rockPulseShrinkPercent: 30,
+    });
+  });
+
+  async function pulseRange() {
+    return page.evaluate(async () => {
+      const samples = [];
+      for (let index = 0; index < 12; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        samples.push(
+          window.__sisyphusTestApi.getRockVisualScaleState().pulseScaleFactor,
+        );
+      }
+      return {
+        max: Math.max(...samples),
+        min: Math.min(...samples),
+      };
+    });
+  }
+
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__sisyphusTestApi.getRockVisualScaleState().sceneTwoSizeState,
+      ),
+    )
+    .toBe("ground");
+  const initialPulse = await pulseRange();
+  expect(initialPulse.max - initialPulse.min).toBeGreaterThan(0.1);
+
+  const audioPlayCount = await page.evaluate(
+    () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+  );
+  const firstBox = await rock.boundingBox();
+  expect(firstBox).not.toBeNull();
+  await page.mouse.move(
+    firstBox.x + firstBox.width / 2,
+    firstBox.y + firstBox.height / 2,
+  );
+  await page.mouse.down();
+  await expect(rock).toHaveAttribute("data-sticky-to-hand", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        dragging: window.__sisyphusTestApi.motion.dragging,
+        state:
+          window.__sisyphusTestApi.getRockVisualScaleState().sceneTwoSizeState,
+      })),
+    )
+    .toEqual({ dragging: true, state: "held" });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__sisyphusTestApi.getRockVisualScaleState(),
+      ),
+    )
+    .toMatchObject({ pressActive: true, pulseScaleFactor: 1 });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+      ),
+    )
+    .toBe(audioPlayCount);
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.forceReleaseRock({ neutral: true });
+  });
+  await page.mouse.up();
+  await expect(rock).not.toHaveAttribute("data-sticky-to-hand", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        dragging: window.__sisyphusTestApi.motion.dragging,
+        state:
+          window.__sisyphusTestApi.getRockVisualScaleState().sceneTwoSizeState,
+      })),
+    )
+    .toMatchObject({ dragging: false });
+  const releasedPulse = await pulseRange();
+  expect(releasedPulse.max - releasedPulse.min).toBeGreaterThan(0.1);
+
+  const secondBox = await rock.boundingBox();
+  expect(secondBox).not.toBeNull();
+  await page.mouse.move(
+    secondBox.x + secondBox.width / 2,
+    secondBox.y + secondBox.height / 2,
+  );
+  await page.mouse.down();
+  await expect(rock).toHaveAttribute("data-sticky-to-hand", "true");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        dragging: window.__sisyphusTestApi.motion.dragging,
+        state:
+          window.__sisyphusTestApi.getRockVisualScaleState().sceneTwoSizeState,
+      })),
+    )
+    .toEqual({ dragging: true, state: "held" });
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.getRockVisualScaleState().pulseScaleFactor,
+      ),
+    )
+    .toBe(1);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
+      ),
+    )
+    .toBe(audioPlayCount);
+
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.forceReleaseRock({ neutral: true });
+  });
+  await page.mouse.up();
 });
 
 test("scene 2 завершается при первом контакте с отпечатком и остаётся там", async ({ page }) => {

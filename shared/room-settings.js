@@ -64,6 +64,11 @@
     "ahhhhhhh.mp3",
     "thats-amazing.mp3",
   ]);
+  const GACHI_CLICK_SOUND_DISABLED = "none";
+  const GACHI_CLICK_SOUND_FILENAMES = Object.freeze([
+    GACHI_CLICK_SOUND_DISABLED,
+    ...GACHI_SOUND_FILENAMES,
+  ]);
   const DEFAULT_GACHI_CLICK_SOUND_FILENAME = "Camen.mp3";
   const PRECLICK_HOP_SOUND_DISABLED = "none";
   const PRECLICK_HOP_SOUND_FILENAMES = Object.freeze([
@@ -908,7 +913,7 @@
         source,
         fallbackSource,
         "gachiClickSoundFilename",
-        GACHI_SOUND_FILENAMES
+        GACHI_CLICK_SOUND_FILENAMES
       ),
       foldPositionPercent: integerSetting(
         source,
@@ -1983,6 +1988,8 @@
     HAND_VISIBILITY_MODES,
     SUMMIT_TIMER_FONT_FAMILIES,
     GACHI_SOUND_FILENAMES,
+    GACHI_CLICK_SOUND_DISABLED,
+    GACHI_CLICK_SOUND_FILENAMES,
     DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     PRECLICK_HOP_SOUND_DISABLED,
     PRECLICK_HOP_SOUND_FILENAMES,

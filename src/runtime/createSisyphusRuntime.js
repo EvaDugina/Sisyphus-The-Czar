@@ -1578,6 +1578,10 @@ export function createSisyphusRuntime(elements = {}) {
   function playGachiClickSound(
     requestedFilename = params.gachiClickSoundFilename,
   ) {
+    const requested = String(requestedFilename || "");
+    if (requested === SharedRoomSettings.GACHI_CLICK_SOUND_DISABLED) {
+      return;
+    }
     if (typeof Audio !== "function") {
       return;
     }
@@ -1586,7 +1590,6 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     const playToken = gachiClickAudio.playToken;
-    const requested = String(requestedFilename || "");
     const defaultFilename =
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.gachiClickSoundFilename;
     const filename = filenames.includes(requested)
@@ -3837,13 +3840,22 @@ export function createSisyphusRuntime(elements = {}) {
     applyRockScale();
   }
 
+  function rockPulseShouldRun() {
+    if (!params.rockPulseEnabled || document.hidden) {
+      return false;
+    }
+    if (isSceneOne) {
+      return true;
+    }
+    if (isSceneTwo) {
+      return motion.sceneTwoSizeState !== "held";
+    }
+    return motion.sceneTwoSizeState === "airborne";
+  }
+
   function renderRockPulse(now) {
     motion.rockPulseAnimationId = null;
-    if (
-      !params.rockPulseEnabled ||
-      document.hidden ||
-      (!isSceneOne && motion.sceneTwoSizeState !== "airborne")
-    ) {
+    if (!rockPulseShouldRun()) {
       motion.rockPulseScaleFactor = 1;
       applyRockScale();
       return;
@@ -3857,11 +3869,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function syncRockPulse() {
-    if (
-      !params.rockPulseEnabled ||
-      document.hidden ||
-      (!isSceneOne && motion.sceneTwoSizeState !== "airborne")
-    ) {
+    if (!rockPulseShouldRun()) {
       stopRockPulse();
       return;
     }
@@ -3939,8 +3947,8 @@ export function createSisyphusRuntime(elements = {}) {
     if (!motion.sceneTwoSizeCycleArmed) {
       clearSceneTwoPressTimer();
       releaseRockPress();
-      stopRockPulse();
       motion.sceneTwoSizeState = "ground";
+      syncRockPulse();
       return false;
     }
     clearSceneTwoPressTimer();
@@ -3962,7 +3970,7 @@ export function createSisyphusRuntime(elements = {}) {
     motion.sceneTwoSizeState = "ground";
     motion.sceneTwoSizeCycleArmed = false;
     releaseRockPress();
-    stopRockPulse();
+    syncRockPulse();
     transitionSceneTwoRockScale();
     return true;
   }
@@ -5503,6 +5511,9 @@ export function createSisyphusRuntime(elements = {}) {
     if (isSceneThree) {
       window.requestAnimationFrame(showSceneThreeHeldStart);
     }
+    if (isSceneTwo) {
+      syncRockPulse();
+    }
     updateSessionStatus();
   }
 
@@ -6002,8 +6013,8 @@ export function createSisyphusRuntime(elements = {}) {
       if (snapshot.suspended || snapshotOnGround) {
         if (!settleSceneTwoRockScaleOnGround()) {
           motion.sceneTwoSizeState = "ground";
-          stopRockPulse();
           releaseRockPress();
+          syncRockPulse();
         }
       } else if (snapshot.dragging && snapshot.holderId) {
         if (motion.sceneTwoSizeState !== "held") {
@@ -8188,6 +8199,9 @@ export function createSisyphusRuntime(elements = {}) {
     if (isSceneThree) {
       window.requestAnimationFrame(showSceneThreeHeldStart);
     }
+    if (isSceneTwo) {
+      syncRockPulse();
+    }
     resizeTrailCanvas();
     updateSessionStatus();
     if (collab.enabled) {
@@ -8240,6 +8254,7 @@ export function createSisyphusRuntime(elements = {}) {
       }),
       beginSceneTwoAirborneScale,
       beginFinalReturnFall,
+      forceReleaseRock,
       startSceneThreeMagnetPlacement,
       settleSceneTwoRockScaleOnGround,
       getRoleAudioState: () => {

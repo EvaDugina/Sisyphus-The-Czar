@@ -669,8 +669,9 @@ test("настройки инерции и hop отображают актуал
   assert.equal(gachiClickSound.defaultValue, "Camen.mp3");
   assert.deepEqual(
     gachiClickSound.options.map(([filename]) => filename),
-    [...SharedRoomSettings.GACHI_SOUND_FILENAMES],
+    [...SharedRoomSettings.GACHI_CLICK_SOUND_FILENAMES],
   );
+  assert.deepEqual(gachiClickSound.options[0], ["none", "Без звука"]);
   assert.deepEqual(
     {
       label: preclickHopSound.label,
@@ -3167,6 +3168,17 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.summitTimerFontFamily, "sf-pro-display-bold");
   assert.equal(visualSettings.summitTimerFontSizeRem, 64);
   assert.equal(visualSettings.gachiClickSoundFilename, "Camen.mp3");
+  assert.equal(
+    SharedRoomSettings.sanitizeRoomSettings({
+      gachiClickSoundFilename: SharedRoomSettings.GACHI_CLICK_SOUND_DISABLED,
+    }).gachiClickSoundFilename,
+    "none",
+  );
+  assert.equal(SharedRoomSettings.GACHI_CLICK_SOUND_DISABLED, "none");
+  assert.deepEqual(SharedRoomSettings.GACHI_CLICK_SOUND_FILENAMES, [
+    "none",
+    ...SharedRoomSettings.GACHI_SOUND_FILENAMES,
+  ]);
   assert.deepEqual(SharedRoomSettings.GACHI_SOUND_FILENAMES, [
     "Aaaaaa.mp3",
     "Aaaaah.mp3",

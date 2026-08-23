@@ -162,6 +162,18 @@ function useStickySceneTwoRock(stickyRef) {
       delete rock.dataset.stickyToHand;
     }
 
+    function unlockDroppedRock() {
+      if (stickyRef.current && !rock.classList.contains("is-dragging")) {
+        resetStickyRock();
+      }
+    }
+
+    const dragStateObserver = new MutationObserver(unlockDroppedRock);
+    dragStateObserver.observe(rock, {
+      attributeFilter: ["class"],
+      attributes: true,
+    });
+
     rock.addEventListener("pointerdown", blockRepeatedRockPointerDown, true);
     rock.addEventListener("pointerdown", latchRockToHand);
     rock.addEventListener("pointerup", keepRockAttached, true);
@@ -171,6 +183,7 @@ function useStickySceneTwoRock(stickyRef) {
     restartButton?.addEventListener("click", resetStickyRock, true);
 
     return () => {
+      dragStateObserver.disconnect();
       resetStickyRock();
       rock.removeEventListener("pointerdown", blockRepeatedRockPointerDown, true);
       rock.removeEventListener("pointerdown", latchRockToHand);

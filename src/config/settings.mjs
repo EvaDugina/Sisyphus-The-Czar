@@ -142,9 +142,13 @@ const ROCK_IMAGE_OPTIONS = SharedRoomSettings.ROCK_IMAGE_IDS.map((value) => [
   value,
   ROCK_IMAGE_LABELS[value],
 ]);
-const GACHI_SOUND_OPTIONS = SharedRoomSettings.GACHI_SOUND_FILENAMES.map(
-  (filename) => [filename, filename.replace(/\.mp3$/i, "")],
-);
+const GACHI_SOUND_OPTIONS =
+  SharedRoomSettings.GACHI_CLICK_SOUND_FILENAMES.map((filename) => [
+    filename,
+    filename === SharedRoomSettings.GACHI_CLICK_SOUND_DISABLED
+      ? "Без звука"
+      : filename.replace(/\.mp3$/i, ""),
+  ]);
 const PRECLICK_HOP_SOUND_OPTIONS =
   SharedRoomSettings.PRECLICK_HOP_SOUND_FILENAMES.map((filename) => [
     filename,
