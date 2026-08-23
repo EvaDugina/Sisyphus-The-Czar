@@ -7,6 +7,7 @@ const os = require("node:os");
 const path = require("node:path");
 const Physics = require("../../shared/physics");
 const RoomSettings = require("../../shared/room-settings");
+const VersionedLocalSettings = require("../../server/versioned-local-settings");
 const {
   normalizeDocument,
   ProductionPresetStore,
@@ -24,6 +25,7 @@ function selection(id, overrides = {}) {
       ...Physics.DEFAULT_PHYSICS,
       gravity: overrides.gravity ?? 7,
       sceneHeightScreens: overrides.sceneHeightScreens ?? 12,
+      ...overrides.settings,
       ignored: "not-persisted",
     },
   };
@@ -58,6 +60,9 @@ test("Git production preset содержит полный canonical snapshot", (
       ...new Set([
         ...Object.keys(RoomSettings.DEFAULT_ROOM_SETTINGS),
         ...Object.keys(Physics.DEFAULT_PHYSICS),
+        ...Object.keys(
+          VersionedLocalSettings.DEFAULT_VERSIONED_LOCAL_SETTINGS,
+        ),
       ]),
     ].sort(),
   );
@@ -191,15 +196,35 @@ test("production preset store атомарно сохраняет полный w
     now: () => Date.parse("2026-07-26T12:00:00.000Z"),
   });
 
-  const saved = store.save(selection("version-a"));
-  const document = JSON.parse(fs.readFileSync(filePath, "utf8"));
+  const saved = store.save(selection("version-a", {
+    settings: {
+      trailRenderProfile: "high",
+      glowOptimizationMode: "manual",
+      glowTargetFps: 45,
+      glowBufferScalePercent: 60,
+      glowUpdateFps: 18,
+      glowMaxPoints: 700,
+      glowDecimation: 4,
+    },
+  }));
+  const rawDocument = fs.readFileSync(filePath, "utf8");
+  const document = JSON.parse(rawDocument);
 
   assert.equal(document.version, STORE_VERSION);
   assert.equal(document.selectedAt, "2026-07-26T12:00:00.000Z");
   assert.equal(document.source.id, "version-a");
   assert.equal(document.settings.gravity, 7);
   assert.equal(document.settings.sceneHeightScreens, 12);
+  assert.equal(document.settings.trailRenderProfile, "high");
+  assert.equal(document.settings.glowOptimizationMode, "manual");
+  assert.equal(document.settings.glowTargetFps, 45);
+  assert.equal(document.settings.glowBufferScalePercent, 60);
+  assert.equal(document.settings.glowUpdateFps, 18);
+  assert.equal(document.settings.glowMaxPoints, 700);
+  assert.equal(document.settings.glowDecimation, 4);
   assert.equal(Object.hasOwn(document.settings, "ignored"), false);
+  assert.match(rawDocument, /^\{\n  "version": 1,/);
+  assert.equal(rawDocument.endsWith("\n"), true);
   assert.deepEqual(store.metadata(), {
     selectedAt: saved.selectedAt,
     source: saved.source,

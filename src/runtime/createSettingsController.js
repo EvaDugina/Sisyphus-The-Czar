@@ -22,9 +22,9 @@ const SETTINGS_CONTROLS = SETTINGS_GROUPS.flatMap(settingsGroupControls);
 const LOCAL_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
   (control) => control.scope === "local",
 ).map((control) => control.name);
-const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.filter(
-  (control) => control.scope !== "local",
-).map((control) => control.name);
+const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.map(
+  (control) => control.name,
+);
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );

@@ -1,6 +1,11 @@
 const { test, expect } = require("@playwright/test");
 
 const ROCK = "#root > .scene-page > .world > .rock";
+const SETTINGS_PANEL_SCENES = [
+  { path: "/scene-1", sceneId: "cats-and-mice" },
+  { path: "/scene-2", sceneId: "turnip" },
+  { path: "/scene-3", sceneId: "juices" },
+];
 
 async function waitForDebugScene(page, path, sceneId) {
   await page.goto(path);
@@ -22,6 +27,79 @@ async function waitForDebugScene(page, path, sceneId) {
     sceneId,
   );
 }
+
+async function setSettingValue(page, name, value) {
+  await page.locator(`[name="${name}"]`).evaluate((element, nextValue) => {
+    if (element.type === "checkbox") {
+      const setter = Object.getOwnPropertyDescriptor(
+        HTMLInputElement.prototype,
+        "checked",
+      ).set;
+      setter.call(element, Boolean(nextValue));
+    } else {
+      const prototype = element instanceof HTMLSelectElement
+        ? HTMLSelectElement.prototype
+        : HTMLInputElement.prototype;
+      const setter = Object.getOwnPropertyDescriptor(prototype, "value").set;
+      setter.call(element, String(nextValue));
+    }
+    element.dispatchEvent(new Event("input", { bubbles: true }));
+    element.dispatchEvent(new Event("change", { bubbles: true }));
+  }, value);
+}
+
+test("панель параметров сворачивается и раскрывается на всех сценах", async ({
+  page,
+}) => {
+  for (const { path, sceneId } of SETTINGS_PANEL_SCENES) {
+    await waitForDebugScene(page, path, sceneId);
+    const panel = page.locator("#settings-panel");
+    const toggle = page.locator(".settings-toggle");
+
+    await expect(panel).toBeVisible();
+    await expect(panel).toHaveAttribute("aria-hidden", "false");
+    await expect(toggle).toHaveAttribute("aria-controls", "settings-panel");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).toHaveAttribute("aria-label", "Свернуть параметры");
+
+    await page.evaluate(() => {
+      window.__settingsFoldRuntime = window.__sisyphusTestApi;
+    });
+    const sessionId = await page.evaluate(
+      () => window.__sisyphusTestApi.collab.sessionId,
+    );
+
+    await toggle.click();
+    await expect(panel).toBeHidden();
+    await expect(panel).toHaveAttribute("hidden", "");
+    await expect(panel).toHaveAttribute("aria-hidden", "true");
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await expect(toggle).toHaveAttribute("aria-label", "Открыть параметры");
+    const compactBox = await toggle.boundingBox();
+    expect(compactBox.width).toBeCloseTo(44, 0);
+    expect(compactBox.height).toBeCloseTo(44, 0);
+
+    await toggle.press("Enter");
+    await expect(panel).toBeVisible();
+    await expect(panel).not.toHaveAttribute("hidden", "");
+    await expect(panel).toHaveAttribute("aria-hidden", "false");
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(toggle).toHaveAttribute("aria-label", "Свернуть параметры");
+    expect(await page.evaluate(() => ({
+      runtimePreserved:
+        window.__sisyphusTestApi === window.__settingsFoldRuntime,
+      sessionId: window.__sisyphusTestApi.collab.sessionId,
+    }))).toEqual({ runtimePreserved: true, sessionId });
+
+    await toggle.press("Space");
+    await expect(panel).toBeHidden();
+    await expect(toggle).toHaveAttribute("aria-expanded", "false");
+    await toggle.click();
+    await expect(panel).toBeVisible();
+    await expect(toggle).toHaveAttribute("aria-expanded", "true");
+    await expect(page).toHaveURL(new RegExp(`${path}$`));
+  }
+});
 
 test("inline UI показывает только параметры текущей сцены", async ({ page }) => {
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
@@ -497,6 +575,78 @@ test("именованные версии фильтруются по scene name
       (entry) => entry.name === name,
     ),
   versionName)).toBe(false);
+});
+
+test("кнопка сохраняет полный Git-снимок настроек каждой сцены", async ({
+  page,
+}) => {
+  test.setTimeout(90_000);
+  const scenes = [
+    {
+      path: "/scene-1",
+      sceneId: "cats-and-mice",
+      settings: { handWidthVw: 13 },
+    },
+    {
+      path: "/scene-2",
+      sceneId: "turnip",
+      settings: {
+        trailRenderProfile: "mobile",
+        glowTargetFps: 45,
+        glowOptimizationMode: "manual",
+        glowBufferScalePercent: 55,
+        glowUpdateFps: 17,
+        glowMaxPoints: 650,
+        glowDecimation: 3,
+      },
+    },
+    {
+      path: "/scene-3",
+      sceneId: "juices",
+      settings: {
+        trailRenderProfile: "high",
+        glowTargetFps: 45,
+        glowOptimizationMode: "manual",
+        glowBufferScalePercent: 60,
+        glowUpdateFps: 18,
+        glowMaxPoints: 700,
+        glowDecimation: 4,
+      },
+    },
+  ];
+
+  for (const { path, sceneId, settings } of scenes) {
+    await waitForDebugScene(page, path, sceneId);
+    for (const [name, value] of Object.entries(settings)) {
+      await setSettingValue(page, name, value);
+    }
+    const versionName = `Git snapshot ${sceneId} ${Date.now()}`;
+    await page.locator(".settings-version-name").fill(versionName);
+    await page.locator(".settings-version-save").click();
+    await expect(page.locator(".settings-production-status")).toContainText(
+      "Общий шаблон сохранён",
+    );
+    await expect.poll(() => page.evaluate(({ name, expectedSettings }) => {
+      const entry = window.__sisyphusTestApi.getSettingsVersions().find(
+        (candidate) => candidate.name === name,
+      );
+      return entry
+        ? Object.fromEntries(
+            Object.keys(expectedSettings).map((key) => [key, entry.settings[key]]),
+          )
+        : null;
+    }, { name: versionName, expectedSettings: settings })).toEqual(settings);
+
+    await page.reload();
+    await waitForDebugScene(page, path, sceneId);
+    await expect.poll(() => page.evaluate((name) =>
+      window.__sisyphusTestApi.getSettingsVersions().some(
+        (entry) =>
+          entry.name === name &&
+          entry.id.startsWith(`${location.pathname.slice(1)}--`),
+      ),
+    versionName)).toBe(true);
+  }
 });
 
 test("scene 2 завершается при первом контакте с отпечатком и остаётся там", async ({ page }) => {

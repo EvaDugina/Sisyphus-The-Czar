@@ -13,7 +13,7 @@
     "dev:client:watch": "nodemon --legacy-watch --delay 100ms --watch vite.config.mjs --watch index.html --watch package.json --watch package-lock.json --ext js,mjs,json,html --exec \"npm run dev:client\"",
     "build": "vite build",
     "lint": "npm run lint:server && npm run lint:frontend",
-    "lint:server": "node --check server/index.js && node --check server/session-manager.js && node --check server/session-store.js && node --check server/production-preset-store.js && node --check server/settings-template-store.js && node --check shared/physics.js",
+    "lint:server": "node --check server/index.js && node --check server/session-manager.js && node --check server/session-store.js && node --check server/production-preset-store.js && node --check server/settings-template-store.js && node --check server/versioned-local-settings.js && node --check shared/physics.js",
     "lint:frontend": "eslint src vite.config.mjs",
     "test": "node --test tests/unit/physics.test.js tests/unit/session-manager.test.js tests/unit/session-store.test.js tests/unit/production-preset-store.test.js tests/unit/settings-template-store.test.js tests/unit/server.test.js tests/unit/frontend-model.test.mjs tests/unit/crossfaded-audio-loop.test.mjs tests/unit/gogh-artwork-selection.test.mjs tests/unit/rock-echo-trail-controller.test.mjs tests/unit/window-obstacle-controller.test.mjs tests/integration/realtime.test.js",
     "test:smoke": "npm run test:smoke:prod && npm run test:smoke:scenes",

@@ -5,6 +5,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
+const VersionedLocalSettings = require("./versioned-local-settings");
 
 const STORE_VERSION = 1;
 const SETTINGS_SCHEMA_VERSION = RoomSettings.ROOM_SETTINGS_VERSION;
@@ -97,6 +98,7 @@ function normalizeSettings(settings, settingsSchemaVersion) {
   return {
     ...RoomSettings.sanitizeRoomSettings(migratedSettings),
     ...Physics.sanitizePhysics(migratedSettings),
+    ...VersionedLocalSettings.sanitizeVersionedLocalSettings(migratedSettings),
   };
 }
 

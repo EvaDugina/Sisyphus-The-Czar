@@ -92,6 +92,7 @@ import {
   effectiveCanvasPixelRatio,
   resolveTrailRenderProfile,
   sampleTrailRuns,
+  sanitizeTrailRenderProfile,
 } from "../lib/trailOptimization.mjs";
 import {
   settings as productionSettings,
@@ -3141,6 +3142,8 @@ export function createSisyphusRuntime(elements = {}) {
     const commit = options.commit !== false;
 
     if (settingsUiEnabled) {
+      const localSettingsControls =
+        settingsController.readLocalSettingsControls();
       Object.assign(params, settingsController.readPhysicsControls());
       Object.assign(
         params,
@@ -3151,8 +3154,13 @@ export function createSisyphusRuntime(elements = {}) {
       );
       Object.assign(
         params,
+        {
+          trailRenderProfile: sanitizeTrailRenderProfile(
+            localSettingsControls.trailRenderProfile,
+          ),
+        },
         sanitizeGlowOptimizationSettings(
-          settingsController.readLocalSettingsControls(),
+          localSettingsControls,
           params,
         ),
       );

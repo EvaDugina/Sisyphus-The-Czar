@@ -102,8 +102,7 @@ export function createGoghArtworkSelector({
       }
       remainingShuffleIds = catalog.map((artwork) => artwork.id);
     }
-    const index = randomIndex(remainingShuffleIds.length, random);
-    const [selectedId] = remainingShuffleIds.splice(index, 1);
+    const selectedId = remainingShuffleIds.shift();
     return resolveGoghArtwork(catalog, selectedId);
   }
 

@@ -394,7 +394,7 @@ const TRAIL_STYLE_CONTROLS = [
       ["manual", "Ручной"],
     ],
     scope: "local",
-    hint: "Локальный профиль стоимости glow-слоя. Не синхронизируется с другими устройствами.",
+    hint: "Локальный профиль стоимости glow-слоя. После сохранения версии входит в Git-шаблон.",
   },
   {
     name: "glowTargetFps",
@@ -404,7 +404,7 @@ const TRAIL_STYLE_CONTROLS = [
     options: GLOW_TARGET_FPS_VALUES.map((value) => [String(value), String(value)]),
     enabledWhen: { name: "glowOptimizationMode", values: ["auto"] },
     scope: "local",
-    hint: "Целевая частота всей сцены для автоматической адаптации. Доступна только в режиме «Авто».",
+    hint: "Целевая частота всей сцены для автоматической адаптации. Доступна только в режиме «Авто» и входит в сохранённую версию.",
   },
   {
     name: "glowBufferScalePercent",
@@ -417,7 +417,7 @@ const TRAIL_STYLE_CONTROLS = [
     output: `${DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowBufferScalePercent}%`,
     enabledWhen: { name: "glowOptimizationMode", values: ["manual"] },
     scope: "local",
-    hint: "Разрешение отдельного glow-canvas. Доступно только в ручном режиме.",
+    hint: "Разрешение отдельного glow-canvas. Доступно только в ручном режиме и входит в сохранённую версию.",
   },
   {
     name: "glowUpdateFps",
@@ -430,7 +430,7 @@ const TRAIL_STYLE_CONTROLS = [
     output: String(DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowUpdateFps),
     enabledWhen: { name: "glowOptimizationMode", values: ["manual"] },
     scope: "local",
-    hint: "Максимальная частота обновления glow-слоя. Доступна только в ручном режиме.",
+    hint: "Максимальная частота обновления glow-слоя. Доступна только в ручном режиме и входит в сохранённую версию.",
   },
   {
     name: "glowMaxPoints",
@@ -443,7 +443,7 @@ const TRAIL_STYLE_CONTROLS = [
     output: String(DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowMaxPoints),
     enabledWhen: { name: "glowOptimizationMode", values: ["manual"] },
     scope: "local",
-    hint: "Жёсткий лимит точек только для glow-слоя. Доступен только в ручном режиме.",
+    hint: "Жёсткий лимит точек только для glow-слоя. Доступен только в ручном режиме и входит в сохранённую версию.",
   },
   {
     name: "glowDecimation",
@@ -456,7 +456,7 @@ const TRAIL_STYLE_CONTROLS = [
     output: String(DEFAULT_GLOW_OPTIMIZATION_SETTINGS.glowDecimation),
     enabledWhen: { name: "glowOptimizationMode", values: ["manual"] },
     scope: "local",
-    hint: "Минимальный шаг выборки точек glow-пути. Доступен только в ручном режиме.",
+    hint: "Минимальный шаг выборки точек glow-пути. Доступен только в ручном режиме и входит в сохранённую версию.",
   },
 ];
 
@@ -1220,7 +1220,7 @@ export const SETTINGS_GROUPS = [
           ["single", "Одна картинка"],
         ],
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupArtworkMode,
-        hint: "Случайный режим допускает повторы; цикличный показывает все картины в случайном порядке без повторов внутри цикла; одиночный всегда открывает выбранный файл.",
+        hint: "Случайный режим допускает повторы; цикличный последовательно показывает 01, 02, 03 и снова 01; одиночный всегда открывает выбранный файл.",
       },
       {
         name: "preclickPopupArtworkId",
@@ -1804,7 +1804,7 @@ export const SETTINGS_GROUPS = [
           }[name],
         ]),
         scope: "local",
-        hint: "Локальный бюджет history-canvas. Хранимый общий след не меняется.",
+        hint: "Локальный бюджет history-canvas. Хранимый общий след не меняется; профиль входит в сохранённую Git-версию.",
       },
       {
         name: "trailSampleDist",

@@ -4,6 +4,7 @@ const fs = require("node:fs");
 const path = require("node:path");
 const Physics = require("../shared/physics");
 const RoomSettings = require("../shared/room-settings");
+const VersionedLocalSettings = require("./versioned-local-settings");
 
 const STORE_VERSION = 1;
 const SETTINGS_SCHEMA_VERSION = RoomSettings.ROOM_SETTINGS_VERSION;
@@ -91,6 +92,7 @@ function normalizeSettings(settings, settingsSchemaVersion) {
   return {
     ...RoomSettings.sanitizeRoomSettings(migratedSettings),
     ...Physics.sanitizePhysics(migratedSettings),
+    ...VersionedLocalSettings.sanitizeVersionedLocalSettings(migratedSettings),
   };
 }
 
@@ -213,10 +215,14 @@ class ProductionPresetStore {
     const temporaryPath = `${this.filePath}.${process.pid}.tmp`;
     try {
       fs.mkdirSync(directory, { recursive: true });
-      fs.writeFileSync(temporaryPath, JSON.stringify(document), {
+      fs.writeFileSync(
+        temporaryPath,
+        `${JSON.stringify(document, null, 2)}\n`,
+        {
         encoding: "utf8",
         mode: 0o600,
-      });
+        },
+      );
       fs.renameSync(temporaryPath, this.filePath);
       this.current = document;
       this.logger("production_preset_store_saved", {

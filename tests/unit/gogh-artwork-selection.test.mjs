@@ -59,7 +59,7 @@ test("random выбирает независимо и допускает пос�
   );
 });
 
-test("shuffle исключает повторы внутри цикла и затем начинает новый", () => {
+test("shuffle проходит стабильный цикл 01, 02, 03 и начинает его заново", () => {
   const selector = createGoghArtworkSelector({
     artworks: ARTWORKS,
     random: queuedRandom([0.99, 0, 0, 0.5, 0, 0]),
@@ -69,10 +69,14 @@ test("shuffle исключает повторы внутри цикла и за�
     () => selector.select({ mode: "shuffle" }).id,
   );
 
-  assert.equal(new Set(selected.slice(0, 3)).size, 3);
-  assert.equal(new Set(selected.slice(3, 6)).size, 3);
-  assert.deepEqual([...selected.slice(0, 3)].sort(), ARTWORKS.map(({ id }) => id));
-  assert.deepEqual([...selected.slice(3, 6)].sort(), ARTWORKS.map(({ id }) => id));
+  assert.deepEqual(selected, [
+    "01.png",
+    "02.png",
+    "03.png",
+    "01.png",
+    "02.png",
+    "03.png",
+  ]);
 });
 
 test("single всегда возвращает выбранный файл и использует первый fallback", () => {
@@ -90,13 +94,13 @@ test("single всегда возвращает выбранный файл и и
   assert.equal(resolveGoghArtwork([], "02.png"), null);
 });
 
-test("reset и повторный вход в shuffle начинают новый цикл", () => {
+test("reset и повторный вход в shuffle начинают новый цикл с 01", () => {
   const selector = createGoghArtworkSelector({
     artworks: ARTWORKS,
-    random: () => 0,
+    random: () => 0.99,
   });
-  selector.select({ mode: "shuffle" });
-  assert.equal(selector.getState().remainingShuffleIds.length, 2);
+  assert.equal(selector.select({ mode: "shuffle" }).id, "01.png");
+  assert.equal(selector.select({ mode: "shuffle" }).id, "02.png");
 
   selector.reset();
   assert.deepEqual(selector.getState(), {
@@ -104,5 +108,8 @@ test("reset и повторный вход в shuffle начинают новы�
     completedCycles: 0,
     remainingShuffleIds: [],
   });
+  assert.equal(selector.select({ mode: "shuffle" }).id, "01.png");
+
+  assert.equal(selector.select({ mode: "random" }).id, "03.png");
   assert.equal(selector.select({ mode: "shuffle" }).id, "01.png");
 });

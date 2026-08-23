@@ -23,6 +23,7 @@ function entry(id, overrides = {}) {
       ...RoomSettings.DEFAULT_ROOM_SETTINGS,
       ...Physics.DEFAULT_PHYSICS,
       gravity: overrides.gravity ?? 7,
+      ...overrides.settings,
       ignored: "drop-me",
     },
   };
@@ -40,11 +41,21 @@ function temporaryStore(context, options = {}) {
   };
 }
 
-test("settings template store атомарно сохраняет whitelist и загружается", (context) => {
+test("settings template store атомарно сохраняет полный whitelist и загружается", (context) => {
   const now = Date.parse("2026-07-26T12:00:00.000Z");
   const { filePath, store } = temporaryStore(context, { now: () => now });
 
-  const saved = store.saveEntry(entry("version-a"));
+  const saved = store.saveEntry(entry("version-a", {
+    settings: {
+      trailRenderProfile: "mobile",
+      glowOptimizationMode: "manual",
+      glowTargetFps: 45,
+      glowBufferScalePercent: 55,
+      glowUpdateFps: 17,
+      glowMaxPoints: 650,
+      glowDecimation: 3,
+    },
+  }));
   const rawDocument = fs.readFileSync(filePath, "utf8");
   const document = JSON.parse(rawDocument);
 
@@ -52,6 +63,13 @@ test("settings template store атомарно сохраняет whitelist и �
   assert.equal(document.revision, 1);
   assert.equal(saved.entry.updatedAt, "2026-07-26T12:00:00.000Z");
   assert.equal(saved.entry.settings.gravity, 7);
+  assert.equal(saved.entry.settings.trailRenderProfile, "mobile");
+  assert.equal(saved.entry.settings.glowOptimizationMode, "manual");
+  assert.equal(saved.entry.settings.glowTargetFps, 45);
+  assert.equal(saved.entry.settings.glowBufferScalePercent, 55);
+  assert.equal(saved.entry.settings.glowUpdateFps, 17);
+  assert.equal(saved.entry.settings.glowMaxPoints, 650);
+  assert.equal(saved.entry.settings.glowDecimation, 3);
   assert.equal(Object.hasOwn(saved.entry.settings, "ignored"), false);
   assert.match(rawDocument, /^\{\n  "version": 1,/);
   assert.equal(rawDocument.endsWith("\n"), true);
