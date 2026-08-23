@@ -7872,9 +7872,9 @@ export function createSisyphusRuntime(elements = {}) {
     if (isSceneOne) {
       event.preventDefault();
       completePreclickRockGuidance({ preserveHopPosition: true });
+      preclickPopupController.revealPreclickWindows();
       openPreclickArtworkWindow(event);
       openPreclickArtworkWindow(event, { randomPosition: true });
-      preclickPopupController.revealPreclickWindows();
       playRockPointerDownSound();
       showHandCursor(event);
       scheduleGrabbingHandImage();

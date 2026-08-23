@@ -159,7 +159,7 @@ function defaultSettings() {
   };
 }
 
-function setup({ blocked = false } = {}) {
+function setup({ blocked = false, random = () => 0 } = {}) {
   const clock = createClock();
   const settings = defaultSettings();
   const height = { value: 1200 };
@@ -189,7 +189,7 @@ function setup({ blocked = false } = {}) {
       popups.push({ features, popup });
       return popup;
     },
-    random: () => 0,
+    random,
     setIntervalFn: (callback, delay) => clock.setInterval(callback, delay),
     setTimeoutFn: (callback, delay) => clock.setTimeout(callback, delay),
   });
@@ -303,7 +303,7 @@ test("dispose отменяет только ещё не открытый preclic
 });
 
 test("preclick-popup можно открыть в случайной позиции рабочей области", () => {
-  const { controller, popups } = setup();
+  const { controller, popups } = setup({ random: () => 1 });
 
   assert.equal(
     controller.openPreclickWindow({
@@ -319,9 +319,17 @@ test("preclick-popup можно открыть в случайной позиц�
   assert.equal(popups.length, 1);
   assert.match(popups[0].features, /width=120/);
   assert.match(popups[0].features, /height=120/);
-  assert.match(popups[0].features, /left=10/);
-  assert.match(popups[0].features, /top=20/);
-  assert.deepEqual(popups[0].popup.moveCalls, [[10, 20]]);
+  assert.match(popups[0].features, /left=1090/);
+  assert.match(popups[0].features, /top=800/);
+  assert.deepEqual(popups[0].popup.moveCalls, [[1074, 760]]);
+  assert.ok(popups[0].popup.moveCalls[0][0] >= 10);
+  assert.ok(popups[0].popup.moveCalls[0][1] >= 20);
+  assert.ok(
+    popups[0].popup.moveCalls[0][0] + popups[0].popup.outerWidth <= 1210,
+  );
+  assert.ok(
+    popups[0].popup.moveCalls[0][1] + popups[0].popup.outerHeight <= 920,
+  );
 });
 
 test("первый настоящий клик восстанавливает открытые и отложенные окна картин", () => {

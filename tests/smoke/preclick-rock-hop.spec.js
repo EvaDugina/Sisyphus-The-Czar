@@ -867,6 +867,14 @@ test("N фейковых кликов открывают картины, а кл
         innerWidth: expectedWidth,
         objectFit: "fill",
       });
+    await popup.evaluate(() => {
+      window.__preclickFocusCalls = 0;
+      const nativeFocus = window.focus.bind(window);
+      window.focus = () => {
+        window.__preclickFocusCalls += 1;
+        nativeFocus();
+      };
+    });
     await page.bringToFront();
     await cdp.send("Input.dispatchMouseEvent", {
       type: "mouseReleased",
@@ -913,6 +921,15 @@ test("N фейковых кликов открывают картины, а кл
   });
   await expect.poll(() => finalPopups.length).toBe(2);
   page.off("popup", captureFinalPopup);
+  await expect
+    .poll(() =>
+      Promise.all(
+        fakeClickPopups.map((popup) =>
+          popup.evaluate(() => window.__preclickFocusCalls),
+        ),
+      ),
+    )
+    .toEqual(fakeClickPopups.map(() => 1));
   for (const finalPopup of finalPopups) {
     const finalPopupImage = finalPopup.locator("img");
     await expect(finalPopupImage).toHaveAttribute("alt", "Картина 03");
@@ -930,7 +947,7 @@ test("N фейковых кликов открывают картины, а кл
       page.evaluate(() => window.__sisyphusTestApi.getPreclickPopupState()),
     )
     .toMatchObject({
-      preclickWindowCount: 5,
+      preclickWindowCount: fakeClickPopups.length + finalPopups.length,
       preclickWindowsRevealed: true,
     });
   await expect
