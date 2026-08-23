@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 
 import { parseCubicBezier } from "../lib/rockScale.mjs";
 import { serializeSettingDependency } from "../lib/settingsDependencies.mjs";
+import { SettingSharedBadge } from "./SettingSharedBadge";
 
 const FALLBACK_POINTS = Object.freeze([0.25, 0.1, 0.25, 1]);
 const COORDINATE_LABELS = Object.freeze(["x1", "y1", "x2", "y2"]);
@@ -75,6 +76,7 @@ export function CubicBezierControl({ control, hidden = false }) {
     hint,
     label,
     name,
+    sharedSceneLabel,
     scope,
   } = control;
   const initialPoints =
@@ -255,12 +257,17 @@ export function CubicBezierControl({ control, hidden = false }) {
       data-hint={hint}
       data-formulas={formulasAttr}
       data-setting-control
+      data-shared-setting={sharedSceneLabel ? "true" : undefined}
+      data-shared-scenes={sharedSceneLabel || undefined}
       data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
       data-setting-scope={scope}
       hidden={hidden}
     >
       <label className="control-label" htmlFor={`setting-${name}`}>
-        <span>{label}</span>
+        <span className="control-label__name">
+          <span>{label}</span>
+          <SettingSharedBadge sceneLabel={sharedSceneLabel} />
+        </span>
       </label>
 
       <div className="bezier-editor">

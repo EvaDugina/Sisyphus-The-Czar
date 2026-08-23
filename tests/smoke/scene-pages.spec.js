@@ -169,6 +169,9 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator(".settings-scene-switcher")).toHaveCount(0);
   await expect(page.locator("[data-setting-control]")).toHaveCount(38);
+  await expect(page.locator('[data-shared-setting="true"]')).toHaveCount(20);
+  await expect(page.locator('[data-shared-scenes="1–3"]')).toHaveCount(20);
+  await expect(page.locator("[data-setting-shared-badge]")).toHaveCount(20);
 
   const pulseScaleRange = await page.evaluate(async () => {
     window.__sisyphusTestApi.applyTestSettings({
@@ -200,6 +203,9 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="gravity"]')).toHaveCount(1);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator("[data-setting-control]")).toHaveCount(104);
+  await expect(page.locator('[data-shared-setting="true"]')).toHaveCount(84);
+  await expect(page.locator('[data-shared-scenes="1–3"]')).toHaveCount(20);
+  await expect(page.locator('[data-shared-scenes="2–3"]')).toHaveCount(64);
   const rockClickSound = page.locator('[name="gachiClickSoundFilename"]');
   await expect(rockClickSound.locator("option")).toHaveCount(10);
   await expect(rockClickSound.locator('option[value="none"]')).toHaveText(
@@ -252,6 +258,107 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="finalFallEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="rockLensConfig"]')).toHaveCount(1);
   await expect(page.locator("[data-setting-control]")).toHaveCount(106);
+  await expect(page.locator('[data-shared-setting="true"]')).toHaveCount(84);
+  await expect(page.locator('[data-shared-scenes="1–3"]')).toHaveCount(20);
+  await expect(page.locator('[data-shared-scenes="2–3"]')).toHaveCount(64);
+});
+
+test("общие параметры мигрируют по предыдущей сцене и сохраняют последнее изменение", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    if (sessionStorage.getItem("shared-scene-settings-seeded")) {
+      return;
+    }
+    sessionStorage.setItem("shared-scene-settings-seeded", "true");
+    localStorage.removeItem("sisyphus-czar-shared-scene-settings-v1");
+    localStorage.setItem(
+      "sisyphus-czar-settings-v55:cats-and-mice",
+      JSON.stringify({
+        rockMinWidthVw: 21,
+        rockPulseShrinkPercent: 3.7,
+        themeMode: "dark",
+      }),
+    );
+    localStorage.setItem(
+      "sisyphus-czar-settings-v55:turnip",
+      JSON.stringify({
+        gravity: 7,
+        rockMinWidthVw: 31,
+        sceneTwoOverflowYVisible: true,
+        themeMode: "auto",
+      }),
+    );
+    localStorage.setItem(
+      "sisyphus-czar-settings-v55:juices",
+      JSON.stringify({
+        gravity: 9,
+        rockMinWidthVw: 41,
+        sceneTwoOverflowYVisible: false,
+        themeMode: "light",
+      }),
+    );
+  });
+
+  await waitForDebugScene(page, "/scene-3", "juices");
+  await expect(page.locator('[name="themeMode"]')).toHaveValue("dark");
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("21");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("7");
+  await expect(page.locator('[name="rockPulseShrinkPercent"]')).toHaveValue(
+    "3.7",
+  );
+  await expect(page.locator('[name="rockPulseShrinkPercent"]')).toHaveAttribute(
+    "max",
+    "10",
+  );
+  expect(
+    await page.evaluate(
+      () => window.__sisyphusTestApi.params.sceneTwoOverflowYVisible,
+    ),
+  ).toBe(false);
+
+  await setSettingValue(page, "themeMode", "light");
+  await setSettingValue(page, "gravity", "5.5");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        gravity: window.__sisyphusTestApi.params.gravity,
+        themeMode: window.__sisyphusTestApi.params.themeMode,
+      })),
+    )
+    .toEqual({ gravity: 5.5, themeMode: "light" });
+
+  await waitForDebugScene(page, "/scene-2", "turnip");
+  await expect(page.locator('[name="themeMode"]')).toHaveValue("light");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("5.5");
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("21");
+  expect(
+    await page.evaluate(
+      () => window.__sisyphusTestApi.params.sceneTwoOverflowYVisible,
+    ),
+  ).toBe(true);
+  await setSettingValue(page, "rockPulseShrinkPercent", "4.6");
+
+  await waitForDebugScene(page, "/scene-1", "cats-and-mice");
+  await expect(page.locator('[name="themeMode"]')).toHaveValue("light");
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("21");
+  await expect(page.locator('[name="rockPulseShrinkPercent"]')).toHaveValue(
+    "4.6",
+  );
+  await expect(page.locator('[name="gravity"]')).toHaveCount(0);
+
+  const stored = await page.evaluate(() =>
+    JSON.parse(
+      localStorage.getItem("sisyphus-czar-shared-scene-settings-v1"),
+    ),
+  );
+  expect(stored.version).toBe(1);
+  expect(stored.settings).toMatchObject({
+    gravity: 5.5,
+    rockMinWidthVw: 21,
+    rockPulseShrinkPercent: 4.6,
+    themeMode: "light",
+  });
 });
 
 test("scene 1 запускает сохранённый дробный пульс без изменения UI", async ({
@@ -620,49 +727,33 @@ test("настройки сцены 1 мигрируют из v54 в v55 со з
   });
 });
 
-test("одинаковый визуальный параметр хранит независимые значения сцен", async ({ page }) => {
+test("общий визуальный параметр хранит последнее значение между сценами", async ({ page }) => {
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
   const sceneOneValue = 30;
-  await page.evaluate((value) => {
-    localStorage.setItem(
-      "sisyphus-czar-settings-v55:cats-and-mice",
-      JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
-    );
-  }, sceneOneValue);
+  await setSettingValue(page, "handWidthVw", sceneOneValue);
   await page.reload();
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
   await expect(page.locator('[name="handWidthVw"]')).toHaveValue("30");
 
   await waitForDebugScene(page, "/scene-2", "turnip");
-  const sceneTwoDefault = Number(
-    await page.locator('[name="handWidthVw"]').inputValue(),
-  );
-  expect(sceneTwoDefault).not.toBe(sceneOneValue);
+  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("30");
   const sceneTwoValue = 20;
-  await page.evaluate((value) => {
-    localStorage.setItem(
-      "sisyphus-czar-settings-v55:turnip",
-      JSON.stringify({ ...window.__sisyphusTestApi.params, handWidthVw: value }),
-    );
-  }, sceneTwoValue);
+  await setSettingValue(page, "handWidthVw", sceneTwoValue);
   await page.reload();
   await waitForDebugScene(page, "/scene-2", "turnip");
   await expect(page.locator('[name="handWidthVw"]')).toHaveValue("20");
 
-  const snapshots = await page.evaluate(() => ({
-    sceneOne: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
-    ).handWidthVw,
-    sceneTwo: JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v55:turnip") || "{}",
-    ).handWidthVw,
-  }));
-  expect(snapshots).toEqual({ sceneOne: sceneOneValue, sceneTwo: sceneTwoValue });
-
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
   await expect(page.locator('[name="handWidthVw"]')).toHaveValue(
-    String(sceneOneValue),
+    String(sceneTwoValue),
   );
+  expect(
+    await page.evaluate(() =>
+      JSON.parse(
+        localStorage.getItem("sisyphus-czar-shared-scene-settings-v1") || "{}",
+      ).settings?.handWidthVw,
+    ),
+  ).toBe(sceneTwoValue);
 });
 
 test("именованные версии фильтруются по scene namespace", async ({ page }) => {
@@ -795,7 +886,7 @@ test("scene 2 пульсирует без руки и допускает пов�
       rockJumpInertiaSpreadPercent: 0.37,
       rockPulseBpm: 240,
       rockPulseEnabled: true,
-      rockPulseShrinkPercent: 30,
+      rockPulseShrinkPercent: 10,
     });
   });
 
@@ -824,7 +915,7 @@ test("scene 2 пульсирует без руки и допускает пов�
     )
     .toBe("ground");
   const initialPulse = await pulseRange();
-  expect(initialPulse.max - initialPulse.min).toBeGreaterThan(0.1);
+  expect(initialPulse.max - initialPulse.min).toBeGreaterThan(0.03);
 
   const audioPlayCount = await page.evaluate(
     () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
@@ -887,7 +978,7 @@ test("scene 2 пульсирует без руки и допускает пов�
     )
     .toMatchObject({ dragging: false });
   const releasedPulse = await pulseRange();
-  expect(releasedPulse.max - releasedPulse.min).toBeGreaterThan(0.1);
+  expect(releasedPulse.max - releasedPulse.min).toBeGreaterThan(0.03);
 
   const secondBox = await rock.boundingBox();
   expect(secondBox).not.toBeNull();

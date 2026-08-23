@@ -122,6 +122,8 @@ import {
   SETTINGS_STORAGE_KEY,
   SETTINGS_VERSIONS_STORAGE_KEY,
   normalizeRockPulseShrinkPercentForScene,
+  settingsControlSharedSceneIds,
+  settingsControlSharedSceneLabel,
   settingsControlScenes,
   settingsControlVisibleInScene,
   settingsGroupsForScene,
@@ -129,7 +131,14 @@ import {
   settingsGroupControls,
   settingsStorageKeyForScene,
   settingsVersionsStorageKeyForScene,
+  sharedSettingNamesForScene,
 } from "../../src/config/settings.mjs";
+import {
+  SHARED_SCENE_SETTINGS_STORAGE_KEY,
+  loadSharedSceneSettings,
+  migrateSharedSceneSettings,
+  saveSharedSceneSettings,
+} from "../../src/lib/sharedSceneSettings.mjs";
 import {
   SCENE_ROUTES,
   sceneRouteForId,
@@ -882,7 +891,7 @@ test("настройки инерции и hop отображают актуал
   );
 });
 
-test("UI материализует параметры отдельно для каждой scene page", () => {
+test("UI материализует параметры для каждой scene page и помечает общие", () => {
   const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
   const physicsGroup = SETTINGS_GROUPS.find(
     (group) => group.title === "Физика"
@@ -1093,6 +1102,30 @@ test("UI материализует параметры отдельно для �
       true,
     );
   });
+  assert.deepEqual(
+    SETTINGS_SCENE_OPTIONS.map(({ id }) => [
+      id,
+      sharedSettingNamesForScene(id).length,
+    ]),
+    [
+      [SETTINGS_SCENES.CATS_AND_MICE, 20],
+      [SETTINGS_SCENES.TURNIP, 84],
+      [SETTINGS_SCENES.JUICES, 84],
+    ],
+  );
+  assert.deepEqual(settingsControlSharedSceneIds("themeMode"), [
+    SETTINGS_SCENES.CATS_AND_MICE,
+    SETTINGS_SCENES.TURNIP,
+    SETTINGS_SCENES.JUICES,
+  ]);
+  assert.equal(settingsControlSharedSceneLabel("themeMode"), "1–3");
+  assert.deepEqual(settingsControlSharedSceneIds("gravity"), [
+    SETTINGS_SCENES.TURNIP,
+    SETTINGS_SCENES.JUICES,
+  ]);
+  assert.equal(settingsControlSharedSceneLabel("gravity"), "2–3");
+  assert.deepEqual(settingsControlSharedSceneIds("rainEnabled"), []);
+  assert.equal(settingsControlSharedSceneLabel("rainEnabled"), "");
   const sceneOneGroups = settingsGroupsForScene(SETTINGS_SCENES.CATS_AND_MICE);
   const sceneOneControls = sceneOneGroups.flatMap(settingsGroupControls);
   const sceneOnePulseShrink = sceneOneControls.find(
@@ -1107,18 +1140,15 @@ test("UI материализует параметры отдельно для �
     },
     { min: 0, max: 10, step: 0.1 },
   );
-  assert.equal(
-    pageControls(SETTINGS_SCENES.TURNIP).find(
+  [SETTINGS_SCENES.TURNIP, SETTINGS_SCENES.JUICES].forEach((sceneId) => {
+    const pulse = pageControls(sceneId).find(
       (control) => control.name === "rockPulseShrinkPercent",
-    ).max,
-    50,
-  );
-  assert.equal(
-    pageControls(SETTINGS_SCENES.JUICES).find(
-      (control) => control.name === "rockPulseShrinkPercent",
-    ).step,
-    1,
-  );
+    );
+    assert.deepEqual(
+      { min: pulse.min, max: pulse.max, step: pulse.step },
+      { min: 0, max: 10, step: 0.1 },
+    );
+  });
   assert.equal(
     normalizeRockPulseShrinkPercentForScene(
       3.74,
@@ -1135,7 +1165,7 @@ test("UI материализует параметры отдельно для �
   );
   assert.equal(
     normalizeRockPulseShrinkPercentForScene(3.7, SETTINGS_SCENES.TURNIP),
-    4,
+    3.7,
   );
   assert.equal(sceneOneGroups.some((group) => group.title === "3D Fold"), false);
   [
@@ -1172,6 +1202,10 @@ test("UI материализует параметры отдельно для �
     sceneThemes.map((control) => control.ownerSceneId),
     SETTINGS_SCENE_OPTIONS.map(({ id }) => id),
   );
+  assert.deepEqual(
+    sceneThemes.map((control) => control.sharedSceneLabel),
+    ["1–3", "1–3", "1–3"],
+  );
   const settingKeys = SETTINGS_SCENE_OPTIONS.map(({ id }) =>
     settingsStorageKeyForScene(id),
   );
@@ -1180,6 +1214,72 @@ test("UI материализует параметры отдельно для �
   );
   assert.equal(new Set(settingKeys).size, 3);
   assert.equal(new Set(versionKeys).size, 3);
+});
+
+test("общие scene settings мигрируют по предыдущей сцене и затем используют последнее изменение", () => {
+  const values = new Map([
+    [
+      settingsStorageKeyForScene(SETTINGS_SCENES.CATS_AND_MICE),
+      JSON.stringify({
+        themeMode: "dark",
+        rockMinWidthVw: 21,
+      }),
+    ],
+    [
+      settingsStorageKeyForScene(SETTINGS_SCENES.TURNIP),
+      JSON.stringify({
+        themeMode: "light",
+        rockMinWidthVw: 31,
+        gravity: 7,
+      }),
+    ],
+    [
+      settingsStorageKeyForScene(SETTINGS_SCENES.JUICES),
+      JSON.stringify({
+        themeMode: "auto",
+        rockMinWidthVw: 41,
+        gravity: 9,
+      }),
+    ],
+  ]);
+  const storage = {
+    getItem: (key) => values.get(key) ?? null,
+    setItem: (key, value) => values.set(key, value),
+  };
+
+  const migrated = migrateSharedSceneSettings(storage);
+  assert.equal(migrated.settings.themeMode, "dark");
+  assert.equal(migrated.settings.rockMinWidthVw, 21);
+  assert.equal(migrated.settings.gravity, 7);
+
+  assert.deepEqual(loadSharedSceneSettings(storage), migrated.settings);
+  assert.equal(
+    JSON.parse(values.get(SHARED_SCENE_SETTINGS_STORAGE_KEY)).version,
+    1,
+  );
+
+  saveSharedSceneSettings(
+    storage,
+    { themeMode: "auto", gravity: 5 },
+    sharedSettingNamesForScene(SETTINGS_SCENES.JUICES),
+  );
+  assert.equal(loadSharedSceneSettings(storage).themeMode, "auto");
+  assert.equal(loadSharedSceneSettings(storage).gravity, 5);
+
+  saveSharedSceneSettings(
+    storage,
+    { themeMode: "light", gravity: 99 },
+    sharedSettingNamesForScene(SETTINGS_SCENES.CATS_AND_MICE),
+  );
+  const afterSceneOne = loadSharedSceneSettings(storage);
+  assert.equal(afterSceneOne.themeMode, "light");
+  assert.equal(afterSceneOne.gravity, 5);
+
+  values.set(
+    settingsStorageKeyForScene(SETTINGS_SCENES.CATS_AND_MICE),
+    JSON.stringify({ themeMode: "dark" }),
+  );
+  assert.equal(loadSharedSceneSettings(storage).themeMode, "light");
 });
 
 test("scene routes имеют прямые URL и циклическую навигацию", () => {
@@ -2053,8 +2153,8 @@ test("настройки размера камня есть в UI и получ�
       label: "Уменьшение при пульсе, %",
       type: "range",
       min: 0,
-      max: 50,
-      step: 1,
+      max: 10,
+      step: 0.1,
       defaultValue: 5,
       enabledWhen: "rockPulseEnabled",
     },

@@ -57,6 +57,17 @@ export function createSettingsController(options) {
     stageControlChange = () => {},
     draftOnly = false,
   } = options;
+  const sharedSettingNames = Array.isArray(options.sharedSettingNames)
+    ? [...new Set(options.sharedSettingNames)]
+    : [];
+  const loadSharedSettings =
+    typeof options.loadSharedSettings === "function"
+      ? options.loadSharedSettings
+      : () => ({});
+  const saveSharedSettings =
+    typeof options.saveSharedSettings === "function"
+      ? options.saveSharedSettings
+      : () => {};
   const settingsStorageKey = options.settingsStorageKey || SETTINGS_STORAGE_KEY;
   const settingsVersionsStorageKey =
     options.settingsVersionsStorageKey || SETTINGS_VERSIONS_STORAGE_KEY;
@@ -340,6 +351,11 @@ export function createSettingsController(options) {
     } catch {
       /* localStorage недоступен — тихо игнорируем */
     }
+    try {
+      saveSharedSettings(params, sharedSettingNames);
+    } catch {
+      /* Общее хранилище не должно блокировать сохранение текущей сцены. */
+    }
   }
 
   function settingsStorageKeyVersion(key) {
@@ -444,6 +460,45 @@ export function createSettingsController(options) {
     return migrated;
   }
 
+  function loadSharedSettingValues({ includeVersioned = true } = {}) {
+    let shared = null;
+    try {
+      shared = loadSharedSettings();
+    } catch {
+      shared = null;
+    }
+    if (!shared || typeof shared !== "object" || Array.isArray(shared)) {
+      return [];
+    }
+    const availableNames = includeVersioned
+      ? sharedSettingNames
+      : sharedSettingNames.filter((name) =>
+          LOCAL_SETTING_CONTROL_NAMES.includes(name),
+        );
+    const loadedKeys = availableNames.filter((name) =>
+      Object.hasOwn(shared, name),
+    );
+    loadedKeys.forEach((name) => {
+      params[name] = shared[name];
+    });
+    return loadedKeys;
+  }
+
+  function syncLoadedSettingControls(loadedKeys) {
+    settingsControlElements().forEach((element) => {
+      const key = element.getAttribute("name");
+      if (!key || !loadedKeys.includes(key)) {
+        return;
+      }
+      if (element.type === "checkbox") {
+        element.checked = Boolean(params[key]);
+      } else {
+        element.value = settingValueToControlValue(key, params[key]);
+        notifySettingControlSync(element);
+      }
+    });
+  }
+
   function loadSettings({ includeVersioned = true } = {}) {
     let stored = null;
     let migratedLegacySettings = false;
@@ -462,7 +517,9 @@ export function createSettingsController(options) {
       stored = null;
     }
     if (!stored || typeof stored !== "object") {
-      return [];
+      const sharedLoadedKeys = loadSharedSettingValues({ includeVersioned });
+      syncLoadedSettingControls(sharedLoadedKeys);
+      return sharedLoadedKeys;
     }
     const legacyKeyVersion = settingsStorageKeyVersion(legacyKey);
     stored = migrateStoredSettings(
@@ -531,24 +588,15 @@ export function createSettingsController(options) {
     const availableSettingNames = includeVersioned
       ? SETTINGS_CONTROLS.map((control) => control.name)
       : LOCAL_SETTING_CONTROL_NAMES;
-    const loadedKeys = availableSettingNames.filter(
+    const sceneLoadedKeys = availableSettingNames.filter(
       (key) => key && Object.hasOwn(stored, key),
     );
-    loadedKeys.forEach((key) => {
+    sceneLoadedKeys.forEach((key) => {
       params[key] = stored[key];
     });
-    settingsControlElements().forEach((element) => {
-      const key = element.getAttribute("name");
-      if (!key || !loadedKeys.includes(key)) {
-        return;
-      }
-      if (element.type === "checkbox") {
-        element.checked = Boolean(params[key]);
-      } else {
-        element.value = settingValueToControlValue(key, params[key]);
-        notifySettingControlSync(element);
-      }
-    });
+    const sharedLoadedKeys = loadSharedSettingValues({ includeVersioned });
+    const loadedKeys = [...new Set([...sceneLoadedKeys, ...sharedLoadedKeys])];
+    syncLoadedSettingControls(loadedKeys);
     return loadedKeys;
   }
 

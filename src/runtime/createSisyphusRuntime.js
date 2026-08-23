@@ -14,6 +14,7 @@ import {
   SETTINGS_SCENES,
   legacySettingsStorageKeysForScene,
   normalizeRockPulseShrinkPercentForScene,
+  sharedSettingNamesForScene,
   settingsStorageKeyForScene,
   settingsVersionsStorageKeyForScene,
 } from "../config/settings.mjs";
@@ -24,6 +25,10 @@ import {
 } from "../lib/cameraFollow.mjs";
 import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
 import { drizzleVolumeForY } from "../lib/drizzleVolume.mjs";
+import {
+  loadSharedSceneSettings,
+  saveSharedSceneSettings,
+} from "../lib/sharedSceneSettings.mjs";
 import {
   DEFAULT_GLOW_OPTIMIZATION_SETTINGS,
   resolveGlowOptimizationProfile,
@@ -1156,6 +1161,10 @@ export function createSisyphusRuntime(elements = {}) {
     resetTrail,
     secondsOutput,
     settingValueToControlValue,
+    sharedSettingNames: sharedSettingNamesForScene(sceneId),
+    loadSharedSettings: () => loadSharedSceneSettings(localStorage),
+    saveSharedSettings: (values, names) =>
+      saveSharedSceneSettings(localStorage, values, names),
     settingsNamespace: storageNamespace,
     settingsStorageKey: settingsStorageKeyForScene(sceneId),
     settingsVersionsStorageKey: settingsVersionsStorageKeyForScene(sceneId),

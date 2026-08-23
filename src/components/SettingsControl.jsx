@@ -2,6 +2,7 @@ import { CubicBezierControl } from "./CubicBezierControl";
 import { HeightGatesControl } from "./HeightGatesControl";
 import { GlassStripsControl } from "./GlassStripsControl";
 import { RockLensControl } from "./RockLensControl";
+import { SettingSharedBadge } from "./SettingSharedBadge";
 import { serializeSettingDependency } from "../lib/settingsDependencies.mjs";
 
 export function SettingsControl({ control, hidden = false }) {
@@ -19,11 +20,14 @@ export function SettingsControl({ control, hidden = false }) {
     inactiveLabel,
     options,
     output,
+    sharedSceneIds,
+    sharedSceneLabel,
     scope,
     type,
     ...inputProps
   } = control;
   void ownerSceneId;
+  void sharedSceneIds;
   const formulasAttr =
     Array.isArray(formulas) && formulas.length > 0
       ? JSON.stringify(formulas)
@@ -52,6 +56,8 @@ export function SettingsControl({ control, hidden = false }) {
         data-hint={hint}
         data-formulas={formulasAttr}
         data-setting-control
+        data-shared-setting={sharedSceneLabel ? "true" : undefined}
+        data-shared-scenes={sharedSceneLabel || undefined}
         data-setting-disabled={disabled ? "true" : undefined}
         data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
         data-setting-scope={scope}
@@ -66,7 +72,10 @@ export function SettingsControl({ control, hidden = false }) {
           defaultChecked={defaultChecked}
           disabled={disabled}
         />
-        <span>{label}</span>
+        <span className="control-label control-check-label">
+          <span>{label}</span>
+          <SettingSharedBadge sceneLabel={sharedSceneLabel} />
+        </span>
       </label>
     );
   }
@@ -98,6 +107,8 @@ export function SettingsControl({ control, hidden = false }) {
         data-hint={hint}
         data-formulas={formulasAttr}
         data-setting-control
+        data-shared-setting={sharedSceneLabel ? "true" : undefined}
+        data-shared-scenes={sharedSceneLabel || undefined}
         data-setting-disabled={disabled ? "true" : undefined}
         data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
         data-setting-scope={scope}
@@ -106,7 +117,10 @@ export function SettingsControl({ control, hidden = false }) {
         hidden={hidden}
       >
         <span className="control-label">
-          <span>{label}</span>
+          <span className="control-label__name">
+            <span>{label}</span>
+            <SettingSharedBadge sceneLabel={sharedSceneLabel} />
+          </span>
         </span>
         <input
           data-setting-input
@@ -164,6 +178,8 @@ export function SettingsControl({ control, hidden = false }) {
       data-hint={hint}
       data-formulas={formulasAttr}
       data-setting-control
+      data-shared-setting={sharedSceneLabel ? "true" : undefined}
+      data-shared-scenes={sharedSceneLabel || undefined}
       data-setting-disabled={disabled ? "true" : undefined}
       data-setting-enabled-when={serializeSettingDependency(enabledWhen)}
       data-setting-scope={scope}
@@ -172,7 +188,10 @@ export function SettingsControl({ control, hidden = false }) {
       hidden={hidden}
     >
       <span className="control-label">
-        <span>{label}</span>
+        <span className="control-label__name">
+          <span>{label}</span>
+          <SettingSharedBadge sceneLabel={sharedSceneLabel} />
+        </span>
         {output !== undefined && (
           <output className="control-value" data-output={name}>
             {output}

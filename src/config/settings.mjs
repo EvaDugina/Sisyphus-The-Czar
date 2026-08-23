@@ -46,12 +46,10 @@ export const SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS = Object.freeze([
 ]);
 
 export function normalizeRockPulseShrinkPercentForScene(value, sceneId) {
+  void sceneId;
   const numeric = Number(value);
   const fallback = DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent;
   const finite = Number.isFinite(numeric) ? numeric : fallback;
-  if (sceneId !== SETTINGS_SCENES.CATS_AND_MICE) {
-    return Math.round(finite);
-  }
   const [min, max] = SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS;
   return Math.round(Math.min(max, Math.max(min, finite)) * 10) / 10;
 }
@@ -678,6 +676,44 @@ export function settingsControlScenes(control) {
   return TURNIP_SCENES;
 }
 
+export function settingsControlSharedSceneIds(control) {
+  const scenes = settingsControlScenes(control);
+  if (scenes.length < 2) {
+    return Object.freeze([]);
+  }
+  const sceneIndexes = scenes.map((sceneId) =>
+    SETTINGS_SCENE_OPTIONS.findIndex((scene) => scene.id === sceneId),
+  );
+  const adjacent = sceneIndexes.every(
+    (sceneIndex, index) => index === 0 || sceneIndex === sceneIndexes[index - 1] + 1,
+  );
+  return adjacent ? scenes : Object.freeze([]);
+}
+
+export function settingsControlSharedSceneLabel(control) {
+  const scenes = settingsControlSharedSceneIds(control);
+  if (scenes.length < 2) {
+    return "";
+  }
+  const first = SETTINGS_SCENE_OPTIONS.findIndex(
+    (scene) => scene.id === scenes[0],
+  ) + 1;
+  const last = SETTINGS_SCENE_OPTIONS.findIndex(
+    (scene) => scene.id === scenes[scenes.length - 1],
+  ) + 1;
+  return `${first}–${last}`;
+}
+
+export function sharedSettingNamesForScene(sceneId) {
+  return SETTINGS_GROUPS.flatMap(settingsGroupControls)
+    .filter(
+      (control) =>
+        settingsControlVisibleInScene(control, sceneId) &&
+        settingsControlSharedSceneIds(control).length > 1,
+    )
+    .map((control) => control.name);
+}
+
 export function settingsControlVisibleInScene(control, sceneId) {
   return settingsControlScenes(control).includes(sceneId);
 }
@@ -1207,11 +1243,9 @@ export const SETTINGS_GROUPS = [
         name: "rockPulseShrinkPercent",
         label: "Уменьшение при пульсе, %",
         type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .rockPulseShrinkPercent[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .rockPulseShrinkPercent[1],
-        step: 1,
+        min: SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS[0],
+        max: SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS[1],
+        step: 0.1,
         defaultValue: DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent,
         output: `${DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent}%`,
         enabledWhen: "rockPulseEnabled",
@@ -2105,15 +2139,13 @@ export const SETTINGS_GROUPS = [
 ];
 
 function sceneOwnedControl(control, sceneId, options = {}) {
-  const owned = { ...control, ownerSceneId: sceneId };
-  if (
-    control.name === "rockPulseShrinkPercent" &&
-    sceneId === SETTINGS_SCENES.CATS_AND_MICE
-  ) {
-    owned.min = SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS[0];
-    owned.max = SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS[1];
-    owned.step = 0.1;
-  }
+  const sharedSceneIds = settingsControlSharedSceneIds(control);
+  const owned = {
+    ...control,
+    ownerSceneId: sceneId,
+    sharedSceneIds,
+    sharedSceneLabel: settingsControlSharedSceneLabel(control),
+  };
   if (
     control.name === "preclickPopupArtworkId" &&
     Array.isArray(options.goghArtworkOptions) &&
