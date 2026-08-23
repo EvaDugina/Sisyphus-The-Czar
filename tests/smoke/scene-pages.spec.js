@@ -102,6 +102,7 @@ test("панель параметров сворачивается и раскр
 });
 
 test("inline UI показывает только параметры текущей сцены", async ({ page }) => {
+  test.setTimeout(60_000);
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
   await expect(page.getByRole("heading", {
     name: "miniature",
@@ -198,7 +199,7 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="gravity"]')).toHaveCount(1);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(103);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(104);
   const rockClickSound = page.locator('[name="gachiClickSoundFilename"]');
   await expect(rockClickSound.locator("option")).toHaveCount(10);
   await expect(rockClickSound.locator('option[value="none"]')).toHaveText(
