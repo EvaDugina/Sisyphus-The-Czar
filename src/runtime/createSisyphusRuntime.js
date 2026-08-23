@@ -13,6 +13,7 @@ import { sceneStorageNamespace } from "../config/sceneRoutes.mjs";
 import {
   SETTINGS_SCENES,
   legacySettingsStorageKeysForScene,
+  normalizeRockPulseShrinkPercentForScene,
   settingsStorageKeyForScene,
   settingsVersionsStorageKeyForScene,
 } from "../config/settings.mjs";
@@ -150,6 +151,10 @@ const PRECLICK_HOP_AUDIO_LOADERS_BY_FILENAME = new Map(
 );
 PRECLICK_HOP_AUDIO_LOADERS_BY_FILENAME.set("Смех.mp3", () =>
   Promise.resolve(preclickHopAudioUrl),
+);
+PRECLICK_HOP_AUDIO_LOADERS_BY_FILENAME.set(
+  "СимуляцияОргазма.mov",
+  () => Promise.resolve(groundImpactAudioUrl),
 );
 const audioUrlPromises = new Map();
 
@@ -2826,6 +2831,11 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.sanitizeRoomSettings(params, params),
       sanitizeGlowOptimizationSettings(params, params),
     );
+    params.rockPulseShrinkPercent =
+      normalizeRockPulseShrinkPercentForScene(
+        params.rockPulseShrinkPercent,
+        sceneId,
+      );
     const selectedGoghArtwork = resolveGoghArtwork(
       GOGH_ARTWORKS,
       params.preclickPopupArtworkId,
@@ -5498,6 +5508,9 @@ export function createSisyphusRuntime(elements = {}) {
     }
     updateLocalSharedPointer(null, "grab", false);
     setPhase(PHASES.PLAY);
+    if (isSceneOne) {
+      syncRockPulse();
+    }
     showInitialHandCursor();
     setTheme(resolveTheme(isSceneThree ? "light" : "dark"));
     resetSummitRainScroll();
@@ -8185,6 +8198,9 @@ export function createSisyphusRuntime(elements = {}) {
     collab.imprint = createSummitSharedImprint();
     renderImprint();
     setPhase(PHASES.PLAY);
+    if (isSceneOne) {
+      syncRockPulse();
+    }
     motion.suspended = true;
     motion.wasAtReturnPlace = false;
     resetPreclickRockGuidance();

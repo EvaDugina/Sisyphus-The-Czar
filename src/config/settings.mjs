@@ -41,6 +41,20 @@ export const SETTINGS_SCENE_OPTIONS = Object.freeze([
     label: "Сцена 3. Соки",
   }),
 ]);
+export const SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS = Object.freeze([
+  0, 10,
+]);
+
+export function normalizeRockPulseShrinkPercentForScene(value, sceneId) {
+  const numeric = Number(value);
+  const fallback = DEFAULT_ROOM_SETTINGS.rockPulseShrinkPercent;
+  const finite = Number.isFinite(numeric) ? numeric : fallback;
+  if (sceneId !== SETTINGS_SCENES.CATS_AND_MICE) {
+    return Math.round(finite);
+  }
+  const [min, max] = SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS;
+  return Math.round(Math.min(max, Math.max(min, finite)) * 10) / 10;
+}
 
 export function settingsStorageKeyForScene(sceneId) {
   return `${SETTINGS_STORAGE_KEY}:${sceneId}`;
@@ -154,7 +168,9 @@ const PRECLICK_HOP_SOUND_OPTIONS =
     filename,
     filename === SharedRoomSettings.PRECLICK_HOP_SOUND_DISABLED
       ? "Без звука"
-      : filename.replace(/\.mp3$/i, ""),
+      : filename === SharedRoomSettings.PRECLICK_HOP_ORGASM_SOUND_FILENAME
+        ? "Симуляция оргазма"
+        : filename.replace(/\.mp3$/i, ""),
   ]);
 
 const PHYSICS_FORMULAS = {
@@ -2061,6 +2077,14 @@ export const SETTINGS_GROUPS = [
 
 function sceneOwnedControl(control, sceneId, options = {}) {
   const owned = { ...control, ownerSceneId: sceneId };
+  if (
+    control.name === "rockPulseShrinkPercent" &&
+    sceneId === SETTINGS_SCENES.CATS_AND_MICE
+  ) {
+    owned.min = SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS[0];
+    owned.max = SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS[1];
+    owned.step = 0.1;
+  }
   if (
     control.name === "preclickPopupArtworkId" &&
     Array.isArray(options.goghArtworkOptions) &&

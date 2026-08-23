@@ -115,11 +115,13 @@ import {
 } from "../../src/lib/productionPresetMessages.mjs";
 import {
   LEGACY_SETTINGS_STORAGE_KEYS,
+  SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS,
   SETTINGS_GROUPS,
   SETTINGS_SCENES,
   SETTINGS_SCENE_OPTIONS,
   SETTINGS_STORAGE_KEY,
   SETTINGS_VERSIONS_STORAGE_KEY,
+  normalizeRockPulseShrinkPercentForScene,
   settingsControlScenes,
   settingsControlVisibleInScene,
   settingsGroupsForScene,
@@ -685,6 +687,7 @@ test("настройки инерции и hop отображают актуал
       options: [
         ["none", "Без звука"],
         ["Смех.mp3", "Смех"],
+        ["СимуляцияОргазма.mov", "Симуляция оргазма"],
         ...SharedRoomSettings.GACHI_SOUND_FILENAMES.map((filename) => [
           filename,
           filename.replace(/\.mp3$/i, ""),
@@ -1066,6 +1069,48 @@ test("UI материализует параметры отдельно для �
   });
   const sceneOneGroups = settingsGroupsForScene(SETTINGS_SCENES.CATS_AND_MICE);
   const sceneOneControls = sceneOneGroups.flatMap(settingsGroupControls);
+  const sceneOnePulseShrink = sceneOneControls.find(
+    (control) => control.name === "rockPulseShrinkPercent",
+  );
+  assert.deepEqual(SCENE_ONE_ROCK_PULSE_SHRINK_PERCENT_LIMITS, [0, 10]);
+  assert.deepEqual(
+    {
+      min: sceneOnePulseShrink.min,
+      max: sceneOnePulseShrink.max,
+      step: sceneOnePulseShrink.step,
+    },
+    { min: 0, max: 10, step: 0.1 },
+  );
+  assert.equal(
+    pageControls(SETTINGS_SCENES.TURNIP).find(
+      (control) => control.name === "rockPulseShrinkPercent",
+    ).max,
+    50,
+  );
+  assert.equal(
+    pageControls(SETTINGS_SCENES.JUICES).find(
+      (control) => control.name === "rockPulseShrinkPercent",
+    ).step,
+    1,
+  );
+  assert.equal(
+    normalizeRockPulseShrinkPercentForScene(
+      3.74,
+      SETTINGS_SCENES.CATS_AND_MICE,
+    ),
+    3.7,
+  );
+  assert.equal(
+    normalizeRockPulseShrinkPercentForScene(
+      17,
+      SETTINGS_SCENES.CATS_AND_MICE,
+    ),
+    10,
+  );
+  assert.equal(
+    normalizeRockPulseShrinkPercentForScene(3.7, SETTINGS_SCENES.TURNIP),
+    4,
+  );
   assert.equal(sceneOneGroups.some((group) => group.title === "3D Fold"), false);
   [
     "sceneHeightScreens",
@@ -3190,6 +3235,19 @@ test("группа дождя содержит общий toggle и blur тём�
     "ahhhhhhh.mp3",
     "thats-amazing.mp3",
   ]);
+  assert.equal(
+    SharedRoomSettings.PRECLICK_HOP_ORGASM_SOUND_FILENAME,
+    "СимуляцияОргазма.mov",
+  );
+  const sceneOnePulseAndSound = SharedRoomSettings.sanitizeRoomSettings({
+    preclickHopSoundFilename: "СимуляцияОргазма.mov",
+    rockPulseShrinkPercent: 3.7,
+  });
+  assert.equal(sceneOnePulseAndSound.rockPulseShrinkPercent, 3.7);
+  assert.equal(
+    sceneOnePulseAndSound.preclickHopSoundFilename,
+    "СимуляцияОргазма.mov",
+  );
   const legacyV42 = SharedRoomSettings.migrateRoomSettings({}, 42);
   assert.equal(legacyV42.cameraFollowUpEnabled, true);
   assert.equal(legacyV42.cameraFollowUpLerp, 0.1);
@@ -3563,6 +3621,7 @@ test("таблица вершины компонует top-10, текущего 
   assert.deepEqual(SharedRoomSettings.PRECLICK_HOP_SOUND_FILENAMES, [
     "none",
     "Смех.mp3",
+    "СимуляцияОргазма.mov",
     ...SharedRoomSettings.GACHI_SOUND_FILENAMES,
   ]);
   assert.equal(SharedRoomSettings.DEFAULT_PRECLICK_HOP_SOUND_FILENAME, "Смех.mp3");

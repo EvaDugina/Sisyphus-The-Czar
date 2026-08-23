@@ -1343,7 +1343,8 @@ export function createSettingsController(options) {
       rockPressShrinkPercent: `${params.rockPressShrinkPercent.toFixed(0)}%`,
       rockWallPenetrationPercent:
         `${params.rockWallPenetrationPercent.toFixed(0)}%`,
-      rockPulseShrinkPercent: `${params.rockPulseShrinkPercent.toFixed(0)}%`,
+      rockPulseShrinkPercent:
+        `${Number(params.rockPulseShrinkPercent.toFixed(1))}%`,
       rockPulseBpm: `${params.rockPulseBpm.toFixed(0)} BPM`,
       preclickHopGuardClickCount:
         params.preclickHopGuardClickCount.toFixed(0),

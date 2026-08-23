@@ -599,12 +599,18 @@ test("камень бесшовно переносится по обеим ос�
   );
   await scrollToRock(page);
   await page.evaluate(() => {
-    params.preclickHopGuardClickCount = 0;
-    params.preclickHopActivationRadiusPercent = 50;
-    params.preclickHopMaxDistancePercent = 150;
-    params.preclickHopMissProbabilityPercent = 0;
-    params.rockPressShrinkPercent = 0;
-    params.rockWallPenetrationPercent = 0;
+    window.__sisyphusTestApi.applyTestSettings(
+      {
+        preclickHopGuardClickCount: 0,
+        preclickHopActivationRadiusPercent: 50,
+        preclickHopMaxDistancePercent: 150,
+        preclickHopMissProbabilityPercent: 0,
+        rockPressShrinkPercent: 0,
+        rockPulseEnabled: false,
+        rockWallPenetrationPercent: 0,
+      },
+      { broadcastChanges: true },
+    );
   });
 
   const rock = page.locator(SOURCE_ROCK);
@@ -722,7 +728,7 @@ test("N фейковых кликов открывают картины, а кл
       preclickHopGuardClickCount: 3,
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
-      preclickHopSoundFilename: "Aaaaaa.mp3",
+      preclickHopSoundFilename: "СимуляцияОргазма.mov",
       preclickPopupDelayMs: 0,
       preclickPopupWidthViewportFraction: 0.2,
       preclickPopupArtworkMode: "single",
@@ -889,6 +895,7 @@ test("N фейковых кликов открывают картины, а кл
       guardClicksUsed: click,
       hopCount: click + 1,
       audioPlayCount: click + 1,
+      lastFilename: "СимуляцияОргазма.mov",
       animating: false,
     });
     expect(await page.evaluate(() => window.__controlAcquireMessages.length)).toBe(0);
@@ -902,7 +909,7 @@ test("N фейковых кликов открывают картины, а кл
       await page.evaluate(
         () =>
           window.__playedAudioFilenames.filter(
-            (filename) => filename === "Aaaaaa.mp3",
+            (filename) => filename.startsWith("СимуляцияОргазма"),
           ).length,
       ),
     ).toBe(click + 1);
@@ -985,7 +992,7 @@ test("N фейковых кликов открывают картины, а кл
           (filename) => filename === "Aaaaaa.mp3",
         ).length,
     ),
-  ).toBe(4);
+  ).toBe(0);
   expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
     completed: true,
     completionReason: "first-real-rock-press",

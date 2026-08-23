@@ -71,9 +71,11 @@
   ]);
   const DEFAULT_GACHI_CLICK_SOUND_FILENAME = "Camen.mp3";
   const PRECLICK_HOP_SOUND_DISABLED = "none";
+  const PRECLICK_HOP_ORGASM_SOUND_FILENAME = "СимуляцияОргазма.mov";
   const PRECLICK_HOP_SOUND_FILENAMES = Object.freeze([
     PRECLICK_HOP_SOUND_DISABLED,
     "Смех.mp3",
+    PRECLICK_HOP_ORGASM_SOUND_FILENAME,
     ...GACHI_SOUND_FILENAMES,
   ]);
   const DEFAULT_PRECLICK_HOP_SOUND_FILENAME = "Смех.mp3";
@@ -1043,7 +1045,7 @@
         fallbackSource,
         "rockPulseEnabled"
       ),
-      rockPulseShrinkPercent: integerSetting(
+      rockPulseShrinkPercent: finiteSetting(
         source,
         fallbackSource,
         "rockPulseShrinkPercent",
@@ -1992,6 +1994,7 @@
     GACHI_CLICK_SOUND_FILENAMES,
     DEFAULT_GACHI_CLICK_SOUND_FILENAME,
     PRECLICK_HOP_SOUND_DISABLED,
+    PRECLICK_HOP_ORGASM_SOUND_FILENAME,
     PRECLICK_HOP_SOUND_FILENAMES,
     DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     PRECLICK_POPUP_ARTWORK_MODES,

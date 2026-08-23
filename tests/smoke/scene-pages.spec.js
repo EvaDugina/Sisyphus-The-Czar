@@ -130,10 +130,13 @@ test("inline UI показывает только параметры текущ�
   });
   await expect(artworkMode).toHaveValue("shuffle");
   await expect(fakeClickSound).toHaveValue("Смех.mp3");
-  await expect(fakeClickSound.locator("option")).toHaveCount(11);
+  await expect(fakeClickSound.locator("option")).toHaveCount(12);
   await expect(fakeClickSound.locator('option[value="none"]')).toHaveText(
     "Без звука",
   );
+  await expect(
+    fakeClickSound.locator('option[value="СимуляцияОргазма.mov"]'),
+  ).toHaveText("Симуляция оргазма");
   await fakeClickSound.selectOption("none");
   await expect
     .poll(() =>
@@ -170,7 +173,7 @@ test("inline UI показывает только параметры текущ�
     window.__sisyphusTestApi.applyTestSettings({
       rockPulseEnabled: true,
       rockPulseBpm: 240,
-      rockPulseShrinkPercent: 30,
+      rockPulseShrinkPercent: 10,
     });
     const samples = [];
     for (let index = 0; index < 12; index += 1) {
@@ -184,7 +187,7 @@ test("inline UI показывает только параметры текущ�
       min: Math.min(...samples),
     };
   });
-  expect(pulseScaleRange.max - pulseScaleRange.min).toBeGreaterThan(0.1);
+  expect(pulseScaleRange.max - pulseScaleRange.min).toBeGreaterThan(0.03);
 
   await waitForDebugScene(page, "/scene-2", "turnip");
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
@@ -248,6 +251,55 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="finalFallEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="rockLensConfig"]')).toHaveCount(1);
   await expect(page.locator("[data-setting-control]")).toHaveCount(105);
+});
+
+test("scene 1 запускает сохранённый дробный пульс без изменения UI", async ({
+  page,
+}) => {
+  await page.addInitScript(() => {
+    localStorage.setItem(
+      "sisyphus-czar-settings-v55:cats-and-mice",
+      JSON.stringify({
+        rockPulseBpm: 240,
+        rockPulseEnabled: true,
+        rockPulseShrinkPercent: 3.7,
+      }),
+    );
+  });
+  await waitForDebugScene(page, "/scene-1", "cats-and-mice");
+
+  const pulseShrink = page.locator('[name="rockPulseShrinkPercent"]');
+  await expect(pulseShrink).toHaveAttribute("min", "0");
+  await expect(pulseShrink).toHaveAttribute("max", "10");
+  await expect(pulseShrink).toHaveAttribute("step", "0.1");
+  await expect(pulseShrink).toHaveValue("3.7");
+  await expect(
+    page.locator('[data-output="rockPulseShrinkPercent"]'),
+  ).toHaveText("3.7%");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.params.rockPulseShrinkPercent,
+      ),
+    )
+    .toBe(3.7);
+
+  const samplePulseRange = () =>
+    page.evaluate(async () => {
+      const samples = [];
+      for (let index = 0; index < 12; index += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 30));
+        samples.push(
+          window.__sisyphusTestApi.getRockVisualScaleState().pulseScaleFactor,
+        );
+      }
+      return Math.max(...samples) - Math.min(...samples);
+    });
+
+  expect(await samplePulseRange()).toBeGreaterThan(0.01);
+  await page.getByTestId("restart-session").click();
+  await expect.poll(() => page.evaluate(() => motion.phase)).toBe("play");
+  expect(await samplePulseRange()).toBeGreaterThan(0.01);
 });
 
 test("scene 3 показывает пять WebGL-линз и восстанавливает Brandon Mercer flowmap", async ({ page }) => {
