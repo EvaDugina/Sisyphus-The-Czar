@@ -166,6 +166,8 @@ const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
   "preclickParallaxReturnEasing",
 ]);
 const DEFAULT_PRECLICK_HOP_SETTINGS = Object.freeze({
+  preclickFirstHopOnClick:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickFirstHopOnClick,
   preclickHopGuardClickCount:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
   preclickPopupDelayMs:
@@ -588,6 +590,9 @@ test("настройки инерции и hop отображают актуал
   const preclickHopGuardClickCount = controls.find(
     (control) => control.name === "preclickHopGuardClickCount"
   );
+  const preclickFirstHopOnClick = controls.find(
+    (control) => control.name === "preclickFirstHopOnClick",
+  );
   const preclickHopSound = controls.find(
     (control) => control.name === "preclickHopSoundFilename",
   );
@@ -735,6 +740,22 @@ test("настройки инерции и hop отображают актуал
       defaultValue: preclickHopActivationRadius.defaultValue,
     },
     { min: 0, max: 300, step: 1, defaultValue: 50 }
+  );
+  assert.deepEqual(
+    {
+      label: preclickFirstHopOnClick.label,
+      type: preclickFirstHopOnClick.type,
+      defaultChecked: preclickFirstHopOnClick.defaultChecked,
+      activeLabel: preclickFirstHopOnClick.activeLabel,
+      inactiveLabel: preclickFirstHopOnClick.inactiveLabel,
+    },
+    {
+      label: "Первое отпрыгивание",
+      type: "toggle-button",
+      defaultChecked: false,
+      activeLabel: "клик",
+      inactiveLabel: "hover",
+    },
   );
   assert.deepEqual(
     {
@@ -933,6 +954,7 @@ test("UI материализует параметры для каждой scene
       })
       .map((control) => control.name),
     [
+      "preclickFirstHopOnClick",
       "preclickHopGuardClickCount",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
@@ -1089,7 +1111,7 @@ test("UI материализует параметры для каждой scene
   assert.deepEqual(
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
-      [SETTINGS_SCENES.CATS_AND_MICE, 38],
+      [SETTINGS_SCENES.CATS_AND_MICE, 39],
       [SETTINGS_SCENES.TURNIP, 104],
       [SETTINGS_SCENES.JUICES, 106],
     ],
@@ -1321,7 +1343,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 57);
+  assert.equal(productionSettingsSchemaVersion, 58);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1949,6 +1971,9 @@ test("настройки размера камня есть в UI и получ�
   const preclickHopGuardClickCount = controls.find(
     (control) => control.name === "preclickHopGuardClickCount",
   );
+  const preclickFirstHopOnClick = controls.find(
+    (control) => control.name === "preclickFirstHopOnClick",
+  );
   const preclickHopActivationRadiusPercent = controls.find(
     (control) => control.name === "preclickHopActivationRadiusPercent",
   );
@@ -2009,6 +2034,7 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseEnabled",
       "rockPulseShrinkPercent",
       "rockPulseBpm",
+      "preclickFirstHopOnClick",
       "preclickHopGuardClickCount",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
@@ -2173,6 +2199,22 @@ test("настройки размера камня есть в UI и получ�
       min: 20,
       max: 240,
       defaultValue: 60,
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickFirstHopOnClick.label,
+      type: preclickFirstHopOnClick.type,
+      defaultChecked: preclickFirstHopOnClick.defaultChecked,
+      activeLabel: preclickFirstHopOnClick.activeLabel,
+      inactiveLabel: preclickFirstHopOnClick.inactiveLabel,
+    },
+    {
+      label: "Первое отпрыгивание",
+      type: "toggle-button",
+      defaultChecked: false,
+      activeLabel: "клик",
+      inactiveLabel: "hover",
     },
   );
   assert.deepEqual(
@@ -3233,7 +3275,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 57);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 58);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3245,6 +3287,7 @@ test("группа дождя содержит общий toggle и blur тём�
     foldRockImageId: "rock",
     rockPulseEnabled: "true",
     rockPulseBpm: 999,
+    preclickFirstHopOnClick: "true",
     preclickParallaxMaxOffsetPx: 9999,
     preclickHopGuardClickCount: 999,
     preclickHopSoundFilename: "missing.mp3",
@@ -3304,6 +3347,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.foldRockImageId, "rock");
   assert.equal(visualSettings.rockPulseEnabled, true);
   assert.equal(visualSettings.rockPulseBpm, 240);
+  assert.equal(visualSettings.preclickFirstHopOnClick, true);
   assert.equal(visualSettings.preclickHopGuardClickCount, 10);
   assert.equal(visualSettings.preclickHopSoundFilename, "Смех.mp3");
   assert.equal(visualSettings.preclickPopupDelayMs, 1000);
@@ -3488,6 +3532,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(legacyV17.handAudioEnabled, true);
   assert.deepEqual(
     {
+      preclickFirstHopOnClick: legacyV17.preclickFirstHopOnClick,
       preclickHopGuardClickCount: legacyV17.preclickHopGuardClickCount,
       preclickHopActivationRadiusPercent:
         legacyV17.preclickHopActivationRadiusPercent,
@@ -3501,6 +3546,17 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickHopSpeedEasing: legacyV17.preclickHopSpeedEasing,
     },
     DEFAULT_PRECLICK_HOP_SETTINGS,
+  );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings({}, 57).preclickFirstHopOnClick,
+    false,
+  );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { preclickFirstHopOnClick: true },
+      58,
+    ).preclickFirstHopOnClick,
+    true,
   );
 
   const legacyPx = SharedRoomSettings.migrateRoomSettings(
@@ -3567,6 +3623,7 @@ test("группа дождя содержит общий toggle и blur тём�
     37,
   );
   assert.deepEqual(legacyV37, {
+    preclickFirstHopOnClick: false,
     preclickHopActivationRadiusPercent: 11,
     preclickHopMaxDistancePercent: 150,
     preclickHopGuardClickCount: 1,

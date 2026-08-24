@@ -505,6 +505,7 @@ export function settingsGroupControls(group) {
 }
 
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
+  "preclickFirstHopOnClick",
   "preclickHopGuardClickCount",
   "preclickHopSoundFilename",
   "preclickPopupDelayMs",
@@ -1262,6 +1263,15 @@ export const SETTINGS_GROUPS = [
         output: `${DEFAULT_ROOM_SETTINGS.rockPulseBpm} BPM`,
         enabledWhen: "rockPulseEnabled",
         hint: "Количество ударов в минуту. 60 BPM — один полный пульс в секунду.",
+      },
+      {
+        name: "preclickFirstHopOnClick",
+        label: "Первое отпрыгивание",
+        type: "toggle-button",
+        defaultChecked: DEFAULT_ROOM_SETTINGS.preclickFirstHopOnClick,
+        activeLabel: "клик",
+        inactiveLabel: "hover",
+        hint: "В режиме hover первый отскок запускает вход руки в радиус камня. В режиме клик первый клик запускает отдельный отскок и не входит в количество фейковых кликов.",
       },
       {
         name: "preclickHopGuardClickCount",

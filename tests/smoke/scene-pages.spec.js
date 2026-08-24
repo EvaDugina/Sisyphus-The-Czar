@@ -122,6 +122,7 @@ test("inline UI показывает только параметры текущ�
     "Параметры · Сцена 1. Кошки-мышки",
   );
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(1);
+  await expect(page.locator('[name="preclickFirstHopOnClick"]')).toHaveCount(1);
   const fakeClickSound = page.locator('[name="preclickHopSoundFilename"]');
   const artworkMode = page.locator('[name="preclickPopupArtworkMode"]');
   const artworkId = page.locator('[name="preclickPopupArtworkId"]');
@@ -168,7 +169,7 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="gravity"]')).toHaveCount(0);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator(".settings-scene-switcher")).toHaveCount(0);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(38);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(39);
   await expect(page.locator('[data-shared-setting="true"]')).toHaveCount(20);
   await expect(page.locator('[data-shared-scenes="1–3"]')).toHaveCount(20);
   await expect(page.locator("[data-setting-shared-badge]")).toHaveCount(20);
@@ -195,6 +196,7 @@ test("inline UI показывает только параметры текущ�
 
   await waitForDebugScene(page, "/scene-2", "turnip");
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
+  await expect(page.locator('[name="preclickFirstHopOnClick"]')).toHaveCount(0);
   await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(0);
   await expect(
     page.locator(".scene-page > .world > .rock-echo-trail"),
@@ -243,6 +245,7 @@ test("inline UI показывает только параметры текущ�
   expect(cursorAssets.grabbing).toContain("handgrabbing");
   expect(cursorAssets.grabbing).not.toBe(cursorAssets.open);
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
+  await expect(page.locator('[name="preclickFirstHopOnClick"]')).toHaveCount(0);
   await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(0);
   await expect(
     page.locator(".scene-page > .world > .rock-echo-trail"),

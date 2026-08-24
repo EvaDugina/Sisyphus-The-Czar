@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 57;
+  const ROOM_SETTINGS_VERSION = 58;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -302,6 +302,7 @@
     rockPulseBpm: 60,
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
+    preclickFirstHopOnClick: false,
     preclickHopGuardClickCount: 1,
     preclickHopSoundFilename: DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     preclickPopupDelayMs: 200,
@@ -1084,6 +1085,11 @@
         "rockPulseBpm",
         ROOM_SETTINGS_LIMITS.rockPulseBpm[0],
         ROOM_SETTINGS_LIMITS.rockPulseBpm[1]
+      ),
+      preclickFirstHopOnClick: boolSetting(
+        source,
+        fallbackSource,
+        "preclickFirstHopOnClick"
       ),
       preclickHopGuardClickCount: integerSetting(
         preclickHopRadiusSource,
@@ -1959,6 +1965,12 @@
       } else {
         current.rockJumpInertiaSpreadPercent =
           DEFAULT_ROOM_SETTINGS.rockJumpInertiaSpreadPercent;
+      }
+    }
+    if (finiteNumber(version, 1) < 58) {
+      if (!Object.hasOwn(current, "preclickFirstHopOnClick")) {
+        current.preclickFirstHopOnClick =
+          DEFAULT_ROOM_SETTINGS.preclickFirstHopOnClick;
       }
     }
     return current;

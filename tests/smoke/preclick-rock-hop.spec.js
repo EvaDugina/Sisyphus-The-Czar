@@ -709,6 +709,122 @@ test("камень бесшовно переносится по обеим ос�
   await cdp.detach();
 });
 
+test("режим клик отделяет первое отпрыгивание от N фейковых кликов", async ({
+  context,
+  page,
+}) => {
+  await page.setViewportSize({ width: 1200, height: 800 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await watchLaughPlayCalls(page);
+  await page.goto("/");
+  await expect(page.getByTestId("session-status").first()).toContainText(
+    "В сессии",
+  );
+
+  const triggerControl = page.locator(
+    '[data-setting-control]:has(input[name="preclickFirstHopOnClick"])',
+  );
+  const triggerInput = triggerControl.locator("input");
+  const triggerButton = triggerControl.locator("[data-setting-toggle-button]");
+  await expect(triggerInput).not.toBeChecked();
+  await expect(triggerButton).toHaveText("hover");
+  await expect(triggerButton).toHaveAttribute("aria-pressed", "false");
+
+  await page.getByTestId("restart-session").click();
+  await expect.poll(() => page.evaluate(() => motion.phase)).toBe("play");
+  const rockSettingsGroup = page
+    .locator("details.control-group")
+    .filter({ has: page.locator('input[name="preclickFirstHopOnClick"]') });
+  await rockSettingsGroup.locator("summary").click();
+  await triggerButton.scrollIntoViewIfNeeded();
+  await triggerButton.click();
+  await expect(triggerInput).toBeChecked();
+  await expect(triggerButton).toHaveText("клик");
+  await expect(triggerButton).toHaveAttribute("aria-pressed", "true");
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopGuardClickCount: 2,
+      preclickHopActivationRadiusPercent: 50,
+      preclickHopMaxDistancePercent: 10,
+      preclickHopMissProbabilityPercent: 0,
+      preclickHopSoundFilename: "none",
+      preclickPopupDelayMs: 0,
+      preclickPopupArtworkMode: "single",
+      preclickPopupArtworkId: "01.png",
+      rockPressShrinkPercent: 0,
+      rockWallPenetrationPercent: 0,
+    });
+  });
+
+  await scrollToRock(page);
+  const rock = page.locator(SOURCE_ROCK);
+  const radius = await rock.evaluate(
+    (element) => element.getBoundingClientRect().width * 0.5,
+  );
+  await enterFromLeft(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    firstHopOnClick: true,
+    firstHopPending: true,
+    guardClickCount: 2,
+    guardClicksUsed: 0,
+    hopCount: 0,
+    radiusHopCount: 0,
+  });
+
+  const pageCountBeforeActivation = context.pages().length;
+  const activationPoint = await visibleRockPoint(page);
+  await page.mouse.click(activationPoint.x, activationPoint.y);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    completed: false,
+    firstHopPending: false,
+    guardClickCount: 2,
+    guardClicksUsed: 0,
+    hopCount: 1,
+    radiusHopCount: 1,
+    lastRadiusDecision: "click-trigger",
+  });
+  expect(context.pages()).toHaveLength(pageCountBeforeActivation);
+
+  const fakePopups = [];
+  for (let click = 1; click <= 2; click += 1) {
+    const point = await visibleRockPoint(page);
+    const popupPromise = page.waitForEvent("popup");
+    await page.mouse.click(point.x, point.y);
+    const popup = await popupPromise;
+    fakePopups.push(popup);
+    await expect(popup.locator("img")).toHaveAttribute("src", /01[^/]*\.png/);
+    await page.bringToFront();
+    await expect.poll(() => hopState(page)).toMatchObject({
+      completed: false,
+      guardClickCount: 2,
+      guardClicksUsed: click,
+      hopCount: click + 1,
+    });
+  }
+
+  const finalPopups = [];
+  const captureFinalPopup = (popup) => finalPopups.push(popup);
+  page.on("popup", captureFinalPopup);
+  const realClickPoint = await visibleRockPoint(page);
+  await page.mouse.click(realClickPoint.x, realClickPoint.y);
+  await expect.poll(() => finalPopups.length).toBe(2);
+  page.off("popup", captureFinalPopup);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    completed: true,
+    guardClickCount: 2,
+    guardClicksUsed: 2,
+    hopCount: 3,
+  });
+  expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
+    completed: true,
+    completionReason: "first-real-rock-press",
+  });
+
+  await Promise.all(
+    [...fakePopups, ...finalPopups].map((popup) => popup.close()),
+  );
+});
+
 test("N фейковых кликов и два финальных окна имеют единый размер", async ({
   page,
 }) => {
