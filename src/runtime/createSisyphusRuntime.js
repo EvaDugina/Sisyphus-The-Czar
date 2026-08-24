@@ -3719,7 +3719,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function openPreclickArtworkWindow(
     event,
-    { delayMs = 0, randomPosition = false } = {},
+    { delayMs = 0, edgePosition = false } = {},
   ) {
     const clientX = Number(event.clientX);
     const clientY = Number(event.clientY);
@@ -3742,9 +3742,9 @@ export function createSisyphusRuntime(elements = {}) {
       clientX,
       clientY,
       delayMs,
+      edgePosition,
       imageAlt: artwork.alt,
       imageUrl: artwork.url,
-      randomPosition,
       width: window.innerWidth * params.preclickPopupWidthViewportFraction,
     });
   }
@@ -7986,7 +7986,7 @@ export function createSisyphusRuntime(elements = {}) {
       completePreclickRockGuidance({ preserveHopPosition: true });
       preclickPopupController.revealPreclickWindows();
       openPreclickArtworkWindow(event);
-      openPreclickArtworkWindow(event, { randomPosition: true });
+      openPreclickArtworkWindow(event, { edgePosition: true });
       playRockPointerDownSound();
       showHandCursor(event);
       scheduleGrabbingHandImage();

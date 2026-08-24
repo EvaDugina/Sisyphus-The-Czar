@@ -5,6 +5,7 @@ import {
   WINDOW_OBSTACLE_LIFETIME_MS,
   WINDOW_OBSTACLE_PERMISSION,
   createWindowObstacleController,
+  preclickPopupEdgeGeometry,
   preclickPopupGeometry,
   randomStepBetween,
   windowObstacleHeightFromStartVh,
@@ -179,6 +180,7 @@ function setup({ blocked = false, random = () => 0 } = {}) {
     }),
     getSettings: () => settings,
     getViewportScreenOrigin: () => ({ x: 100, y: 200 }),
+    getViewportSize: () => ({ height: 720, width: 1110 }),
     onActiveWindowsChange: (count) => activeCounts.push(count),
     onPermissionChange: (permission) => permissions.push(permission),
     openPopup: (_url, _target, features) => {
@@ -211,6 +213,37 @@ test("высота препятствия отсчитывается от ниж
   assert.equal(windowObstacleHeightFromStartVh(800, 760, 800), 0);
   assert.equal(randomStepBetween(101, 139, 10, () => 0), 110);
   assert.equal(randomStepBetween(101, 139, 10, () => 1), 130);
+});
+
+test("каждая краевая зона находится внутри окна и вне центральных 50%", () => {
+  const screen = {
+    availHeight: 800,
+    availLeft: 100,
+    availTop: 200,
+    availWidth: 1200,
+  };
+  const expectedRegions = ["left", "top", "right", "bottom"];
+
+  [0, 0.26, 0.51, 0.76].forEach((side, index) => {
+    const geometry = preclickPopupEdgeGeometry({
+      height: 120,
+      placement: { side, x: 0.5, y: 0.5 },
+      screen,
+      width: 160,
+    });
+    assert.equal(geometry.region, expectedRegions[index]);
+    assert.ok(geometry.left >= screen.availLeft);
+    assert.ok(geometry.top >= screen.availTop);
+    assert.ok(geometry.left + geometry.width <= 1300);
+    assert.ok(geometry.top + geometry.height <= 1000);
+    assert.equal(
+      geometry.left + geometry.width <= 400 ||
+        geometry.left >= 1000 ||
+        geometry.top + geometry.height <= 400 ||
+        geometry.top >= 800,
+      true,
+    );
+  });
 });
 
 test("фейковый клик с задержкой открывает незакрываемое окно с картиной", () => {
@@ -302,7 +335,7 @@ test("dispose отменяет только ещё не открытый preclic
   assert.equal(popups.length, 0);
 });
 
-test("preclick-popup можно открыть в случайной позиции рабочей области", () => {
+test("дополнительный preclick-popup открывается у края и остаётся в границах окна", () => {
   const { controller, popups } = setup({ random: () => 1 });
 
   assert.equal(
@@ -310,7 +343,7 @@ test("preclick-popup можно открыть в случайной позиц�
       aspectRatio: 1,
       clientX: 600,
       clientY: 400,
-      randomPosition: true,
+      edgePosition: true,
       width: 120,
     }),
     true,
@@ -330,6 +363,71 @@ test("preclick-popup можно открыть в случайной позиц�
   assert.ok(
     popups[0].popup.moveCalls[0][1] + popups[0].popup.outerHeight <= 920,
   );
+  const [left, top] = popups[0].popup.moveCalls[0];
+  const centralLeft = 100 + 1110 * 0.25;
+  const centralRight = 100 + 1110 * 0.75;
+  const centralTop = 200 + 720 * 0.25;
+  const centralBottom = 200 + 720 * 0.75;
+  assert.equal(
+    left + popups[0].popup.outerWidth <= centralLeft ||
+      left >= centralRight ||
+      top + popups[0].popup.outerHeight <= centralTop ||
+      top >= centralBottom,
+    true,
+  );
+});
+
+test("все preclick-popup используют размер первого окна", () => {
+  const { controller, popups } = setup();
+
+  controller.openPreclickWindow({
+    aspectRatio: 340 / 328,
+    clientX: 600,
+    clientY: 400,
+    width: 120,
+  });
+  controller.openPreclickWindow({
+    aspectRatio: 1,
+    clientX: 300,
+    clientY: 200,
+    width: 900,
+  });
+
+  assert.equal(popups.length, 2);
+  assert.match(popups[0].features, /width=120/);
+  assert.match(popups[0].features, /height=116/);
+  assert.match(popups[1].features, /width=120/);
+  assert.match(popups[1].features, /height=116/);
+  assert.equal(popups[0].popup.innerWidth, popups[1].popup.innerWidth);
+  assert.equal(popups[0].popup.innerHeight, popups[1].popup.innerHeight);
+  assert.deepEqual(controller.getState().preclickPopupSize, {
+    height: 116,
+    width: 120,
+  });
+});
+
+test("общий размер popup уменьшается до краевой зоны вместо полноэкранного", () => {
+  const { controller, popups } = setup();
+
+  controller.openPreclickWindow({
+    aspectRatio: 1,
+    clientX: 600,
+    clientY: 400,
+    width: 1110,
+  });
+  controller.openPreclickWindow({
+    aspectRatio: 2,
+    clientX: 600,
+    clientY: 400,
+    edgePosition: true,
+    width: 1110,
+  });
+
+  assert.equal(popups.length, 2);
+  assert.ok(popups[0].popup.outerWidth < 1110);
+  assert.ok(popups[0].popup.outerHeight < 720);
+  assert.equal(popups[0].popup.outerWidth, popups[1].popup.outerWidth);
+  assert.equal(popups[0].popup.outerHeight, popups[1].popup.outerHeight);
 });
 
 test("первый настоящий клик восстанавливает открытые и отложенные окна картин", () => {

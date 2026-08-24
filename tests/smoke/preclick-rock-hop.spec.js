@@ -709,7 +709,7 @@ test("камень бесшовно переносится по обеим ос�
   await cdp.detach();
 });
 
-test("N фейковых кликов открывают картины, а клик N+1 добавляет два окна и завершает сцену", async ({
+test("N фейковых кликов и два финальных окна имеют единый размер", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -814,6 +814,7 @@ test("N фейковых кликов открывают картины, а кл
   const cdp = await page.context().newCDPSession(page);
   const popupWidthFractions = [0.1, 0.2, 0.4];
   const fakeClickPopups = [];
+  let sharedPopupSize = null;
   for (let click = 1; click <= 3; click += 1) {
     const widthFraction = popupWidthFractions[click - 1];
     await page.evaluate(({ nextArtworkId, nextWidthFraction }) => {
@@ -845,34 +846,36 @@ test("N фейковых кликов открывают картины, а кл
     await expect.poll(() => popupImage.evaluate(
       (image) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0,
     )).toBe(true);
-    const expectedWidth = 1200 * widthFraction;
-    const artworkSize = await popupImage.evaluate((image) => ({
-      height: image.naturalHeight,
-      width: image.naturalWidth,
-    }));
-    const expectedHeight = Math.round(
-      expectedWidth / (artworkSize.width / artworkSize.height),
-    );
     await expect
-      .poll(() =>
-        popupImage.evaluate((image) => {
-          const rect = image.getBoundingClientRect();
-          return {
-            imageHeight: rect.height,
-            imageWidth: rect.width,
-            innerHeight,
-            innerWidth,
-            objectFit: getComputedStyle(image).objectFit,
-          };
-        }),
-      )
-      .toEqual({
-        imageHeight: expectedHeight,
-        imageWidth: expectedWidth,
-        innerHeight: expectedHeight,
-        innerWidth: expectedWidth,
-        objectFit: "fill",
-      });
+      .poll(async () => {
+        const sizes = await Promise.all(
+          fakeClickPopups.map((openPopup) =>
+            openPopup.evaluate(() => ({ height: innerHeight, width: innerWidth })),
+          ),
+        );
+        return new Set(sizes.map((size) => JSON.stringify(size))).size;
+      })
+      .toBe(1);
+    sharedPopupSize = await popup.evaluate(() => ({
+      height: innerHeight,
+      width: innerWidth,
+    }));
+    await expect.poll(() => popupImage.evaluate((image) => {
+      const rect = image.getBoundingClientRect();
+      return {
+        imageHeight: rect.height,
+        imageWidth: rect.width,
+        innerHeight,
+        innerWidth,
+        objectFit: getComputedStyle(image).objectFit,
+      };
+    })).toEqual({
+      imageHeight: sharedPopupSize.height,
+      imageWidth: sharedPopupSize.width,
+      innerHeight: sharedPopupSize.height,
+      innerWidth: sharedPopupSize.width,
+      objectFit: "fill",
+    });
     await popup.evaluate(() => {
       window.__preclickFocusCalls = 0;
       const nativeFocus = window.focus.bind(window);
@@ -941,6 +944,21 @@ test("N фейковых кликов открывают картины, а кл
     const finalPopupImage = finalPopup.locator("img");
     await expect(finalPopupImage).toHaveAttribute("alt", "Картина 03");
     await expect(finalPopupImage).toHaveAttribute("src", /03[^/]*\.png/);
+    await expect
+      .poll(() =>
+        finalPopupImage.evaluate((image) => ({
+          imageHeight: image.getBoundingClientRect().height,
+          imageWidth: image.getBoundingClientRect().width,
+          innerHeight,
+          innerWidth,
+        })),
+      )
+      .toEqual({
+        imageHeight: sharedPopupSize.height,
+        imageWidth: sharedPopupSize.width,
+        innerHeight: sharedPopupSize.height,
+        innerWidth: sharedPopupSize.width,
+      });
   }
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,

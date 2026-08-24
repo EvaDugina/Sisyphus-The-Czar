@@ -2,6 +2,7 @@ export const WINDOW_OBSTACLE_LIFETIME_MS = 2000;
 export const WINDOW_OBSTACLE_CLOSED_POLL_MS = 100;
 export const PRECLICK_POPUP_WIDTH_PX = 640;
 export const PRECLICK_POPUP_FALLBACK_ASPECT_RATIO = 1;
+export const PRECLICK_POPUP_CENTRAL_FRACTION = 0.5;
 
 export const WINDOW_OBSTACLE_PERMISSION = Object.freeze({
   UNCHECKED: "unchecked",
@@ -90,6 +91,117 @@ export function preclickPopupGeometry({
   };
 }
 
+function normalizedScreen(screen) {
+  const rawScreen = screen && typeof screen === "object" ? screen : {};
+  return {
+    availHeight: Math.max(1, Math.round(finite(rawScreen.availHeight, 1))),
+    availLeft: Math.round(finite(rawScreen.availLeft, 0)),
+    availTop: Math.round(finite(rawScreen.availTop, 0)),
+    availWidth: Math.max(1, Math.round(finite(rawScreen.availWidth, 1))),
+  };
+}
+
+export function preclickPopupEdgeSize({ height, screen, width }) {
+  const { availHeight, availWidth } = normalizedScreen(screen);
+  let fittedWidth = Math.min(
+    availWidth,
+    Math.max(1, Math.round(finite(width, 1))),
+  );
+  let fittedHeight = Math.min(
+    availHeight,
+    Math.max(1, Math.round(finite(height, 1))),
+  );
+  const edgeFraction = (1 - PRECLICK_POPUP_CENTRAL_FRACTION) / 2;
+  const edgeWidth = Math.max(1, Math.floor(availWidth * edgeFraction));
+  const edgeHeight = Math.max(1, Math.floor(availHeight * edgeFraction));
+  if (fittedWidth > edgeWidth && fittedHeight > edgeHeight) {
+    const scale = Math.min(
+      1,
+      Math.max(edgeWidth / fittedWidth, edgeHeight / fittedHeight),
+    );
+    fittedWidth = Math.max(1, Math.floor(fittedWidth * scale));
+    fittedHeight = Math.max(1, Math.floor(fittedHeight * scale));
+  }
+  return { height: fittedHeight, width: fittedWidth };
+}
+
+export function preclickPopupEdgeGeometry({
+  height,
+  placement = {},
+  screen,
+  width,
+}) {
+  const normalized = normalizedScreen(screen);
+  const size = preclickPopupEdgeSize({ height, screen: normalized, width });
+  const right = normalized.availLeft + normalized.availWidth;
+  const bottom = normalized.availTop + normalized.availHeight;
+  const centralOffset = (1 - PRECLICK_POPUP_CENTRAL_FRACTION) / 2;
+  const centralLeft =
+    normalized.availLeft + Math.floor(normalized.availWidth * centralOffset);
+  const centralRight =
+    normalized.availLeft +
+    Math.ceil(normalized.availWidth * (1 - centralOffset));
+  const centralTop =
+    normalized.availTop + Math.floor(normalized.availHeight * centralOffset);
+  const centralBottom =
+    normalized.availTop +
+    Math.ceil(normalized.availHeight * (1 - centralOffset));
+  const maxLeft = right - size.width;
+  const maxTop = bottom - size.height;
+  const regions = [
+    {
+      maxLeft: centralLeft - size.width,
+      maxTop,
+      minLeft: normalized.availLeft,
+      minTop: normalized.availTop,
+      name: "left",
+    },
+    {
+      maxLeft,
+      maxTop: centralTop - size.height,
+      minLeft: normalized.availLeft,
+      minTop: normalized.availTop,
+      name: "top",
+    },
+    {
+      maxLeft,
+      maxTop,
+      minLeft: centralRight,
+      minTop: normalized.availTop,
+      name: "right",
+    },
+    {
+      maxLeft,
+      maxTop,
+      minLeft: normalized.availLeft,
+      minTop: centralBottom,
+      name: "bottom",
+    },
+  ].filter(
+    (region) =>
+      region.minLeft <= region.maxLeft && region.minTop <= region.maxTop,
+  );
+  const sideSeed = clamp(finite(placement.side, 0), 0, 0.999999999);
+  const xSeed = clamp(finite(placement.x, 0), 0, 1);
+  const ySeed = clamp(finite(placement.y, 0), 0, 1);
+  const region =
+    regions[Math.min(regions.length - 1, Math.floor(sideSeed * regions.length))] ||
+    {
+      maxLeft,
+      maxTop,
+      minLeft: normalized.availLeft,
+      minTop: normalized.availTop,
+      name: "fallback",
+    };
+  return {
+    height: size.height,
+    left: Math.round(randomBetween(region.minLeft, region.maxLeft, () => xSeed)),
+    region: region.name,
+    top: Math.round(randomBetween(region.minTop, region.maxTop, () => ySeed)),
+    width: size.width,
+  };
+}
+
 function relevantSettingsSignature(settings) {
   return JSON.stringify([
     Boolean(settings.windowObstacleEnabled),
@@ -135,6 +247,12 @@ export function createWindowObstacleController(options = {}) {
           finite(window.outerHeight, window.innerHeight) - window.innerHeight,
         ),
     }));
+  const getViewportSize =
+    options.getViewportSize ||
+    (() => ({
+      height: window.innerHeight,
+      width: window.innerWidth,
+    }));
   const setTimeoutFn = options.setTimeoutFn || window.setTimeout.bind(window);
   const clearTimeoutFn = options.clearTimeoutFn || window.clearTimeout.bind(window);
   const setIntervalFn = options.setIntervalFn || window.setInterval.bind(window);
@@ -149,6 +267,7 @@ export function createWindowObstacleController(options = {}) {
   let nextWindowId = 1;
   let previousObstacleCount = 0;
   let previousSettingsSignature = "";
+  let sharedPreclickPopupSize = null;
   let preclickWindowsRevealed = false;
   let wasInsideRange = false;
   const trackedWindows = new Map();
@@ -260,6 +379,95 @@ export function createWindowObstacleController(options = {}) {
     }
   }
 
+  function preclickScreenBounds() {
+    const available = normalizedScreen(getScreen());
+    const origin = getViewportScreenOrigin() || {};
+    const viewport = getViewportSize() || {};
+    const viewportLeft = Math.round(finite(origin.x, available.availLeft));
+    const viewportTop = Math.round(finite(origin.y, available.availTop));
+    const viewportRight =
+      viewportLeft +
+      Math.max(1, Math.round(finite(viewport.width, available.availWidth)));
+    const viewportBottom =
+      viewportTop +
+      Math.max(1, Math.round(finite(viewport.height, available.availHeight)));
+    const availableRight = available.availLeft + available.availWidth;
+    const availableBottom = available.availTop + available.availHeight;
+    const left = Math.max(available.availLeft, viewportLeft);
+    const top = Math.max(available.availTop, viewportTop);
+    const right = Math.min(availableRight, viewportRight);
+    const bottom = Math.min(availableBottom, viewportBottom);
+    if (right <= left || bottom <= top) {
+      return available;
+    }
+    return {
+      availHeight: bottom - top,
+      availLeft: left,
+      availTop: top,
+      availWidth: right - left,
+    };
+  }
+
+  function sharedPreclickSize({ aspectRatio, screen, width }) {
+    if (!sharedPreclickPopupSize) {
+      const normalized = normalizedScreen(screen);
+      const requested = preclickPopupGeometry({
+        aspectRatio,
+        centerX: normalized.availLeft + normalized.availWidth / 2,
+        centerY: normalized.availTop + normalized.availHeight / 2,
+        screen: normalized,
+        width,
+      });
+      sharedPreclickPopupSize = preclickPopupEdgeSize({
+        height: requested.height,
+        screen: normalized,
+        width: requested.width,
+      });
+    }
+    return sharedPreclickPopupSize;
+  }
+
+  function preclickWindowGeometry(
+    geometryInput,
+    { chromeHeight = 0, chromeWidth = 0 } = {},
+  ) {
+    const screen = normalizedScreen(geometryInput.screen);
+    const outerSize = preclickPopupEdgeSize({
+      height: geometryInput.sharedSize.height + chromeHeight,
+      screen,
+      width: geometryInput.sharedSize.width + chromeWidth,
+    });
+    const contentWidth = Math.max(1, outerSize.width - chromeWidth);
+    const contentHeight = Math.max(1, outerSize.height - chromeHeight);
+    if (geometryInput.edgePlacement) {
+      const edgeGeometry = preclickPopupEdgeGeometry({
+        height: outerSize.height,
+        placement: geometryInput.edgePlacement,
+        screen,
+        width: outerSize.width,
+      });
+      return {
+        height: contentHeight,
+        left: edgeGeometry.left,
+        top: edgeGeometry.top,
+        width: contentWidth,
+      };
+    }
+    const contentScreen = {
+      availHeight: Math.max(1, screen.availHeight - chromeHeight),
+      availLeft: screen.availLeft,
+      availTop: screen.availTop,
+      availWidth: Math.max(1, screen.availWidth - chromeWidth),
+    };
+    return preclickPopupGeometry({
+      aspectRatio: contentWidth / contentHeight,
+      centerX: geometryInput.centerX,
+      centerY: geometryInput.centerY,
+      screen: contentScreen,
+      width: contentWidth,
+    });
+  }
+
   function bindWindow(entry) {
     try {
       entry.popup.document.title = "";
@@ -284,25 +492,6 @@ export function createWindowObstacleController(options = {}) {
         image.style.height = "100%";
         image.style.objectFit = "fill";
         image.style.width = "100%";
-        if (typeof image.addEventListener === "function") {
-          image.addEventListener(
-            "load",
-            () => {
-              if (
-                image.naturalWidth > 0 &&
-                image.naturalHeight > 0 &&
-                entry.geometryInput
-              ) {
-                entry.geometryInput = {
-                  ...entry.geometryInput,
-                  aspectRatio: image.naturalWidth / image.naturalHeight,
-                };
-                fitPreclickWindow(entry);
-              }
-            },
-            { once: true },
-          );
-        }
         body.replaceChildren(image);
       } else {
         body.replaceChildren();
@@ -333,22 +522,9 @@ export function createWindowObstacleController(options = {}) {
         0,
         Math.round(finite(popup.outerHeight, 0) - finite(popup.innerHeight, 0)),
       );
-      const rawScreen = entry.geometryInput.screen || {};
-      const contentScreen = {
-        availHeight: Math.max(
-          1,
-          Math.round(finite(rawScreen.availHeight, 1)) - chromeHeight,
-        ),
-        availLeft: finite(rawScreen.availLeft, 0),
-        availTop: finite(rawScreen.availTop, 0),
-        availWidth: Math.max(
-          1,
-          Math.round(finite(rawScreen.availWidth, 1)) - chromeWidth,
-        ),
-      };
-      const geometry = preclickPopupGeometry({
-        ...entry.geometryInput,
-        screen: contentScreen,
+      const geometry = preclickWindowGeometry(entry.geometryInput, {
+        chromeHeight,
+        chromeWidth,
       });
       if (typeof popup.resizeTo === "function") {
         popup.resizeTo(
@@ -493,9 +669,9 @@ export function createWindowObstacleController(options = {}) {
     clientX,
     clientY,
     delayMs = 0,
+    edgePosition = false,
     imageAlt = "",
     imageUrl = "",
-    randomPosition = false,
     width = PRECLICK_POPUP_WIDTH_PX,
   } = {}) {
     if (disposed) {
@@ -506,37 +682,21 @@ export function createWindowObstacleController(options = {}) {
         return false;
       }
       const origin = getViewportScreenOrigin() || {};
-      const screen = getScreen();
+      const screen = preclickScreenBounds();
       const geometryInput = {
-        aspectRatio,
         centerX: finite(origin.x, 0) + finite(clientX, 0),
         centerY: finite(origin.y, 0) + finite(clientY, 0),
         screen,
-        width,
+        sharedSize: sharedPreclickSize({ aspectRatio, screen, width }),
       };
-      if (randomPosition) {
-        const rawScreen = screen && typeof screen === "object" ? screen : {};
-        const availWidth = Math.max(
-          1,
-          Math.round(finite(rawScreen.availWidth, 1)),
-        );
-        const availHeight = Math.max(
-          1,
-          Math.round(finite(rawScreen.availHeight, 1)),
-        );
-        const availLeft = Math.round(finite(rawScreen.availLeft, 0));
-        const availTop = Math.round(finite(rawScreen.availTop, 0));
-        const fittedSize = preclickPopupGeometry(geometryInput);
-        geometryInput.centerX =
-          availLeft +
-          fittedSize.width / 2 +
-          randomBetween(0, availWidth - fittedSize.width, random);
-        geometryInput.centerY =
-          availTop +
-          fittedSize.height / 2 +
-          randomBetween(0, availHeight - fittedSize.height, random);
+      if (edgePosition) {
+        geometryInput.edgePlacement = {
+          side: clamp(finite(random(), 0), 0, 1),
+          x: clamp(finite(random(), 0), 0, 1),
+          y: clamp(finite(random(), 0), 0, 1),
+        };
       }
-      const geometry = preclickPopupGeometry(geometryInput);
+      const geometry = preclickWindowGeometry(geometryInput);
       const features = [
         "popup=yes",
         `width=${geometry.width}`,
@@ -694,6 +854,9 @@ export function createWindowObstacleController(options = {}) {
         heightVh: currentRange.heightVh,
         pendingPreclickWindowCount: pendingPreclickTimerIds.size,
         permission,
+        preclickPopupSize: sharedPreclickPopupSize
+          ? { ...sharedPreclickPopupSize }
+          : null,
         preclickWindowCount: activePreclickWindowCount(),
         preclickWindowsRevealed,
         schedulePending: scheduleTimerId !== null,

@@ -1308,7 +1308,7 @@ export const SETTINGS_GROUPS = [
         output: `${Math.round(
           DEFAULT_ROOM_SETTINGS.preclickPopupWidthViewportFraction * 100,
         )}vw`,
-        hint: "Доля ширины viewport: 0.01 соответствует 1vw, а 1 — 100vw. Высота сохраняет пропорции картины.",
+        hint: "Доля ширины viewport: 0.01 соответствует 1vw, а 1 — 100vw. Единый размер последовательности фиксируется первым popup; новый размер применяется после перезагрузки сцены.",
       },
       {
         name: "preclickPopupArtworkMode",
