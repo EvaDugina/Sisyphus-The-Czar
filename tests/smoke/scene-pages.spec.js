@@ -1059,14 +1059,18 @@ test("scene 2 завершается при первом контакте с о�
   expect(centerOffset.y).toBeLessThan(2);
 });
 
-test("scene 3 скрывает таймер в тёмной теме и сохраняет светлую тему после отпускания", async ({ page }) => {
+test("scene 3 скрывает руку при контакте и сохраняет светлую тему после отпускания", async ({ page }) => {
   await waitForDebugScene(page, "/scene-3", "juices");
   const timer = page.getByTestId("summit-timer");
   const leaderboard = page.getByTestId("summit-leaderboard");
+  const hand = page.locator(
+    ".scene-page > .world > .hand-cursor:not(.is-remote)",
+  );
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
   await expect(timer).toBeHidden();
   await expect(leaderboard).toHaveCSS("display", "grid");
   await expect(leaderboard).toHaveCSS("visibility", "visible");
+  await expect(hand).toHaveClass(/is-visible/);
 
   const darkLeaderboardPosition = await leaderboard.evaluate((element) => {
     const rect = element.getBoundingClientRect();
@@ -1082,6 +1086,17 @@ test("scene 3 скрывает таймер в тёмной теме и сохр
     return api.startSceneThreeMagnetPlacement();
   });
   expect(placementStarted).toBe(true);
+  await expect(hand).not.toHaveClass(/is-visible/);
+  await page.mouse.move(0, 0);
+  await page.locator(ROCK).hover();
+  await expect(hand).not.toHaveClass(/is-visible/);
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.collab.localPointer.visible,
+      ),
+    )
+    .toBe(false);
   await expect(page.locator("body")).toHaveClass(/theme-light/);
   await expect(timer).toBeVisible();
 

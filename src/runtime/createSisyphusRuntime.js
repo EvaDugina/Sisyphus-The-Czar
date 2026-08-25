@@ -3316,6 +3316,7 @@ export function createSisyphusRuntime(elements = {}) {
       motion.phase === PHASES.PLAY &&
       finePointer.matches &&
       !handIsHidden() &&
+      !(isSceneThree && (sceneThreePlacement.locked || sceneThreePlacement.released)) &&
       (!event.pointerType || event.pointerType === "mouse")
     );
   }
@@ -4592,7 +4593,10 @@ export function createSisyphusRuntime(elements = {}) {
       collab.localPointer.rockOffsetY = rockOffset.y;
     }
     collab.localPointer.mode = mode === "grabbing" ? "grabbing" : "grab";
-    collab.localPointer.visible = Boolean(visible);
+    collab.localPointer.visible = Boolean(
+      visible &&
+        !(isSceneThree && (sceneThreePlacement.locked || sceneThreePlacement.released)),
+    );
     return { ...collab.localPointer };
   }
 
@@ -7595,6 +7599,7 @@ export function createSisyphusRuntime(elements = {}) {
     rock.classList.remove("is-dragging", "is-falling");
     setGrabbingCursor(false);
     setHandToGrab();
+    hideHandCursor();
     releasePointerCapture(pointerId);
     renderSceneThreePlacementState({ animate: true });
     setPosition(imprint.x, imprint.y);
@@ -7605,7 +7610,7 @@ export function createSisyphusRuntime(elements = {}) {
       collab.pendingControl = false;
       collab.hasControl = false;
       collab.snapshots = [];
-      updateLocalSharedPointer(null, "grab", !handIsHidden());
+      sendSharedPointer(null, "grab", false, true);
       sendShared("sceneThree.lock", canonicalHit);
       updateSessionStatus();
     }
