@@ -706,6 +706,11 @@ export function createSisyphusRuntime(elements = {}) {
     enteredAt: null,
     ready: false,
   };
+  const sceneTwoSummitCompletion = {
+    magnetizing: false,
+    magnetTimerId: null,
+    scrollFrameId: null,
+  };
   const sceneThreePlacement = {
     locked: false,
     magnetizing: false,
@@ -4472,6 +4477,71 @@ export function createSisyphusRuntime(elements = {}) {
     syncAfterScroll();
   }
 
+  function clearSceneTwoSummitCompletion() {
+    if (sceneTwoSummitCompletion.magnetTimerId !== null) {
+      window.clearTimeout(sceneTwoSummitCompletion.magnetTimerId);
+      sceneTwoSummitCompletion.magnetTimerId = null;
+    }
+    if (sceneTwoSummitCompletion.scrollFrameId !== null) {
+      window.cancelAnimationFrame(sceneTwoSummitCompletion.scrollFrameId);
+      sceneTwoSummitCompletion.scrollFrameId = null;
+    }
+    sceneTwoSummitCompletion.magnetizing = false;
+    if (isSceneTwo) {
+      rock.classList.remove("is-imprint-magnetizing");
+    }
+  }
+
+  function startSceneTwoSummitCameraScroll() {
+    if (!isSceneTwo || !sceneFlow.completed) {
+      return;
+    }
+    if (sceneTwoSummitCompletion.scrollFrameId !== null) {
+      window.cancelAnimationFrame(sceneTwoSummitCompletion.scrollFrameId);
+    }
+
+    const scrollStep = () => {
+      sceneTwoSummitCompletion.scrollFrameId = null;
+      if (disposed || !sceneFlow.completed) {
+        return;
+      }
+
+      const currentScrollY = Math.max(0, window.scrollY);
+      const nextScrollY = currentScrollY < 0.1
+        ? 0
+        : cameraFollowDirectionalScrollY({
+            currentScrollY,
+            targetScrollY: 0,
+            upLerp: params.cameraFollowUpLerp,
+            downLerp: params.cameraFollowDownLerp,
+            followUp: true,
+            followDown: false,
+          });
+      if (nextScrollY !== currentScrollY) {
+        window.scrollTo(0, nextScrollY);
+        syncAfterScroll();
+        if (nextScrollY < currentScrollY && window.scrollY >= currentScrollY) {
+          window.scrollTo(0, 0);
+          syncAfterScroll();
+          return;
+        }
+      }
+      if (nextScrollY === 0 || window.scrollY <= 0.1) {
+        if (window.scrollY !== 0) {
+          window.scrollTo(0, 0);
+          syncAfterScroll();
+        }
+        return;
+      }
+
+      sceneTwoSummitCompletion.scrollFrameId =
+        window.requestAnimationFrame(scrollStep);
+    };
+
+    sceneTwoSummitCompletion.scrollFrameId =
+      window.requestAnimationFrame(scrollStep);
+  }
+
   function setSessionStatus(text, state = "local") {
     if (!sessionStatus) {
       return;
@@ -5468,6 +5538,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function resetSceneFlowState() {
+    clearSceneTwoSummitCompletion();
     resetSceneThreePlacement();
     sceneFlow.completed = false;
     sceneFlow.completionReason = "";
@@ -5555,14 +5626,41 @@ export function createSisyphusRuntime(elements = {}) {
     return true;
   }
 
+  function completeSceneTwoAtImprint() {
+    if (
+      !isSceneTwo ||
+      sceneFlow.completed ||
+      motion.phase !== PHASES.PLAY ||
+      !rockInsideImprint()
+    ) {
+      return false;
+    }
+    const imprint = activeLocalImprint();
+    if (!imprint) {
+      return false;
+    }
+
+    clearSceneTwoSummitCompletion();
+    sceneTwoSummitCompletion.magnetizing = true;
+    rock.classList.add("is-imprint-magnetizing");
+    rock.getBoundingClientRect();
+    setPosition(imprint.x, imprint.y);
+    if (!completeScene("rock-touched-imprint")) {
+      clearSceneTwoSummitCompletion();
+      return false;
+    }
+
+    sceneTwoSummitCompletion.magnetTimerId = window.setTimeout(() => {
+      sceneTwoSummitCompletion.magnetTimerId = null;
+      sceneTwoSummitCompletion.magnetizing = false;
+      rock.classList.remove("is-imprint-magnetizing");
+    }, 460);
+    startSceneTwoSummitCameraScroll();
+    return true;
+  }
+
   function maybeCompleteSceneTwo() {
-    return Boolean(
-      isSceneTwo &&
-        !sceneFlow.completed &&
-        motion.phase === PHASES.PLAY &&
-        rockInsideImprint() &&
-        completeScene("rock-touched-imprint"),
-    );
+    return completeSceneTwoAtImprint();
   }
 
   function maybeCompleteSceneThree() {
@@ -6402,7 +6500,7 @@ export function createSisyphusRuntime(elements = {}) {
     const releasedInImprint =
       motion.phase === PHASES.PLAY && rockInsideImprint();
     if (isSceneTwo && releasedInImprint) {
-      completeScene("rock-touched-imprint");
+      completeSceneTwoAtImprint();
       return;
     }
     if (isSceneTwo) {
@@ -8167,7 +8265,7 @@ export function createSisyphusRuntime(elements = {}) {
     const releasedInImprint =
       phaseAtRelease === PHASES.PLAY && rockInsideImprint();
     if (isSceneTwo && releasedInImprint) {
-      completeScene("rock-touched-imprint");
+      completeSceneTwoAtImprint();
       return;
     }
     if (isSceneTwo) {
@@ -8356,12 +8454,18 @@ export function createSisyphusRuntime(elements = {}) {
     resizeTrailCanvas();
     if (collab.enabled && collab.snapshots.length > 0) {
       applySharedFrame(collab.snapshots.at(-1));
+    } else if (isSceneTwo && sceneFlow.completed) {
+      const imprint = activeLocalImprint();
+      setPosition(imprint?.x ?? motion.x, imprint?.y ?? motion.y);
     } else if (motion.phase === PHASES.INTRO || motion.suspended) {
       centerIntroRock();
     } else {
       setPosition(motion.x, motion.y);
     }
     renderImprint();
+    if (isSceneTwo && sceneFlow.completed) {
+      startSceneTwoSummitCameraScroll();
+    }
     restartPreclickRockHopFromLastPointer();
   });
 
@@ -8766,6 +8870,7 @@ export function createSisyphusRuntime(elements = {}) {
       stopDrizzleLoopSound({ immediate: true });
       drizzleLoopController.dispose();
       resetFinalFallGate();
+      clearSceneTwoSummitCompletion();
       resetSceneThreePlacement();
       stopHandInteractionSounds({ immediate: true });
       stopGachiClickSound();

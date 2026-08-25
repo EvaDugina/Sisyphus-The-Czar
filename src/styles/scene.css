@@ -332,6 +332,7 @@ body[data-scene="scene-3"]:has(.rock.is-dragging) .rock-lens-canvas {
   filter: drop-shadow(0 1.35rem 1.3rem var(--shadow));
 }
 
+body[data-scene="scene-2"] .rock.is-imprint-magnetizing,
 body[data-scene="scene-3"] .rock.is-lens-rendered.is-imprint-magnetizing {
   transition:
     transform 360ms cubic-bezier(0.22, 1, 0.36, 1),

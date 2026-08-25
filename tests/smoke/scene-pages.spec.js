@@ -1028,23 +1028,81 @@ test("scene 2 пульсирует без руки и допускает пов�
   });
 });
 
-test("scene 2 завершается при первом контакте с отпечатком и остаётся там", async ({ page }) => {
+test("scene 2 магнитит камень в отпечаток и доскролливает камеру наверх", async ({ page }) => {
   await waitForDebugScene(page, "/scene-2", "turnip");
-  const completed = await page.evaluate(() => {
+  const completion = await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
     const imprint = api.activeLocalImprint();
-    api.setPosition(imprint.x, imprint.y);
-    return api.maybeCompleteSceneTwo();
+    const offsetX = Math.min(20, imprint.toleranceX / 2);
+    const offsetY = Math.min(20, imprint.toleranceY / 2);
+    api.params.cameraFollowUpEnabled = false;
+    api.setPosition(imprint.x + offsetX, imprint.y + offsetY);
+    scrollTo(0, document.documentElement.scrollHeight);
+    const scrollBefore = scrollY;
+    const completed = api.maybeCompleteSceneTwo();
+    return {
+      completed,
+      magnetizing: document.querySelector(".rock")
+        .classList.contains("is-imprint-magnetizing"),
+      offsetX,
+      offsetY,
+      repeated: api.maybeCompleteSceneTwo(),
+      scrollBefore,
+    };
   });
-  expect(completed).toBe(true);
+  expect(completion).toMatchObject({
+    completed: true,
+    magnetizing: true,
+    repeated: false,
+  });
+  expect(completion.offsetX).toBeGreaterThan(0);
+  expect(completion.offsetY).toBeGreaterThan(0);
+  expect(completion.scrollBefore).toBeGreaterThan(0);
   await expect(page.locator("body")).toHaveAttribute("data-scene-complete", "true");
   await expect(page.locator("body")).toHaveAttribute(
     "data-scene-completion-reason",
     "rock-touched-imprint",
   );
+  const centered = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    const imprint = api.activeLocalImprint();
+    return {
+      dx: Math.abs(api.motion.x - imprint.x),
+      dy: Math.abs(api.motion.y - imprint.y),
+    };
+  });
+  expect(centered.dx).toBeLessThan(0.5);
+  expect(centered.dy).toBeLessThan(0.5);
+  await expect
+    .poll(() => page.evaluate(() => scrollY), { timeout: 15_000 })
+    .toBe(0);
+  await expect(page.locator(ROCK)).not.toHaveClass(/is-imprint-magnetizing/);
   await page.waitForTimeout(300);
   await expect(page).toHaveURL(/\/scene-2$/);
   await expect(page.locator("body")).toHaveAttribute("data-scene-complete", "true");
+  const stableFinalState = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    const imprint = api.activeLocalImprint();
+    return {
+      dx: Math.abs(api.motion.x - imprint.x),
+      dy: Math.abs(api.motion.y - imprint.y),
+      scrollY,
+    };
+  });
+  expect(stableFinalState).toEqual({ dx: 0, dy: 0, scrollY: 0 });
+
+  await page.setViewportSize({ width: 1100, height: 650 });
+  await expect
+    .poll(() => page.evaluate(() => {
+      const api = window.__sisyphusTestApi;
+      const imprint = api.activeLocalImprint();
+      return {
+        dx: Math.abs(api.motion.x - imprint.x),
+        dy: Math.abs(api.motion.y - imprint.y),
+        scrollY,
+      };
+    }))
+    .toEqual({ dx: 0, dy: 0, scrollY: 0 });
 
   await page.getByRole("button", { name: "Начать сначала" }).click();
   await expect(page.locator("body")).toHaveAttribute("data-scene-complete", "false");
