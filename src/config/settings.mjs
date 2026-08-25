@@ -20,7 +20,7 @@ const GOGH_ARTWORK_FALLBACK_OPTIONS = Object.freeze([
   ]),
 ]);
 
-export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v55";
+export const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v56";
 export const SETTINGS_VERSIONS_STORAGE_KEY = "sisyphus-czar-settings-versions-v1";
 export const SETTINGS_SCENES = Object.freeze({
   CATS_AND_MICE: "cats-and-mice",
@@ -62,6 +62,7 @@ export function settingsVersionsStorageKeyForScene(sceneId) {
   return `${SETTINGS_VERSIONS_STORAGE_KEY}:${sceneId}`;
 }
 export const LEGACY_SETTINGS_STORAGE_KEYS = [
+  "sisyphus-czar-settings-v55",
   "sisyphus-czar-settings-v54",
   "sisyphus-czar-settings-v53",
   "sisyphus-czar-settings-v52",
@@ -506,9 +507,9 @@ export function settingsGroupControls(group) {
 
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickFirstHopOnClick",
-  "preclickHopGuardClickCount",
   "preclickHopSoundFilename",
   "preclickPopupDelayMs",
+  "preclickPopupBackgroundDelaySeconds",
   "preclickPopupWidthViewportFraction",
   "preclickPopupArtworkMode",
   "preclickPopupArtworkId",
@@ -1274,19 +1275,6 @@ export const SETTINGS_GROUPS = [
         hint: "В режиме hover первый отскок запускает вход руки в радиус камня. В режиме клик первый клик запускает отдельный отскок и не входит в количество фейковых кликов.",
       },
       {
-        name: "preclickHopGuardClickCount",
-        label: "Количество фейковых кликов",
-        type: "range",
-        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickHopGuardClickCount[0],
-        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
-          .preclickHopGuardClickCount[1],
-        step: 1,
-        defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
-        output: `${DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount}`,
-        hint: "Первые N кликов по камню вызывают фейковый отскок с выбранным звуком и открывают картины. Следующий клик создаёт ещё одну картину, поднимает открытые окна и завершает сцену 1; ноль отключает фейковые клики.",
-      },
-      {
         name: "preclickHopSoundFilename",
         label: "Звук фейкового клика",
         type: "select",
@@ -1304,6 +1292,20 @@ export const SETTINGS_GROUPS = [
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs,
         output: `${DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs}мс`,
         hint: "Задержка между фейковым кликом и показом очередной картины 01–03. Ноль показывает окно сразу.",
+      },
+      {
+        name: "preclickPopupBackgroundDelaySeconds",
+        label: "Возврат фокуса после настоящего клика, с",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickPopupBackgroundDelaySeconds[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickPopupBackgroundDelaySeconds[1],
+        step: 0.1,
+        defaultValue:
+          DEFAULT_ROOM_SETTINGS.preclickPopupBackgroundDelaySeconds,
+        output: `${DEFAULT_ROOM_SETTINGS.preclickPopupBackgroundDelaySeconds.toFixed(1)} с`,
+        hint: "Через выбранное время после первого настоящего клика открытые окна с картинами остаются открытыми, уходят с переднего плана, а фокус возвращается главному окну. Повторные клики не перезапускают таймер.",
       },
       {
         name: "preclickPopupWidthViewportFraction",

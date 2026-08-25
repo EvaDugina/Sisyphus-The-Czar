@@ -257,6 +257,13 @@ export function createWindowObstacleController(options = {}) {
   const clearTimeoutFn = options.clearTimeoutFn || window.clearTimeout.bind(window);
   const setIntervalFn = options.setIntervalFn || window.setInterval.bind(window);
   const clearIntervalFn = options.clearIntervalFn || window.clearInterval.bind(window);
+  const focusMainWindow =
+    options.focusMainWindow ||
+    (() => {
+      if (typeof window.focus === "function") {
+        window.focus();
+      }
+    });
   const onActiveWindowsChange = options.onActiveWindowsChange || (() => {});
   const onPermissionChange = options.onPermissionChange || (() => {});
 
@@ -268,6 +275,8 @@ export function createWindowObstacleController(options = {}) {
   let previousObstacleCount = 0;
   let previousSettingsSignature = "";
   let sharedPreclickPopupSize = null;
+  let preclickBackgroundTimerId = null;
+  let preclickWindowsBackgrounded = false;
   let preclickWindowsRevealed = false;
   let wasInsideRange = false;
   const trackedWindows = new Map();
@@ -558,6 +567,31 @@ export function createWindowObstacleController(options = {}) {
     }
   }
 
+  function backgroundPreclickWindow(entry) {
+    if (entry.kind !== "preclick") {
+      return false;
+    }
+    try {
+      if (entry.popup.closed) {
+        return false;
+      }
+      if (typeof entry.popup.blur === "function") {
+        entry.popup.blur();
+      }
+      return true;
+    } catch {
+      return false;
+    }
+  }
+
+  function focusMainAfterPreclickWindow() {
+    try {
+      focusMainWindow();
+    } catch {
+      // Browser focus policies may reject programmatic activation.
+    }
+  }
+
   function trackWindow(
     popup,
     kind,
@@ -586,7 +620,12 @@ export function createWindowObstacleController(options = {}) {
     ensureClosedPoll();
     notifyActiveObstacleCount();
     if (kind === "preclick" && preclickWindowsRevealed) {
-      revealPreclickWindow(entry);
+      if (preclickWindowsBackgrounded) {
+        backgroundPreclickWindow(entry);
+        focusMainAfterPreclickWindow();
+      } else {
+        revealPreclickWindow(entry);
+      }
     }
     return entry;
   }
@@ -595,6 +634,7 @@ export function createWindowObstacleController(options = {}) {
     if (disposed) {
       return 0;
     }
+    preclickWindowsBackgrounded = false;
     preclickWindowsRevealed = true;
     sweepClosedWindows();
     let revealedCount = 0;
@@ -604,6 +644,61 @@ export function createWindowObstacleController(options = {}) {
       }
     });
     return revealedCount;
+  }
+
+  function backgroundPreclickWindows() {
+    if (disposed) {
+      return 0;
+    }
+    preclickWindowsBackgrounded = true;
+    sweepClosedWindows();
+    let backgroundedCount = 0;
+    trackedWindows.forEach((entry) => {
+      if (backgroundPreclickWindow(entry)) {
+        backgroundedCount += 1;
+      }
+    });
+    focusMainAfterPreclickWindow();
+    return backgroundedCount;
+  }
+
+  function schedulePreclickWindowsBackground(delaySeconds = 0) {
+    if (disposed || preclickBackgroundTimerId !== null) {
+      return false;
+    }
+    const delayMs = clamp(
+      Math.round(finite(delaySeconds, 0) * 1000),
+      0,
+      5000,
+    );
+    if (delayMs === 0) {
+      backgroundPreclickWindows();
+      return true;
+    }
+    preclickBackgroundTimerId = setTimeoutFn(() => {
+      preclickBackgroundTimerId = null;
+      backgroundPreclickWindows();
+    }, delayMs);
+    return true;
+  }
+
+  function clearPreclickWindowsBackgroundTimer() {
+    if (preclickBackgroundTimerId === null) {
+      return false;
+    }
+    clearTimeoutFn(preclickBackgroundTimerId);
+    preclickBackgroundTimerId = null;
+    return true;
+  }
+
+  function resetPreclickWindowsBackground() {
+    if (disposed) {
+      return false;
+    }
+    clearPreclickWindowsBackgroundTimer();
+    preclickWindowsBackgrounded = false;
+    preclickWindowsRevealed = false;
+    return true;
   }
 
   function screenGeometry(currentSettings, test = false) {
@@ -830,6 +925,7 @@ export function createWindowObstacleController(options = {}) {
     }
     disposed = true;
     clearSchedule();
+    clearPreclickWindowsBackgroundTimer();
     pendingPreclickTimerIds.forEach((timerId) => clearTimeoutFn(timerId));
     pendingPreclickTimerIds.clear();
     [...trackedWindows.entries()].forEach(([id, entry]) =>
@@ -853,11 +949,13 @@ export function createWindowObstacleController(options = {}) {
         activeWindowCount: activeObstacleCount(),
         heightVh: currentRange.heightVh,
         pendingPreclickWindowCount: pendingPreclickTimerIds.size,
+        preclickBackgroundPending: preclickBackgroundTimerId !== null,
         permission,
         preclickPopupSize: sharedPreclickPopupSize
           ? { ...sharedPreclickPopupSize }
           : null,
         preclickWindowCount: activePreclickWindowCount(),
+        preclickWindowsBackgrounded,
         preclickWindowsRevealed,
         schedulePending: scheduleTimerId !== null,
         trackedWindowCount: trackedWindows.size,
@@ -866,6 +964,8 @@ export function createWindowObstacleController(options = {}) {
     },
     isControlBlocked: () => activeObstacleCount() > 0,
     openPreclickWindow,
+    resetPreclickWindowsBackground,
+    schedulePreclickWindowsBackground,
     revealPreclickWindows,
     refresh,
     testPopupPermission,

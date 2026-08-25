@@ -357,7 +357,7 @@ test("камень прыгает накопительно, сохраняет g
   const rock = page.locator(SOURCE_ROCK);
   await expect(rock).toHaveClass(/is-preclick-hop/);
   await page.evaluate(() => {
-    params.preclickHopGuardClickCount = 1;
+    params.preclickHopGuardClickCount = 2;
     params.preclickPopupArtworkMode = "single";
     params.preclickPopupArtworkId = "01.png";
     params.preclickHopActivationRadiusPercent = 50;
@@ -491,6 +491,13 @@ test("камень прыгает накопительно, сохраняет g
   await expect(popupImage).toHaveAttribute("src", /01[^/]*\.png/);
   await expect
     .poll(() =>
+      popupImage.evaluate(
+        (image) => image.complete && image.naturalWidth > 0 && image.naturalHeight > 0,
+      ),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
       popupImage.evaluate((image) => ({
         imageHeight: image.getBoundingClientRect().height,
         imageWidth: image.getBoundingClientRect().width,
@@ -513,9 +520,20 @@ test("камень прыгает накопительно, сохраняет g
   await fakeClickPopup.close();
   expect(fakeClickPopup.isClosed()).toBe(true);
   await page.bringToFront();
+  const secondFakeClickPoint = await rockCenter(page);
+  const secondPopupPromise = page.waitForEvent("popup");
+  await page.mouse.click(secondFakeClickPoint.x, secondFakeClickPoint.y);
+  const secondFakeClickPopup = await secondPopupPromise;
+  await expect(secondFakeClickPopup.locator("img")).toHaveAttribute(
+    "src",
+    /01[^/]*\.png/,
+  );
+  await secondFakeClickPopup.close();
+  expect(secondFakeClickPopup.isClosed()).toBe(true);
+  await page.bringToFront();
   await expect.poll(() => hopState(page)).toMatchObject({
-    guardClicksUsed: 1,
-    hopCount: beforeSilentClick.hopCount + 1,
+    guardClicksUsed: 2,
+    hopCount: beforeSilentClick.hopCount + 2,
     audioPlayCount: beforeSilentClick.audioPlayCount,
     activeAudioCount: 0,
   });
@@ -681,12 +699,48 @@ test("камень бесшовно переносится по обеим ос�
       cornerCenter,
     ),
   ).toBe(true);
-  const beforeGrabCenter = await rockCenter(page);
   const cdp = await page.context().newCDPSession(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopActivationRadiusPercent: 0,
+      preclickHopMaxDistancePercent: 0,
+      preclickHopSoundFilename: "none",
+      preclickPopupDelayMs: 0,
+    });
+  });
+  for (let click = 1; click <= 2; click += 1) {
+    const fakeClickPoint = await visibleRockPoint(page);
+    const popupPromise = page.waitForEvent("popup");
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: fakeClickPoint.x,
+      y: fakeClickPoint.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: fakeClickPoint.x,
+      y: fakeClickPoint.y,
+      button: "left",
+      clickCount: 1,
+    });
+    const popup = await popupPromise;
+    await popup.close();
+    await page.bringToFront();
+    await expect.poll(() => hopState(page)).toMatchObject({
+      completed: false,
+      guardClickCount: 2,
+      guardClicksUsed: click,
+      hopCount: 3 + click,
+    });
+  }
+  const realClickPoint = await visibleRockPoint(page);
+  const beforeGrabCenter = await rockCenter(page);
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mousePressed",
-    x: cornerCenter.x,
-    y: cornerCenter.y,
+    x: realClickPoint.x,
+    y: realClickPoint.y,
     button: "left",
     clickCount: 1,
   });
@@ -695,21 +749,21 @@ test("камень бесшовно переносится по обеим ос�
   expect(afterGrabCenter.worldY).toBeCloseTo(beforeGrabCenter.worldY, 0);
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,
-    hopCount: 3,
+    hopCount: 5,
     audioPlayCount: 3,
     offset: { x: 0, y: 0 },
   });
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mouseReleased",
-    x: cornerCenter.x,
-    y: cornerCenter.y,
+    x: realClickPoint.x,
+    y: realClickPoint.y,
     button: "left",
     clickCount: 1,
   });
   await cdp.detach();
 });
 
-test("режим клик отделяет первое отпрыгивание от N фейковых кликов", async ({
+test("режим клик отделяет первое отпрыгивание от двух фейковых кликов", async ({
   context,
   page,
 }) => {
@@ -825,7 +879,7 @@ test("режим клик отделяет первое отпрыгивание
   );
 });
 
-test("N фейковых кликов и два финальных окна имеют единый размер", async ({
+test("два фейковых клика, возврат фокуса и финальные окна имеют единый размер", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -841,11 +895,12 @@ test("N фейковых кликов и два финальных окна им
   const rock = page.locator(SOURCE_ROCK);
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
-      preclickHopGuardClickCount: 3,
+      preclickHopGuardClickCount: 2,
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
       preclickHopSoundFilename: "СимуляцияОргазма.mov",
       preclickPopupDelayMs: 0,
+      preclickPopupBackgroundDelaySeconds: 3,
       preclickPopupWidthViewportFraction: 0.2,
       preclickPopupArtworkMode: "single",
       preclickPopupArtworkId: "01.png",
@@ -902,7 +957,7 @@ test("N фейковых кликов и два финальных окна им
   await enterFromLeft(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: false,
-    guardClickCount: 3,
+    guardClickCount: 2,
     guardClicksUsed: 0,
     hopCount: 1,
     animating: false,
@@ -928,10 +983,10 @@ test("N фейковых кликов и два финальных окна им
     });
   });
   const cdp = await page.context().newCDPSession(page);
-  const popupWidthFractions = [0.1, 0.2, 0.4];
+  const popupWidthFractions = [0.1, 0.2];
   const fakeClickPopups = [];
   let sharedPopupSize = null;
-  for (let click = 1; click <= 3; click += 1) {
+  for (let click = 1; click <= 2; click += 1) {
     const widthFraction = popupWidthFractions[click - 1];
     await page.evaluate(({ nextArtworkId, nextWidthFraction }) => {
       window.__sisyphusTestApi.applyTestSettings({
@@ -994,10 +1049,16 @@ test("N фейковых кликов и два финальных окна им
     });
     await popup.evaluate(() => {
       window.__preclickFocusCalls = 0;
+      window.__preclickBlurCalls = 0;
       const nativeFocus = window.focus.bind(window);
+      const nativeBlur = window.blur.bind(window);
       window.focus = () => {
         window.__preclickFocusCalls += 1;
         nativeFocus();
+      };
+      window.blur = () => {
+        window.__preclickBlurCalls += 1;
+        nativeBlur();
       };
     });
     await page.bringToFront();
@@ -1010,7 +1071,7 @@ test("N фейковых кликов и два финальных окна им
     });
     await expect.poll(() => hopState(page)).toMatchObject({
       completed: false,
-      guardClickCount: 3,
+      guardClickCount: 2,
       guardClicksUsed: click,
       hopCount: click + 1,
       audioPlayCount: click + 1,
@@ -1037,7 +1098,16 @@ test("N фейковых кликов и два финальных окна им
   const realClickPoint = await visibleRockPoint(page);
   const finalPopups = [];
   const captureFinalPopup = (popup) => finalPopups.push(popup);
+  await page.evaluate(() => {
+    window.__preclickMainFocusCalls = 0;
+    const nativeFocus = window.focus.bind(window);
+    window.focus = () => {
+      window.__preclickMainFocusCalls += 1;
+      nativeFocus();
+    };
+  });
   page.on("popup", captureFinalPopup);
+  const realClickStartedAt = Date.now();
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mousePressed",
     x: realClickPoint.x,
@@ -1047,6 +1117,48 @@ test("N фейковых кликов и два финальных окна им
   });
   await expect.poll(() => finalPopups.length).toBe(2);
   page.off("popup", captureFinalPopup);
+  await Promise.all(
+    finalPopups.map((popup) =>
+      popup.evaluate(() => {
+        window.__preclickBlurCalls = 0;
+        const nativeBlur = window.blur.bind(window);
+        window.blur = () => {
+          window.__preclickBlurCalls += 1;
+          nativeBlur();
+        };
+      }),
+    ),
+  );
+  expect(
+    await page.evaluate(() => window.__sisyphusTestApi.getPreclickPopupState()),
+  ).toMatchObject({
+    preclickBackgroundPending: true,
+    preclickWindowsBackgrounded: false,
+  });
+  await page.waitForTimeout(Math.max(0, 1200 - (Date.now() - realClickStartedAt)));
+  for (let click = 0; click < 2; click += 1) {
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mousePressed",
+      x: realClickPoint.x,
+      y: realClickPoint.y,
+      button: "left",
+      clickCount: 1,
+    });
+    await cdp.send("Input.dispatchMouseEvent", {
+      type: "mouseReleased",
+      x: realClickPoint.x,
+      y: realClickPoint.y,
+      button: "left",
+      clickCount: 1,
+    });
+  }
+  expect(finalPopups).toHaveLength(2);
+  expect(
+    await page.evaluate(() => window.__sisyphusTestApi.getPreclickPopupState()),
+  ).toMatchObject({
+    preclickBackgroundPending: true,
+    preclickWindowsBackgrounded: false,
+  });
   await expect
     .poll(() =>
       Promise.all(
@@ -1058,8 +1170,8 @@ test("N фейковых кликов и два финальных окна им
     .toEqual(fakeClickPopups.map(() => 1));
   for (const finalPopup of finalPopups) {
     const finalPopupImage = finalPopup.locator("img");
-    await expect(finalPopupImage).toHaveAttribute("alt", "Картина 03");
-    await expect(finalPopupImage).toHaveAttribute("src", /03[^/]*\.png/);
+    await expect(finalPopupImage).toHaveAttribute("alt", "Картина 02");
+    await expect(finalPopupImage).toHaveAttribute("src", /02[^/]*\.png/);
     await expect
       .poll(() =>
         finalPopupImage.evaluate((image) => ({
@@ -1078,9 +1190,9 @@ test("N фейковых кликов и два финальных окна им
   }
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,
-    guardClickCount: 3,
-    guardClicksUsed: 3,
-    hopCount: 4,
+    guardClickCount: 2,
+    guardClicksUsed: 2,
+    hopCount: 3,
     offset: { x: 0, y: 0 },
   });
   await expect
@@ -1091,6 +1203,32 @@ test("N фейковых кликов и два финальных окна им
       preclickWindowCount: fakeClickPopups.length + finalPopups.length,
       preclickWindowsRevealed: true,
     });
+  await expect
+    .poll(() => page.evaluate(
+      () => window.__sisyphusTestApi.getPreclickPopupState(),
+    ))
+    .toMatchObject({
+      preclickBackgroundPending: false,
+      preclickWindowsBackgrounded: true,
+    });
+  expect(Date.now() - realClickStartedAt).toBeLessThan(3800);
+  await expect
+    .poll(() =>
+      Promise.all(
+        [...fakeClickPopups, ...finalPopups].map((popup) =>
+          popup.evaluate(() => window.__preclickBlurCalls),
+        ),
+      ),
+    )
+    .toEqual([...fakeClickPopups, ...finalPopups].map(() => 1));
+  await expect
+    .poll(() => page.evaluate(() => window.__preclickMainFocusCalls))
+    .toBe(1);
+  expect(
+    await Promise.all(
+      [...fakeClickPopups, ...finalPopups].map((popup) => popup.isClosed()),
+    ),
+  ).toEqual([...fakeClickPopups, ...finalPopups].map(() => false));
   await expect
     .poll(() => page.evaluate(() => window.__controlAcquireMessages.length))
     .toBe(0);

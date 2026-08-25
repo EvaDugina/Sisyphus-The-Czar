@@ -121,7 +121,10 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator(".settings-panel__scene-title")).toHaveText(
     "Параметры · Сцена 1. Кошки-мышки",
   );
-  await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(1);
+  await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
+  await expect(
+    page.locator('[name="preclickPopupBackgroundDelaySeconds"]'),
+  ).toHaveValue("1");
   await expect(page.locator('[name="preclickFirstHopOnClick"]')).toHaveCount(1);
   const fakeClickSound = page.locator('[name="preclickHopSoundFilename"]');
   const artworkMode = page.locator('[name="preclickPopupArtworkMode"]');
@@ -276,7 +279,7 @@ test("общие параметры мигрируют по предыдущей
     sessionStorage.setItem("shared-scene-settings-seeded", "true");
     localStorage.removeItem("sisyphus-czar-shared-scene-settings-v1");
     localStorage.setItem(
-      "sisyphus-czar-settings-v55:cats-and-mice",
+      "sisyphus-czar-settings-v56:cats-and-mice",
       JSON.stringify({
         rockMinWidthVw: 21,
         rockPulseShrinkPercent: 3.7,
@@ -284,7 +287,7 @@ test("общие параметры мигрируют по предыдущей
       }),
     );
     localStorage.setItem(
-      "sisyphus-czar-settings-v55:turnip",
+      "sisyphus-czar-settings-v56:turnip",
       JSON.stringify({
         gravity: 7,
         rockMinWidthVw: 31,
@@ -293,7 +296,7 @@ test("общие параметры мигрируют по предыдущей
       }),
     );
     localStorage.setItem(
-      "sisyphus-czar-settings-v55:juices",
+      "sisyphus-czar-settings-v56:juices",
       JSON.stringify({
         gravity: 9,
         rockMinWidthVw: 41,
@@ -369,7 +372,7 @@ test("scene 1 запускает сохранённый дробный пуль�
 }) => {
   await page.addInitScript(() => {
     localStorage.setItem(
-      "sisyphus-czar-settings-v55:cats-and-mice",
+      "sisyphus-czar-settings-v56:cats-and-mice",
       JSON.stringify({
         rockPulseBpm: 240,
         rockPulseEnabled: true,
@@ -676,14 +679,15 @@ test("скрытые настройки не оказывают клиентск
   });
 });
 
-test("настройки сцены 1 мигрируют из v54 в v55 со звуком фейкового клика", async ({
+test("настройки сцены 1 мигрируют из v55 в v56 с фиксированными кликами и задержкой фокуса", async ({
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v56:cats-and-mice");
     localStorage.setItem(
-      "sisyphus-czar-settings-v54:cats-and-mice",
+      "sisyphus-czar-settings-v55:cats-and-mice",
       JSON.stringify({
+        preclickHopGuardClickCount: 9,
         preclickPopupWidthViewportFraction: 0.3,
       }),
     );
@@ -706,7 +710,7 @@ test("настройки сцены 1 мигрируют из v54 в v55 со з
 
   const migrated = await page.evaluate(() => {
     const stored = JSON.parse(
-      localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+      localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
     );
     return {
       hasLegacyPopupSize: Object.hasOwn(
@@ -714,6 +718,8 @@ test("настройки сцены 1 мигрируют из v54 в v55 со з
         "preclickPopupSizeMultiplier",
       ),
       popupWidth: stored.preclickPopupWidthViewportFraction,
+      backgroundDelaySeconds: stored.preclickPopupBackgroundDelaySeconds,
+      guardClickCount: stored.preclickHopGuardClickCount,
       artworkMode: stored.preclickPopupArtworkMode,
       artworkId: stored.preclickPopupArtworkId,
       soundFilename: stored.preclickHopSoundFilename,
@@ -723,6 +729,8 @@ test("настройки сцены 1 мигрируют из v54 в v55 со з
   expect(migrated).toEqual({
     hasLegacyPopupSize: false,
     popupWidth: 0.3,
+    backgroundDelaySeconds: 1,
+    guardClickCount: 2,
     artworkMode: "shuffle",
     artworkId: "01.png",
     soundFilename: "Смех.mp3",

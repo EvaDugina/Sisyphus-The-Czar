@@ -479,6 +479,14 @@ export function createSisyphusRuntime(elements = {}) {
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
     preclickHopSoundFilename:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopSoundFilename,
+    preclickPopupDelayMs:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs,
+    preclickPopupBackgroundDelaySeconds:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+        .preclickPopupBackgroundDelaySeconds,
+    preclickPopupWidthViewportFraction:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+        .preclickPopupWidthViewportFraction,
     preclickPopupArtworkMode:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickPopupArtworkMode,
     preclickPopupArtworkId:
@@ -5567,6 +5575,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function resetLocalExperience() {
+    preclickPopupController.resetPreclickWindowsBackground();
     resetSceneFlowState();
     const pointerId = motion.activePointerId;
     releaseRockPress();
@@ -8028,6 +8037,9 @@ export function createSisyphusRuntime(elements = {}) {
       preclickPopupController.revealPreclickWindows();
       openPreclickArtworkWindow(event);
       openPreclickArtworkWindow(event, { edgePosition: true });
+      preclickPopupController.schedulePreclickWindowsBackground(
+        params.preclickPopupBackgroundDelaySeconds,
+      );
       playRockPointerDownSound();
       showHandCursor(event);
       scheduleGrabbingHandImage();

@@ -9,21 +9,23 @@ async function waitForFoldReady(page) {
 
 async function navigateToSettings(page) {
   const settingsToggle = page.locator(".settings-toggle");
+  const settingsPanel = page.locator("#settings-panel");
   if ((await settingsToggle.count()) === 0) {
-    await expect(page.locator("#settings-panel")).toHaveAttribute(
-      "aria-hidden",
-      "false",
-    );
+    await expect(settingsPanel).toHaveAttribute("aria-hidden", "false");
     return;
   }
   const href = await settingsToggle.getAttribute("href");
+  if (!href) {
+    if ((await settingsPanel.getAttribute("aria-hidden")) !== "false") {
+      await settingsToggle.click();
+    }
+    await expect(settingsPanel).toHaveAttribute("aria-hidden", "false");
+    return;
+  }
   expect(href).toMatch(/^\/settings\//);
   await page.goto(href);
   await expect(page).toHaveURL(/\/settings\//);
-  await expect(page.locator("#settings-panel")).toHaveAttribute(
-    "aria-hidden",
-    "false",
-  );
+  await expect(settingsPanel).toHaveAttribute("aria-hidden", "false");
 }
 
 async function setSettingValue(page, name, value) {
@@ -80,7 +82,7 @@ test("legacy drafts маршруты возвращают 404", async ({ request
 
 test("Fold-настройки мигрируют из localStorage v32 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v56:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v32",
       JSON.stringify({
@@ -99,7 +101,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v52", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
         );
         return {
           foldAngle: stored.foldAngle,
@@ -125,7 +127,7 @@ test("Fold-настройки мигрируют из localStorage v32 в v52", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
         );
         return [stored.foldAngle, stored.foldZoneSize];
       }),
@@ -137,7 +139,7 @@ test("настройки popup и берёз мигрируют из localStorag
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v56:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v47",
       JSON.stringify({ preclickPopupDelayMs: 345 }),
@@ -150,7 +152,7 @@ test("настройки popup и берёз мигрируют из localStorag
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
         );
         return {
           delay: stored.preclickPopupDelayMs,
@@ -172,7 +174,7 @@ test("hop-настройки мигрируют из localStorage v39 в v52 б�
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v56:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v39",
       JSON.stringify({
@@ -192,7 +194,7 @@ test("hop-настройки мигрируют из localStorage v39 в v52 б�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
         );
         return {
           guardClicks: stored.preclickHopGuardClickCount,
@@ -224,7 +226,7 @@ test("визуальные настройки камня мигрируют из
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v56:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v34",
       JSON.stringify({ rockPressShrinkPercent: 17 }),
@@ -237,7 +239,7 @@ test("визуальные настройки камня мигрируют из
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
         );
         return {
           rockImageId: stored.rockImageId,
@@ -257,7 +259,7 @@ test("визуальные настройки камня мигрируют из
 
 test("настройки руки мигрируют из localStorage v36 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v56:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v36",
       JSON.stringify({ handAlwaysVisible: false }),
@@ -270,7 +272,7 @@ test("настройки руки мигрируют из localStorage v36 в v5
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
         );
         return {
           handVisibilityMode: stored.handVisibilityMode,
@@ -288,7 +290,7 @@ test("настройки руки мигрируют из localStorage v36 в v5
 
 test("раскладка Fold мигрирует из localStorage v37 в v52", async ({ page }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v56:cats-and-mice");
     localStorage.setItem(
       "sisyphus-czar-settings-v37",
       JSON.stringify({ foldZoneSize: 14 }),
@@ -301,7 +303,7 @@ test("раскладка Fold мигрирует из localStorage v37 в v52", 
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
         );
         return {
           foldPanelHeightVh: stored.foldPanelHeightVh,
@@ -316,14 +318,16 @@ test("группы Камень и След камня показывают ко
   page,
 }) => {
   await page.addInitScript(() => {
-    localStorage.removeItem("sisyphus-czar-settings-v55:cats-and-mice");
+    localStorage.removeItem("sisyphus-czar-settings-v56:cats-and-mice");
   });
 
   await page.goto("/");
   await waitForFoldReady(page);
   await navigateToSettings(page);
 
-  const guardClicks = page.locator('[name="preclickHopGuardClickCount"]');
+  const backgroundDelay = page.locator(
+    '[name="preclickPopupBackgroundDelaySeconds"]',
+  );
   const popupDelay = page.locator('[name="preclickPopupDelayMs"]');
   const popupWidth = page.locator(
     '[name="preclickPopupWidthViewportFraction"]',
@@ -336,13 +340,14 @@ test("группы Камень и След камня показывают ко
   const distanceOutput = page.locator(
     '[data-output="preclickHopMaxDistancePercent"]',
   );
-  await expect(guardClicks).toHaveValue("1");
-  await expect(guardClicks).toHaveAttribute("min", "0");
-  await expect(guardClicks).toHaveAttribute("max", "10");
-  await expect(guardClicks).toHaveAttribute("step", "1");
+  await expect(backgroundDelay).toHaveValue("1");
+  await expect(backgroundDelay).toHaveAttribute("min", "0");
+  await expect(backgroundDelay).toHaveAttribute("max", "5");
+  await expect(backgroundDelay).toHaveAttribute("step", "0.1");
   await expect(
-    guardClicks.locator("xpath=ancestor::*[@data-setting-control]")
-  ).toContainText("Количество фейковых кликов");
+    backgroundDelay.locator("xpath=ancestor::*[@data-setting-control]")
+  ).toContainText("Возврат фокуса после настоящего клика, с");
+  await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
   await expect(popupDelay).toHaveValue("200");
   await expect(popupDelay).toHaveAttribute("min", "0");
   await expect(popupDelay).toHaveAttribute("max", "1000");
@@ -417,7 +422,9 @@ test("панель показывает параметры и разделы в�
   });
   const sceneTwo = page.getByRole("button", { name: "Сцена 2. Репка" });
   const sceneThree = page.getByRole("button", { name: "Сцена 3. Соки" });
-  const fakeClicks = page.locator('[name="preclickHopGuardClickCount"]');
+  const sceneOneOnly = page.locator(
+    '[name="preclickPopupBackgroundDelaySeconds"]',
+  );
   const gravity = page.locator('[name="gravity"]');
   const theme = page.locator('[name="themeMode"]');
   const cameraFollowUp = page.locator('[name="cameraFollowUpEnabled"]');
@@ -428,7 +435,7 @@ test("панель показывает параметры и разделы в�
     '[name="sceneTwoOverflowYVisible"]',
   );
   const gachiClickSound = page.locator('[name="gachiClickSoundFilename"]');
-  const fakeClicksControl = fakeClicks.locator(
+  const sceneOneOnlyControl = sceneOneOnly.locator(
     "xpath=ancestor::*[@data-setting-control]",
   );
   const gravityControl = gravity.locator(
@@ -475,7 +482,7 @@ test("панель показывает параметры и разделы в�
   await expect(sceneOne).toHaveAttribute("aria-pressed", "true");
   await expect(sceneTwo).toHaveAttribute("aria-pressed", "false");
   await expect(sceneThree).toHaveAttribute("aria-pressed", "false");
-  await expect(fakeClicksControl).not.toHaveAttribute("hidden", "");
+  await expect(sceneOneOnlyControl).not.toHaveAttribute("hidden", "");
   await expect(gravityControl).toHaveAttribute("hidden", "");
   await expect(cameraFollowUpControl).toHaveAttribute("hidden", "");
   await expect(cameraFollowDownControl).toHaveAttribute("hidden", "");
@@ -495,7 +502,7 @@ test("панель показывает параметры и разделы в�
   await sceneTwo.click();
   await expect(sceneOne).toHaveAttribute("aria-pressed", "false");
   await expect(sceneTwo).toHaveAttribute("aria-pressed", "true");
-  await expect(fakeClicksControl).toHaveAttribute("hidden", "");
+  await expect(sceneOneOnlyControl).toHaveAttribute("hidden", "");
   await expect(gravityControl).not.toHaveAttribute("hidden", "");
   await expect(cameraFollowUpControl).not.toHaveAttribute("hidden", "");
   await expect(cameraFollowDownControl).not.toHaveAttribute("hidden", "");
@@ -529,7 +536,7 @@ test("панель показывает параметры и разделы в�
   await expect(gachiClickSound).toHaveValue("Like that.mp3");
 
   await sceneOne.click();
-  await expect(fakeClicksControl).not.toHaveAttribute("hidden", "");
+  await expect(sceneOneOnlyControl).not.toHaveAttribute("hidden", "");
   await expect(gravityControl).toHaveAttribute("hidden", "");
   await expect(theme).toHaveValue("dark");
   await expect(trailGroup).not.toHaveAttribute("hidden", "");
@@ -1363,7 +1370,7 @@ test("Fold синхронизирует сцену и применяет общ�
     .poll(() =>
       page.evaluate(() => {
         const stored = JSON.parse(
-          localStorage.getItem("sisyphus-czar-settings-v55:cats-and-mice") || "{}",
+          localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice") || "{}",
         );
         return {
           glowOptimizationMode: stored.glowOptimizationMode,

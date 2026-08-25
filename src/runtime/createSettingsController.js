@@ -28,7 +28,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.map(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 53;
+const SETTINGS_SCHEMA_VERSION = 59;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
@@ -1394,8 +1394,8 @@ export function createSettingsController(options) {
       rockPulseShrinkPercent:
         `${Number(params.rockPulseShrinkPercent.toFixed(1))}%`,
       rockPulseBpm: `${params.rockPulseBpm.toFixed(0)} BPM`,
-      preclickHopGuardClickCount:
-        params.preclickHopGuardClickCount.toFixed(0),
+      preclickPopupBackgroundDelaySeconds:
+        `${params.preclickPopupBackgroundDelaySeconds.toFixed(1)} с`,
       preclickPopupWidthViewportFraction:
         `${Math.round(params.preclickPopupWidthViewportFraction * 100)}vw`,
       rockEchoTrailCopies: params.rockEchoTrailCopies.toFixed(0),

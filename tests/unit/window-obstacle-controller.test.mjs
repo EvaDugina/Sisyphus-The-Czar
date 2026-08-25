@@ -89,6 +89,7 @@ function createPopup(features = "") {
   const resizeCalls = [];
   const moveCalls = [];
   const focusCalls = [];
+  const blurCalls = [];
   const requestedOuterWidth = featureNumber(features, "width", 320);
   const requestedOuterHeight = featureNumber(features, "height", 240);
   const body = {
@@ -100,6 +101,7 @@ function createPopup(features = "") {
   };
   const popup = {
     closed: false,
+    blurCalls,
     innerHeight: Math.max(1, requestedOuterHeight - chromeHeight),
     innerWidth: Math.max(1, requestedOuterWidth - chromeWidth),
     focusCalls,
@@ -109,6 +111,9 @@ function createPopup(features = "") {
     resizeCalls,
     close() {
       this.closed = true;
+    },
+    blur() {
+      blurCalls.push(true);
     },
     click() {
       listeners.get("click")?.();
@@ -167,11 +172,13 @@ function setup({ blocked = false, random = () => 0 } = {}) {
   const popups = [];
   const activeCounts = [];
   const permissions = [];
+  const mainFocusCalls = [];
   const popupState = { blocked };
   const controller = createWindowObstacleController({
     clearIntervalFn: (id) => clock.clearInterval(id),
     clearTimeoutFn: (id) => clock.clearTimeout(id),
     getHeightVh: () => height.value,
+    focusMainWindow: () => mainFocusCalls.push(true),
     getScreen: () => ({
       availHeight: 900,
       availLeft: 10,
@@ -200,6 +207,7 @@ function setup({ blocked = false, random = () => 0 } = {}) {
     clock,
     controller,
     height,
+    mainFocusCalls,
     permissions,
     popups,
     popupState,
@@ -449,6 +457,75 @@ test("первый настоящий клик восстанавливает о
   assert.equal(controller.revealPreclickWindows(), 1);
   assert.equal(controller.getState().preclickWindowCount, 1);
   assert.equal(popups[1].popup.focusCalls.length, 2);
+});
+
+test("возврат фокуса использует один таймер и оставляет popup открытыми", () => {
+  const { clock, controller, mainFocusCalls, popups } = setup();
+  controller.openPreclickWindow({ delayMs: 0, width: 120 });
+  controller.openPreclickWindow({ delayMs: 0, width: 120 });
+  controller.revealPreclickWindows();
+
+  assert.equal(controller.schedulePreclickWindowsBackground(1), true);
+  assert.equal(controller.schedulePreclickWindowsBackground(4), false);
+  assert.equal(controller.getState().preclickBackgroundPending, true);
+  clock.tick(999);
+  assert.deepEqual(popups.map(({ popup }) => popup.blurCalls.length), [0, 0]);
+  assert.equal(mainFocusCalls.length, 0);
+
+  clock.tick(1);
+  assert.equal(controller.getState().preclickBackgroundPending, false);
+  assert.equal(controller.getState().preclickWindowsBackgrounded, true);
+  assert.deepEqual(popups.map(({ popup }) => popup.blurCalls.length), [1, 1]);
+  assert.deepEqual(popups.map(({ popup }) => popup.closed), [false, false]);
+  assert.equal(mainFocusCalls.length, 1);
+});
+
+test("restart сбрасывает таймер и background-состояние без закрытия popup", () => {
+  const { clock, controller, mainFocusCalls, popups } = setup();
+  controller.openPreclickWindow({ delayMs: 0, width: 120 });
+  controller.revealPreclickWindows();
+  controller.schedulePreclickWindowsBackground(1);
+
+  assert.equal(controller.resetPreclickWindowsBackground(), true);
+  assert.equal(controller.getState().preclickBackgroundPending, false);
+  assert.equal(controller.getState().preclickWindowsBackgrounded, false);
+  assert.equal(controller.getState().preclickWindowsRevealed, false);
+  clock.tick(1000);
+
+  assert.equal(popups[0].popup.blurCalls.length, 0);
+  assert.equal(popups[0].popup.closed, false);
+  assert.equal(mainFocusCalls.length, 0);
+});
+
+test("dispose отменяет активный таймер возврата фокуса", () => {
+  const { clock, controller, mainFocusCalls, popups } = setup();
+  controller.openPreclickWindow({ delayMs: 0, width: 120 });
+  controller.revealPreclickWindows();
+  controller.schedulePreclickWindowsBackground(1);
+  controller.dispose();
+  clock.tick(1000);
+
+  assert.equal(popups[0].popup.blurCalls.length, 0);
+  assert.equal(popups[0].popup.closed, false);
+  assert.equal(mainFocusCalls.length, 0);
+});
+
+test("отложенный popup не перехватывает фокус после завершения таймера", () => {
+  const { clock, controller, mainFocusCalls, popups } = setup();
+  controller.openPreclickWindow({ delayMs: 1000, width: 120 });
+  controller.revealPreclickWindows();
+  controller.schedulePreclickWindowsBackground(0.5);
+
+  clock.tick(500);
+  assert.equal(controller.getState().preclickWindowsBackgrounded, true);
+  assert.equal(mainFocusCalls.length, 1);
+  clock.tick(500);
+
+  assert.equal(popups.length, 1);
+  assert.equal(popups[0].popup.focusCalls.length, 0);
+  assert.equal(popups[0].popup.blurCalls.length, 1);
+  assert.equal(popups[0].popup.closed, false);
+  assert.equal(mainFocusCalls.length, 2);
 });
 
 test("окна перекрываются, закрываются независимо и не создают дублирующий таймер", () => {

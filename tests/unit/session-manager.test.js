@@ -723,7 +723,8 @@ test("persisted session мигрирует Fold, отскок, камень и �
   );
   assert.equal(session.roomSettings.preclickHopMaxDistancePercent, 45);
   assert.equal(session.roomSettings.preclickHopActivationRadiusPercent, 36);
-  assert.equal(session.roomSettings.preclickHopGuardClickCount, 1);
+  assert.equal(session.roomSettings.preclickHopGuardClickCount, 2);
+  assert.equal(session.roomSettings.preclickPopupBackgroundDelaySeconds, 1);
   assert.equal(
     Object.hasOwn(session.roomSettings, "preclickParallaxActivationRadiusVw"),
     false,
@@ -842,7 +843,8 @@ test("roomSettings.update синхронизирует размер руки и 
     sceneHeightScreens: 50,
     handWidthVw: 42.5,
     handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
-    preclickHopGuardClickCount: 3,
+    preclickHopGuardClickCount: 2,
+    preclickPopupBackgroundDelaySeconds: 3.4,
     preclickHopActivationRadiusPercent: 36,
     preclickHopMaxDistancePercent: 72,
     handVisibilityMode: "hidden",
@@ -872,6 +874,7 @@ test("roomSettings.update синхронизирует размер руки и 
       handWidthVw: 42.5,
       handForceDeficitEasing: "cubic-bezier(0, 0, 1, 1)",
       preclickHopGuardClickCount: 3,
+      preclickPopupBackgroundDelaySeconds: 3.4,
       preclickHopActivationRadiusPercent: 36,
       preclickHopMaxDistancePercent: 72,
       handVisibilityMode: "hidden",

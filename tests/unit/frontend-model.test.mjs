@@ -1,5 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
+import VersionedLocalSettings from "../../server/versioned-local-settings.js";
+import "../../shared/physics.js";
 import {
   canonicalToLocalPosition,
   localToCanonicalPosition,
@@ -150,6 +152,7 @@ import {
 } from "../../src/runtime/createSettingsController.prod.js";
 
 const SharedRoomSettings = globalThis.SisyphusRoomSettings;
+const SharedPhysics = globalThis.SisyphusPhysics;
 const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
   "preclickParallaxActivationRadiusVw",
   "preclickParallaxActivationRadiusPx",
@@ -172,6 +175,9 @@ const DEFAULT_PRECLICK_HOP_SETTINGS = Object.freeze({
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
   preclickPopupDelayMs:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickPopupDelayMs,
+  preclickPopupBackgroundDelaySeconds:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+      .preclickPopupBackgroundDelaySeconds,
   preclickHopActivationRadiusPercent:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusPercent,
   preclickHopMaxDistancePercent:
@@ -210,6 +216,32 @@ test("production settings controller сохраняет контракт пус�
   const controller = createProductionSettingsController();
   assert.equal(controller.enabled, false);
   assert.deepEqual(controller.load(), []);
+});
+
+test("каждое UI-поле всех сцен входит в файловый canonical snapshot", () => {
+  const persistedSettingNames = new Set([
+    ...SharedRoomSettings.ROOM_SETTINGS_KEYS,
+    ...Object.keys(SharedPhysics.DEFAULT_PHYSICS),
+    ...Object.keys(VersionedLocalSettings.DEFAULT_VERSIONED_LOCAL_SETTINGS),
+  ]);
+  const controls = SETTINGS_GROUPS.flatMap(settingsGroupControls);
+  const controlNames = controls.map((control) => control.name);
+
+  assert.equal(new Set(controlNames).size, controlNames.length);
+  assert.deepEqual(
+    controlNames.filter((name) => !persistedSettingNames.has(name)),
+    [],
+  );
+  for (const sceneId of Object.values(SETTINGS_SCENES)) {
+    const sceneControlNames = settingsGroupsForScene(sceneId)
+      .flatMap(settingsGroupControls)
+      .map((control) => control.name);
+    assert.ok(sceneControlNames.length > 0);
+    assert.equal(
+      sceneControlNames.every((name) => persistedSettingNames.has(name)),
+      true,
+    );
+  }
 });
 
 test("визуальная точка следа сохраняет позицию после canonical round-trip", () => {
@@ -587,8 +619,8 @@ test("настройки инерции и hop отображают актуал
   const preclickHopActivationRadius = controls.find(
     (control) => control.name === "preclickHopActivationRadiusPercent"
   );
-  const preclickHopGuardClickCount = controls.find(
-    (control) => control.name === "preclickHopGuardClickCount"
+  const preclickPopupBackgroundDelay = controls.find(
+    (control) => control.name === "preclickPopupBackgroundDelaySeconds",
   );
   const preclickFirstHopOnClick = controls.find(
     (control) => control.name === "preclickFirstHopOnClick",
@@ -636,8 +668,8 @@ test("настройки инерции и hop отображают актуал
     (control) => control.name === "wallImpactSoundFilename",
   );
 
-  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v55");
-  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v54");
+  assert.equal(SETTINGS_STORAGE_KEY, "sisyphus-czar-settings-v56");
+  assert.equal(LEGACY_SETTINGS_STORAGE_KEYS[0], "sisyphus-czar-settings-v55");
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
@@ -757,18 +789,17 @@ test("настройки инерции и hop отображают актуал
       inactiveLabel: "hover",
     },
   );
+  assert.equal(
+    controls.some((control) => control.name === "preclickHopGuardClickCount"),
+    false,
+  );
   assert.deepEqual(
-    {
-      min: preclickHopGuardClickCount.min,
-      max: preclickHopGuardClickCount.max,
-      step: preclickHopGuardClickCount.step,
-      defaultValue: preclickHopGuardClickCount.defaultValue,
-    },
-    { min: 0, max: 10, step: 1, defaultValue: 1 }
+    SharedRoomSettings.ROOM_SETTINGS_LIMITS.preclickHopGuardClickCount,
+    [2, 2],
   );
   assert.equal(
-    preclickHopGuardClickCount.label,
-    "Количество фейковых кликов"
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
+    2,
   );
   assert.deepEqual(
     {
@@ -785,6 +816,22 @@ test("настройки инерции и hop отображают актуал
       step: 1,
       defaultValue: 200,
     }
+  );
+  assert.deepEqual(
+    {
+      label: preclickPopupBackgroundDelay.label,
+      min: preclickPopupBackgroundDelay.min,
+      max: preclickPopupBackgroundDelay.max,
+      step: preclickPopupBackgroundDelay.step,
+      defaultValue: preclickPopupBackgroundDelay.defaultValue,
+    },
+    {
+      label: "Возврат фокуса после настоящего клика, с",
+      min: 0,
+      max: 5,
+      step: 0.1,
+      defaultValue: 1,
+    },
   );
   assert.deepEqual(
     {
@@ -955,9 +1002,9 @@ test("UI материализует параметры для каждой scene
       .map((control) => control.name),
     [
       "preclickFirstHopOnClick",
-      "preclickHopGuardClickCount",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
+      "preclickPopupBackgroundDelaySeconds",
       "preclickPopupWidthViewportFraction",
       "preclickPopupArtworkMode",
       "preclickPopupArtworkId",
@@ -1343,7 +1390,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 58);
+  assert.equal(productionSettingsSchemaVersion, 59);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1968,8 +2015,8 @@ test("настройки размера камня есть в UI и получ�
   const foldRockImageId = controls.find(
     (control) => control.name === "foldRockImageId",
   );
-  const preclickHopGuardClickCount = controls.find(
-    (control) => control.name === "preclickHopGuardClickCount",
+  const preclickPopupBackgroundDelay = controls.find(
+    (control) => control.name === "preclickPopupBackgroundDelaySeconds",
   );
   const preclickFirstHopOnClick = controls.find(
     (control) => control.name === "preclickFirstHopOnClick",
@@ -2035,9 +2082,9 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseShrinkPercent",
       "rockPulseBpm",
       "preclickFirstHopOnClick",
-      "preclickHopGuardClickCount",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
+      "preclickPopupBackgroundDelaySeconds",
       "preclickPopupWidthViewportFraction",
       "preclickPopupArtworkMode",
       "preclickPopupArtworkId",
@@ -2219,19 +2266,19 @@ test("настройки размера камня есть в UI и получ�
   );
   assert.deepEqual(
     {
-      label: preclickHopGuardClickCount.label,
-      type: preclickHopGuardClickCount.type,
-      min: preclickHopGuardClickCount.min,
-      max: preclickHopGuardClickCount.max,
-      step: preclickHopGuardClickCount.step,
-      defaultValue: preclickHopGuardClickCount.defaultValue,
+      label: preclickPopupBackgroundDelay.label,
+      type: preclickPopupBackgroundDelay.type,
+      min: preclickPopupBackgroundDelay.min,
+      max: preclickPopupBackgroundDelay.max,
+      step: preclickPopupBackgroundDelay.step,
+      defaultValue: preclickPopupBackgroundDelay.defaultValue,
     },
     {
-      label: "Количество фейковых кликов",
+      label: "Возврат фокуса после настоящего клика, с",
       type: "range",
       min: 0,
-      max: 10,
-      step: 1,
+      max: 5,
+      step: 0.1,
       defaultValue: 1,
     },
   );
@@ -3275,7 +3322,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 58);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 59);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3292,6 +3339,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopGuardClickCount: 999,
     preclickHopSoundFilename: "missing.mp3",
     preclickPopupDelayMs: 9999,
+    preclickPopupBackgroundDelaySeconds: 999,
     preclickPopupWidthViewportFraction: 999,
     preclickPopupArtworkMode: "invalid",
     preclickPopupArtworkId: "../missing.png",
@@ -3348,9 +3396,10 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockPulseEnabled, true);
   assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickFirstHopOnClick, true);
-  assert.equal(visualSettings.preclickHopGuardClickCount, 10);
+  assert.equal(visualSettings.preclickHopGuardClickCount, 2);
   assert.equal(visualSettings.preclickHopSoundFilename, "Смех.mp3");
   assert.equal(visualSettings.preclickPopupDelayMs, 1000);
+  assert.equal(visualSettings.preclickPopupBackgroundDelaySeconds, 5);
   assert.equal(visualSettings.preclickPopupWidthViewportFraction, 1);
   assert.equal(visualSettings.preclickPopupArtworkMode, "shuffle");
   assert.equal(visualSettings.preclickPopupArtworkId, "01.png");
@@ -3539,6 +3588,8 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickHopMaxDistancePercent:
         legacyV17.preclickHopMaxDistancePercent,
       preclickPopupDelayMs: legacyV17.preclickPopupDelayMs,
+      preclickPopupBackgroundDelaySeconds:
+        legacyV17.preclickPopupBackgroundDelaySeconds,
       preclickHopMissProbabilityPercent:
         legacyV17.preclickHopMissProbabilityPercent,
       preclickHopSpeedPxPerSecond:
@@ -3553,11 +3604,20 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   assert.equal(
     SharedRoomSettings.migrateRoomSettings(
-      { preclickFirstHopOnClick: true },
+      {
+        preclickFirstHopOnClick: true,
+        preclickHopGuardClickCount: 9,
+      },
       58,
     ).preclickFirstHopOnClick,
     true,
   );
+  const legacyV58 = SharedRoomSettings.migrateRoomSettings(
+    { preclickHopGuardClickCount: 9 },
+    58,
+  );
+  assert.equal(legacyV58.preclickHopGuardClickCount, 2);
+  assert.equal(legacyV58.preclickPopupBackgroundDelaySeconds, 1);
 
   const legacyPx = SharedRoomSettings.migrateRoomSettings(
     { preclickParallaxActivationRadiusPx: 480 },
@@ -3593,7 +3653,7 @@ test("группа дождя содержит общий toggle и blur тём�
       foldZoneSize: 12,
       foldBlendEnabled: false,
       foldBlendCurve: "cubic-bezier(0, 0, 1, 1)",
-      preclickHopGuardClickCount: 1,
+      preclickHopGuardClickCount: 2,
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 62.5,
     },
@@ -3626,11 +3686,12 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickFirstHopOnClick: false,
     preclickHopActivationRadiusPercent: 11,
     preclickHopMaxDistancePercent: 150,
-    preclickHopGuardClickCount: 1,
+    preclickHopGuardClickCount: 2,
     preclickHopMissProbabilityPercent: 10,
     preclickHopSpeedPxPerSecond: 1200,
     preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     preclickPopupDelayMs: 200,
+    preclickPopupBackgroundDelaySeconds: 1,
     preclickPopupWidthViewportFraction: 0.2,
     preclickPopupArtworkMode: "shuffle",
     preclickPopupArtworkId: "01.png",

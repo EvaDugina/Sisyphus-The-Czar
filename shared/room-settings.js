@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 58;
+  const ROOM_SETTINGS_VERSION = 59;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -215,8 +215,9 @@
     sceneTwoGlassBorderRadiusPx: [0, 80],
     sceneTwoGlassBounce: [0, 1],
     rockWidthVw: ROCK_WIDTH_VW_LIMITS,
-    preclickHopGuardClickCount: [0, 10],
+    preclickHopGuardClickCount: [2, 2],
     preclickPopupDelayMs: [0, 1000],
+    preclickPopupBackgroundDelaySeconds: [0, 5],
     preclickPopupWidthViewportFraction: [0.01, 1],
     rockEchoTrailCopies: [1, 40],
     rockEchoTrailIntervalMs: [16, 500],
@@ -303,9 +304,10 @@
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickFirstHopOnClick: false,
-    preclickHopGuardClickCount: 1,
+    preclickHopGuardClickCount: 2,
     preclickHopSoundFilename: DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     preclickPopupDelayMs: 200,
+    preclickPopupBackgroundDelaySeconds: 1,
     preclickPopupWidthViewportFraction: 0.2,
     preclickPopupArtworkMode: "shuffle",
     preclickPopupArtworkId: DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
@@ -1110,6 +1112,13 @@
         "preclickPopupDelayMs",
         ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[0],
         ROOM_SETTINGS_LIMITS.preclickPopupDelayMs[1]
+      ),
+      preclickPopupBackgroundDelaySeconds: finiteSetting(
+        source,
+        fallbackSource,
+        "preclickPopupBackgroundDelaySeconds",
+        ROOM_SETTINGS_LIMITS.preclickPopupBackgroundDelaySeconds[0],
+        ROOM_SETTINGS_LIMITS.preclickPopupBackgroundDelaySeconds[1]
       ),
       preclickPopupWidthViewportFraction: finiteSetting(
         source,
@@ -1971,6 +1980,14 @@
       if (!Object.hasOwn(current, "preclickFirstHopOnClick")) {
         current.preclickFirstHopOnClick =
           DEFAULT_ROOM_SETTINGS.preclickFirstHopOnClick;
+      }
+    }
+    if (finiteNumber(version, 1) < 59) {
+      current.preclickHopGuardClickCount =
+        DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount;
+      if (!Object.hasOwn(current, "preclickPopupBackgroundDelaySeconds")) {
+        current.preclickPopupBackgroundDelaySeconds =
+          DEFAULT_ROOM_SETTINGS.preclickPopupBackgroundDelaySeconds;
       }
     }
     return current;
