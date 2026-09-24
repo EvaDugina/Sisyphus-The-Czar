@@ -165,6 +165,32 @@ async function enterFromRight(page, radius, delayMs) {
   return { center, initialCenter, inside, outside };
 }
 
+async function advancePastRequiredPostGuardHop(page, radius) {
+  const beforeRequiredHop = await hopState(page);
+  expect(beforeRequiredHop).toMatchObject({
+    requiredHoverHopPending: true,
+    clickAllowed: false,
+  });
+  await enterFromLeft(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    guardClicksUsed: beforeRequiredHop.guardClicksUsed,
+    hopCount: beforeRequiredHop.hopCount + 1,
+    requiredHoverHopPending: false,
+    clickAllowed: false,
+    lastRadiusDecision: "post-guard-required-hop",
+  });
+  const afterRequiredHop = await hopState(page);
+  await enterFromRight(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    guardClicksUsed: beforeRequiredHop.guardClicksUsed,
+    hopCount: afterRequiredHop.hopCount,
+    requiredHoverHopPending: false,
+    clickAllowed: true,
+    lastRadiusDecision: "random-miss",
+  });
+  return hopState(page);
+}
+
 async function enterFromTop(page, radius, delayMs) {
   const initialCenter = await rockCenter(page);
   const viewportHeight = page.viewportSize().height;
@@ -456,16 +482,42 @@ test("камень прыгает накопительно, сохраняет g
   expect(normalized.centerY).toBeLessThan(normalized.viewportHeight);
 
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const beforeReducedHop = await hopState(page);
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopMissProbabilityPercent: 100,
+    });
+  });
+  const beforeRequiredThirdHop = await hopState(page);
   const reducedRadius = await rock.evaluate(
     (element) => element.getBoundingClientRect().width * 0.5,
   );
   await enterFromLeft(page, reducedRadius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
-    hopCount: beforeReducedHop.hopCount,
-    radiusHopCount: 2,
-    forcedRadiusMissConsumed: true,
-    lastRadiusDecision: "forced-miss",
+    hopCount: beforeRequiredThirdHop.hopCount + 1,
+    radiusHopCount: 3,
+    initialHoverAllowConsumed: false,
+    lastRadiusDecision: "required-hop",
+    animating: false,
+  });
+  const afterRequiredThirdHop = await hopState(page);
+
+  await enterFromRight(page, reducedRadius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    hopCount: afterRequiredThirdHop.hopCount,
+    radiusHopCount: 3,
+    initialHoverAllowConsumed: true,
+    lastRadiusDecision: "initial-allow",
+    audioPlayCount: afterRequiredThirdHop.audioPlayCount,
+    animating: false,
+  });
+
+  await enterFromLeft(page, reducedRadius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    hopCount: afterRequiredThirdHop.hopCount,
+    radiusHopCount: 3,
+    initialHoverAllowConsumed: true,
+    lastRadiusDecision: "random-miss",
+    audioPlayCount: afterRequiredThirdHop.audioPlayCount,
     animating: false,
   });
 
@@ -520,6 +572,19 @@ test("камень прыгает накопительно, сохраняет g
   await fakeClickPopup.close();
   expect(fakeClickPopup.isClosed()).toBe(true);
   await page.bringToFront();
+  await expect.poll(() => hopState(page)).toMatchObject({
+    guardClicksUsed: 1,
+    requiredHoverHopPending: true,
+    clickAllowed: false,
+  });
+  const blockedClickPoint = await visibleRockPoint(page);
+  await page.mouse.click(blockedClickPoint.x, blockedClickPoint.y);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    guardClicksUsed: 1,
+    requiredHoverHopPending: true,
+    clickAllowed: false,
+  });
+  await advancePastRequiredPostGuardHop(page, reducedRadius);
   const secondFakeClickPoint = await rockCenter(page);
   const secondPopupPromise = page.waitForEvent("popup");
   await page.mouse.click(secondFakeClickPoint.x, secondFakeClickPoint.y);
@@ -533,9 +598,17 @@ test("камень прыгает накопительно, сохраняет g
   await page.bringToFront();
   await expect.poll(() => hopState(page)).toMatchObject({
     guardClicksUsed: 2,
-    hopCount: beforeSilentClick.hopCount + 2,
+    requiredHoverHopPending: true,
+    clickAllowed: false,
+  });
+  await advancePastRequiredPostGuardHop(page, reducedRadius);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    guardClicksUsed: 2,
+    hopCount: beforeSilentClick.hopCount + 4,
     audioPlayCount: beforeSilentClick.audioPlayCount,
     activeAudioCount: 0,
+    requiredHoverHopPending: false,
+    clickAllowed: true,
   });
   const point = await rockCenter(page);
   await page.mouse.move(point.x, point.y);
@@ -664,15 +737,6 @@ test("камень бесшовно переносится по обеим ос�
     toroidalDistance(verticalEntry.inside, verticalCenter, viewport),
   ).toBeGreaterThanOrEqual(radius - 1);
 
-  await enterFromBottomRight(page, radius, 20);
-  await expect.poll(() => hopState(page)).toMatchObject({
-    hopCount: 2,
-    audioPlayCount: 2,
-    forcedRadiusMissConsumed: true,
-    lastRadiusDecision: "forced-miss",
-    animating: false,
-  });
-
   const cornerEntry = await enterFromBottomRight(page, radius, 20);
   await expect.poll(() => hopState(page)).toMatchObject({
     hopCount: 3,
@@ -699,11 +763,19 @@ test("камень бесшовно переносится по обеим ос�
       cornerCenter,
     ),
   ).toBe(true);
+  await enterFromLeft(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    hopCount: 3,
+    initialHoverAllowConsumed: true,
+    clickAllowed: true,
+    lastRadiusDecision: "initial-allow",
+  });
   const cdp = await page.context().newCDPSession(page);
   await page.evaluate(() => {
     window.__sisyphusTestApi.applyTestSettings({
-      preclickHopActivationRadiusPercent: 0,
+      preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 0,
+      preclickHopMissProbabilityPercent: 100,
       preclickHopSoundFilename: "none",
       preclickPopupDelayMs: 0,
     });
@@ -732,8 +804,11 @@ test("камень бесшовно переносится по обеим ос�
       completed: false,
       guardClickCount: 2,
       guardClicksUsed: click,
-      hopCount: 3 + click,
+      hopCount: 3 + click * 2 - 1,
+      requiredHoverHopPending: true,
+      clickAllowed: false,
     });
+    await advancePastRequiredPostGuardHop(page, radius);
   }
   const realClickPoint = await visibleRockPoint(page);
   const beforeGrabCenter = await rockCenter(page);
@@ -749,7 +824,7 @@ test("камень бесшовно переносится по обеим ос�
   expect(afterGrabCenter.worldY).toBeCloseTo(beforeGrabCenter.worldY, 0);
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,
-    hopCount: 5,
+    hopCount: 7,
     audioPlayCount: 3,
     offset: { x: 0, y: 0 },
   });
@@ -800,7 +875,7 @@ test("режим клик отделяет первое отпрыгивание
       preclickHopGuardClickCount: 2,
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 10,
-      preclickHopMissProbabilityPercent: 0,
+      preclickHopMissProbabilityPercent: 100,
       preclickHopSoundFilename: "none",
       preclickPopupDelayMs: 0,
       preclickPopupArtworkMode: "single",
@@ -834,10 +909,29 @@ test("режим клик отделяет первое отпрыгивание
     guardClickCount: 2,
     guardClicksUsed: 0,
     hopCount: 1,
-    radiusHopCount: 1,
+    radiusHopCount: 0,
+    initialHoverAllowConsumed: false,
     lastRadiusDecision: "click-trigger",
   });
   expect(context.pages()).toHaveLength(pageCountBeforeActivation);
+
+  for (let requiredHop = 1; requiredHop <= 3; requiredHop += 1) {
+    await enterFromLeft(page, radius, 20);
+    await expect.poll(() => hopState(page)).toMatchObject({
+      guardClicksUsed: 0,
+      radiusHopCount: requiredHop,
+      clickAllowed: false,
+      lastRadiusDecision: "required-hop",
+    });
+  }
+  await enterFromRight(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    guardClicksUsed: 0,
+    radiusHopCount: 3,
+    initialHoverAllowConsumed: true,
+    clickAllowed: true,
+    lastRadiusDecision: "initial-allow",
+  });
 
   const fakePopups = [];
   for (let click = 1; click <= 2; click += 1) {
@@ -852,8 +946,11 @@ test("режим клик отделяет первое отпрыгивание
       completed: false,
       guardClickCount: 2,
       guardClicksUsed: click,
-      hopCount: click + 1,
+      hopCount: 3 + click * 2,
+      requiredHoverHopPending: true,
+      clickAllowed: false,
     });
+    await advancePastRequiredPostGuardHop(page, radius);
   }
 
   const finalPopups = [];
@@ -867,7 +964,7 @@ test("режим клик отделяет первое отпрыгивание
     completed: true,
     guardClickCount: 2,
     guardClicksUsed: 2,
-    hopCount: 3,
+    hopCount: 8,
   });
   expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
     completed: true,
@@ -898,6 +995,8 @@ test("два фейковых клика, возврат фокуса и фин�
       preclickHopGuardClickCount: 2,
       preclickHopActivationRadiusPercent: 50,
       preclickHopMaxDistancePercent: 25,
+      preclickHopMissProbabilityPercent: 100,
+      preclickFakeClickHopDistancePercent: 50,
       preclickHopSoundFilename: "СимуляцияОргазма.mov",
       preclickPopupDelayMs: 0,
       preclickPopupBackgroundDelaySeconds: 3,
@@ -977,16 +1076,31 @@ test("два фейковых клика, возврат фокуса и фин�
     )
     .toBe(0);
 
-  await page.evaluate(() => {
-    window.__sisyphusTestApi.applyTestSettings({
-      preclickHopActivationRadiusPercent: 0,
-    });
+  await enterFromRight(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    radiusHopCount: 2,
+    lastRadiusDecision: "required-hop",
+    clickAllowed: false,
+  });
+  await enterFromLeft(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    radiusHopCount: 3,
+    lastRadiusDecision: "required-hop",
+    clickAllowed: false,
+  });
+  await enterFromRight(page, radius, 20);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    radiusHopCount: 3,
+    initialHoverAllowConsumed: true,
+    lastRadiusDecision: "initial-allow",
+    clickAllowed: true,
   });
   const cdp = await page.context().newCDPSession(page);
   const popupWidthFractions = [0.1, 0.2];
   const fakeClickPopups = [];
   let sharedPopupSize = null;
   for (let click = 1; click <= 2; click += 1) {
+    const beforeFakeClick = await hopState(page);
     const widthFraction = popupWidthFractions[click - 1];
     await page.evaluate(({ nextArtworkId, nextWidthFraction }) => {
       window.__sisyphusTestApi.applyTestSettings({
@@ -1073,11 +1187,27 @@ test("два фейковых клика, возврат фокуса и фин�
       completed: false,
       guardClickCount: 2,
       guardClicksUsed: click,
-      hopCount: click + 1,
-      audioPlayCount: click + 1,
+      hopCount: beforeFakeClick.hopCount + 1,
+      audioPlayCount: beforeFakeClick.audioPlayCount + 1,
       lastFilename: "СимуляцияОргазма.mov",
       animating: false,
+      fakeClickHopDistancePercent: 50,
+      requiredHoverHopPending: true,
+      clickAllowed: false,
+      lastHopRequest: {
+        trigger: "fake-click",
+        maxDistancePercent: 50,
+        fixedDistanceFactor: 1,
+      },
     });
+    const lastHopRequest = await page.evaluate(
+      () => window.__sisyphusTestApi.getPreclickHopState().lastHopRequest,
+    );
+    expect(lastHopRequest.requestedDistance).toBeGreaterThan(0);
+    expect(lastHopRequest.actualDistance).toBeGreaterThan(0);
+    expect(lastHopRequest.actualDistance).toBeLessThanOrEqual(
+      lastHopRequest.requestedDistance,
+    );
     expect(await page.evaluate(() => window.__controlAcquireMessages.length)).toBe(0);
     expect(await page.evaluate(() => window.__sisyphusTestApi.motion.dragging)).toBe(false);
     await expect
@@ -1092,7 +1222,8 @@ test("два фейковых клика, возврат фокуса и фин�
             (filename) => filename.startsWith("СимуляцияОргазма"),
           ).length,
       ),
-    ).toBe(click + 1);
+    ).toBe(beforeFakeClick.audioPlayCount + 1);
+    await advancePastRequiredPostGuardHop(page, radius);
   }
 
   const realClickPoint = await visibleRockPoint(page);
@@ -1192,7 +1323,7 @@ test("два фейковых клика, возврат фокуса и фин�
     completed: true,
     guardClickCount: 2,
     guardClicksUsed: 2,
-    hopCount: 3,
+    hopCount: 7,
     offset: { x: 0, y: 0 },
   });
   await expect

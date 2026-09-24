@@ -182,6 +182,9 @@ const DEFAULT_PRECLICK_HOP_SETTINGS = Object.freeze({
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopActivationRadiusPercent,
   preclickHopMaxDistancePercent:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMaxDistancePercent,
+  preclickFakeClickHopDistancePercent:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+      .preclickFakeClickHopDistancePercent,
   preclickHopMissProbabilityPercent:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent,
   preclickHopSpeedPxPerSecond:
@@ -616,6 +619,9 @@ test("настройки инерции и hop отображают актуал
   const preclickHopMaxDistance = controls.find(
     (control) => control.name === "preclickHopMaxDistancePercent"
   );
+  const preclickFakeClickHopDistance = controls.find(
+    (control) => control.name === "preclickFakeClickHopDistancePercent",
+  );
   const preclickHopActivationRadius = controls.find(
     (control) => control.name === "preclickHopActivationRadiusPercent"
   );
@@ -957,6 +963,22 @@ test("настройки инерции и hop отображают актуал
       defaultValue: 62.5,
     },
   );
+  assert.deepEqual(
+    {
+      label: preclickFakeClickHopDistance.label,
+      min: preclickFakeClickHopDistance.min,
+      max: preclickFakeClickHopDistance.max,
+      step: preclickFakeClickHopDistance.step,
+      defaultValue: preclickFakeClickHopDistance.defaultValue,
+    },
+    {
+      label: "Длина отскока при фейковом клике, %",
+      min: 0,
+      max: 150,
+      step: 1,
+      defaultValue: 50,
+    },
+  );
 });
 
 test("UI материализует параметры для каждой scene page и помечает общие", () => {
@@ -1012,6 +1034,7 @@ test("UI материализует параметры для каждой scene
       "birchScalePercent",
       "preclickHopActivationRadiusPercent",
       "preclickHopMaxDistancePercent",
+      "preclickFakeClickHopDistancePercent",
       "preclickHopMissProbabilityPercent",
       "preclickHopSpeedPxPerSecond",
       "preclickHopSpeedEasing",
@@ -1158,7 +1181,7 @@ test("UI материализует параметры для каждой scene
   assert.deepEqual(
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
-      [SETTINGS_SCENES.CATS_AND_MICE, 39],
+      [SETTINGS_SCENES.CATS_AND_MICE, 40],
       [SETTINGS_SCENES.TURNIP, 104],
       [SETTINGS_SCENES.JUICES, 106],
     ],
@@ -1390,7 +1413,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 59);
+  assert.equal(productionSettingsSchemaVersion, 60);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1798,41 +1821,109 @@ test("preclick hop зависит от скорости, сохраняет дл
     }),
     2000,
   );
-  assert.ok(
-    Math.abs(preclickHopDistance({ speedPxPerSecond: 0, maxDistance: 100 }) - 28) <
-      Number.EPSILON * 100,
+  assert.equal(
+    preclickHopDistance({ speedPxPerSecond: 0, maxDistance: 100 }),
+    50,
+  );
+  assert.equal(
+    preclickHopDistance({ speedPxPerSecond: 1000, maxDistance: 100 }),
+    75,
   );
   assert.equal(
     preclickHopDistance({ speedPxPerSecond: 2000, maxDistance: 100 }),
     100,
   );
+  assert.equal(
+    preclickHopDistance({
+      speedPxPerSecond: 0,
+      maxDistance: 100,
+      fixedDistanceFactor: 1,
+    }),
+    100,
+  );
 
   const first = preclickRadiusHopDecision({
     successfulHopCount: 0,
-    forcedMissConsumed: false,
     missProbabilityPercent: 100,
   });
   const second = preclickRadiusHopDecision({
     successfulHopCount: 1,
-    forcedMissConsumed: false,
     missProbabilityPercent: 100,
   });
   const third = preclickRadiusHopDecision({
     successfulHopCount: 2,
-    forcedMissConsumed: false,
+    missProbabilityPercent: 100,
+  });
+  const firstAllow = preclickRadiusHopDecision({
+    successfulHopCount: 3,
+    initialAllowConsumed: false,
     missProbabilityPercent: 0,
   });
-  assert.equal(first.shouldHop, true);
-  assert.equal(second.shouldHop, true);
+  const postGuardRequiredHop = preclickRadiusHopDecision({
+    successfulHopCount: 3,
+    initialAllowConsumed: true,
+    requiredHoverHopPending: true,
+    missProbabilityPercent: 100,
+    random: () => 0,
+  });
+  const laterMiss = preclickRadiusHopDecision({
+    successfulHopCount: 3,
+    initialAllowConsumed: true,
+    missProbabilityPercent: 10,
+    random: () => 0.09,
+  });
+  const laterHop = preclickRadiusHopDecision({
+    successfulHopCount: 3,
+    initialAllowConsumed: true,
+    missProbabilityPercent: 10,
+    random: () => 0.1,
+  });
+  assert.deepEqual(first, {
+    initialAllowConsumed: false,
+    requiredHoverHopPending: false,
+    reason: "required-hop",
+    shouldHop: true,
+  });
+  assert.deepEqual(second, {
+    initialAllowConsumed: false,
+    requiredHoverHopPending: false,
+    reason: "required-hop",
+    shouldHop: true,
+  });
   assert.deepEqual(third, {
-    forcedMissConsumed: true,
-    reason: "forced-miss",
+    initialAllowConsumed: false,
+    requiredHoverHopPending: false,
+    reason: "required-hop",
+    shouldHop: true,
+  });
+  assert.deepEqual(firstAllow, {
+    initialAllowConsumed: true,
+    requiredHoverHopPending: false,
+    reason: "initial-allow",
     shouldHop: false,
+  });
+  assert.deepEqual(postGuardRequiredHop, {
+    initialAllowConsumed: true,
+    requiredHoverHopPending: false,
+    reason: "post-guard-required-hop",
+    shouldHop: true,
+  });
+  assert.deepEqual(laterMiss, {
+    initialAllowConsumed: true,
+    requiredHoverHopPending: false,
+    reason: "random-miss",
+    shouldHop: false,
+  });
+  assert.deepEqual(laterHop, {
+    initialAllowConsumed: true,
+    requiredHoverHopPending: false,
+    reason: "random-hop",
+    shouldHop: true,
   });
   assert.equal(
     preclickRadiusHopDecision({
-      successfulHopCount: 2,
-      forcedMissConsumed: true,
+      successfulHopCount: 3,
+      initialAllowConsumed: true,
       missProbabilityPercent: 0,
       random: () => 0,
     }).shouldHop,
@@ -1840,8 +1931,8 @@ test("preclick hop зависит от скорости, сохраняет дл
   );
   assert.equal(
     preclickRadiusHopDecision({
-      successfulHopCount: 2,
-      forcedMissConsumed: true,
+      successfulHopCount: 3,
+      initialAllowConsumed: true,
       missProbabilityPercent: 100,
       random: () => 0.999,
     }).shouldHop,
@@ -1857,9 +1948,10 @@ test("preclick hop зависит от скорости, сохраняет дл
     maxDistance: 100,
     currentOffsetX: 10,
   });
-  assert.equal(slow.x, 38);
+  assert.equal(slow.x, 60);
   assert.equal(slow.y, 0);
   assert.equal(slow.directionX, 1);
+  assert.equal(slow.actualDistance, 50);
 
   const fullDistance = calculatePreclickHopTarget({
     pointerX: 200,
@@ -2092,6 +2184,7 @@ test("настройки размера камня есть в UI и получ�
       "birchScalePercent",
       "preclickHopActivationRadiusPercent",
       "preclickHopMaxDistancePercent",
+      "preclickFakeClickHopDistancePercent",
       "preclickHopMissProbabilityPercent",
       "preclickHopSpeedPxPerSecond",
       "preclickHopSpeedEasing",
@@ -3322,7 +3415,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 59);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 60);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3352,6 +3445,7 @@ test("группа дождя содержит общий toggle и blur тём�
     birchScalePercent: 9999,
     preclickHopActivationRadiusPercent: -1,
     preclickHopMaxDistancePercent: -5,
+    preclickFakeClickHopDistancePercent: 999,
     preclickHopMissProbabilityPercent: 999,
     preclickHopSpeedPxPerSecond: 99999,
     preclickHopSpeedEasing: "invalid",
@@ -3412,6 +3506,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.birchScalePercent, 400);
   assert.equal(visualSettings.preclickHopActivationRadiusPercent, 0);
   assert.equal(visualSettings.preclickHopMaxDistancePercent, 0);
+  assert.equal(visualSettings.preclickFakeClickHopDistancePercent, 150);
   assert.equal(visualSettings.preclickHopMissProbabilityPercent, 100);
   assert.equal(visualSettings.preclickHopSpeedPxPerSecond, 5000);
   assert.equal(
@@ -3587,6 +3682,8 @@ test("группа дождя содержит общий toggle и blur тём�
         legacyV17.preclickHopActivationRadiusPercent,
       preclickHopMaxDistancePercent:
         legacyV17.preclickHopMaxDistancePercent,
+      preclickFakeClickHopDistancePercent:
+        legacyV17.preclickFakeClickHopDistancePercent,
       preclickPopupDelayMs: legacyV17.preclickPopupDelayMs,
       preclickPopupBackgroundDelaySeconds:
         legacyV17.preclickPopupBackgroundDelaySeconds,
@@ -3618,6 +3715,21 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   assert.equal(legacyV58.preclickHopGuardClickCount, 2);
   assert.equal(legacyV58.preclickPopupBackgroundDelaySeconds, 1);
+  assert.equal(legacyV58.preclickFakeClickHopDistancePercent, 50);
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { preclickFakeClickHopDistancePercent: 75 },
+      59,
+    ).preclickFakeClickHopDistancePercent,
+    50,
+  );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { preclickFakeClickHopDistancePercent: 75 },
+      60,
+    ).preclickFakeClickHopDistancePercent,
+    75,
+  );
 
   const legacyPx = SharedRoomSettings.migrateRoomSettings(
     { preclickParallaxActivationRadiusPx: 480 },
@@ -3686,6 +3798,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickFirstHopOnClick: false,
     preclickHopActivationRadiusPercent: 11,
     preclickHopMaxDistancePercent: 150,
+    preclickFakeClickHopDistancePercent: 50,
     preclickHopGuardClickCount: 2,
     preclickHopMissProbabilityPercent: 10,
     preclickHopSpeedPxPerSecond: 1200,

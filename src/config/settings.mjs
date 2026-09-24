@@ -522,6 +522,7 @@ const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "birchScalePercent",
   "preclickHopActivationRadiusPercent",
   "preclickHopMaxDistancePercent",
+  "preclickFakeClickHopDistancePercent",
   "preclickHopMissProbabilityPercent",
   "preclickHopSpeedPxPerSecond",
   "preclickHopSpeedEasing",
@@ -1395,6 +1396,21 @@ export const SETTINGS_GROUPS = [
         hint: "Верхняя граница отскока относительно размера viewport по направлению движения. Скорость руки задаёт от 28% до 100%; небезопасная траектория сокращается или отклоняется от руки.",
       },
       {
+        name: "preclickFakeClickHopDistancePercent",
+        label: "Длина отскока при фейковом клике, %",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickFakeClickHopDistancePercent[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .preclickFakeClickHopDistancePercent[1],
+        step: 1,
+        defaultValue:
+          DEFAULT_ROOM_SETTINGS.preclickFakeClickHopDistancePercent,
+        output:
+          `${DEFAULT_ROOM_SETTINGS.preclickFakeClickHopDistancePercent}%`,
+        hint: "Оба фейковых клика запрашивают эту долю viewport по направлению от руки независимо от скорости курсора; небезопасная траектория может быть сокращена или отклонена.",
+      },
+      {
         name: "preclickHopMissProbabilityPercent",
         label: "Несрабатывание отскока, %",
         type: "range",
@@ -1407,7 +1423,7 @@ export const SETTINGS_GROUPS = [
           DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent,
         output:
           `${DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent}%`,
-        hint: "После двух обязательных отскоков третье сближение всегда пропускается. Затем этот процент задаёт вероятность пропуска каждого нового входа руки в радиус; 0% — всегда отскакивать, 100% — всегда подпускать.",
+        hint: "Первые три входа руки в радиус всегда запускают отскок, четвёртый гарантированно подпускает. Начиная с пятого этот процент задаёт независимую вероятность подпускания; 0% — всегда отскакивать, 100% — всегда подпускать.",
       },
       {
         name: "preclickHopSpeedPxPerSecond",

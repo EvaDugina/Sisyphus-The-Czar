@@ -16,9 +16,9 @@ const SAFE_DIRECTION_ANGLE_OFFSETS_DEGREES = Object.freeze([
 
 export const PRECLICK_MOVEMENT_MAX_SAMPLE_GAP_MS = 120;
 export const PRECLICK_HOP_MAX_SPEED_PX_PER_SECOND = 2000;
-export const PRECLICK_HOP_MIN_DISTANCE_FACTOR = 0.28;
+export const PRECLICK_HOP_MIN_DISTANCE_FACTOR = 0.5;
 export const PRECLICK_HOP_MAX_DISTANCE_FACTOR = 1;
-export const PRECLICK_FORCED_MISS_AFTER_SUCCESSFUL_HOPS = 2;
+export const PRECLICK_REQUIRED_SUCCESSFUL_HOPS = 3;
 
 function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -160,7 +160,8 @@ export function preclickPointerSpeed({
 
 export function preclickRadiusHopDecision({
   successfulHopCount,
-  forcedMissConsumed,
+  initialAllowConsumed = false,
+  requiredHoverHopPending = false,
   missProbabilityPercent,
   random = Math.random,
 }) {
@@ -168,19 +169,30 @@ export function preclickRadiusHopDecision({
     0,
     Math.floor(finiteNumber(successfulHopCount, 0)),
   );
-  const forcedMissAlreadyConsumed = Boolean(forcedMissConsumed);
-  if (completedHops < PRECLICK_FORCED_MISS_AFTER_SUCCESSFUL_HOPS) {
+  const allowConsumed = Boolean(initialAllowConsumed);
+  const requiredPostClickHop = Boolean(requiredHoverHopPending);
+  if (completedHops < PRECLICK_REQUIRED_SUCCESSFUL_HOPS) {
     return {
-      forcedMissConsumed: forcedMissAlreadyConsumed,
+      initialAllowConsumed: allowConsumed,
+      requiredHoverHopPending: requiredPostClickHop,
       reason: "required-hop",
       shouldHop: true,
     };
   }
-  if (!forcedMissAlreadyConsumed) {
+  if (!allowConsumed) {
     return {
-      forcedMissConsumed: true,
-      reason: "forced-miss",
+      initialAllowConsumed: true,
+      requiredHoverHopPending: requiredPostClickHop,
+      reason: "initial-allow",
       shouldHop: false,
+    };
+  }
+  if (requiredPostClickHop) {
+    return {
+      initialAllowConsumed: true,
+      requiredHoverHopPending: false,
+      reason: "post-guard-required-hop",
+      shouldHop: true,
     };
   }
 
@@ -188,7 +200,8 @@ export function preclickRadiusHopDecision({
     clamp(finiteNumber(missProbabilityPercent, 0), 0, 100) / 100;
   const sample = clamp(finiteNumber(random(), 1), 0, 1);
   return {
-    forcedMissConsumed: true,
+    initialAllowConsumed: true,
+    requiredHoverHopPending: false,
     reason: sample < missProbability ? "random-miss" : "random-hop",
     shouldHop: sample >= missProbability,
   };
@@ -206,11 +219,20 @@ export function preclickHopDurationMs({ distancePx, speedPxPerSecond }) {
 export function preclickHopDistance({
   speedPxPerSecond,
   maxDistance,
+  fixedDistanceFactor = null,
   maxSpeedPxPerSecond = PRECLICK_HOP_MAX_SPEED_PX_PER_SECOND,
   minDistanceFactor = PRECLICK_HOP_MIN_DISTANCE_FACTOR,
   maxDistanceFactor = PRECLICK_HOP_MAX_DISTANCE_FACTOR,
 }) {
   const maximumDistance = Math.max(0, finiteNumber(maxDistance, 0));
+  const explicitDistanceFactor = Number(fixedDistanceFactor);
+  if (
+    fixedDistanceFactor !== null &&
+    fixedDistanceFactor !== undefined &&
+    Number.isFinite(explicitDistanceFactor)
+  ) {
+    return maximumDistance * clamp(explicitDistanceFactor, 0, 1);
+  }
   const maximumSpeed = Math.max(1, finiteNumber(maxSpeedPxPerSecond, 1));
   const speedProgress = clamp(
     Math.max(0, finiteNumber(speedPxPerSecond, 0)) / maximumSpeed,
@@ -368,6 +390,7 @@ export function calculatePreclickHopTarget({
   speedPxPerSecond,
   maxDistance,
   maxDistancePercent = null,
+  fixedDistanceFactor = null,
   viewportWidth = null,
   viewportHeight = null,
   activationRadius = 0,
@@ -412,6 +435,7 @@ export function calculatePreclickHopTarget({
       const requestedDistance = preclickHopDistance({
         speedPxPerSecond,
         maxDistance: candidateMaximum,
+        fixedDistanceFactor,
       });
       const actualDistance = requestedDistance * reductionFactor;
       const deltaX = candidateDirection.x * actualDistance;
@@ -461,6 +485,7 @@ export function calculatePreclickHopTarget({
   const fallbackDistance = preclickHopDistance({
     speedPxPerSecond,
     maxDistance: fallbackMaximum,
+    fixedDistanceFactor,
   });
   const selected = candidates[0] || {
     direction,

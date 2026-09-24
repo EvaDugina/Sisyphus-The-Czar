@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 59;
+  const ROOM_SETTINGS_VERSION = 60;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -226,6 +226,7 @@
     birchScalePercent: [100, 400],
     preclickHopActivationRadiusPercent: [0, 300],
     preclickHopMaxDistancePercent: [0, 150],
+    preclickFakeClickHopDistancePercent: [0, 150],
     preclickHopMissProbabilityPercent: [0, 100],
     preclickHopSpeedPxPerSecond: [100, 5000],
     rockGrabRadiusVh: [0, 10],
@@ -320,6 +321,7 @@
     birchScalePercent: 100,
     preclickHopActivationRadiusPercent: 50,
     preclickHopMaxDistancePercent: 62.5,
+    preclickFakeClickHopDistancePercent: 50,
     preclickHopMissProbabilityPercent: 10,
     preclickHopSpeedPxPerSecond: 1200,
     preclickHopSpeedEasing: DEFAULT_PRECLICK_HOP_SPEED_EASING,
@@ -760,6 +762,8 @@
       ROOM_SETTINGS_LIMITS.preclickHopActivationRadiusPercent;
     const [preclickHopDistanceMin, preclickHopDistanceMax] =
       ROOM_SETTINGS_LIMITS.preclickHopMaxDistancePercent;
+    const [preclickFakeClickHopDistanceMin, preclickFakeClickHopDistanceMax] =
+      ROOM_SETTINGS_LIMITS.preclickFakeClickHopDistancePercent;
     const [preclickHopMissMin, preclickHopMissMax] =
       ROOM_SETTINGS_LIMITS.preclickHopMissProbabilityPercent;
     const [preclickHopSpeedMin, preclickHopSpeedMax] =
@@ -1186,6 +1190,13 @@
         "preclickHopMaxDistancePercent",
         preclickHopDistanceMin,
         preclickHopDistanceMax
+      ),
+      preclickFakeClickHopDistancePercent: finiteSetting(
+        preclickHopRadiusSource,
+        preclickHopFallbackSource,
+        "preclickFakeClickHopDistancePercent",
+        preclickFakeClickHopDistanceMin,
+        preclickFakeClickHopDistanceMax
       ),
       preclickHopMissProbabilityPercent: finiteSetting(
         preclickHopRadiusSource,
@@ -1989,6 +2000,10 @@
         current.preclickPopupBackgroundDelaySeconds =
           DEFAULT_ROOM_SETTINGS.preclickPopupBackgroundDelaySeconds;
       }
+    }
+    if (finiteNumber(version, 1) < 60) {
+      current.preclickFakeClickHopDistancePercent =
+        DEFAULT_ROOM_SETTINGS.preclickFakeClickHopDistancePercent;
     }
     return current;
   }

@@ -652,7 +652,9 @@ export function createSisyphusRuntime(elements = {}) {
     outsideRadius: false,
     hopCount: 0,
     radiusHopCount: 0,
-    forcedRadiusMissConsumed: false,
+    initialHoverAllowConsumed: false,
+    requiredHoverHopPending: false,
+    clickAllowed: false,
     lastRadiusDecision: null,
     guardClicksUsed: 0,
     hopAnimationId: null,
@@ -660,6 +662,7 @@ export function createSisyphusRuntime(elements = {}) {
     hopSampleX: null,
     hopSampleY: null,
     hopSpeedPxPerSecond: 0,
+    lastHopRequest: null,
   };
   const preclickHopAudio = {
     elements: new Set(),
@@ -3516,7 +3519,9 @@ export function createSisyphusRuntime(elements = {}) {
       outsideRadius: false,
       hopCount: 0,
       radiusHopCount: 0,
-      forcedRadiusMissConsumed: false,
+      initialHoverAllowConsumed: false,
+      requiredHoverHopPending: false,
+      clickAllowed: false,
       lastRadiusDecision: null,
       guardClicksUsed: 0,
       hopAnimationId: null,
@@ -3524,6 +3529,7 @@ export function createSisyphusRuntime(elements = {}) {
       hopSampleX: null,
       hopSampleY: null,
       hopSpeedPxPerSecond: 0,
+      lastHopRequest: null,
     });
     body.classList.add(
       "preclick-rock-guidance",
@@ -3537,8 +3543,12 @@ export function createSisyphusRuntime(elements = {}) {
     centerX,
     centerY,
     speedPxPerSecond,
+    maxDistancePercent = params.preclickHopMaxDistancePercent,
+    fixedDistanceFactor = null,
+    trigger = "automatic",
   }) {
     cancelPreclickHopAnimation();
+    preclickRockGuidance.clickAllowed = false;
     playPreclickHopSound();
     const currentOffset = preclickRockHopOffset();
     const rect = rock.getBoundingClientRect();
@@ -3553,7 +3563,8 @@ export function createSisyphusRuntime(elements = {}) {
       centerX,
       centerY,
       speedPxPerSecond,
-      maxDistancePercent: params.preclickHopMaxDistancePercent,
+      maxDistancePercent,
+      fixedDistanceFactor,
       viewportWidth: window.innerWidth,
       viewportHeight: window.innerHeight,
       activationRadius:
@@ -3564,6 +3575,13 @@ export function createSisyphusRuntime(elements = {}) {
       lastDirectionX: preclickRockGuidance.directionX,
       lastDirectionY: preclickRockGuidance.directionY,
     });
+    preclickRockGuidance.lastHopRequest = {
+      trigger,
+      maxDistancePercent,
+      fixedDistanceFactor,
+      requestedDistance: target.requestedDistance,
+      actualDistance: target.actualDistance,
+    };
     preclickRockGuidance.directionX = target.directionX;
     preclickRockGuidance.directionY = target.directionY;
     preclickRockGuidance.hopCount += 1;
@@ -3658,11 +3676,17 @@ export function createSisyphusRuntime(elements = {}) {
     if (enteredRadius) {
       const decision = preclickRadiusHopDecision({
         successfulHopCount: preclickRockGuidance.radiusHopCount,
-        forcedMissConsumed: preclickRockGuidance.forcedRadiusMissConsumed,
+        initialAllowConsumed:
+          preclickRockGuidance.initialHoverAllowConsumed,
+        requiredHoverHopPending:
+          preclickRockGuidance.requiredHoverHopPending,
         missProbabilityPercent: params.preclickHopMissProbabilityPercent,
       });
-      preclickRockGuidance.forcedRadiusMissConsumed =
-        decision.forcedMissConsumed;
+      preclickRockGuidance.initialHoverAllowConsumed =
+        decision.initialAllowConsumed;
+      preclickRockGuidance.requiredHoverHopPending =
+        decision.requiredHoverHopPending;
+      preclickRockGuidance.clickAllowed = !decision.shouldHop;
       preclickRockGuidance.lastRadiusDecision = decision.reason;
       if (!decision.shouldHop) {
         return;
@@ -3785,7 +3809,6 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.hopSampleX = pointerX;
     preclickRockGuidance.hopSampleY = pointerY;
     preclickRockGuidance.hopSampleAtMs = performance.now();
-    preclickRockGuidance.radiusHopCount += 1;
     preclickRockGuidance.lastRadiusDecision = "click-trigger";
     preclickRockGuidance.insideRadius =
       params.preclickHopActivationRadiusPercent > 0;
@@ -3811,6 +3834,10 @@ export function createSisyphusRuntime(elements = {}) {
     ) {
       return false;
     }
+    if (!preclickRockGuidance.clickAllowed) {
+      event.preventDefault();
+      return true;
+    }
     const pointerX = Number(event.clientX);
     const pointerY = Number(event.clientY);
     if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY)) {
@@ -3825,6 +3852,8 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.hopSampleY = pointerY;
     preclickRockGuidance.hopSampleAtMs = performance.now();
     preclickRockGuidance.guardClicksUsed += 1;
+    preclickRockGuidance.requiredHoverHopPending = true;
+    preclickRockGuidance.clickAllowed = false;
     preclickRockGuidance.insideRadius =
       params.preclickHopActivationRadiusPercent > 0;
     preclickRockGuidance.outsideRadius = false;
@@ -3836,6 +3865,9 @@ export function createSisyphusRuntime(elements = {}) {
       centerX,
       centerY,
       speedPxPerSecond: preclickRockGuidance.hopSpeedPxPerSecond,
+      maxDistancePercent: params.preclickFakeClickHopDistancePercent,
+      fixedDistanceFactor: 1,
+      trigger: "fake-click",
     });
     event.preventDefault();
     return true;
@@ -8135,6 +8167,10 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     if (isSceneOne) {
+      if (!preclickRockGuidance.clickAllowed) {
+        event.preventDefault();
+        return;
+      }
       event.preventDefault();
       completePreclickRockGuidance({ preserveHopPosition: true });
       preclickPopupController.revealPreclickWindows();
@@ -8617,8 +8653,11 @@ export function createSisyphusRuntime(elements = {}) {
           params.preclickFirstHopOnClick && preclickRockGuidance.hopCount === 0,
         hopCount: preclickRockGuidance.hopCount,
         radiusHopCount: preclickRockGuidance.radiusHopCount,
-        forcedRadiusMissConsumed:
-          preclickRockGuidance.forcedRadiusMissConsumed,
+        initialHoverAllowConsumed:
+          preclickRockGuidance.initialHoverAllowConsumed,
+        requiredHoverHopPending:
+          preclickRockGuidance.requiredHoverHopPending,
+        clickAllowed: preclickRockGuidance.clickAllowed,
         lastRadiusDecision: preclickRockGuidance.lastRadiusDecision,
         guardClicksUsed: preclickRockGuidance.guardClicksUsed,
         guardClickCount: params.preclickHopGuardClickCount,
@@ -8630,6 +8669,11 @@ export function createSisyphusRuntime(elements = {}) {
           y: preclickRockGuidance.pointerY,
         },
         speedPxPerSecond: preclickRockGuidance.hopSpeedPxPerSecond,
+        fakeClickHopDistancePercent:
+          params.preclickFakeClickHopDistancePercent,
+        lastHopRequest: preclickRockGuidance.lastHopRequest
+          ? { ...preclickRockGuidance.lastHopRequest }
+          : null,
         activeAudioCount: preclickHopAudio.elements.size,
         audioPlayCount: preclickHopAudio.playCount,
         audioStopCount: preclickHopAudio.stopCount,
