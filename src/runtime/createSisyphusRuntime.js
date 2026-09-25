@@ -8944,6 +8944,7 @@ export function createSisyphusRuntime(elements = {}) {
     Object.assign(window, testApi);
   }
   const restoredSettingKeys = settingsController.load({
+    loadLocalSettings: false,
     loadLatestVersion: false,
     loadVersionedSettings: false,
   });

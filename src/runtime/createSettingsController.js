@@ -29,7 +29,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.map(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 61;
+const SETTINGS_SCHEMA_VERSION = 62;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 
@@ -705,14 +705,7 @@ export function createSettingsController(options) {
     if (!latest) {
       return;
     }
-    settingsVersions.baselineId = latest.id;
-    settingsVersions.baselineName = latest.name;
-    settingsVersions.baselineSettings = { ...latest.settings };
-    settingsVersions.draftDetached = false;
-    if (settingsVersionName) {
-      settingsVersionName.value = latest.name;
-    }
-    refreshDraftState();
+    applySettingsVersion(latest);
   }
 
   function setSettingsTemplatesPage(payload = {}) {

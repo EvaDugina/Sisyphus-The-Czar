@@ -1403,7 +1403,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 61);
+  assert.equal(productionSettingsSchemaVersion, 62);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1896,14 +1896,14 @@ test("preclick hop зависит от скорости, сохраняет дл
   const laterMiss = preclickRadiusHopDecision({
     successfulHopCount: 3,
     initialAllowConsumed: true,
-    missProbabilityPercent: 10,
-    random: () => 0.09,
+    missProbabilityPercent: 20,
+    random: () => 0.19,
   });
   const laterHop = preclickRadiusHopDecision({
     successfulHopCount: 3,
     initialAllowConsumed: true,
-    missProbabilityPercent: 10,
-    random: () => 0.1,
+    missProbabilityPercent: 20,
+    random: () => 0.2,
   });
   assert.deepEqual(first, {
     initialAllowConsumed: false,
@@ -2262,7 +2262,7 @@ test("настройки размера камня есть в UI и получ�
       min: 0,
       max: 100,
       step: 1,
-      defaultValue: 10,
+      defaultValue: 20,
     },
   );
   assert.deepEqual(
@@ -3426,7 +3426,21 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 61);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 62);
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { preclickHopMissProbabilityPercent: 10 },
+      61,
+    ).preclickHopMissProbabilityPercent,
+    20,
+  );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { preclickHopMissProbabilityPercent: 35 },
+      62,
+    ).preclickHopMissProbabilityPercent,
+    35,
+  );
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3824,7 +3838,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickHopMaxDistancePercent: 150,
     preclickFakeClickHopDistancePercent: 50,
     preclickHopGuardClickCount: 2,
-    preclickHopMissProbabilityPercent: 10,
+    preclickHopMissProbabilityPercent: 20,
     preclickHopSpeedPxPerSecond: 1200,
     preclickHopSpeedEasing: "cubic-bezier(0.22, 1, 0.36, 1)",
     preclickPopupDelayMs: 200,

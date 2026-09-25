@@ -275,6 +275,64 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[data-shared-scenes="2–3"]')).toHaveCount(64);
 });
 
+test("при загрузке последняя конфигурация заменяет локальный черновик", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  await waitForDebugScene(page, "/scene-1", "cats-and-mice");
+  const versionName = `Последняя ${Date.now()}`;
+  await setSettingValue(page, "preclickHopMaxDistancePercent", "46.2");
+  await setSettingValue(page, "preclickHopMissProbabilityPercent", "20");
+  await page.locator(".settings-version-toggle").click();
+  await page.locator('[data-settings-version-choice=""]').click();
+  await page.locator(".settings-version-name").fill(versionName);
+  await page.locator(".settings-version-save").click();
+  await expect
+    .poll(() =>
+      page.evaluate((name) =>
+        window.__sisyphusTestApi.getSettingsVersions().some(
+          (entry) =>
+            entry.name === name &&
+            entry.settings.preclickHopMaxDistancePercent === 46.2 &&
+            entry.settings.preclickHopMissProbabilityPercent === 20,
+        ),
+      versionName),
+    )
+    .toBe(true);
+
+  await setSettingValue(page, "preclickHopMaxDistancePercent", "1");
+  await setSettingValue(page, "preclickHopMissProbabilityPercent", "99");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        maxDistance:
+          window.__sisyphusTestApi.params.preclickHopMaxDistancePercent,
+        missProbability:
+          window.__sisyphusTestApi.params.preclickHopMissProbabilityPercent,
+      })),
+    )
+    .toEqual({ maxDistance: 1, missProbability: 99 });
+
+  await page.reload();
+  await waitForDebugScene(page, "/scene-1", "cats-and-mice");
+  await expect(
+    page.locator('[name="preclickHopMissProbabilityPercent"]'),
+  ).toHaveValue("20");
+  await expect(
+    page.locator('[name="preclickHopMaxDistancePercent"]'),
+  ).toHaveValue("46.2");
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        maxDistance:
+          window.__sisyphusTestApi.params.preclickHopMaxDistancePercent,
+        missProbability:
+          window.__sisyphusTestApi.params.preclickHopMissProbabilityPercent,
+      })),
+    )
+    .toEqual({ maxDistance: 46.2, missProbability: 20 });
+});
+
 test("общие параметры мигрируют по предыдущей сцене и сохраняют последнее изменение", async ({
   page,
 }) => {

@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 61;
+  const ROOM_SETTINGS_VERSION = 62;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -323,7 +323,7 @@
     preclickHopActivationRadiusPercent: 50,
     preclickHopMaxDistancePercent: 62.5,
     preclickFakeClickHopDistancePercent: 50,
-    preclickHopMissProbabilityPercent: 10,
+    preclickHopMissProbabilityPercent: 20,
     preclickHopSpeedPxPerSecond: 1200,
     preclickHopSpeedEasing: DEFAULT_PRECLICK_HOP_SPEED_EASING,
     customCursorEnabled: false,
@@ -1687,6 +1687,10 @@
 
   function migrateRoomSettings(input, version = 1) {
     const source = input && typeof input === "object" ? { ...input } : {};
+    const legacyPreclickMissProbabilityWasProvided = Object.hasOwn(
+      source,
+      "preclickHopMissProbabilityPercent"
+    );
     if (finiteNumber(version, 1) < 4) {
       if (Number.isFinite(Number(source.handWidthVw))) {
         source.handWidthVw = Number(source.handWidthVw) / 2;
@@ -1827,6 +1831,12 @@
       }
       current.sceneTwoBarrierHeightVh =
         DEFAULT_ROOM_SETTINGS.sceneTwoBarrierHeightVh;
+      if (!Object.hasOwn(current, "sceneTwoBarrierHopMissProbabilityPercent")) {
+        current.sceneTwoBarrierHopMissProbabilityPercent =
+          legacyPreclickMissProbabilityWasProvided
+            ? current.preclickHopMissProbabilityPercent
+            : DEFAULT_ROOM_SETTINGS.sceneTwoBarrierHopMissProbabilityPercent;
+      }
       [
         [
           "sceneTwoBarrierHopActivationRadiusPercent",
@@ -1835,10 +1845,6 @@
         [
           "sceneTwoBarrierHopMaxDistancePercent",
           "preclickHopMaxDistancePercent",
-        ],
-        [
-          "sceneTwoBarrierHopMissProbabilityPercent",
-          "preclickHopMissProbabilityPercent",
         ],
         [
           "sceneTwoBarrierHopSpeedPxPerSecond",
@@ -2014,6 +2020,10 @@
     if (finiteNumber(version, 1) < 61) {
       current.preclickPopupOnAnySceneClickEnabled =
         DEFAULT_ROOM_SETTINGS.preclickPopupOnAnySceneClickEnabled;
+    }
+    if (finiteNumber(version, 1) < 62) {
+      current.preclickHopMissProbabilityPercent =
+        DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent;
     }
     return current;
   }
