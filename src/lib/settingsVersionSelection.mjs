@@ -32,3 +32,22 @@ export function settingsFromLatestVersionEntry(entries) {
     ? { ...latest.settings }
     : null;
 }
+
+export function settingsVersionSaveTarget({
+  baselineEntry = null,
+  selectedEntry = null,
+  draftDetached = false,
+  requestedName = "",
+} = {}) {
+  if (draftDetached) {
+    return null;
+  }
+  const target = baselineEntry || selectedEntry;
+  if (!target) {
+    return null;
+  }
+  const normalizedName = String(requestedName || "").trim();
+  return normalizedName && normalizedName !== String(target.name || "").trim()
+    ? null
+    : target;
+}

@@ -72,7 +72,7 @@ test("root и settings ведут к первой сцене, slash канони
   await expect(page).toHaveURL(/\/scene-2$/);
 });
 
-test("scene 1 завершается на первом настоящем нажатии и restart сбрасывает её", async ({ page }) => {
+test("scene 1 не завершается начальным кликом и restart сбрасывает её", async ({ page }) => {
   await waitForScene(page, "/scene-1");
   const rock = page.locator(ROCK);
   await expect(rock).toHaveClass(/is-preclick-hop/);
@@ -82,16 +82,7 @@ test("scene 1 завершается на первом настоящем наж
   await expect(page.locator("body")).toHaveAttribute("data-scene-complete", "false");
   await expect(rock).not.toHaveClass(/is-dragging/);
 
-  await page.waitForTimeout(900);
-  await moveToVisibleRock(page);
-  await page.mouse.down();
-  await expect(page.locator("body")).toHaveAttribute("data-scene-complete", "true");
-  await expect(page.locator("body")).toHaveAttribute(
-    "data-scene-completion-reason",
-    "first-real-rock-press",
-  );
   await expect(page).toHaveURL(/\/scene-1$/);
-  await page.mouse.up();
 
   await page.getByRole("button", { name: "Начать сначала" }).click();
   await expect(page.locator("body")).toHaveAttribute("data-scene-complete", "false");

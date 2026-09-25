@@ -266,8 +266,15 @@ test("debug-каталог шаблонов общий для разных ли�
     settings: { gravity: 8.25, sceneHeightScreens: 7 },
   };
   first.send("settingsTemplates.import", { entries: [entry] });
-  const [imported, changed] = await Promise.all([
-    first.waitFor("settingsTemplates.imported"),
+  const importError = await first.waitFor(
+    "error",
+    (payload) => payload.code === "settings_template_import_disabled"
+  );
+  assert.equal(importError.payload.code, "settings_template_import_disabled");
+
+  first.send("settingsTemplates.save", { entry });
+  const [saved, changed] = await Promise.all([
+    first.waitFor("settingsTemplates.saved"),
     second.waitFor(
       "settingsTemplates.changed",
       (payload) =>
@@ -275,7 +282,7 @@ test("debug-каталог шаблонов общий для разных ли�
         payload.entries?.some((item) => item.id === entry.id),
     ),
   ]);
-  assert.equal(imported.payload.entries[0].id, entry.id);
+  assert.equal(saved.payload.entry.id, entry.id);
   assert.equal(changed.payload.entries[0].settings.gravity, 8.25);
   assert.equal(
     service.manager.getSession(secondCreated.sessionId).physics.gravity,

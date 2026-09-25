@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 60;
+  const ROOM_SETTINGS_VERSION = 61;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -305,6 +305,7 @@
     rockMinWidthVw: DEFAULT_ROCK_MIN_WIDTH_VW,
     rockMaxWidthVw: DEFAULT_ROCK_MAX_WIDTH_VW,
     preclickFirstHopOnClick: false,
+    preclickPopupOnAnySceneClickEnabled: false,
     preclickHopGuardClickCount: 2,
     preclickHopSoundFilename: DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     preclickPopupDelayMs: 200,
@@ -1096,6 +1097,11 @@
         source,
         fallbackSource,
         "preclickFirstHopOnClick"
+      ),
+      preclickPopupOnAnySceneClickEnabled: boolSetting(
+        source,
+        fallbackSource,
+        "preclickPopupOnAnySceneClickEnabled"
       ),
       preclickHopGuardClickCount: integerSetting(
         preclickHopRadiusSource,
@@ -2004,6 +2010,10 @@
     if (finiteNumber(version, 1) < 60) {
       current.preclickFakeClickHopDistancePercent =
         DEFAULT_ROOM_SETTINGS.preclickFakeClickHopDistancePercent;
+    }
+    if (finiteNumber(version, 1) < 61) {
+      current.preclickPopupOnAnySceneClickEnabled =
+        DEFAULT_ROOM_SETTINGS.preclickPopupOnAnySceneClickEnabled;
     }
     return current;
   }

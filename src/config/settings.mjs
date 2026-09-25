@@ -506,7 +506,7 @@ export function settingsGroupControls(group) {
 }
 
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
-  "preclickFirstHopOnClick",
+  "preclickPopupOnAnySceneClickEnabled",
   "preclickHopSoundFilename",
   "preclickPopupDelayMs",
   "preclickPopupBackgroundDelaySeconds",
@@ -1267,15 +1267,6 @@ export const SETTINGS_GROUPS = [
         hint: "Количество ударов в минуту. 60 BPM — один полный пульс в секунду.",
       },
       {
-        name: "preclickFirstHopOnClick",
-        label: "Первое отпрыгивание",
-        type: "toggle-button",
-        defaultChecked: DEFAULT_ROOM_SETTINGS.preclickFirstHopOnClick,
-        activeLabel: "клик",
-        inactiveLabel: "hover",
-        hint: "В режиме hover первый отскок запускает вход руки в радиус камня. В режиме клик первый клик запускает отдельный отскок и не входит в количество фейковых кликов.",
-      },
-      {
         name: "preclickHopSoundFilename",
         label: "Звук фейкового клика",
         type: "select",
@@ -1296,7 +1287,7 @@ export const SETTINGS_GROUPS = [
       },
       {
         name: "preclickPopupBackgroundDelaySeconds",
-        label: "Возврат фокуса после настоящего клика, с",
+        label: "Возврат фокуса после третьего клика, с",
         type: "range",
         min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
           .preclickPopupBackgroundDelaySeconds[0],
@@ -1306,7 +1297,7 @@ export const SETTINGS_GROUPS = [
         defaultValue:
           DEFAULT_ROOM_SETTINGS.preclickPopupBackgroundDelaySeconds,
         output: `${DEFAULT_ROOM_SETTINGS.preclickPopupBackgroundDelaySeconds.toFixed(1)} с`,
-        hint: "Через выбранное время после первого настоящего клика открытые окна с картинами остаются открытыми, уходят с переднего плана, а фокус возвращается главному окну. Повторные клики не перезапускают таймер.",
+        hint: "Через выбранное время после третьего фейкового клика открытые окна с картинами остаются открытыми, уходят с переднего плана, а фокус возвращается главному окну.",
       },
       {
         name: "preclickPopupWidthViewportFraction",
@@ -1423,7 +1414,7 @@ export const SETTINGS_GROUPS = [
           DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent,
         output:
           `${DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent}%`,
-        hint: "Первые три входа руки в радиус всегда запускают отскок, четвёртый гарантированно подпускает. Начиная с пятого этот процент задаёт независимую вероятность подпускания; 0% — всегда отскакивать, 100% — всегда подпускать.",
+        hint: "Первые три входа руки в радиус всегда запускают отскок, четвёртый гарантированно подпускает. До второго фейкового клика этот процент задаёт вероятность подпускания после обязательного отскока. После второго фейкового клика подпускание всегда 0%.",
       },
       {
         name: "preclickHopSpeedPxPerSecond",

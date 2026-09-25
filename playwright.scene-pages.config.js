@@ -5,6 +5,9 @@ const path = require("node:path");
 const smokeRunId = `${process.pid}-${Date.now()}`;
 const smokePath = (name) =>
   path.join(os.tmpdir(), `sisyphus-scene-pages-${name}-${smokeRunId}.json`);
+const chromiumExecutablePath = String(
+  process.env.PLAYWRIGHT_CHROMIUM_EXECUTABLE || "",
+).trim();
 
 module.exports = defineConfig({
   testDir: "./tests/smoke",
@@ -16,12 +19,15 @@ module.exports = defineConfig({
     baseURL: "http://127.0.0.1:8080",
     headless: true,
     trace: "retain-on-failure",
+    ...(chromiumExecutablePath
+      ? { launchOptions: { executablePath: chromiumExecutablePath } }
+      : {}),
   },
   webServer: {
     command: "npm run dev",
     url: "http://127.0.0.1:8080/healthz",
     timeout: 45_000,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     env: {
       ALLOWED_ORIGIN: "http://127.0.0.1:8080",
       SESSION_TTL_SECONDS: "86400",

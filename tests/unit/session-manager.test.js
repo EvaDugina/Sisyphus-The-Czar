@@ -1974,6 +1974,24 @@ test("общий debug-каталог доступен и обновляется
   manager.handleMessage(firstSession, first.client, {
     v: 1,
     seq: 1,
+    type: "settingsTemplates.import",
+    payload: { entries: [savedEntry] },
+  });
+  assert.equal(
+    first.socket.messages.findLast((message) => message.type === "error").payload
+      .code,
+    "settings_template_import_disabled",
+  );
+  assert.equal(
+    second.socket.messages.some(
+      (message) => message.type === "settingsTemplates.changed",
+    ),
+    false,
+  );
+
+  manager.handleMessage(firstSession, first.client, {
+    v: 1,
+    seq: 2,
     type: "settingsTemplates.save",
     payload: { entry: savedEntry },
   });

@@ -1,8 +1,10 @@
 const { defineConfig } = require("@playwright/test");
+const os = require("node:os");
+const path = require("node:path");
 
-const baseURL =
-  process.env.PLAYWRIGHT_BASE_URL || "http://127.0.0.1:8080";
-const skipWebServer = process.env.PLAYWRIGHT_SKIP_WEBSERVER === "true";
+const smokeRunId = `${process.pid}-${Date.now()}`;
+const smokePath = (name) =>
+  path.join(os.tmpdir(), `sisyphus-ui-${name}-${smokeRunId}.json`);
 
 module.exports = defineConfig({
   testDir: "./tests/smoke",
@@ -11,15 +13,15 @@ module.exports = defineConfig({
   expect: { timeout: 8_000 },
   workers: 1,
   use: {
-    baseURL,
+    baseURL: "http://127.0.0.1:8080",
     headless: true,
     trace: "retain-on-failure",
   },
-  webServer: skipWebServer ? undefined : {
+  webServer: {
     command: "npm run dev",
     url: "http://127.0.0.1:8080/healthz",
     timeout: 45_000,
-    reuseExistingServer: true,
+    reuseExistingServer: false,
     env: {
       ALLOWED_ORIGIN: "http://127.0.0.1:8080",
       SESSION_TTL_SECONDS: "86400",
@@ -28,10 +30,9 @@ module.exports = defineConfig({
       SLIP_DELAY_MIN_MS: "10000",
       SLIP_DELAY_MAX_MS: "10000",
       STATIONARY_HOLD_RELEASE_MS: "10000",
-      SESSION_STORE_PATH: "/tmp/sisyphus-ui-smoke-sessions.json",
-      PRODUCTION_PRESET_PATH: "/tmp/sisyphus-ui-production-preset.json",
-      SETTINGS_TEMPLATE_STORE_PATH:
-        "/tmp/sisyphus-ui-settings-templates.json",
+      SESSION_STORE_PATH: smokePath("sessions"),
+      PRODUCTION_PRESET_PATH: smokePath("preset"),
+      SETTINGS_TEMPLATE_STORE_PATH: smokePath("settings"),
       SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },

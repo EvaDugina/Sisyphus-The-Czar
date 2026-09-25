@@ -261,8 +261,6 @@ class SessionManager {
     this.getSettingsTemplatesPage =
       options.getSettingsTemplatesPage ||
       (() => ({ revision: 0, offset: 0, nextOffset: null, entries: [] }));
-    this.importSettingsTemplates =
-      options.importSettingsTemplates || (() => ({ revision: 0, entries: [] }));
     this.saveSettingsTemplate =
       options.saveSettingsTemplate ||
       (() => ({ revision: 0, entry: null, branched: false }));
@@ -1564,7 +1562,11 @@ class SessionManager {
         this.sendSettingsTemplatesPage(session, client, payload);
         break;
       case "settingsTemplates.import":
-        this.importSettingsTemplateEntries(session, client, payload);
+        this.sendError(
+          client,
+          "settings_template_import_disabled",
+          "Фоновый импорт локальных шаблонов отключён"
+        );
         break;
       case "settingsTemplates.save":
         this.saveSettingsTemplateEntry(session, client, payload);
@@ -1986,30 +1988,6 @@ class SessionManager {
         }
       });
     });
-  }
-
-  importSettingsTemplateEntries(session, client, payload = {}) {
-    if (!this.clientCanUseDebugSettings(session, client)) {
-      this.sendError(client, "debug_only", "Импорт доступен только при DEBUG=true");
-      return false;
-    }
-    try {
-      const result = this.importSettingsTemplates(payload.entries, {
-        protectedId: this.settingsTemplateProtectedId(),
-      });
-      this.sendTo(client, "settingsTemplates.imported", result);
-      if (result.entries.length > 0) {
-        this.broadcastSettingsTemplateChange({
-          action: "upsert",
-          revision: result.revision,
-          entries: result.entries,
-        });
-      }
-      return true;
-    } catch (error) {
-      this.sendSettingsTemplateError(client, error);
-      return false;
-    }
   }
 
   saveSettingsTemplateEntry(session, client, payload = {}) {

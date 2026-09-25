@@ -5,6 +5,7 @@ import { formatSettingsVersionOptionLabel } from "../lib/settingsVersions.mjs";
 import {
   selectLatestSettingsVersionEntry,
   settingsFromLatestVersionEntry,
+  settingsVersionSaveTarget,
 } from "../lib/settingsVersionSelection.mjs";
 import {
   parseSettingDependencyAttribute,
@@ -28,10 +29,9 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.map(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 60;
+const SETTINGS_SCHEMA_VERSION = 61;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
-const SETTINGS_TEMPLATES_IMPORT_KEY = "sisyphus-settings-templates-imported-v1";
 
 export function createSettingsController(options) {
   const {
@@ -44,7 +44,6 @@ export function createSettingsController(options) {
     listen,
     localCanEditSettings,
     onDeleteSettingsTemplate,
-    onImportSettingsTemplates,
     onListSettingsTemplates,
     onSaveRoomSettings,
     onSaveSettingsTemplate,
@@ -81,9 +80,6 @@ export function createSettingsController(options) {
     : options.migrateLegacySettings
       ? LEGACY_SETTINGS_STORAGE_KEYS
       : [];
-  const settingsTemplatesImportKey = `${SETTINGS_TEMPLATES_IMPORT_KEY}:${
-    settingsNamespace
-  }`;
   const settingsPanel =
     options.settingsPanel || document.querySelector(".settings-panel");
   const settingsVersionName =
@@ -119,7 +115,6 @@ export function createSettingsController(options) {
     sharedCatalogReady: false,
     catalogRevision: 0,
     catalogPages: [],
-    pendingImportBatches: 0,
   };
   let previewAnimationFrame = null;
   let commitTimerId = null;
@@ -139,13 +134,6 @@ export function createSettingsController(options) {
       updatedAt: entry.updatedAt,
       settings: { ...entry.settings },
     };
-  }
-
-  function namespacedSettingsVersionId(id) {
-    const normalized = String(id || "").trim();
-    return normalized.startsWith(settingsVersionIdPrefix)
-      ? normalized
-      : `${settingsVersionIdPrefix}${normalized}`;
   }
 
   function settingsVersionBelongsToNamespace(entry) {
@@ -682,26 +670,6 @@ export function createSettingsController(options) {
     }
   }
 
-  function settingsTemplatesImportMarker() {
-    return `${settingsTemplatesImportKey}:${window.location.origin}`;
-  }
-
-  function settingsTemplatesImported() {
-    try {
-      return localStorage.getItem(settingsTemplatesImportMarker()) === "true";
-    } catch {
-      return false;
-    }
-  }
-
-  function markSettingsTemplatesImported() {
-    try {
-      localStorage.setItem(settingsTemplatesImportMarker(), "true");
-    } catch {
-      /* localStorage недоступен — повторный импорт дедуплицируется сервером */
-    }
-  }
-
   function mergeCatalogEntries(entries) {
     if (!Array.isArray(entries)) {
       return [];
@@ -747,40 +715,6 @@ export function createSettingsController(options) {
     refreshDraftState();
   }
 
-  function importLegacySettingsVersions(entries) {
-    if (
-      settingsTemplatesImported() ||
-      !Array.isArray(entries) ||
-      entries.length === 0 ||
-      typeof onImportSettingsTemplates !== "function"
-    ) {
-      markSettingsTemplatesImported();
-      return;
-    }
-    const batches = [];
-    for (let index = 0; index < entries.length; index += 10) {
-      batches.push(
-        entries.slice(index, index + 10).map((entry) => ({
-          ...copySettingsVersionEntry(entry),
-          id: namespacedSettingsVersionId(entry.id),
-        })),
-      );
-    }
-    settingsVersions.pendingImportBatches = batches.length;
-    let sentBatches = 0;
-    batches.forEach((batch) => {
-      if (onImportSettingsTemplates(batch) !== false) {
-        sentBatches += 1;
-      }
-    });
-    settingsVersions.pendingImportBatches = sentBatches;
-    if (sentBatches === 0) {
-      setProductionPresetStatus("Нет соединения для импорта шаблонов", "error");
-    } else {
-      setProductionPresetStatus("Импортируем локальные шаблоны…", "pending");
-    }
-  }
-
   function setSettingsTemplatesPage(payload = {}) {
     const offset = Math.max(0, Number(payload.offset) || 0);
     if (offset === 0) {
@@ -807,31 +741,10 @@ export function createSettingsController(options) {
       return;
     }
 
-    const legacyEntries = settingsVersions.sharedCatalogReady
-      ? []
-      : settingsVersions.entries.map(copySettingsVersionEntry);
     settingsVersions.entries = [];
     settingsVersions.sharedCatalogReady = true;
     mergeCatalogEntries(settingsVersions.catalogPages);
     applyLatestCatalogEntry();
-    importLegacySettingsVersions(legacyEntries);
-  }
-
-  function setSettingsTemplatesImported(payload = {}) {
-    mergeCatalogEntries(payload.entries);
-    settingsVersions.catalogRevision = Math.max(
-      settingsVersions.catalogRevision,
-      Number(payload.revision) || 0,
-    );
-    settingsVersions.pendingImportBatches = Math.max(
-      0,
-      settingsVersions.pendingImportBatches - 1,
-    );
-    if (settingsVersions.pendingImportBatches === 0) {
-      markSettingsTemplatesImported();
-      setProductionPresetStatus("Локальные шаблоны импортированы", "success");
-      applyLatestCatalogEntry();
-    }
   }
 
   function setSettingsTemplateSaved(payload = {}) {
@@ -842,7 +755,7 @@ export function createSettingsController(options) {
     settingsVersions.selectedId = entry.id;
     settingsVersions.baselineId = entry.id;
     settingsVersions.baselineName = entry.name;
-    settingsVersions.baselineSettings = { ...entry.settings };
+    settingsVersions.baselineSettings = currentSettingsSnapshot();
     settingsVersions.draftDetached = false;
     settingsVersions.dirtyKeys.clear();
     if (settingsVersionName) {
@@ -1188,11 +1101,15 @@ export function createSettingsController(options) {
 
   function saveCurrentSettingsVersion() {
     const now = new Date();
-    const selected = settingsVersions.draftDetached
-      ? null
-      : baselineSettingsVersion() || selectedSettingsVersion();
+    const requestedName = String(settingsVersionName?.value || "").trim();
+    const selected = settingsVersionSaveTarget({
+      baselineEntry: baselineSettingsVersion(),
+      selectedEntry: selectedSettingsVersion(),
+      draftDetached: settingsVersions.draftDetached,
+      requestedName,
+    });
     const name =
-      String(settingsVersionName?.value || "").trim() ||
+      requestedName ||
       selected?.name ||
       defaultSettingsVersionName(now);
     if (
@@ -1849,7 +1766,6 @@ export function createSettingsController(options) {
     setSettingsTemplateDeleted,
     setSettingsTemplateError,
     setSettingsTemplateSaved,
-    setSettingsTemplatesImported,
     setSettingsTemplatesPage,
     applySettingsTemplateChange,
     syncPhysicsSettingControls,

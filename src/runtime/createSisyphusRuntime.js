@@ -475,6 +475,9 @@ export function createSisyphusRuntime(elements = {}) {
     rockPulseBpm: SharedRoomSettings.DEFAULT_ROOM_SETTINGS.rockPulseBpm,
     preclickFirstHopOnClick:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickFirstHopOnClick,
+    preclickPopupOnAnySceneClickEnabled:
+      SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+        .preclickPopupOnAnySceneClickEnabled,
     preclickHopGuardClickCount:
       SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
     preclickHopSoundFilename:
@@ -644,6 +647,7 @@ export function createSisyphusRuntime(elements = {}) {
   };
   const preclickRockGuidance = {
     completed: false,
+    initialClickConsumed: false,
     pointerX: null,
     pointerY: null,
     directionX: null,
@@ -658,6 +662,7 @@ export function createSisyphusRuntime(elements = {}) {
     lastRadiusDecision: null,
     guardClicksUsed: 0,
     hopAnimationId: null,
+    activeHop: null,
     hopSampleAtMs: null,
     hopSampleX: null,
     hopSampleY: null,
@@ -1170,7 +1175,6 @@ export function createSisyphusRuntime(elements = {}) {
     listen,
     localCanEditSettings,
     onDeleteSettingsTemplate: deleteSettingsTemplate,
-    onImportSettingsTemplates: importSettingsTemplates,
     onListSettingsTemplates: listSettingsTemplates,
     onSaveSettingsTemplate: saveSettingsTemplate,
     onSelectProductionPreset: selectProductionPreset,
@@ -3492,11 +3496,28 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function cancelPreclickHopAnimation() {
-    if (preclickRockGuidance.hopAnimationId === null) {
-      return;
+    if (preclickRockGuidance.hopAnimationId !== null) {
+      window.cancelAnimationFrame(preclickRockGuidance.hopAnimationId);
+      preclickRockGuidance.hopAnimationId = null;
     }
-    window.cancelAnimationFrame(preclickRockGuidance.hopAnimationId);
-    preclickRockGuidance.hopAnimationId = null;
+    preclickRockGuidance.activeHop = null;
+  }
+
+  function finishPreclickHopAnimation() {
+    const activeHop = preclickRockGuidance.activeHop;
+    if (!activeHop) {
+      return false;
+    }
+    if (preclickRockGuidance.hopAnimationId !== null) {
+      window.cancelAnimationFrame(preclickRockGuidance.hopAnimationId);
+      preclickRockGuidance.hopAnimationId = null;
+    }
+    activeHop.applyProgress(1);
+    preclickRockGuidance.activeHop = null;
+    if (preclickRockGuidance.lastHopRequest) {
+      preclickRockGuidance.lastHopRequest.completed = true;
+    }
+    return true;
   }
 
   function resetPreclickRockHop() {
@@ -3511,6 +3532,7 @@ export function createSisyphusRuntime(elements = {}) {
     preclickPopupArtworkSelector.reset();
     Object.assign(preclickRockGuidance, {
       completed: false,
+      initialClickConsumed: false,
       pointerX: null,
       pointerY: null,
       directionX: null,
@@ -3525,6 +3547,7 @@ export function createSisyphusRuntime(elements = {}) {
       lastRadiusDecision: null,
       guardClicksUsed: 0,
       hopAnimationId: null,
+      activeHop: null,
       hopSampleAtMs: null,
       hopSampleX: null,
       hopSampleY: null,
@@ -3546,10 +3569,13 @@ export function createSisyphusRuntime(elements = {}) {
     maxDistancePercent = params.preclickHopMaxDistancePercent,
     fixedDistanceFactor = null,
     trigger = "automatic",
+    soundEnabled = true,
   }) {
-    cancelPreclickHopAnimation();
+    finishPreclickHopAnimation();
     preclickRockGuidance.clickAllowed = false;
-    playPreclickHopSound();
+    if (soundEnabled) {
+      playPreclickHopSound();
+    }
     const currentOffset = preclickRockHopOffset();
     const rect = rock.getBoundingClientRect();
     const startCenter = {
@@ -3581,6 +3607,8 @@ export function createSisyphusRuntime(elements = {}) {
       fixedDistanceFactor,
       requestedDistance: target.requestedDistance,
       actualDistance: target.actualDistance,
+      endpointSafe: target.endpointSafe,
+      completed: false,
     };
     preclickRockGuidance.directionX = target.directionX;
     preclickRockGuidance.directionY = target.directionY;
@@ -3590,13 +3618,15 @@ export function createSisyphusRuntime(elements = {}) {
       speedPxPerSecond: params.preclickHopSpeedPxPerSecond,
     });
     rock.classList.add("is-preclick-hop");
+    const hopViewportWidth = window.innerWidth;
+    const hopViewportHeight = window.innerHeight;
 
     const applyHopProgress = (progress) => {
       const wrappedCenter = wrapPreclickHopCenter({
         x: startCenter.x + target.deltaX * progress,
         y: startCenter.y + target.deltaY * progress,
-        viewportWidth: window.innerWidth,
-        viewportHeight: window.innerHeight,
+        viewportWidth: hopViewportWidth,
+        viewportHeight: hopViewportHeight,
       });
       setPreclickRockHopOffset(
         wrappedCenter.x - baseCenter.x,
@@ -3606,11 +3636,21 @@ export function createSisyphusRuntime(elements = {}) {
 
     if (reducedMotion.matches || hopDurationMs <= 0) {
       applyHopProgress(1);
+      preclickRockGuidance.lastHopRequest.completed = true;
       return;
     }
 
     const startedAt = performance.now();
+    const activeHop = {
+      applyProgress: applyHopProgress,
+      durationMs: hopDurationMs,
+      startedAt,
+    };
+    preclickRockGuidance.activeHop = activeHop;
     const renderHop = (now) => {
+      if (preclickRockGuidance.activeHop !== activeHop) {
+        return;
+      }
       const progress = clamp(
         (now - startedAt) / hopDurationMs,
         0,
@@ -3628,6 +3668,10 @@ export function createSisyphusRuntime(elements = {}) {
         return;
       }
       preclickRockGuidance.hopAnimationId = null;
+      preclickRockGuidance.activeHop = null;
+      if (preclickRockGuidance.lastHopRequest) {
+        preclickRockGuidance.lastHopRequest.completed = true;
+      }
     };
     preclickRockGuidance.hopAnimationId =
       window.requestAnimationFrame(renderHop);
@@ -3636,7 +3680,7 @@ export function createSisyphusRuntime(elements = {}) {
   function refreshPreclickRockHop() {
     if (
       preclickRockGuidance.completed ||
-      (params.preclickFirstHopOnClick && preclickRockGuidance.hopCount === 0) ||
+      !preclickRockGuidance.initialClickConsumed ||
       !finePointer.matches ||
       !Number.isFinite(preclickRockGuidance.pointerX) ||
       !Number.isFinite(preclickRockGuidance.pointerY)
@@ -3674,20 +3718,28 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.insideRadius = true;
     preclickRockGuidance.outsideRadius = false;
     if (enteredRadius) {
+      const persistentFakeStage = isPersistentPreclickFakeStage();
       const decision = preclickRadiusHopDecision({
         successfulHopCount: preclickRockGuidance.radiusHopCount,
         initialAllowConsumed:
           preclickRockGuidance.initialHoverAllowConsumed,
         requiredHoverHopPending:
           preclickRockGuidance.requiredHoverHopPending,
-        missProbabilityPercent: params.preclickHopMissProbabilityPercent,
+        missProbabilityPercent: persistentFakeStage
+          ? 0
+          : params.preclickHopMissProbabilityPercent,
       });
       preclickRockGuidance.initialHoverAllowConsumed =
         decision.initialAllowConsumed;
       preclickRockGuidance.requiredHoverHopPending =
         decision.requiredHoverHopPending;
-      preclickRockGuidance.clickAllowed = !decision.shouldHop;
-      preclickRockGuidance.lastRadiusDecision = decision.reason;
+      preclickRockGuidance.clickAllowed = persistentFakeStage
+        ? false
+        : !decision.shouldHop;
+      preclickRockGuidance.lastRadiusDecision =
+        persistentFakeStage && decision.reason === "random-hop"
+          ? "persistent-fake-hop"
+          : decision.reason;
       if (!decision.shouldHop) {
         return;
       }
@@ -3734,7 +3786,7 @@ export function createSisyphusRuntime(elements = {}) {
   function restartPreclickRockHopFromLastPointer() {
     preclickRockGuidance.insideRadius = false;
     preclickRockGuidance.outsideRadius = false;
-    cancelPreclickHopAnimation();
+    finishPreclickHopAnimation();
     const offset = preclickRockHopOffset();
     const rect = rock.getBoundingClientRect();
     const baseCenter = preclickRockBaseCenter(offset);
@@ -3790,11 +3842,10 @@ export function createSisyphusRuntime(elements = {}) {
     });
   }
 
-  function activatePreclickFirstHopOnClick(event) {
+  function activatePreclickInitialClick(event) {
     if (
       preclickRockGuidance.completed ||
-      !params.preclickFirstHopOnClick ||
-      preclickRockGuidance.hopCount > 0
+      preclickRockGuidance.initialClickConsumed
     ) {
       return false;
     }
@@ -3809,7 +3860,8 @@ export function createSisyphusRuntime(elements = {}) {
     preclickRockGuidance.hopSampleX = pointerX;
     preclickRockGuidance.hopSampleY = pointerY;
     preclickRockGuidance.hopSampleAtMs = performance.now();
-    preclickRockGuidance.lastRadiusDecision = "click-trigger";
+    preclickRockGuidance.initialClickConsumed = true;
+    preclickRockGuidance.lastRadiusDecision = "initial-click";
     preclickRockGuidance.insideRadius =
       params.preclickHopActivationRadiusPercent > 0;
     preclickRockGuidance.outsideRadius = false;
@@ -3818,16 +3870,60 @@ export function createSisyphusRuntime(elements = {}) {
       centerX: rect.left + rect.width / 2,
       centerY: rect.top + rect.height / 2,
       speedPxPerSecond: preclickRockGuidance.hopSpeedPxPerSecond,
+      maxDistancePercent: params.preclickFakeClickHopDistancePercent,
+      fixedDistanceFactor: 1,
+      trigger: "initial-click",
+      soundEnabled: false,
     });
     event.preventDefault();
     return true;
   }
 
-  function consumePreclickGuardClick(event) {
-    const guardClickCount = Math.max(
+  function openPreclickArtworkWindowForSceneClick(event) {
+    if (
+      !isSceneOne ||
+      !preclickRockGuidance.initialClickConsumed ||
+      sceneFlow.completed ||
+      preclickRockGuidance.completed ||
+      (event.pointerType === "mouse" && event.button !== 0)
+    ) {
+      return false;
+    }
+    const target = event.target;
+    if (!(target instanceof Element) || !world.contains(target)) {
+      return false;
+    }
+    if (
+      rock.contains(target) ||
+      target.closest(
+        "button, a, input, select, textarea, [role='button'], [contenteditable='true']",
+      )
+    ) {
+      return false;
+    }
+    return openPreclickArtworkWindow(event, {
+      delayMs: params.preclickPopupDelayMs,
+    });
+  }
+
+  function preclickGuardClickCount() {
+    return Math.max(
       0,
       Math.round(Number(params.preclickHopGuardClickCount) || 0),
     );
+  }
+
+  function isPersistentPreclickFakeStage() {
+    return Boolean(
+      isSceneOne &&
+      !preclickRockGuidance.completed &&
+      preclickRockGuidance.initialClickConsumed &&
+      preclickRockGuidance.guardClicksUsed >= preclickGuardClickCount()
+    );
+  }
+
+  function consumePreclickGuardClick(event) {
+    const guardClickCount = preclickGuardClickCount();
     if (
       preclickRockGuidance.completed ||
       preclickRockGuidance.guardClicksUsed >= guardClickCount
@@ -3873,8 +3969,51 @@ export function createSisyphusRuntime(elements = {}) {
     return true;
   }
 
+  function consumePersistentPreclickFakeClick(event) {
+    if (!isPersistentPreclickFakeStage()) {
+      return false;
+    }
+    const pointerX = Number(event.clientX);
+    const pointerY = Number(event.clientY);
+    if (!Number.isFinite(pointerX) || !Number.isFinite(pointerY)) {
+      return false;
+    }
+    const rect = rock.getBoundingClientRect();
+    preclickRockGuidance.pointerX = pointerX;
+    preclickRockGuidance.pointerY = pointerY;
+    preclickRockGuidance.hopSampleX = pointerX;
+    preclickRockGuidance.hopSampleY = pointerY;
+    preclickRockGuidance.hopSampleAtMs = performance.now();
+    preclickRockGuidance.requiredHoverHopPending = true;
+    preclickRockGuidance.clickAllowed = false;
+    preclickRockGuidance.lastRadiusDecision = "persistent-fake-click";
+    preclickRockGuidance.insideRadius =
+      params.preclickHopActivationRadiusPercent > 0;
+    preclickRockGuidance.outsideRadius = false;
+    syncHandCursorForPointer(event);
+    openPreclickArtworkWindow(event, {
+      delayMs: params.preclickPopupDelayMs,
+    });
+    performPreclickRockHop({
+      centerX: rect.left + rect.width / 2,
+      centerY: rect.top + rect.height / 2,
+      speedPxPerSecond: preclickRockGuidance.hopSpeedPxPerSecond,
+      maxDistancePercent: params.preclickFakeClickHopDistancePercent,
+      fixedDistanceFactor: 1,
+      trigger: "persistent-fake-click",
+    });
+    completePreclickRockGuidance({ preserveHopPosition: true });
+    preclickPopupController.revealPreclickWindows();
+    preclickPopupController.schedulePreclickWindowsBackground(
+      params.preclickPopupBackgroundDelaySeconds,
+    );
+    completeScene("third-fake-click");
+    event.preventDefault();
+    return true;
+  }
+
   function materializePreclickRockHopPosition() {
-    cancelPreclickHopAnimation();
+    finishPreclickHopAnimation();
     updateBounds();
     const rect = rock.getBoundingClientRect();
     const targetCenterX = rect.left + rect.width / 2;
@@ -5400,8 +5539,6 @@ export function createSisyphusRuntime(elements = {}) {
         signal: abortController.signal,
         body: JSON.stringify({
           state: initialSharedState(),
-          physics: SharedPhysics.sanitizePhysics(params),
-          roomSettings: sharedRoomSettingsPayload(),
           imprint: createSummitSharedImprint(collab.imprint),
           sceneId,
         }),
@@ -5467,10 +5604,6 @@ export function createSisyphusRuntime(elements = {}) {
 
   function listSettingsTemplates(payload = {}) {
     return sendShared("settingsTemplates.list", payload);
-  }
-
-  function importSettingsTemplates(entries) {
-    return sendShared("settingsTemplates.import", { entries });
   }
 
   function saveSettingsTemplate(entry, baseUpdatedAt = "") {
@@ -5970,8 +6103,6 @@ export function createSisyphusRuntime(elements = {}) {
       settingsController.setSettingsConflict(payload);
     } else if (message.type === "settingsTemplates.page") {
       settingsController.setSettingsTemplatesPage(payload);
-    } else if (message.type === "settingsTemplates.imported") {
-      settingsController.setSettingsTemplatesImported(payload);
     } else if (message.type === "settingsTemplates.saved") {
       settingsController.setSettingsTemplateSaved(payload);
     } else if (message.type === "settingsTemplates.deleted") {
@@ -8158,7 +8289,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    if (activatePreclickFirstHopOnClick(event)) {
+    if (activatePreclickInitialClick(event)) {
       return;
     }
 
@@ -8166,24 +8297,12 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
+    if (consumePersistentPreclickFakeClick(event)) {
+      return;
+    }
+
     if (isSceneOne) {
-      if (!preclickRockGuidance.clickAllowed) {
-        event.preventDefault();
-        return;
-      }
       event.preventDefault();
-      completePreclickRockGuidance({ preserveHopPosition: true });
-      preclickPopupController.revealPreclickWindows();
-      openPreclickArtworkWindow(event);
-      openPreclickArtworkWindow(event, { edgePosition: true });
-      preclickPopupController.schedulePreclickWindowsBackground(
-        params.preclickPopupBackgroundDelaySeconds,
-      );
-      playRockPointerDownSound();
-      showHandCursor(event);
-      scheduleGrabbingHandImage();
-      setGrabbingCursor(true);
-      completeScene("first-real-rock-press");
       return;
     }
 
@@ -8390,19 +8509,28 @@ export function createSisyphusRuntime(elements = {}) {
 
   settingsController.bind();
   listen(sessionRestartButton, "click", restartExperience);
+  const recoverPreclickHopAfterFocus = () => {
+    if (finishPreclickHopAnimation()) {
+      refreshPreclickRockHop();
+    }
+  };
   listen(document, "visibilitychange", () => {
     if (document.hidden) {
       flushTrailNetworkQueue();
       stopRockPulse();
     } else {
+      recoverPreclickHopAfterFocus();
       syncRockPulse();
     }
   });
+  listen(window, "focus", recoverPreclickHopAfterFocus);
+  listen(window, "pageshow", recoverPreclickHopAfterFocus);
 
   // Открытием панели управляет React-хук useSettings.
   listen(window, "pointermove", updatePreclickRockGuidance, { passive: true });
   listen(window, "pointerdown", pressAlwaysVisibleHand);
   listen(window, "pointerdown", startExpandedRockDrag);
+  listen(world, "pointerdown", openPreclickArtworkWindowForSceneClick);
   listen(settingsToggle, "pointerenter", showNativeSettingsCursor);
   listen(settingsToggle, "pointerleave", hideNativeSettingsCursor);
   listen(settingsPanel, "pointerenter", showNativeSettingsCursor);
@@ -8648,9 +8776,8 @@ export function createSisyphusRuntime(elements = {}) {
         enabled: true,
         completed: preclickRockGuidance.completed,
         finePointer: finePointer.matches,
-        firstHopOnClick: params.preclickFirstHopOnClick,
-        firstHopPending:
-          params.preclickFirstHopOnClick && preclickRockGuidance.hopCount === 0,
+        initialClickConsumed: preclickRockGuidance.initialClickConsumed,
+        awaitingInitialClick: !preclickRockGuidance.initialClickConsumed,
         hopCount: preclickRockGuidance.hopCount,
         radiusHopCount: preclickRockGuidance.radiusHopCount,
         initialHoverAllowConsumed:
@@ -8661,7 +8788,7 @@ export function createSisyphusRuntime(elements = {}) {
         lastRadiusDecision: preclickRockGuidance.lastRadiusDecision,
         guardClicksUsed: preclickRockGuidance.guardClicksUsed,
         guardClickCount: params.preclickHopGuardClickCount,
-        animating: preclickRockGuidance.hopAnimationId !== null,
+        animating: preclickRockGuidance.activeHop !== null,
         insideRadius: preclickRockGuidance.insideRadius,
         outsideRadius: preclickRockGuidance.outsideRadius,
         pointer: {
@@ -8818,7 +8945,7 @@ export function createSisyphusRuntime(elements = {}) {
   }
   const restoredSettingKeys = settingsController.load({
     loadLatestVersion: false,
-    loadVersionedSettings: true,
+    loadVersionedSettings: false,
   });
   const restoringPersistedSession = Boolean(
     restoreStoredSession && readStoredRoomSession(roomSessionStorageOptions)?.sessionId,
@@ -8827,22 +8954,6 @@ export function createSisyphusRuntime(elements = {}) {
   readControls();
   if (restoredSettingKeys.length > 0) {
     settingsController.saveSettings();
-  }
-  let restoredSharedSettings = false;
-  restoredSettingKeys.forEach((key) => {
-    if (restoringPersistedSession && key === "sceneHeightScreens") {
-      return;
-    }
-    if (
-      SHARED_PHYSICS_KEYS.includes(key) ||
-      SHARED_ROOM_SETTING_KEYS.includes(key)
-    ) {
-      stageControlChange(key, params[key]);
-      restoredSharedSettings = true;
-    }
-  });
-  if (restoredSharedSettings && !restoringPersistedSession) {
-    scheduleSharedSettingsUpdate();
   }
   settingsController.captureCurrentAsBaseline();
   document.fonts?.ready.then(() => {

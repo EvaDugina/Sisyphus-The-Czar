@@ -196,7 +196,14 @@ test("debug startup применяет помеченный preset вместо 
   assert.equal(root.settingsRevision, 2);
 });
 
-test("debug-сессия сохраняет локальный черновик поверх общего шаблона", async (context) => {
+test("debug-сессия применяет production preset поверх стартового browser payload", async (context) => {
+  const productionPresetStore = {
+    load: () => ({
+      settings: { gravity: 5.5, foldAngle: 30, foldZoneSize: 20 },
+    }),
+    metadata: () => null,
+    save: () => null,
+  };
   const settingsTemplateStore = {
     load: () => [],
     latest: () => ({ settings: { gravity: 5.5, foldAngle: 30 } }),
@@ -211,6 +218,7 @@ test("debug-сессия сохраняет локальный черновик 
     host: "127.0.0.1",
     debug: true,
     sessionStore: emptySessionStore(),
+    productionPresetStore,
     settingsTemplateStore,
     logger: () => {},
   });
@@ -234,9 +242,9 @@ test("debug-сессия сохраняет локальный черновик 
   const session = service.manager.getSession(payload.sessionId);
 
   assert.equal(response.status, 201);
-  assert.equal(session.physics.gravity, 8.5);
-  assert.equal(session.roomSettings.foldAngle, 45);
-  assert.equal(session.roomSettings.foldZoneSize, 10);
+  assert.equal(session.physics.gravity, 5.5);
+  assert.equal(session.roomSettings.foldAngle, 30);
+  assert.equal(session.roomSettings.foldZoneSize, 20);
 });
 
 test("reconnect личной сессии не применяет production preset повторно", async (context) => {

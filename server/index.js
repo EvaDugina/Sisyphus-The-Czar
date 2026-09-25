@@ -211,8 +211,6 @@ function createService(options = {}) {
       settingsTemplatesEnabled: config.debug,
       getSettingsTemplatesPage: (payload = {}) =>
         settingsTemplateStore.page(payload.offset, payload.limit),
-      importSettingsTemplates: (entries, storeOptions) =>
-        settingsTemplateStore.importEntries(entries, storeOptions),
       saveSettingsTemplate: (entry, storeOptions) =>
         settingsTemplateStore.saveEntry(entry, storeOptions),
       deleteSettingsTemplate: (id, storeOptions) =>
@@ -271,18 +269,11 @@ function createService(options = {}) {
       return;
     }
 
-    const requestedSettings = Boolean(
-      config.debug &&
-        request.body?.physics &&
-        typeof request.body.physics === "object" &&
-        request.body?.roomSettings &&
-        typeof request.body.roomSettings === "object"
-    );
     const session = manager.createSession(request.body || {}, {
       singleClient: true,
     });
     const settingsPreset = settingsPresetForNewSession();
-    if (settingsPreset && !requestedSettings) {
+    if (settingsPreset) {
       manager.applySettingsPreset(session, settingsPreset);
     }
     persistSessions();

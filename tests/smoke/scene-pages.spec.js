@@ -125,7 +125,9 @@ test("inline UI показывает только параметры текущ�
   await expect(
     page.locator('[name="preclickPopupBackgroundDelaySeconds"]'),
   ).toHaveValue("1");
-  await expect(page.locator('[name="preclickFirstHopOnClick"]')).toHaveCount(1);
+  await expect(
+    page.locator('[name="preclickPopupOnAnySceneClickEnabled"]'),
+  ).toHaveCount(0);
   const fakeClickSound = page.locator('[name="preclickHopSoundFilename"]');
   const artworkMode = page.locator('[name="preclickPopupArtworkMode"]');
   const artworkId = page.locator('[name="preclickPopupArtworkId"]');
@@ -199,7 +201,9 @@ test("inline UI показывает только параметры текущ�
 
   await waitForDebugScene(page, "/scene-2", "turnip");
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
-  await expect(page.locator('[name="preclickFirstHopOnClick"]')).toHaveCount(0);
+  await expect(
+    page.locator('[name="preclickPopupOnAnySceneClickEnabled"]'),
+  ).toHaveCount(0);
   await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(0);
   await expect(
     page.locator(".scene-page > .world > .rock-echo-trail"),
@@ -248,7 +252,9 @@ test("inline UI показывает только параметры текущ�
   expect(cursorAssets.grabbing).toContain("handgrabbing");
   expect(cursorAssets.grabbing).not.toBe(cursorAssets.open);
   await expect(page.locator('[name="preclickHopGuardClickCount"]')).toHaveCount(0);
-  await expect(page.locator('[name="preclickFirstHopOnClick"]')).toHaveCount(0);
+  await expect(
+    page.locator('[name="preclickPopupOnAnySceneClickEnabled"]'),
+  ).toHaveCount(0);
   await expect(page.locator('[name="rockEchoTrailEnabled"]')).toHaveCount(0);
   await expect(
     page.locator(".scene-page > .world > .rock-echo-trail"),
@@ -767,25 +773,81 @@ test("общий визуальный параметр хранит послед
   ).toBe(sceneTwoValue);
 });
 
-test("именованные версии фильтруются по scene namespace", async ({ page }) => {
-  const versionName = `Только сцена 1 ${Date.now()}`;
+test("новое имя создаёт версию без перезаписи и namespace не протекает", async ({
+  page,
+}) => {
+  const suffix = Date.now();
+  const baselineName = `Базовая сцена 1 ${suffix}`;
+  const renamedVersionName = `Только сцена 1 ${suffix}`;
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
   await page.waitForTimeout(300);
-  await page.locator(".settings-version-name").fill(versionName);
+  await page.locator(".settings-version-toggle").click();
+  await page.locator('[data-settings-version-choice=""]').click();
+  await page.locator(".settings-version-name").fill(baselineName);
   await page.locator(".settings-version-save").click();
   await expect.poll(() => page.evaluate((name) =>
     window.__sisyphusTestApi.getSettingsVersions().some(
       (entry) => entry.name === name && entry.id.startsWith("scene-1--"),
     ),
-  versionName)).toBe(true);
+  baselineName)).toBe(true);
+
+  const originalBaseline = await page.evaluate((name) => {
+    const entry = window.__sisyphusTestApi.getSettingsVersions().find(
+      (candidate) => candidate.name === name,
+    );
+    return { id: entry.id, handWidthVw: entry.settings.handWidthVw };
+  }, baselineName);
+  await setSettingValue(page, "handWidthVw", 31);
+  await page.locator(".settings-version-name").fill(renamedVersionName);
+  await page.locator(".settings-version-save").click();
+  await expect.poll(() => page.evaluate(({ baseline, renamed }) => {
+    const entries = window.__sisyphusTestApi.getSettingsVersions();
+    const original = entries.find((entry) => entry.name === baseline.name);
+    const copy = entries.find((entry) => entry.name === renamed);
+    return original && copy
+      ? {
+          originalId: original.id,
+          originalHandWidthVw: original.settings.handWidthVw,
+          idsDiffer: original.id !== copy.id,
+          copyHandWidthVw: copy.settings.handWidthVw,
+        }
+      : null;
+  }, { baseline: { name: baselineName }, renamed: renamedVersionName })).toEqual({
+    originalId: originalBaseline.id,
+    originalHandWidthVw: originalBaseline.handWidthVw,
+    idsDiffer: true,
+    copyHandWidthVw: 31,
+  });
+
+  const renamedId = await page.evaluate((name) =>
+    window.__sisyphusTestApi.getSettingsVersions().find(
+      (entry) => entry.name === name,
+    ).id,
+  renamedVersionName);
+  await setSettingValue(page, "handWidthVw", 32);
+  await page.locator(".settings-version-save").click();
+  await expect.poll(() => page.evaluate((name) => {
+    const matching = window.__sisyphusTestApi.getSettingsVersions().filter(
+      (entry) => entry.name === name,
+    );
+    return {
+      count: matching.length,
+      id: matching[0]?.id,
+      handWidthVw: matching[0]?.settings.handWidthVw,
+    };
+  }, renamedVersionName)).toEqual({
+    count: 1,
+    id: renamedId,
+    handWidthVw: 32,
+  });
 
   await waitForDebugScene(page, "/scene-2", "turnip");
   await page.waitForTimeout(300);
-  expect(await page.evaluate((name) =>
+  expect(await page.evaluate((names) =>
     window.__sisyphusTestApi.getSettingsVersions().some(
-      (entry) => entry.name === name,
+      (entry) => names.includes(entry.name),
     ),
-  versionName)).toBe(false);
+  [baselineName, renamedVersionName])).toBe(false);
 });
 
 test("кнопка сохраняет полный Git-снимок настроек каждой сцены", async ({

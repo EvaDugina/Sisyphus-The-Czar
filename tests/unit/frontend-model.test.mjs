@@ -96,6 +96,7 @@ import {
 import {
   selectLatestSettingsVersionEntry,
   settingsFromLatestVersionEntry,
+  settingsVersionSaveTarget,
 } from "../../src/lib/settingsVersionSelection.mjs";
 import {
   parseSettingDependencyAttribute,
@@ -171,6 +172,9 @@ const LEGACY_PRECLICK_PARALLAX_SETTING_KEYS = Object.freeze([
 const DEFAULT_PRECLICK_HOP_SETTINGS = Object.freeze({
   preclickFirstHopOnClick:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickFirstHopOnClick,
+  preclickPopupOnAnySceneClickEnabled:
+    SharedRoomSettings.DEFAULT_ROOM_SETTINGS
+      .preclickPopupOnAnySceneClickEnabled,
   preclickHopGuardClickCount:
     SharedRoomSettings.DEFAULT_ROOM_SETTINGS.preclickHopGuardClickCount,
   preclickPopupDelayMs:
@@ -628,9 +632,6 @@ test("настройки инерции и hop отображают актуал
   const preclickPopupBackgroundDelay = controls.find(
     (control) => control.name === "preclickPopupBackgroundDelaySeconds",
   );
-  const preclickFirstHopOnClick = controls.find(
-    (control) => control.name === "preclickFirstHopOnClick",
-  );
   const preclickHopSound = controls.find(
     (control) => control.name === "preclickHopSoundFilename",
   );
@@ -779,21 +780,11 @@ test("настройки инерции и hop отображают актуал
     },
     { min: 0, max: 300, step: 1, defaultValue: 50 }
   );
-  assert.deepEqual(
-    {
-      label: preclickFirstHopOnClick.label,
-      type: preclickFirstHopOnClick.type,
-      defaultChecked: preclickFirstHopOnClick.defaultChecked,
-      activeLabel: preclickFirstHopOnClick.activeLabel,
-      inactiveLabel: preclickFirstHopOnClick.inactiveLabel,
-    },
-    {
-      label: "Первое отпрыгивание",
-      type: "toggle-button",
-      defaultChecked: false,
-      activeLabel: "клик",
-      inactiveLabel: "hover",
-    },
+  assert.equal(
+    controls.some(
+      (control) => control.name === "preclickPopupOnAnySceneClickEnabled",
+    ),
+    false,
   );
   assert.equal(
     controls.some((control) => control.name === "preclickHopGuardClickCount"),
@@ -832,7 +823,7 @@ test("настройки инерции и hop отображают актуал
       defaultValue: preclickPopupBackgroundDelay.defaultValue,
     },
     {
-      label: "Возврат фокуса после настоящего клика, с",
+      label: "Возврат фокуса после третьего клика, с",
       min: 0,
       max: 5,
       step: 0.1,
@@ -1023,7 +1014,6 @@ test("UI материализует параметры для каждой scene
       })
       .map((control) => control.name),
     [
-      "preclickFirstHopOnClick",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
       "preclickPopupBackgroundDelaySeconds",
@@ -1181,7 +1171,7 @@ test("UI материализует параметры для каждой scene
   assert.deepEqual(
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
-      [SETTINGS_SCENES.CATS_AND_MICE, 40],
+      [SETTINGS_SCENES.CATS_AND_MICE, 39],
       [SETTINGS_SCENES.TURNIP, 104],
       [SETTINGS_SCENES.JUICES, 106],
     ],
@@ -1413,7 +1403,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 60);
+  assert.equal(productionSettingsSchemaVersion, 61);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1519,6 +1509,43 @@ test("production preset source выбирает последнюю версию 
       { ...latest, id: "version-a" },
     ]).id,
     "version-b",
+  );
+});
+
+test("новое имя создаёт версию, а прежнее обновляет базовую", () => {
+  const baselineEntry = { id: "scene-1--baseline", name: "Базовая" };
+  const selectedEntry = { id: "scene-1--selected", name: "Выбранная" };
+
+  assert.equal(
+    settingsVersionSaveTarget({
+      baselineEntry,
+      selectedEntry,
+      requestedName: "Базовая",
+    }),
+    baselineEntry,
+  );
+  assert.equal(
+    settingsVersionSaveTarget({
+      baselineEntry,
+      selectedEntry,
+      requestedName: "Новая версия",
+    }),
+    null,
+  );
+  assert.equal(
+    settingsVersionSaveTarget({
+      selectedEntry,
+      requestedName: "Выбранная",
+    }),
+    selectedEntry,
+  );
+  assert.equal(
+    settingsVersionSaveTarget({
+      baselineEntry,
+      draftDetached: true,
+      requestedName: "Базовая",
+    }),
+    null,
   );
 });
 
@@ -1952,6 +1979,7 @@ test("preclick hop зависит от скорости, сохраняет дл
   assert.equal(slow.y, 0);
   assert.equal(slow.directionX, 1);
   assert.equal(slow.actualDistance, 50);
+  assert.ok(slow.actualDistance >= slow.requestedDistance);
 
   const fullDistance = calculatePreclickHopTarget({
     pointerX: 200,
@@ -1964,6 +1992,7 @@ test("preclick hop зависит от скорости, сохраняет дл
   });
   assert.equal(fullDistance.x, 100);
   assert.equal(fullDistance.actualDistance, 100);
+  assert.ok(fullDistance.actualDistance >= fullDistance.requestedDistance);
 
   assert.deepEqual(
     wrapPreclickHopCenter({
@@ -2025,15 +2054,17 @@ test("preclick hop зависит от скорости, сохраняет дл
     activationRadius: 20,
   });
   assert.equal(safeWrapped.safe, true);
+  assert.equal(safeWrapped.endpointSafe, true);
+  assert.ok(safeWrapped.actualDistance >= safeWrapped.requestedDistance);
   assert.ok(
     preclickToroidalDistance({
-      x1: 100,
+      x1: 90,
       y1: 100,
       x2: safeWrapped.wrappedEnd.x,
       y2: safeWrapped.wrappedEnd.y,
       viewportWidth: 300,
       viewportHeight: 200,
-    }) >= 2,
+    }) >= 22,
   );
   assert.equal(
     preclickHopPathIsSafe({
@@ -2110,9 +2141,6 @@ test("настройки размера камня есть в UI и получ�
   const preclickPopupBackgroundDelay = controls.find(
     (control) => control.name === "preclickPopupBackgroundDelaySeconds",
   );
-  const preclickFirstHopOnClick = controls.find(
-    (control) => control.name === "preclickFirstHopOnClick",
-  );
   const preclickHopActivationRadiusPercent = controls.find(
     (control) => control.name === "preclickHopActivationRadiusPercent",
   );
@@ -2173,7 +2201,6 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseEnabled",
       "rockPulseShrinkPercent",
       "rockPulseBpm",
-      "preclickFirstHopOnClick",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
       "preclickPopupBackgroundDelaySeconds",
@@ -2343,22 +2370,6 @@ test("настройки размера камня есть в UI и получ�
   );
   assert.deepEqual(
     {
-      label: preclickFirstHopOnClick.label,
-      type: preclickFirstHopOnClick.type,
-      defaultChecked: preclickFirstHopOnClick.defaultChecked,
-      activeLabel: preclickFirstHopOnClick.activeLabel,
-      inactiveLabel: preclickFirstHopOnClick.inactiveLabel,
-    },
-    {
-      label: "Первое отпрыгивание",
-      type: "toggle-button",
-      defaultChecked: false,
-      activeLabel: "клик",
-      inactiveLabel: "hover",
-    },
-  );
-  assert.deepEqual(
-    {
       label: preclickPopupBackgroundDelay.label,
       type: preclickPopupBackgroundDelay.type,
       min: preclickPopupBackgroundDelay.min,
@@ -2367,7 +2378,7 @@ test("настройки размера камня есть в UI и получ�
       defaultValue: preclickPopupBackgroundDelay.defaultValue,
     },
     {
-      label: "Возврат фокуса после настоящего клика, с",
+      label: "Возврат фокуса после третьего клика, с",
       type: "range",
       min: 0,
       max: 5,
@@ -3415,7 +3426,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 60);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 61);
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3428,6 +3439,7 @@ test("группа дождя содержит общий toggle и blur тём�
     rockPulseEnabled: "true",
     rockPulseBpm: 999,
     preclickFirstHopOnClick: "true",
+    preclickPopupOnAnySceneClickEnabled: "true",
     preclickParallaxMaxOffsetPx: 9999,
     preclickHopGuardClickCount: 999,
     preclickHopSoundFilename: "missing.mp3",
@@ -3490,6 +3502,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.rockPulseEnabled, true);
   assert.equal(visualSettings.rockPulseBpm, 240);
   assert.equal(visualSettings.preclickFirstHopOnClick, true);
+  assert.equal(visualSettings.preclickPopupOnAnySceneClickEnabled, true);
   assert.equal(visualSettings.preclickHopGuardClickCount, 2);
   assert.equal(visualSettings.preclickHopSoundFilename, "Смех.mp3");
   assert.equal(visualSettings.preclickPopupDelayMs, 1000);
@@ -3677,6 +3690,8 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.deepEqual(
     {
       preclickFirstHopOnClick: legacyV17.preclickFirstHopOnClick,
+      preclickPopupOnAnySceneClickEnabled:
+        legacyV17.preclickPopupOnAnySceneClickEnabled,
       preclickHopGuardClickCount: legacyV17.preclickHopGuardClickCount,
       preclickHopActivationRadiusPercent:
         legacyV17.preclickHopActivationRadiusPercent,
@@ -3716,6 +3731,14 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(legacyV58.preclickHopGuardClickCount, 2);
   assert.equal(legacyV58.preclickPopupBackgroundDelaySeconds, 1);
   assert.equal(legacyV58.preclickFakeClickHopDistancePercent, 50);
+  assert.equal(legacyV58.preclickPopupOnAnySceneClickEnabled, false);
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { preclickPopupOnAnySceneClickEnabled: true },
+      61,
+    ).preclickPopupOnAnySceneClickEnabled,
+    true,
+  );
   assert.equal(
     SharedRoomSettings.migrateRoomSettings(
       { preclickFakeClickHopDistancePercent: 75 },
@@ -3796,6 +3819,7 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   assert.deepEqual(legacyV37, {
     preclickFirstHopOnClick: false,
+    preclickPopupOnAnySceneClickEnabled: false,
     preclickHopActivationRadiusPercent: 11,
     preclickHopMaxDistancePercent: 150,
     preclickFakeClickHopDistancePercent: 50,

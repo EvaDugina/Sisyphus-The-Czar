@@ -12,6 +12,19 @@ const SAFE_DIRECTION_ANGLE_OFFSETS_DEGREES = Object.freeze([
   60,
   -75,
   75,
+  -90,
+  90,
+  -105,
+  105,
+  -120,
+  120,
+  -135,
+  135,
+  -150,
+  150,
+  -165,
+  165,
+  180,
 ]);
 
 export const PRECLICK_MOVEMENT_MAX_SAMPLE_GAP_MS = 120;
@@ -421,26 +434,36 @@ export function calculatePreclickHopTarget({
     (angle) => ({ angle, direction: rotateDirection(direction, angle) }),
   );
   const candidates = [];
-  for (let reductionPercent = 100; reductionPercent >= 10; reductionPercent -= 5) {
-    const reductionFactor = reductionPercent / 100;
-    candidateDirections.forEach(({ angle, direction: candidateDirection }) => {
-      const candidateMaximum = useDirectionalPercent
-        ? preclickDirectionalViewportSpan({
-            directionX: candidateDirection.x,
-            directionY: candidateDirection.y,
-            viewportWidth: width,
-            viewportHeight: height,
-          }) * distancePercent / 100
-        : Math.max(0, finiteNumber(maxDistance, 0));
-      const requestedDistance = preclickHopDistance({
-        speedPxPerSecond,
-        maxDistance: candidateMaximum,
-        fixedDistanceFactor,
-      });
-      const actualDistance = requestedDistance * reductionFactor;
+  candidateDirections.forEach(({ angle, direction: candidateDirection }) => {
+    const candidateMaximum = useDirectionalPercent
+      ? preclickDirectionalViewportSpan({
+          directionX: candidateDirection.x,
+          directionY: candidateDirection.y,
+          viewportWidth: width,
+          viewportHeight: height,
+        }) * distancePercent / 100
+      : Math.max(0, finiteNumber(maxDistance, 0));
+    const requestedDistance = preclickHopDistance({
+      speedPxPerSecond,
+      maxDistance: candidateMaximum,
+      fixedDistanceFactor,
+    });
+    const requestedFactor = candidateMaximum > PATH_EPSILON
+      ? clamp(requestedDistance / candidateMaximum, 0, 1)
+      : 1;
+    const distanceFactors = [requestedFactor];
+    for (
+      let factor = Math.ceil((requestedFactor + 0.001) * 20) / 20;
+      factor <= 1 + PATH_EPSILON;
+      factor += 0.05
+    ) {
+      distanceFactors.push(clamp(factor, requestedFactor, 1));
+    }
+    [...new Set(distanceFactors)].forEach((distanceFactor) => {
+      const actualDistance = candidateMaximum * distanceFactor;
       const deltaX = candidateDirection.x * actualDistance;
       const deltaY = candidateDirection.y * actualDistance;
-      const safe = actualDistance <= PATH_EPSILON
+      const pathSafe = actualDistance <= PATH_EPSILON
         ? distancePercent <= 0
         : !useDirectionalPercent || preclickHopPathIsSafe({
             startX: centerX,
@@ -454,24 +477,56 @@ export function calculatePreclickHopTarget({
             viewportWidth: width,
             viewportHeight: height,
           });
-      if (safe) {
-        candidates.push({
-          direction: candidateDirection,
-          angle,
-          deltaX,
-          deltaY,
-          requestedDistance,
-          actualDistance,
-          reductionFactor,
-          safe,
-        });
-      }
+      const wrappedEnd = useDirectionalPercent
+        ? wrapPreclickHopCenter({
+            x: finiteNumber(centerX, 0) + deltaX,
+            y: finiteNumber(centerY, 0) + deltaY,
+            viewportWidth: width,
+            viewportHeight: height,
+          })
+        : null;
+      const endpointSeparation = useDirectionalPercent
+        ? preclickToroidalDistance({
+            x1: wrappedEnd.x,
+            y1: wrappedEnd.y,
+            x2: pointerX,
+            y2: pointerY,
+            viewportWidth: width,
+            viewportHeight: height,
+          })
+        : Number.POSITIVE_INFINITY;
+      const endpointSafe =
+        !useDirectionalPercent ||
+        endpointSeparation >=
+          Math.max(0, finiteNumber(activationRadius, 0)) +
+            Math.max(0, finiteNumber(minStartSeparation, 0));
+      candidates.push({
+        direction: candidateDirection,
+        angle,
+        deltaX,
+        deltaY,
+        requestedDistance,
+        actualDistance,
+        distanceFactor,
+        endpointSafe,
+        endpointSeparation,
+        pathSafe,
+        safe: pathSafe && endpointSafe,
+        wrappedEnd,
+      });
     });
-  }
+  });
   candidates.sort((left, right) => {
-    const leftScore = 1 - left.reductionFactor + Math.abs(left.angle) / 180;
-    const rightScore = 1 - right.reductionFactor + Math.abs(right.angle) / 180;
-    return leftScore - rightScore || Math.abs(left.angle) - Math.abs(right.angle);
+    const leftSafety = left.safe ? 0 : left.endpointSafe ? 1 : 2;
+    const rightSafety = right.safe ? 0 : right.endpointSafe ? 1 : 2;
+    const leftExpansion = left.actualDistance - left.requestedDistance;
+    const rightExpansion = right.actualDistance - right.requestedDistance;
+    return (
+      leftSafety - rightSafety ||
+      leftExpansion - rightExpansion ||
+      Math.abs(left.angle) - Math.abs(right.angle) ||
+      right.endpointSeparation - left.endpointSeparation
+    );
   });
 
   const fallbackMaximum = useDirectionalPercent
@@ -493,16 +548,17 @@ export function calculatePreclickHopTarget({
     deltaY: direction.y * fallbackDistance,
     requestedDistance: fallbackDistance,
     actualDistance: fallbackDistance,
+    endpointSafe: distancePercent <= 0,
     safe: distancePercent <= 0,
   };
-  const wrappedEnd = useDirectionalPercent
+  const wrappedEnd = selected.wrappedEnd || (useDirectionalPercent
     ? wrapPreclickHopCenter({
         x: finiteNumber(centerX, 0) + selected.deltaX,
         y: finiteNumber(centerY, 0) + selected.deltaY,
         viewportWidth: width,
         viewportHeight: height,
       })
-    : null;
+    : null);
 
   return {
     x: finiteNumber(currentOffsetX, 0) + selected.deltaX,
@@ -513,6 +569,7 @@ export function calculatePreclickHopTarget({
     directionY: selected.direction.y,
     requestedDistance: selected.requestedDistance,
     actualDistance: selected.actualDistance,
+    endpointSafe: selected.endpointSafe,
     safe: selected.safe,
     wrappedEnd,
   };

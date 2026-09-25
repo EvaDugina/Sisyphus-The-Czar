@@ -1,4 +1,17 @@
 const { defineConfig } = require("@playwright/test");
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const smokeRunId = `${process.pid}-${Date.now()}`;
+const smokePath = (name) =>
+  path.join(os.tmpdir(), `sisyphus-prod-debug-${name}-${smokeRunId}.json`);
+const productionPresetPath = smokePath("preset");
+
+fs.copyFileSync(
+  path.join(__dirname, "config", "production-preset.json"),
+  productionPresetPath,
+);
 
 module.exports = defineConfig({
   testDir: "./tests/smoke",
@@ -25,10 +38,9 @@ module.exports = defineConfig({
       SESSION_TTL_SECONDS: "86400",
       EMPTY_SESSION_GRACE_SECONDS: "2",
       SESSION_CREATE_RATE_LIMIT: "50",
-      SESSION_STORE_PATH: "/tmp/sisyphus-prod-debug-sessions.json",
-      PRODUCTION_PRESET_PATH: "/tmp/sisyphus-prod-debug-preset.json",
-      SETTINGS_TEMPLATE_STORE_PATH:
-        "/tmp/sisyphus-prod-debug-settings-templates.json",
+      SESSION_STORE_PATH: smokePath("sessions"),
+      PRODUCTION_PRESET_PATH: productionPresetPath,
+      SETTINGS_TEMPLATE_STORE_PATH: smokePath("settings"),
       SESSION_PERSIST_INTERVAL_MS: "50",
     },
   },
