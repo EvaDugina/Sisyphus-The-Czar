@@ -1184,8 +1184,19 @@ test("scene 2 пульсирует до захвата и скроллится �
     .toEqual({ dragging: true, state: "held" });
 
   const scrollWhenHandStops = await page.evaluate(() => scrollY);
-  await page.waitForTimeout(250);
-  expect(await page.evaluate(() => scrollY)).toBe(scrollWhenHandStops);
+  await page.waitForTimeout(80);
+  const scrollDuringEarlyDecay = await page.evaluate(() => scrollY);
+  await page.waitForTimeout(80);
+  const scrollDuringLateDecay = await page.evaluate(() => scrollY);
+  expect(scrollDuringEarlyDecay).toBeLessThan(scrollWhenHandStops);
+  expect(scrollDuringLateDecay).toBeLessThan(scrollDuringEarlyDecay);
+  expect(scrollWhenHandStops - scrollDuringEarlyDecay).toBeGreaterThan(
+    scrollDuringEarlyDecay - scrollDuringLateDecay,
+  );
+  await page.waitForTimeout(180);
+  const scrollAfterDecay = await page.evaluate(() => scrollY);
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => scrollY)).toBe(scrollAfterDecay);
   await page.mouse.move(
     firstBox.x + firstBox.width / 2 + 60,
     firstBox.y + firstBox.height / 2 + 60,
@@ -1196,7 +1207,7 @@ test("scene 2 пульсирует до захвата и скроллится �
     firstBox.y + firstBox.height / 2 + 80,
   );
   await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(
-    scrollWhenHandStops,
+    scrollAfterDecay,
   );
 
   await page.evaluate(() => {

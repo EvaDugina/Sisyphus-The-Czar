@@ -23,7 +23,12 @@ import {
   cameraFollowDirectionalScrollY,
   cameraTargetScrollY,
 } from "../lib/cameraFollow.mjs";
-import { handScrollUpY } from "../lib/handScroll.mjs";
+import {
+  DEFAULT_HAND_SCROLL_DECELERATION_MS,
+  DEFAULT_HAND_SCROLL_IDLE_GRACE_MS,
+  handScrollSpeedFactor,
+  handScrollUpY,
+} from "../lib/handScroll.mjs";
 import { createCrossfadedAudioLoop } from "../lib/crossfadedAudioLoop.mjs";
 import { drizzleVolumeForY } from "../lib/drizzleVolume.mjs";
 import {
@@ -643,6 +648,8 @@ export function createSisyphusRuntime(elements = {}) {
     handScrollPointerX: null,
     handScrollPointerY: null,
     handScrollLastMoveAt: 0,
+    handScrollLastFrameAt: 0,
+    handScrollAnimationId: null,
     alternateHand: false,
     handImageChangeTimerId: null,
     turbTime: 0,
@@ -8191,6 +8198,10 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function resetSceneTwoHandScrollTracking(event = null) {
+    if (motion.handScrollAnimationId !== null) {
+      window.cancelAnimationFrame(motion.handScrollAnimationId);
+      motion.handScrollAnimationId = null;
+    }
     motion.handScrollPointerX = Number.isFinite(event?.clientX)
       ? event.clientX
       : null;
@@ -8198,6 +8209,74 @@ export function createSisyphusRuntime(elements = {}) {
       ? event.clientY
       : null;
     motion.handScrollLastMoveAt = 0;
+    motion.handScrollLastFrameAt = 0;
+  }
+
+  function sceneTwoHandScrollIsActive() {
+    return Boolean(
+      isSceneTwo &&
+      motion.dragging &&
+      motion.phase === PHASES.PLAY &&
+      (!collab.enabled || sharedDragActive()),
+    );
+  }
+
+  function renderSceneTwoHandScroll(now) {
+    motion.handScrollAnimationId = null;
+    if (
+      disposed ||
+      !sceneTwoHandScrollIsActive() ||
+      motion.handScrollLastMoveAt <= 0
+    ) {
+      motion.handScrollLastFrameAt = 0;
+      return;
+    }
+
+    const elapsedSinceMoveMs = Math.max(
+      0,
+      now - motion.handScrollLastMoveAt,
+    );
+    const speedFactor = handScrollSpeedFactor({ elapsedSinceMoveMs });
+    const elapsedFrameMs = clamp(
+      now - (motion.handScrollLastFrameAt || now),
+      0,
+      MAX_FRAME_SECONDS * 1000,
+    );
+    motion.handScrollLastFrameAt = now;
+
+    if (speedFactor > 0 && elapsedFrameMs > 0) {
+      const currentScrollY = window.scrollY;
+      const nextScrollY = handScrollUpY({
+        currentScrollY,
+        speedVhPerSecond:
+          params.sceneTwoHandScrollSpeedVhPerSecond * speedFactor,
+        viewportHeight: window.innerHeight,
+        elapsedMs: elapsedFrameMs,
+      });
+      if (nextScrollY !== currentScrollY) {
+        window.scrollTo(0, nextScrollY);
+        syncAfterScroll();
+      }
+    }
+
+    const decayEndMs =
+      DEFAULT_HAND_SCROLL_IDLE_GRACE_MS +
+      DEFAULT_HAND_SCROLL_DECELERATION_MS;
+    if (elapsedSinceMoveMs < decayEndMs && window.scrollY > 0) {
+      motion.handScrollAnimationId =
+        window.requestAnimationFrame(renderSceneTwoHandScroll);
+    } else {
+      motion.handScrollLastFrameAt = 0;
+    }
+  }
+
+  function startSceneTwoHandScrollAnimation(now) {
+    if (motion.handScrollAnimationId !== null) {
+      return;
+    }
+    motion.handScrollLastFrameAt = now;
+    motion.handScrollAnimationId =
+      window.requestAnimationFrame(renderSceneTwoHandScroll);
   }
 
   function updateSceneTwoHandScroll(event, now = performance.now()) {
@@ -8220,26 +8299,8 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
 
-    const elapsedMs = motion.handScrollLastMoveAt > 0
-      ? now - motion.handScrollLastMoveAt
-      : 0;
     motion.handScrollLastMoveAt = now;
-    if (elapsedMs <= 0 || elapsedMs > POINTER_VELOCITY_MAX_AGE_MS) {
-      return;
-    }
-
-    const currentScrollY = window.scrollY;
-    const nextScrollY = handScrollUpY({
-      currentScrollY,
-      speedVhPerSecond: params.sceneTwoHandScrollSpeedVhPerSecond,
-      viewportHeight: window.innerHeight,
-      elapsedMs,
-    });
-    if (nextScrollY === currentScrollY) {
-      return;
-    }
-    window.scrollTo(0, nextScrollY);
-    syncAfterScroll();
+    startSceneTwoHandScrollAnimation(now);
   }
 
   function currentPointerVelocity() {
@@ -9127,6 +9188,7 @@ export function createSisyphusRuntime(elements = {}) {
       }
       collab.leaving = true;
       stopLoop();
+      resetSceneTwoHandScrollTracking();
       stopRockPulse();
       clearHandImageChangeTimer();
       cancelGlowRenderSchedule();

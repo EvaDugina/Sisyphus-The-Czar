@@ -23,7 +23,10 @@ import {
   cameraTargetScrollY,
 } from "../../src/lib/cameraFollow.mjs";
 import {
+  DEFAULT_HAND_SCROLL_DECELERATION_MS,
+  DEFAULT_HAND_SCROLL_IDLE_GRACE_MS,
   handScrollDeltaPx,
+  handScrollSpeedFactor,
   handScrollUpY,
 } from "../../src/lib/handScroll.mjs";
 import {
@@ -1774,6 +1777,43 @@ test("скролл сцены 2 переводит фиксированную с
       speedVhPerSecond: 25,
       viewportHeight: 800,
       elapsedMs: 500,
+    }),
+    0,
+  );
+});
+
+test("скролл сцены 2 плавно затухает после остановки руки", () => {
+  assert.equal(
+    handScrollSpeedFactor({ elapsedSinceMoveMs: 0 }),
+    1,
+  );
+  assert.equal(
+    handScrollSpeedFactor({
+      elapsedSinceMoveMs: DEFAULT_HAND_SCROLL_IDLE_GRACE_MS,
+    }),
+    1,
+  );
+  assert.equal(
+    handScrollSpeedFactor({
+      elapsedSinceMoveMs:
+        DEFAULT_HAND_SCROLL_IDLE_GRACE_MS +
+        DEFAULT_HAND_SCROLL_DECELERATION_MS / 2,
+    }),
+    0.5,
+  );
+  assert.equal(
+    handScrollSpeedFactor({
+      elapsedSinceMoveMs:
+        DEFAULT_HAND_SCROLL_IDLE_GRACE_MS +
+        DEFAULT_HAND_SCROLL_DECELERATION_MS,
+    }),
+    0,
+  );
+  assert.equal(
+    handScrollSpeedFactor({
+      elapsedSinceMoveMs:
+        DEFAULT_HAND_SCROLL_IDLE_GRACE_MS +
+        DEFAULT_HAND_SCROLL_DECELERATION_MS + 100,
     }),
     0,
   );
