@@ -29,7 +29,7 @@ const VERSIONED_SETTING_CONTROL_NAMES = SETTINGS_CONTROLS.map(
 const VERSIONED_SETTING_CONTROL_NAME_SET = new Set(
   VERSIONED_SETTING_CONTROL_NAMES,
 );
-const SETTINGS_SCHEMA_VERSION = 62;
+const SETTINGS_SCHEMA_VERSION = 64;
 const INERTIA_SETTINGS_SCHEMA_VERSION = 18;
 const SETTINGS_VERSION_LIMIT = 50;
 
@@ -1325,6 +1325,8 @@ export function createSettingsController(options) {
       rockMinWidthVw: `${params.rockMinWidthVw.toFixed(0)}%`,
       rockMaxWidthVw: `${params.rockMaxWidthVw.toFixed(0)}%`,
       sceneHeightScreens: `${Math.round(params.sceneHeightScreens * 100)}vh`,
+      sceneTwoHandScrollSpeedVhPerSecond:
+        `${params.sceneTwoHandScrollSpeedVhPerSecond.toFixed(1)} vh/s`,
       cameraFollowUpLerp: params.cameraFollowUpLerp.toFixed(2),
       cameraFollowDownLerp: params.cameraFollowDownLerp.toFixed(2),
       summitTimerFontSizeRem: `${params.summitTimerFontSizeRem.toFixed(0)} rem`,

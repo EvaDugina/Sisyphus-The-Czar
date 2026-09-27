@@ -1922,7 +1922,8 @@ test("рейтинг скрывает нулевой результат, а до
     .toMatchObject({ completed: true, started: false, visible: false, volume: 0 });
 });
 
-test("звук боковой стены в scene 2 выбирается отдельно и поддерживает тишину", async ({ page }) => {
+test("scene 2 блокирует звук симуляции оргазма и поддерживает другие эффекты", async ({ page }) => {
+  test.setTimeout(60_000);
   await page.goto("/scene-2");
   await waitForFoldReady(page);
   await page.evaluate(() => {
@@ -1933,18 +1934,34 @@ test("звук боковой стены в scene 2 выбирается отд�
   const before = await page.evaluate(() =>
     window.__sisyphusTestApi.getWallImpactAudioState().playCount,
   );
+  const groundBefore = await page.evaluate(() => {
+    const api = window.__sisyphusTestApi;
+    api.collab.enabled = false;
+    api.motion.phase = api.SharedPhysics.PHASES.PLAY;
+    api.params.bounce = 0.5;
+    api.armGroundImpactSound();
+    const playCount = api.getGroundImpactAudioState().playCount;
+    api.setPosition(api.bounds.maxX / 2, api.bounds.maxY - 1);
+    api.motion.vy = 1000;
+    api.applyPhysics(api.SharedPhysics.FIXED_STEP_SECONDS);
+    return playCount;
+  });
+  await page.waitForTimeout(150);
+  expect(
+    await page.evaluate(() =>
+      window.__sisyphusTestApi.getGroundImpactAudioState().playCount,
+    ),
+  ).toBe(groundBefore);
   await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
     api.setPosition(0, api.bounds.maxY / 2);
   });
-  await expect
-    .poll(() => page.evaluate(() =>
-      window.__sisyphusTestApi.getWallImpactAudioState(),
-    ))
-    .toMatchObject({
-      lastFilename: "СимуляцияОргазма.mov",
-      playCount: before + 1,
-    });
+  await page.waitForTimeout(150);
+  expect(
+    await page.evaluate(() =>
+      window.__sisyphusTestApi.getWallImpactAudioState().playCount,
+    ),
+  ).toBe(before);
   await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
     api.setPosition(0, api.bounds.maxY / 2);
@@ -1953,7 +1970,7 @@ test("звук боковой стены в scene 2 выбирается отд�
     await page.evaluate(() =>
       window.__sisyphusTestApi.getWallImpactAudioState().playCount,
     ),
-  ).toBe(before + 1);
+  ).toBe(before);
 
   await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
@@ -1967,7 +1984,7 @@ test("звук боковой стены в scene 2 выбирается отд�
     ))
     .toMatchObject({
       lastFilename: "Camen.mp3",
-      playCount: before + 2,
+      playCount: before + 1,
     });
 
   await page.evaluate(() => {
@@ -1981,7 +1998,7 @@ test("звук боковой стены в scene 2 выбирается отд�
     await page.evaluate(() =>
       window.__sisyphusTestApi.getWallImpactAudioState().playCount,
     ),
-  ).toBe(before + 2);
+  ).toBe(before + 1);
 });
 
 test("glow-профили и зависимости select работают на странице настроек", async ({

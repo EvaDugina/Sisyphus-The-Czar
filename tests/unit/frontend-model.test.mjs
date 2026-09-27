@@ -23,6 +23,10 @@ import {
   cameraTargetScrollY,
 } from "../../src/lib/cameraFollow.mjs";
 import {
+  handScrollDeltaPx,
+  handScrollUpY,
+} from "../../src/lib/handScroll.mjs";
+import {
   drizzleVolumeForY,
   physicalHeightProgress,
 } from "../../src/lib/drizzleVolume.mjs";
@@ -635,6 +639,9 @@ test("настройки инерции и hop отображают актуал
   const preclickHopSound = controls.find(
     (control) => control.name === "preclickHopSoundFilename",
   );
+  const preclickFakeClickSound = controls.find(
+    (control) => control.name === "preclickFakeClickSoundFilename",
+  );
   const preclickPopupDelay = controls.find(
     (control) => control.name === "preclickPopupDelayMs"
   );
@@ -662,6 +669,9 @@ test("настройки инерции и hop отображают актуал
   const cameraFollowDown = controls.find(
     (control) => control.name === "cameraFollowDownEnabled",
   );
+  const sceneTwoHandScrollSpeed = controls.find(
+    (control) => control.name === "sceneTwoHandScrollSpeedVhPerSecond",
+  );
   const rockAcceleration = controls.find(
     (control) => control.name === "rockAccelerationEnabled",
   );
@@ -680,6 +690,24 @@ test("настройки инерции и hop отображают актуал
   assert.equal(
     SETTINGS_VERSIONS_STORAGE_KEY,
     "sisyphus-czar-settings-versions-v1"
+  );
+  assert.deepEqual(
+    {
+      type: sceneTwoHandScrollSpeed.type,
+      min: sceneTwoHandScrollSpeed.min,
+      max: sceneTwoHandScrollSpeed.max,
+      step: sceneTwoHandScrollSpeed.step,
+      defaultValue: sceneTwoHandScrollSpeed.defaultValue,
+      output: sceneTwoHandScrollSpeed.output,
+    },
+    {
+      type: "range",
+      min: 0.1,
+      max: 25,
+      step: 0.1,
+      defaultValue: 1,
+      output: "1.0 vh/s",
+    },
   );
   assert.deepEqual(
     {
@@ -749,6 +777,29 @@ test("настройки инерции и hop отображают актуал
       ],
     },
   );
+  const expectedPreclickSoundOptions = [
+    ["none", "Без звука"],
+    ["Смех.mp3", "Смех"],
+    ["СимуляцияОргазма.mov", "Симуляция оргазма"],
+    ...SharedRoomSettings.GACHI_SOUND_FILENAMES.map((filename) => [
+      filename,
+      filename.replace(/\.mp3$/i, ""),
+    ]),
+  ];
+  assert.deepEqual(
+    {
+      label: preclickFakeClickSound.label,
+      type: preclickFakeClickSound.type,
+      options: preclickFakeClickSound.options,
+      defaultValue: preclickFakeClickSound.defaultValue,
+    },
+    {
+      label: "Звук фейкового клика",
+      type: "select",
+      options: expectedPreclickSoundOptions,
+      defaultValue: "СимуляцияОргазма.mov",
+    },
+  );
   assert.deepEqual(
     {
       label: preclickHopSound.label,
@@ -757,17 +808,9 @@ test("настройки инерции и hop отображают актуал
       defaultValue: preclickHopSound.defaultValue,
     },
     {
-      label: "Звук фейкового клика",
+      label: "Звук отскакивания",
       type: "select",
-      options: [
-        ["none", "Без звука"],
-        ["Смех.mp3", "Смех"],
-        ["СимуляцияОргазма.mov", "Симуляция оргазма"],
-        ...SharedRoomSettings.GACHI_SOUND_FILENAMES.map((filename) => [
-          filename,
-          filename.replace(/\.mp3$/i, ""),
-        ]),
-      ],
+      options: expectedPreclickSoundOptions,
       defaultValue: "Смех.mp3",
     },
   );
@@ -1014,6 +1057,7 @@ test("UI материализует параметры для каждой scene
       })
       .map((control) => control.name),
     [
+      "preclickFakeClickSoundFilename",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
       "preclickPopupBackgroundDelaySeconds",
@@ -1068,6 +1112,7 @@ test("UI материализует параметры для каждой scene
     "rockAccelerationEnabled",
     "sceneTwoOverflowYVisible",
     "gachiClickSoundFilename",
+    "sceneTwoHandScrollSpeedVhPerSecond",
   ].forEach((name) => {
     assert.deepEqual(settingsControlScenes(name), [SETTINGS_SCENES.TURNIP]);
   });
@@ -1171,8 +1216,8 @@ test("UI материализует параметры для каждой scene
   assert.deepEqual(
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
-      [SETTINGS_SCENES.CATS_AND_MICE, 39],
-      [SETTINGS_SCENES.TURNIP, 104],
+      [SETTINGS_SCENES.CATS_AND_MICE, 40],
+      [SETTINGS_SCENES.TURNIP, 105],
       [SETTINGS_SCENES.JUICES, 106],
     ],
   );
@@ -1403,7 +1448,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 62);
+  assert.equal(productionSettingsSchemaVersion, 64);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -1695,6 +1740,43 @@ test("нажатие уменьшает текущий масштаб камня
   assert.equal(rockPressScaleFactor(100), 0);
   assert.equal(rockPressScaleFactor(999), 0);
   assert.equal(rockPressScaleFactor("invalid"), 1);
+});
+
+test("скролл сцены 2 переводит фиксированную скорость из vh/s в пиксели", () => {
+  assert.equal(
+    handScrollDeltaPx({
+      speedVhPerSecond: 1,
+      viewportHeight: 1000,
+      elapsedMs: 1000,
+    }),
+    10,
+  );
+  assert.equal(
+    handScrollDeltaPx({
+      speedVhPerSecond: 25,
+      viewportHeight: 800,
+      elapsedMs: 500,
+    }),
+    100,
+  );
+  assert.equal(
+    handScrollUpY({
+      currentScrollY: 250,
+      speedVhPerSecond: 25,
+      viewportHeight: 800,
+      elapsedMs: 500,
+    }),
+    150,
+  );
+  assert.equal(
+    handScrollUpY({
+      currentScrollY: 50,
+      speedVhPerSecond: 25,
+      viewportHeight: 800,
+      elapsedMs: 500,
+    }),
+    0,
+  );
 });
 
 test("пульс использует BPM и не накапливает уменьшение", () => {
@@ -2201,6 +2283,7 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseEnabled",
       "rockPulseShrinkPercent",
       "rockPulseBpm",
+      "preclickFakeClickSoundFilename",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
       "preclickPopupBackgroundDelaySeconds",
@@ -2805,6 +2888,7 @@ test("UI содержит настройки камеры, физики, overflo
   assert.deepEqual(
     cameraGroup.controls.map((control) => control.name),
     [
+      "sceneTwoHandScrollSpeedVhPerSecond",
       "cameraFollowUpEnabled",
       "cameraFollowUpLerp",
       "cameraFollowDownEnabled",
@@ -2812,6 +2896,15 @@ test("UI содержит настройки камеры, физики, overflo
       "rockAccelerationEnabled",
       "sceneTwoOverflowYVisible",
     ],
+  );
+  assert.deepEqual(
+    [
+      byName("sceneTwoHandScrollSpeedVhPerSecond").min,
+      byName("sceneTwoHandScrollSpeedVhPerSecond").max,
+      byName("sceneTwoHandScrollSpeedVhPerSecond").step,
+      byName("sceneTwoHandScrollSpeedVhPerSecond").defaultValue,
+    ],
+    [0.1, 25, 0.1, 1],
   );
   assert.deepEqual(
     [
@@ -3426,7 +3519,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 62);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 64);
   assert.equal(
     SharedRoomSettings.migrateRoomSettings(
       { preclickHopMissProbabilityPercent: 10 },
@@ -3440,6 +3533,23 @@ test("группа дождя содержит общий toggle и blur тём�
       62,
     ).preclickHopMissProbabilityPercent,
     35,
+  );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings({}, 62)
+      .sceneTwoHandScrollSpeedVhPerSecond,
+    1,
+  );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings({}, 63)
+      .preclickFakeClickSoundFilename,
+    "СимуляцияОргазма.mov",
+  );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { preclickFakeClickSoundFilename: "Like that.mp3" },
+      64,
+    ).preclickFakeClickSoundFilename,
+    "Like that.mp3",
   );
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
@@ -3456,6 +3566,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickPopupOnAnySceneClickEnabled: "true",
     preclickParallaxMaxOffsetPx: 9999,
     preclickHopGuardClickCount: 999,
+    preclickFakeClickSoundFilename: "missing.mp3",
     preclickHopSoundFilename: "missing.mp3",
     preclickPopupDelayMs: 9999,
     preclickPopupBackgroundDelaySeconds: 999,
@@ -3492,6 +3603,7 @@ test("группа дождя содержит общий toggle и blur тём�
     cameraFollowUpLerp: 999,
     cameraFollowDownEnabled: "false",
     cameraFollowDownLerp: -1,
+    sceneTwoHandScrollSpeedVhPerSecond: 999,
     rockAccelerationEnabled: "true",
     upperZoneAutoScrollEnabled: "true",
     sceneTwoOverflowYVisible: "true",
@@ -3518,6 +3630,10 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.preclickFirstHopOnClick, true);
   assert.equal(visualSettings.preclickPopupOnAnySceneClickEnabled, true);
   assert.equal(visualSettings.preclickHopGuardClickCount, 2);
+  assert.equal(
+    visualSettings.preclickFakeClickSoundFilename,
+    "СимуляцияОргазма.mov",
+  );
   assert.equal(visualSettings.preclickHopSoundFilename, "Смех.mp3");
   assert.equal(visualSettings.preclickPopupDelayMs, 1000);
   assert.equal(visualSettings.preclickPopupBackgroundDelaySeconds, 5);
@@ -3552,6 +3668,7 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.cameraFollowUpLerp, 1);
   assert.equal(visualSettings.cameraFollowDownEnabled, false);
   assert.equal(visualSettings.cameraFollowDownLerp, 0.01);
+  assert.equal(visualSettings.sceneTwoHandScrollSpeedVhPerSecond, 25);
   assert.equal(visualSettings.rockAccelerationEnabled, false);
   assert.equal(Object.hasOwn(visualSettings, "upperZoneAutoScrollEnabled"), false);
   assert.equal(visualSettings.sceneTwoOverflowYVisible, true);
@@ -3610,10 +3727,15 @@ test("группа дождя содержит общий toggle и blur тём�
     "СимуляцияОргазма.mov",
   );
   const sceneOnePulseAndSound = SharedRoomSettings.sanitizeRoomSettings({
+    preclickFakeClickSoundFilename: "Like that.mp3",
     preclickHopSoundFilename: "СимуляцияОргазма.mov",
     rockPulseShrinkPercent: 3.7,
   });
   assert.equal(sceneOnePulseAndSound.rockPulseShrinkPercent, 3.7);
+  assert.equal(
+    sceneOnePulseAndSound.preclickFakeClickSoundFilename,
+    "Like that.mp3",
+  );
   assert.equal(
     sceneOnePulseAndSound.preclickHopSoundFilename,
     "СимуляцияОргазма.mov",
@@ -3846,6 +3968,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickPopupWidthViewportFraction: 0.2,
     preclickPopupArtworkMode: "shuffle",
     preclickPopupArtworkId: "01.png",
+    preclickFakeClickSoundFilename: "СимуляцияОргазма.mov",
     preclickHopSoundFilename: "Смех.mp3",
     rockEchoTrailEnabled: true,
     rockEchoTrailCopies: 16,
@@ -3858,6 +3981,7 @@ test("группа дождя содержит общий toggle и blur тём�
     cameraFollowUpLerp: 0.1,
     cameraFollowDownEnabled: true,
     cameraFollowDownLerp: 0.1,
+    sceneTwoHandScrollSpeedVhPerSecond: 1,
     rockAccelerationEnabled: false,
     sceneTwoOverflowYVisible: false,
     summitTimerFontFamily: "sf-pro-display-bold",
@@ -3885,6 +4009,7 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickPopupWidthViewportFraction: 0.2,
       preclickPopupArtworkMode: "shuffle",
       preclickPopupArtworkId: "01.png",
+      preclickFakeClickSoundFilename: "СимуляцияОргазма.mov",
       preclickHopSoundFilename: "Смех.mp3",
       rockEchoTrailEnabled: true,
       rockEchoTrailCopies: 16,
@@ -3897,6 +4022,7 @@ test("группа дождя содержит общий toggle и blur тём�
       cameraFollowUpLerp: 0.1,
       cameraFollowDownEnabled: true,
       cameraFollowDownLerp: 0.1,
+      sceneTwoHandScrollSpeedVhPerSecond: 1,
       rockAccelerationEnabled: false,
       sceneTwoOverflowYVisible: false,
       summitTimerFontFamily: "sf-pro-display-bold",
@@ -4069,7 +4195,19 @@ test("таблица вершины компонует top-10, текущего 
     ...SharedRoomSettings.GACHI_SOUND_FILENAMES,
   ]);
   assert.equal(SharedRoomSettings.DEFAULT_PRECLICK_HOP_SOUND_FILENAME, "Смех.mp3");
+  assert.deepEqual(
+    SharedRoomSettings.PRECLICK_FAKE_CLICK_SOUND_FILENAMES,
+    SharedRoomSettings.PRECLICK_HOP_SOUND_FILENAMES,
+  );
+  assert.equal(
+    SharedRoomSettings.DEFAULT_PRECLICK_FAKE_CLICK_SOUND_FILENAME,
+    "СимуляцияОргазма.mov",
+  );
   const legacyV54 = SharedRoomSettings.migrateRoomSettings({}, 54);
+  assert.equal(
+    legacyV54.preclickFakeClickSoundFilename,
+    "СимуляцияОргазма.mov",
+  );
   assert.equal(legacyV54.preclickHopSoundFilename, "Смех.mp3");
   const legacyV52 = SharedRoomSettings.migrateRoomSettings({}, 52);
   assert.equal(legacyV52.preclickPopupArtworkMode, "shuffle");

@@ -2199,6 +2199,7 @@ test("первый старт сохраняет отпечаток без фи�
 test("захват получает независимые таймеры случайного выпадения и прыжка", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
   });
   const first = connect(manager, session, "client-slip-range1");
@@ -2215,6 +2216,7 @@ test("захват получает независимые таймеры слу
 test("камень выпрыгивает в настроенном симметричном секторе по таймеру", () => {
   const { clock, manager } = setup({ random: () => 1 });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
     roomSettings: {
       stationaryAutoSlipEnabled: false,
@@ -2255,6 +2257,7 @@ test("выпрыгивание имеет приоритет над случай
     slipDelayMaxMs: 1000,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
     roomSettings: {
       stationaryAutoSlipEnabled: false,
@@ -2288,6 +2291,7 @@ test("переключатели поведения запускают и ост
     slipDelayMaxMs: 750,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 900 },
     roomSettings: {
       stationaryAutoSlipEnabled: false,
@@ -2373,6 +2377,7 @@ test("выключенное автовыскальзывание сохраня
     stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
     physics: { turbulence: 0 },
     roomSettings: { stationaryAutoSlipEnabled: false },
@@ -2403,6 +2408,7 @@ test("фактическое движение камня перезапуска�
     stationaryHoldReleaseMs: STATIONARY_HOLD_RELEASE_MS,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
     physics: { mass: 1, gravity: 1, handForce: 100 },
   });
@@ -2681,6 +2687,53 @@ test("скрытые настройки удержания не действую
   assert.equal(session.holder.clientId, holder.client.id);
 });
 
+test("камень в сцене 2 не выскальзывает и не выпрыгивает после захвата", () => {
+  const { clock, manager } = setup({
+    slipDelayMinMs: 100,
+    slipDelayMaxMs: 100,
+    stationaryHoldReleaseMs: 50,
+  });
+  const session = manager.createSession({
+    sceneId: "turnip",
+    state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
+    roomSettings: {
+      stationaryAutoSlipEnabled: true,
+      randomDropEnabled: true,
+      rockJumpEnabled: true,
+      rockJumpIntervalSeconds: 1,
+    },
+  });
+  const holder = connect(manager, session, "client-scene2-hold1");
+
+  assert.equal(
+    manager.acquireControl(session, holder.client, { x: 500, y: 700 }),
+    true,
+  );
+  assert.equal(session.holder.slipAt, null);
+  assert.equal(session.holder.jumpAt, null);
+
+  manager.updateRoomSettings(session, {
+    stationaryAutoSlipEnabled: true,
+    randomDropEnabled: true,
+    rockJumpEnabled: true,
+    rockJumpIntervalSeconds: 1,
+  });
+  assert.equal(session.holder.slipAt, null);
+  assert.equal(session.holder.jumpAt, null);
+
+  clock.value = 5000;
+  manager.tick();
+
+  assert.equal(session.holder.clientId, holder.client.id);
+  assert.equal(session.state.dragging, true);
+  assert.equal(
+    holder.socket.messages.some(
+      (message) => message.type === "control.slipped",
+    ),
+    false,
+  );
+});
+
 test("скрытые финальные настройки не действуют в сцене 2", () => {
   const { clock, manager } = setup();
   const session = manager.createSession({
@@ -2896,6 +2949,7 @@ test("в каждый момент камень может удерживать 
     random: () => randomValues.shift() ?? 1,
   });
   const session = manager.createSession({
+    sceneId: "juices",
     state: { phase: Physics.PHASES.PLAY, x: 500, y: 700 },
     physics: { gravity: 0.45, turbulence: 0, bounce: 0 },
     roomSettings: { stationaryAutoSlipEnabled: false },

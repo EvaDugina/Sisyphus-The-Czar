@@ -866,6 +866,9 @@ test("камень бесшовно переносится по обеим ос�
   }
   const persistentClickPoint = await visibleRockPoint(page);
   const beforePersistentClick = await hopState(page);
+  const beforePersistentFakeClickAudio = await page.evaluate(() =>
+    window.__sisyphusTestApi.getPreclickFakeClickAudioState(),
+  );
   const beforePersistentCenter = await rockCenter(page);
   const persistentPopupPromise = page.waitForEvent("popup");
   await cdp.send("Input.dispatchMouseEvent", {
@@ -1059,7 +1062,8 @@ test("третий fake-click завершает сцену, возвращае�
       preclickHopMaxDistancePercent: 25,
       preclickHopMissProbabilityPercent: 100,
       preclickFakeClickHopDistancePercent: 50,
-      preclickHopSoundFilename: "СимуляцияОргазма.mov",
+      preclickFakeClickSoundFilename: "СимуляцияОргазма.mov",
+      preclickHopSoundFilename: "Смех.mp3",
       preclickPopupDelayMs: 0,
       preclickPopupBackgroundDelaySeconds: 3,
       preclickPopupWidthViewportFraction: 0.2,
@@ -1161,19 +1165,37 @@ test("третий fake-click завершает сцену, возвращае�
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const cdp = await page.context().newCDPSession(page);
   const popupWidthFractions = [0.1, 0.2];
+  const fakeClickSoundFilenames = [
+    "СимуляцияОргазма.mov",
+    "Like that.mp3",
+  ];
   const fakeClickPopups = [];
   let sharedPopupSize = null;
   for (let click = 1; click <= 2; click += 1) {
     const beforeFakeClick = await hopState(page);
+    const beforeFakeClickAudio = await page.evaluate(() =>
+      window.__sisyphusTestApi.getPreclickFakeClickAudioState(),
+    );
     const widthFraction = popupWidthFractions[click - 1];
-    await page.evaluate(({ nextArtworkId, nextSpeed, nextWidthFraction }) => {
+    const soundFilename = fakeClickSoundFilenames[click - 1];
+    const soundFilenameStart = soundFilename.replace(/\.[^.]+$/u, "");
+    const beforeSelectedSoundPlayCount = await page.evaluate(
+      (expectedFilenameStart) =>
+        window.__playedAudioFilenames.filter((filename) =>
+          filename.startsWith(expectedFilenameStart),
+        ).length,
+      soundFilenameStart,
+    );
+    await page.evaluate(({ nextArtworkId, nextSoundFilename, nextSpeed, nextWidthFraction }) => {
       window.__sisyphusTestApi.applyTestSettings({
         preclickPopupArtworkId: nextArtworkId,
+        preclickFakeClickSoundFilename: nextSoundFilename,
         preclickHopSpeedPxPerSecond: nextSpeed,
         preclickPopupWidthViewportFraction: nextWidthFraction,
       });
     }, {
       nextArtworkId: `0${click}.png`,
+      nextSoundFilename: soundFilename,
       nextSpeed: click === 1 ? 120 : 1200,
       nextWidthFraction: widthFraction,
     });
@@ -1255,8 +1277,8 @@ test("третий fake-click завершает сцену, возвращае�
       guardClickCount: 2,
       guardClicksUsed: click,
       hopCount: beforeFakeClick.hopCount + 1,
-      audioPlayCount: beforeFakeClick.audioPlayCount + 1,
-      lastFilename: "СимуляцияОргазма.mov",
+      audioPlayCount: beforeFakeClick.audioPlayCount,
+      lastFilename: "Смех.mp3",
       animating: false,
       fakeClickHopDistancePercent: 50,
       requiredHoverHopPending: true,
@@ -1269,6 +1291,16 @@ test("третий fake-click завершает сцену, возвращае�
         completed: true,
       },
     });
+    await expect
+      .poll(() =>
+        page.evaluate(() =>
+          window.__sisyphusTestApi.getPreclickFakeClickAudioState(),
+        ),
+      )
+      .toMatchObject({
+        playCount: beforeFakeClickAudio.playCount + 1,
+        lastFilename: soundFilename,
+      });
     const lastHopRequest = await page.evaluate(
       () => window.__sisyphusTestApi.getPreclickHopState().lastHopRequest,
     );
@@ -1290,12 +1322,13 @@ test("третий fake-click завершает сцену, возвращае�
       .toMatchObject({ playCount: 0, lastFilename: null });
     expect(
       await page.evaluate(
-        () =>
+        (expectedFilenameStart) =>
           window.__playedAudioFilenames.filter(
-            (filename) => filename.startsWith("СимуляцияОргазма"),
+            (filename) => filename.startsWith(expectedFilenameStart),
           ).length,
+        soundFilenameStart,
       ),
-    ).toBe(beforeFakeClick.audioPlayCount + 1);
+    ).toBe(beforeSelectedSoundPlayCount + 1);
     if (click === 1) {
       await page.evaluate(() => {
         window.__sisyphusTestApi.applyTestSettings({
@@ -1308,8 +1341,15 @@ test("третий fake-click завершает сцену, возвращае�
     });
   }
 
-  const persistentClickPoint = await visibleRockPoint(page);
+  await expect.poll(() => hopState(page)).toMatchObject({
+    animating: false,
+    lastRadiusDecision: "persistent-fake-hop",
+  });
   const beforePersistentClick = await hopState(page);
+  const beforePersistentFakeClickAudio = await page.evaluate(() =>
+    window.__sisyphusTestApi.getPreclickFakeClickAudioState(),
+  );
+  const persistentClickPoint = await visibleRockPoint(page);
   const persistentPopupPromise = page.waitForEvent("popup");
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mousePressed",
@@ -1351,7 +1391,7 @@ test("третий fake-click завершает сцену, возвращае�
     guardClickCount: 2,
     guardClicksUsed: 2,
     hopCount: beforePersistentClick.hopCount + 1,
-    audioPlayCount: beforePersistentClick.audioPlayCount + 1,
+    audioPlayCount: beforePersistentClick.audioPlayCount,
     animating: false,
     clickAllowed: false,
     lastRadiusDecision: "persistent-fake-click",
@@ -1361,6 +1401,16 @@ test("третий fake-click завершает сцену, возвращае�
       completed: true,
     },
   });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__sisyphusTestApi.getPreclickFakeClickAudioState(),
+      ),
+    )
+    .toMatchObject({
+      playCount: beforePersistentFakeClickAudio.playCount + 1,
+      lastFilename: "Like that.mp3",
+    });
   await expect
     .poll(() =>
       page.evaluate(() => window.__sisyphusTestApi.getPreclickPopupState()),
@@ -1399,7 +1449,7 @@ test("третий fake-click завершает сцену, возвращае�
     ),
   );
 
-  expect(await page.evaluate(() => window.__laughPlayCount)).toBe(0);
+  expect(await page.evaluate(() => window.__laughPlayCount)).toBeGreaterThan(0);
   expect(
     await page.evaluate(
       () =>

@@ -62,8 +62,8 @@ function isSceneThreeSession(session) {
   return session?.sceneId === SESSION_SCENES.JUICES;
 }
 
-function hasHoldBehavior(session) {
-  return isSceneTwoSession(session) || isSceneThreeSession(session);
+function hasAutomaticHoldRelease(session) {
+  return isSceneThreeSession(session);
 }
 
 function parseCzarName(value) {
@@ -959,7 +959,7 @@ class SessionManager {
     if (!holder) {
       return;
     }
-    if (!hasHoldBehavior(session)) {
+    if (!hasAutomaticHoldRelease(session)) {
       holder.slipAt = null;
       holder.jumpAt = null;
       return;
@@ -1200,7 +1200,7 @@ class SessionManager {
 
   updateStationaryHold(session, now = this.now()) {
     if (
-      !hasHoldBehavior(session) ||
+      !hasAutomaticHoldRelease(session) ||
       session.roomSettings?.stationaryAutoSlipEnabled === false
     ) {
       this.clearStationaryHold(session);
@@ -1722,10 +1722,13 @@ class SessionManager {
       vy: 0,
       acquiredAt: now,
       lastMoveAt: now,
-      slipAt: hasHoldBehavior(session) && session.roomSettings.randomDropEnabled
+      slipAt:
+        hasAutomaticHoldRelease(session) &&
+        session.roomSettings.randomDropEnabled
         ? now + this.slipDelayMs()
         : null,
-      jumpAt: hasHoldBehavior(session) && session.roomSettings.rockJumpEnabled
+      jumpAt:
+        hasAutomaticHoldRelease(session) && session.roomSettings.rockJumpEnabled
         ? now + session.roomSettings.rockJumpIntervalSeconds * 1000
         : null,
     };

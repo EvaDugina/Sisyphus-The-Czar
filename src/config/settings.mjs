@@ -507,6 +507,7 @@ export function settingsGroupControls(group) {
 
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickPopupOnAnySceneClickEnabled",
+  "preclickFakeClickSoundFilename",
   "preclickHopSoundFilename",
   "preclickPopupDelayMs",
   "preclickPopupBackgroundDelaySeconds",
@@ -841,6 +842,21 @@ export const SETTINGS_GROUPS = [
   {
     title: "Камера",
     controls: [
+      {
+        name: "sceneTwoHandScrollSpeedVhPerSecond",
+        label: "Скорость скролла вверх, vh/s",
+        type: "range",
+        min: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .sceneTwoHandScrollSpeedVhPerSecond[0],
+        max: SharedRoomSettings.ROOM_SETTINGS_LIMITS
+          .sceneTwoHandScrollSpeedVhPerSecond[1],
+        step: 0.1,
+        defaultValue:
+          DEFAULT_ROOM_SETTINGS.sceneTwoHandScrollSpeedVhPerSecond,
+        output:
+          `${DEFAULT_ROOM_SETTINGS.sceneTwoHandScrollSpeedVhPerSecond.toFixed(1)} vh/s`,
+        hint: "После захвата камня движение руки прокручивает сцену только вверх с этой постоянной скоростью.",
+      },
       {
         name: "cameraFollowUpEnabled",
         label: "Следовать вверх",
@@ -1267,12 +1283,20 @@ export const SETTINGS_GROUPS = [
         hint: "Количество ударов в минуту. 60 BPM — один полный пульс в секунду.",
       },
       {
-        name: "preclickHopSoundFilename",
+        name: "preclickFakeClickSoundFilename",
         label: "Звук фейкового клика",
         type: "select",
         options: PRECLICK_HOP_SOUND_OPTIONS,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickFakeClickSoundFilename,
+        hint: "Отдельный звук зарегистрированного фейкового клика. Вариант «Без звука» не влияет на отскок и popup.",
+      },
+      {
+        name: "preclickHopSoundFilename",
+        label: "Звук отскакивания",
+        type: "select",
+        options: PRECLICK_HOP_SOUND_OPTIONS,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickHopSoundFilename,
-        hint: "Звук каждого засчитанного фейкового клика. Вариант «Без звука» сохраняет отскок и popup без воспроизведения аудио.",
+        hint: "Звук каждого отскакивания камня. Вариант «Без звука» сохраняет движение без воспроизведения аудио.",
       },
       {
         name: "preclickPopupDelayMs",

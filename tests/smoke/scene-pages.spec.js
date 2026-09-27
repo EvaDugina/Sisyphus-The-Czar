@@ -1,6 +1,11 @@
 const { test, expect } = require("@playwright/test");
+const fs = require("node:fs");
+const path = require("node:path");
 
 const ROCK = "#root > .scene-page > .world > .rock";
+const GACHI_AUDIO_FILENAMES = fs
+  .readdirSync(path.join(__dirname, "..", "..", "assets", "audio", "gachi"))
+  .filter((filename) => filename.toLowerCase().endsWith(".mp3"));
 const SETTINGS_PANEL_SCENES = [
   { path: "/scene-1", sceneId: "cats-and-mice" },
   { path: "/scene-2", sceneId: "turnip" },
@@ -128,7 +133,10 @@ test("inline UI показывает только параметры текущ�
   await expect(
     page.locator('[name="preclickPopupOnAnySceneClickEnabled"]'),
   ).toHaveCount(0);
-  const fakeClickSound = page.locator('[name="preclickHopSoundFilename"]');
+  const fakeClickSound = page.locator(
+    '[name="preclickFakeClickSoundFilename"]',
+  );
+  const hopSound = page.locator('[name="preclickHopSoundFilename"]');
   const artworkMode = page.locator('[name="preclickPopupArtworkMode"]');
   const artworkId = page.locator('[name="preclickPopupArtworkId"]');
   await artworkMode.evaluate((element) => {
@@ -136,15 +144,34 @@ test("inline UI показывает только параметры текущ�
     if (group) group.open = true;
   });
   await expect(artworkMode).toHaveValue("shuffle");
-  await expect(fakeClickSound).toHaveValue("Смех.mp3");
+  await expect(fakeClickSound).toHaveValue("СимуляцияОргазма.mov");
+  await expect(hopSound).toHaveValue("Смех.mp3");
   await expect(fakeClickSound.locator("option")).toHaveCount(12);
+  await expect(hopSound.locator("option")).toHaveCount(12);
   await expect(fakeClickSound.locator('option[value="none"]')).toHaveText(
     "Без звука",
   );
   await expect(
     fakeClickSound.locator('option[value="СимуляцияОргазма.mov"]'),
   ).toHaveText("Симуляция оргазма");
-  await fakeClickSound.selectOption("none");
+  expect(GACHI_AUDIO_FILENAMES).toHaveLength(9);
+  for (const filename of GACHI_AUDIO_FILENAMES) {
+    for (const soundSelect of [fakeClickSound, hopSound]) {
+      await expect(
+        soundSelect.locator(`option[value="${filename}"]`),
+      ).toHaveText(filename.replace(/\.mp3$/i, ""));
+    }
+  }
+  await fakeClickSound.selectOption("Like that.mp3");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.__sisyphusTestApi.params.preclickFakeClickSoundFilename,
+      ),
+    )
+    .toBe("Like that.mp3");
+  await hopSound.selectOption("none");
   await expect
     .poll(() =>
       page.evaluate(
@@ -174,7 +201,7 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="gravity"]')).toHaveCount(0);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator(".settings-scene-switcher")).toHaveCount(0);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(39);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(40);
   await expect(page.locator('[data-shared-setting="true"]')).toHaveCount(20);
   await expect(page.locator('[data-shared-scenes="1–3"]')).toHaveCount(20);
   await expect(page.locator("[data-setting-shared-badge]")).toHaveCount(20);
@@ -209,9 +236,17 @@ test("inline UI показывает только параметры текущ�
     page.locator(".scene-page > .world > .rock-echo-trail"),
   ).toBeHidden();
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(1);
+  const handScrollSpeed = page.locator(
+    '[name="sceneTwoHandScrollSpeedVhPerSecond"]',
+  );
+  await expect(handScrollSpeed).toHaveCount(1);
+  await expect(handScrollSpeed).toHaveAttribute("min", "0.1");
+  await expect(handScrollSpeed).toHaveAttribute("max", "25");
+  await expect(handScrollSpeed).toHaveAttribute("step", "0.1");
+  await expect(handScrollSpeed).toHaveValue("1");
   await expect(page.locator('[name="gravity"]')).toHaveCount(1);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(104);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(105);
   await expect(page.locator('[data-shared-setting="true"]')).toHaveCount(84);
   await expect(page.locator('[data-shared-scenes="1–3"]')).toHaveCount(20);
   await expect(page.locator('[data-shared-scenes="2–3"]')).toHaveCount(64);
@@ -260,6 +295,9 @@ test("inline UI показывает только параметры текущ�
     page.locator(".scene-page > .world > .rock-echo-trail"),
   ).toBeHidden();
   await expect(page.locator('[name="stationaryAutoSlipEnabled"]')).toHaveCount(1);
+  await expect(
+    page.locator('[name="sceneTwoHandScrollSpeedVhPerSecond"]'),
+  ).toHaveCount(0);
   await expect(page.locator('[name="cameraFollowUpEnabled"]')).toHaveCount(1);
   await expect(page.locator('[name="rockJumpInertiaSpreadPercent"]')).toHaveCount(1);
   await expect(page.locator('[name="trailEnabled"]')).toHaveCount(1);
@@ -771,6 +809,9 @@ test("настройки сцены 1 мигрируют из v55 в v56 с фи
   await expect(page.locator('[name="preclickHopSoundFilename"]')).toHaveValue(
     "Смех.mp3",
   );
+  await expect(
+    page.locator('[name="preclickFakeClickSoundFilename"]'),
+  ).toHaveValue("СимуляцияОргазма.mov");
 
   const migrated = await page.evaluate(() => {
     const stored = JSON.parse(
@@ -786,6 +827,7 @@ test("настройки сцены 1 мигрируют из v55 в v56 с фи
       guardClickCount: stored.preclickHopGuardClickCount,
       artworkMode: stored.preclickPopupArtworkMode,
       artworkId: stored.preclickPopupArtworkId,
+      fakeClickSoundFilename: stored.preclickFakeClickSoundFilename,
       soundFilename: stored.preclickHopSoundFilename,
       trailEnabled: stored.rockEchoTrailEnabled,
     };
@@ -797,6 +839,7 @@ test("настройки сцены 1 мигрируют из v55 в v56 с фи
     guardClickCount: 2,
     artworkMode: "shuffle",
     artworkId: "01.png",
+    fakeClickSoundFilename: "СимуляцияОргазма.mov",
     soundFilename: "Смех.mp3",
     trailEnabled: true,
   });
@@ -980,9 +1023,10 @@ test("кнопка сохраняет полный Git-снимок настро
   }
 });
 
-test("scene 2 пульсирует без руки и допускает повторный захват после выпадения", async ({
+test("scene 2 пульсирует до захвата и скроллится движением удерживающей руки", async ({
   page,
 }) => {
+  test.setTimeout(60_000);
   await waitForDebugScene(page, "/scene-2", "turnip");
   const rock = page.locator(ROCK);
   const wallImpactSound = page.locator('[name="wallImpactSoundFilename"]');
@@ -1018,6 +1062,9 @@ test("scene 2 пульсирует без руки и допускает пов�
       rockPulseBpm: 240,
       rockPulseEnabled: true,
       rockPulseShrinkPercent: 10,
+      sceneHeightScreens: 4,
+      sceneTwoOverflowYVisible: true,
+      sceneTwoHandScrollSpeedVhPerSecond: 25,
     });
   });
 
@@ -1051,6 +1098,25 @@ test("scene 2 пульсирует без руки и допускает пов�
   const audioPlayCount = await page.evaluate(
     () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
   );
+  const scrollMetrics = await page.evaluate(() => ({
+    bodyHeight: document.body.scrollHeight,
+    innerHeight,
+    rootHeight: document.documentElement.scrollHeight,
+    sceneHeight: getComputedStyle(document.documentElement)
+      .getPropertyValue("--scene-height-vh"),
+    worldHeight: document.querySelector(".world")?.getBoundingClientRect().height,
+  }));
+  expect(scrollMetrics.rootHeight).toBeGreaterThan(scrollMetrics.innerHeight);
+  await page.evaluate(() => {
+    scrollTo(0, document.documentElement.scrollHeight);
+  });
+  await page.waitForTimeout(100);
+  const scrollBeforeGrab = await page.evaluate(() => scrollY);
+  expect(scrollBeforeGrab).toBeGreaterThan(0);
+  await page.mouse.move(30, 30);
+  await page.waitForTimeout(40);
+  await page.mouse.move(80, 80);
+  expect(await page.evaluate(() => scrollY)).toBe(scrollBeforeGrab);
   const firstBox = await rock.boundingBox();
   expect(firstBox).not.toBeNull();
   await page.mouse.move(
@@ -1070,6 +1136,14 @@ test("scene 2 пульсирует без руки и допускает пов�
     .toEqual({ dragging: true, state: "held" });
   await expect
     .poll(() =>
+      page.evaluate(() => {
+        const { collab } = window.__sisyphusTestApi;
+        return !collab.enabled || collab.hasControl;
+      }),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
       page.evaluate(() =>
         window.__sisyphusTestApi.getRockVisualScaleState(),
       ),
@@ -1083,6 +1157,20 @@ test("scene 2 пульсирует без руки и допускает пов�
     )
     .toBe(audioPlayCount);
 
+  await page.waitForTimeout(40);
+  await page.mouse.move(
+    firstBox.x + firstBox.width / 2 + 20,
+    firstBox.y + firstBox.height / 2 + 20,
+  );
+  await page.waitForTimeout(40);
+  await page.mouse.move(
+    firstBox.x + firstBox.width / 2 + 40,
+    firstBox.y + firstBox.height / 2 + 40,
+  );
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(
+    scrollBeforeGrab,
+  );
+
   await page.mouse.up();
   await expect(rock).toHaveAttribute("data-sticky-to-hand", "true");
   await expect
@@ -1095,53 +1183,21 @@ test("scene 2 пульсирует без руки и допускает пов�
     )
     .toEqual({ dragging: true, state: "held" });
 
-  await page.evaluate(() => {
-    window.__sisyphusTestApi.forceReleaseRock({ neutral: true });
-  });
-  await expect(rock).not.toHaveAttribute("data-sticky-to-hand", "true");
-  await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        dragging: window.__sisyphusTestApi.motion.dragging,
-        state:
-          window.__sisyphusTestApi.getRockVisualScaleState().sceneTwoSizeState,
-      })),
-    )
-    .toMatchObject({ dragging: false });
-  const releasedPulse = await pulseRange();
-  expect(releasedPulse.max - releasedPulse.min).toBeGreaterThan(0.03);
-
-  const secondBox = await rock.boundingBox();
-  expect(secondBox).not.toBeNull();
+  const scrollWhenHandStops = await page.evaluate(() => scrollY);
+  await page.waitForTimeout(250);
+  expect(await page.evaluate(() => scrollY)).toBe(scrollWhenHandStops);
   await page.mouse.move(
-    secondBox.x + secondBox.width / 2,
-    secondBox.y + secondBox.height / 2,
+    firstBox.x + firstBox.width / 2 + 60,
+    firstBox.y + firstBox.height / 2 + 60,
   );
-  await page.mouse.down();
-  await expect(rock).toHaveAttribute("data-sticky-to-hand", "true");
-  await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        dragging: window.__sisyphusTestApi.motion.dragging,
-        state:
-          window.__sisyphusTestApi.getRockVisualScaleState().sceneTwoSizeState,
-      })),
-    )
-    .toEqual({ dragging: true, state: "held" });
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => window.__sisyphusTestApi.getRockVisualScaleState().pulseScaleFactor,
-      ),
-    )
-    .toBe(1);
-  await expect
-    .poll(() =>
-      page.evaluate(
-        () => window.__sisyphusTestApi.getGachiClickAudioState().playCount,
-      ),
-    )
-    .toBe(audioPlayCount);
+  await page.waitForTimeout(40);
+  await page.mouse.move(
+    firstBox.x + firstBox.width / 2 + 80,
+    firstBox.y + firstBox.height / 2 + 80,
+  );
+  await expect.poll(() => page.evaluate(() => scrollY)).toBeLessThan(
+    scrollWhenHandStops,
+  );
 
   await page.evaluate(() => {
     window.__sisyphusTestApi.forceReleaseRock({ neutral: true });

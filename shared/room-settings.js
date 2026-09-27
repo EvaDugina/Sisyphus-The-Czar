@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 62;
+  const ROOM_SETTINGS_VERSION = 64;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -87,6 +87,10 @@
     ...GACHI_SOUND_FILENAMES,
   ]);
   const DEFAULT_PRECLICK_HOP_SOUND_FILENAME = "Смех.mp3";
+  const PRECLICK_FAKE_CLICK_SOUND_DISABLED = PRECLICK_HOP_SOUND_DISABLED;
+  const PRECLICK_FAKE_CLICK_SOUND_FILENAMES = PRECLICK_HOP_SOUND_FILENAMES;
+  const DEFAULT_PRECLICK_FAKE_CLICK_SOUND_FILENAME =
+    PRECLICK_HOP_ORGASM_SOUND_FILENAME;
   const PRECLICK_POPUP_ARTWORK_MODES = Object.freeze([
     "random",
     "shuffle",
@@ -179,6 +183,7 @@
   const ROOM_SETTINGS_LIMITS = Object.freeze({
     sceneHeightScreens: [1, 100],
     returnScrollDurationSeconds: [0, 10],
+    sceneTwoHandScrollSpeedVhPerSecond: [0.1, 25],
     cameraFollowUpLerp: [0.01, 1],
     cameraFollowDownLerp: [0.01, 1],
     foldPositionPercent: [0, 100],
@@ -270,6 +275,7 @@
     sceneHeightScreens: DEFAULT_SCENE_HEIGHT_SCREENS,
     returnScrollDurationSeconds: 4,
     returnScrollEasing: DEFAULT_RETURN_SCROLL_EASING,
+    sceneTwoHandScrollSpeedVhPerSecond: 1,
     stationaryAutoSlipEnabled: true,
     cameraFollowUpEnabled: true,
     cameraFollowUpLerp: 0.1,
@@ -307,6 +313,8 @@
     preclickFirstHopOnClick: false,
     preclickPopupOnAnySceneClickEnabled: false,
     preclickHopGuardClickCount: 2,
+    preclickFakeClickSoundFilename:
+      DEFAULT_PRECLICK_FAKE_CLICK_SOUND_FILENAME,
     preclickHopSoundFilename: DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     preclickPopupDelayMs: 200,
     preclickPopupBackgroundDelaySeconds: 1,
@@ -737,6 +745,8 @@
     const [sceneMin, sceneMax] = ROOM_SETTINGS_LIMITS.sceneHeightScreens;
     const [returnScrollMin, returnScrollMax] =
       ROOM_SETTINGS_LIMITS.returnScrollDurationSeconds;
+    const [sceneTwoHandScrollSpeedMin, sceneTwoHandScrollSpeedMax] =
+      ROOM_SETTINGS_LIMITS.sceneTwoHandScrollSpeedVhPerSecond;
     const [cameraFollowUpLerpMin, cameraFollowUpLerpMax] =
       ROOM_SETTINGS_LIMITS.cameraFollowUpLerp;
     const [cameraFollowDownLerpMin, cameraFollowDownLerpMax] =
@@ -883,6 +893,13 @@
         source,
         fallbackSource,
         "returnScrollEasing"
+      ),
+      sceneTwoHandScrollSpeedVhPerSecond: finiteSetting(
+        source,
+        fallbackSource,
+        "sceneTwoHandScrollSpeedVhPerSecond",
+        sceneTwoHandScrollSpeedMin,
+        sceneTwoHandScrollSpeedMax
       ),
       stationaryAutoSlipEnabled: boolSetting(
         source,
@@ -1109,6 +1126,12 @@
         "preclickHopGuardClickCount",
         preclickHopGuardClickMin,
         preclickHopGuardClickMax
+      ),
+      preclickFakeClickSoundFilename: enumSetting(
+        source,
+        fallbackSource,
+        "preclickFakeClickSoundFilename",
+        PRECLICK_FAKE_CLICK_SOUND_FILENAMES
       ),
       preclickHopSoundFilename: enumSetting(
         source,
@@ -2025,6 +2048,14 @@
       current.preclickHopMissProbabilityPercent =
         DEFAULT_ROOM_SETTINGS.preclickHopMissProbabilityPercent;
     }
+    if (finiteNumber(version, 1) < 63) {
+      current.sceneTwoHandScrollSpeedVhPerSecond =
+        DEFAULT_ROOM_SETTINGS.sceneTwoHandScrollSpeedVhPerSecond;
+    }
+    if (finiteNumber(version, 1) < 64) {
+      current.preclickFakeClickSoundFilename =
+        DEFAULT_ROOM_SETTINGS.preclickFakeClickSoundFilename;
+    }
     return current;
   }
 
@@ -2112,6 +2143,9 @@
     DEFAULT_WALL_IMPACT_SOUND_FILENAME,
     PRECLICK_HOP_SOUND_FILENAMES,
     DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
+    PRECLICK_FAKE_CLICK_SOUND_DISABLED,
+    PRECLICK_FAKE_CLICK_SOUND_FILENAMES,
+    DEFAULT_PRECLICK_FAKE_CLICK_SOUND_FILENAME,
     PRECLICK_POPUP_ARTWORK_MODES,
     DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
     ROCK_LENS_EFFECTS,
