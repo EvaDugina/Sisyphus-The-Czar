@@ -1331,6 +1331,7 @@ test("scene 3 скрывает руку при контакте и сохран�
   );
   await expect(page.locator("body")).toHaveClass(/theme-dark/);
   await expect(timer).toBeHidden();
+  await expect(timer).toHaveCSS("visibility", "hidden");
   await expect(leaderboard).toHaveCSS("display", "grid");
   await expect(leaderboard).toHaveCSS("visibility", "visible");
   await expect(hand).toHaveClass(/is-visible/);
@@ -1362,6 +1363,9 @@ test("scene 3 скрывает руку при контакте и сохран�
     .toBe(false);
   await expect(page.locator("body")).toHaveClass(/theme-light/);
   await expect(timer).toBeVisible();
+  await expect(timer).toHaveCSS("visibility", "visible");
+  const initialTimerText = await timer.textContent();
+  expect(initialTimerText).toMatch(/^\d{2}:\d{2}:\d{2}$/);
 
   const lightLeaderboardPosition = await leaderboard.evaluate((element) => {
     const rect = element.getBoundingClientRect();

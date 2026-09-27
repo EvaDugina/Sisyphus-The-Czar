@@ -132,11 +132,12 @@
   transform: translate(-50%, -50%) scaleX(var(--summit-timer-scale-x, 1));
   transform-origin: center;
   transition: color 420ms ease;
+  visibility: hidden;
   pointer-events: none;
 }
 
-body[data-scene="scene-3"].theme-dark .summit-timer {
-  visibility: hidden;
+body[data-scene="scene-3"].theme-light .summit-timer {
+  visibility: visible;
 }
 
 .summit-leaderboard {
