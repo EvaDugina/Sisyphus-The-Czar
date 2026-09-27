@@ -136,6 +136,9 @@ test("inline UI показывает только параметры текущ�
   const fakeClickSound = page.locator(
     '[name="preclickFakeClickSoundFilename"]',
   );
+  const finalClickSound = page.locator(
+    '[name="preclickFinalClickSoundFilename"]',
+  );
   const hopSound = page.locator('[name="preclickHopSoundFilename"]');
   const artworkMode = page.locator('[name="preclickPopupArtworkMode"]');
   const artworkId = page.locator('[name="preclickPopupArtworkId"]');
@@ -145,8 +148,10 @@ test("inline UI показывает только параметры текущ�
   });
   await expect(artworkMode).toHaveValue("shuffle");
   await expect(fakeClickSound).toHaveValue("СимуляцияОргазма.mov");
+  await expect(finalClickSound).toHaveValue("СимуляцияОргазма.mov");
   await expect(hopSound).toHaveValue("Смех.mp3");
   await expect(fakeClickSound.locator("option")).toHaveCount(12);
+  await expect(finalClickSound.locator("option")).toHaveCount(12);
   await expect(hopSound.locator("option")).toHaveCount(12);
   await expect(fakeClickSound.locator('option[value="none"]')).toHaveText(
     "Без звука",
@@ -156,7 +161,7 @@ test("inline UI показывает только параметры текущ�
   ).toHaveText("Симуляция оргазма");
   expect(GACHI_AUDIO_FILENAMES).toHaveLength(9);
   for (const filename of GACHI_AUDIO_FILENAMES) {
-    for (const soundSelect of [fakeClickSound, hopSound]) {
+    for (const soundSelect of [fakeClickSound, finalClickSound, hopSound]) {
       await expect(
         soundSelect.locator(`option[value="${filename}"]`),
       ).toHaveText(filename.replace(/\.mp3$/i, ""));
@@ -179,6 +184,14 @@ test("inline UI показывает только параметры текущ�
       ),
     )
     .toBe("none");
+  await finalClickSound.selectOption("Dungeon master.mp3");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () => window.__sisyphusTestApi.params.preclickFinalClickSoundFilename,
+      ),
+    )
+    .toBe("Dungeon master.mp3");
   await expect(artworkId).toBeDisabled();
   await expect(artworkId.locator("option")).toHaveCount(3);
   await artworkMode.selectOption("single");
@@ -201,7 +214,7 @@ test("inline UI показывает только параметры текущ�
   await expect(page.locator('[name="gravity"]')).toHaveCount(0);
   await expect(page.locator('[name="rainEnabled"]')).toHaveCount(0);
   await expect(page.locator(".settings-scene-switcher")).toHaveCount(0);
-  await expect(page.locator("[data-setting-control]")).toHaveCount(40);
+  await expect(page.locator("[data-setting-control]")).toHaveCount(41);
   await expect(page.locator('[data-shared-setting="true"]')).toHaveCount(20);
   await expect(page.locator('[data-shared-scenes="1–3"]')).toHaveCount(20);
   await expect(page.locator("[data-setting-shared-badge]")).toHaveCount(20);
@@ -781,7 +794,7 @@ test("скрытые настройки не оказывают клиентск
   });
 });
 
-test("настройки сцены 1 мигрируют из v55 в v56 с фиксированными кликами и задержкой фокуса", async ({
+test("последняя конфигурация сцены 1 заменяет v55-черновик и дополняется новыми полями", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -798,7 +811,7 @@ test("настройки сцены 1 мигрируют из v55 в v56 с фи
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
   await expect(
     page.locator('[name="preclickPopupWidthViewportFraction"]'),
-  ).toHaveValue("0.3");
+  ).toHaveValue("0.2");
   await expect(page.locator('[name="rockEchoTrailEnabled"]')).toBeChecked();
   await expect(page.locator('[name="preclickPopupArtworkMode"]')).toHaveValue(
     "shuffle",
@@ -811,6 +824,9 @@ test("настройки сцены 1 мигрируют из v55 в v56 с фи
   );
   await expect(
     page.locator('[name="preclickFakeClickSoundFilename"]'),
+  ).toHaveValue("СимуляцияОргазма.mov");
+  await expect(
+    page.locator('[name="preclickFinalClickSoundFilename"]'),
   ).toHaveValue("СимуляцияОргазма.mov");
 
   const migrated = await page.evaluate(() => {
@@ -828,18 +844,20 @@ test("настройки сцены 1 мигрируют из v55 в v56 с фи
       artworkMode: stored.preclickPopupArtworkMode,
       artworkId: stored.preclickPopupArtworkId,
       fakeClickSoundFilename: stored.preclickFakeClickSoundFilename,
+      finalClickSoundFilename: stored.preclickFinalClickSoundFilename,
       soundFilename: stored.preclickHopSoundFilename,
       trailEnabled: stored.rockEchoTrailEnabled,
     };
   });
   expect(migrated).toEqual({
     hasLegacyPopupSize: false,
-    popupWidth: 0.3,
+    popupWidth: 0.2,
     backgroundDelaySeconds: 1,
     guardClickCount: 2,
     artworkMode: "shuffle",
     artworkId: "01.png",
     fakeClickSoundFilename: "СимуляцияОргазма.mov",
+    finalClickSoundFilename: "СимуляцияОргазма.mov",
     soundFilename: "Смех.mp3",
     trailEnabled: true,
   });

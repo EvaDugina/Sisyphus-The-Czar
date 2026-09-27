@@ -46,9 +46,10 @@ test("settings template store атомарно сохраняет полный w
   const { filePath, store } = temporaryStore(context, { now: () => now });
 
   const saved = store.saveEntry(entry("version-a", {
-    settingsSchemaVersion: 64,
+    settingsSchemaVersion: 65,
     settings: {
       preclickFakeClickSoundFilename: "Dungeon master.mp3",
+      preclickFinalClickSoundFilename: "Aaaaah.mp3",
       preclickHopSoundFilename: "Like that.mp3",
       trailRenderProfile: "mobile",
       glowOptimizationMode: "manual",
@@ -69,6 +70,10 @@ test("settings template store атомарно сохраняет полный w
   assert.equal(
     saved.entry.settings.preclickFakeClickSoundFilename,
     "Dungeon master.mp3",
+  );
+  assert.equal(
+    saved.entry.settings.preclickFinalClickSoundFilename,
+    "Aaaaah.mp3",
   );
   assert.equal(
     saved.entry.settings.preclickHopSoundFilename,
@@ -94,7 +99,7 @@ test("settings template store атомарно сохраняет полный w
   assert.deepEqual(loaded.latest(), saved.entry);
 });
 
-test("settings template store мигрирует legacy Fold-ключи в schema 64", (context) => {
+test("settings template store мигрирует legacy Fold-ключи в schema 65", (context) => {
   const { store } = temporaryStore(context);
   const legacy = entry("legacy-fold");
   legacy.settingsSchemaVersion = 32;
@@ -108,10 +113,14 @@ test("settings template store мигрирует legacy Fold-ключи в schem
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 64);
+  assert.equal(imported.settingsSchemaVersion, 65);
   assert.equal(imported.settings.sceneTwoHandScrollSpeedVhPerSecond, 1);
   assert.equal(
     imported.settings.preclickFakeClickSoundFilename,
+    "СимуляцияОргазма.mov",
+  );
+  assert.equal(
+    imported.settings.preclickFinalClickSoundFilename,
     "СимуляцияОргазма.mov",
   );
   assert.equal(imported.settings.preclickPopupDelayMs, 200);
@@ -152,7 +161,7 @@ test("settings template store мигрирует настройки камеры
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 64);
+  assert.equal(imported.settingsSchemaVersion, 65);
   assert.equal(imported.settings.cameraFollowUpEnabled, true);
   assert.equal(imported.settings.cameraFollowUpLerp, 0.25);
   assert.equal(imported.settings.cameraFollowDownEnabled, false);
@@ -178,7 +187,7 @@ test("settings template store мигрирует длину отскока из 
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 64);
+  assert.equal(imported.settingsSchemaVersion, 65);
   assert.equal(imported.settings.preclickHopActivationRadiusPercent, 20);
   assert.equal(imported.settings.preclickHopMaxDistancePercent, 25);
   assert.equal(
@@ -197,7 +206,7 @@ test("settings template store разделяет press и pulse из schema 34",
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 64);
+  assert.equal(imported.settingsSchemaVersion, 65);
   assert.equal(imported.settings.rockPressShrinkPercent, 17);
   assert.equal(imported.settings.rockPulseShrinkPercent, 17);
   assert.equal(imported.settings.rockImageId, "rock-03");
@@ -214,7 +223,7 @@ test("settings template store мигрирует boolean-видимость ру
 
   const imported = store.importEntries([legacy]).entries[0];
 
-  assert.equal(imported.settingsSchemaVersion, 64);
+  assert.equal(imported.settingsSchemaVersion, 65);
   assert.equal(imported.settings.handVisibilityMode, "hover");
   assert.equal(imported.settings.handImageChangeDelayMs, 0);
   assert.equal(imported.settings.foldPositionPercent, 0);

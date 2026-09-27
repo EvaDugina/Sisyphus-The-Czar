@@ -645,6 +645,9 @@ test("настройки инерции и hop отображают актуал
   const preclickFakeClickSound = controls.find(
     (control) => control.name === "preclickFakeClickSoundFilename",
   );
+  const preclickFinalClickSound = controls.find(
+    (control) => control.name === "preclickFinalClickSoundFilename",
+  );
   const preclickPopupDelay = controls.find(
     (control) => control.name === "preclickPopupDelayMs"
   );
@@ -798,6 +801,20 @@ test("настройки инерции и hop отображают актуал
     },
     {
       label: "Звук фейкового клика",
+      type: "select",
+      options: expectedPreclickSoundOptions,
+      defaultValue: "СимуляцияОргазма.mov",
+    },
+  );
+  assert.deepEqual(
+    {
+      label: preclickFinalClickSound.label,
+      type: preclickFinalClickSound.type,
+      options: preclickFinalClickSound.options,
+      defaultValue: preclickFinalClickSound.defaultValue,
+    },
+    {
+      label: "Звук последнего настоящего клика",
       type: "select",
       options: expectedPreclickSoundOptions,
       defaultValue: "СимуляцияОргазма.mov",
@@ -1061,6 +1078,7 @@ test("UI материализует параметры для каждой scene
       .map((control) => control.name),
     [
       "preclickFakeClickSoundFilename",
+      "preclickFinalClickSoundFilename",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
       "preclickPopupBackgroundDelaySeconds",
@@ -1219,7 +1237,7 @@ test("UI материализует параметры для каждой scene
   assert.deepEqual(
     SETTINGS_SCENE_OPTIONS.map(({ id }) => [id, pageControls(id).length]),
     [
-      [SETTINGS_SCENES.CATS_AND_MICE, 40],
+      [SETTINGS_SCENES.CATS_AND_MICE, 41],
       [SETTINGS_SCENES.TURNIP, 105],
       [SETTINGS_SCENES.JUICES, 106],
     ],
@@ -1451,7 +1469,7 @@ test("сохраненная версия настроек показывает 
 
 test("production preset совместим с актуальной схемой и shared payload", () => {
   assert.equal(productionPresetName, "prod");
-  assert.equal(productionSettingsSchemaVersion, 64);
+  assert.equal(productionSettingsSchemaVersion, 65);
   assert.deepEqual(
     SharedRoomSettings.sanitizeRoomSettings(productionSettings),
     {
@@ -2324,6 +2342,7 @@ test("настройки размера камня есть в UI и получ�
       "rockPulseShrinkPercent",
       "rockPulseBpm",
       "preclickFakeClickSoundFilename",
+      "preclickFinalClickSoundFilename",
       "preclickHopSoundFilename",
       "preclickPopupDelayMs",
       "preclickPopupBackgroundDelaySeconds",
@@ -3559,7 +3578,7 @@ test("группа дождя содержит общий toggle и blur тём�
       defaultValue: 0.5,
     },
   );
-  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 64);
+  assert.equal(SharedRoomSettings.ROOM_SETTINGS_VERSION, 65);
   assert.equal(
     SharedRoomSettings.migrateRoomSettings(
       { preclickHopMissProbabilityPercent: 10 },
@@ -3591,6 +3610,18 @@ test("группа дождя содержит общий toggle и blur тём�
     ).preclickFakeClickSoundFilename,
     "Like that.mp3",
   );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings({}, 64)
+      .preclickFinalClickSoundFilename,
+    "СимуляцияОргазма.mov",
+  );
+  assert.equal(
+    SharedRoomSettings.migrateRoomSettings(
+      { preclickFinalClickSoundFilename: "Dungeon master.mp3" },
+      65,
+    ).preclickFinalClickSoundFilename,
+    "Dungeon master.mp3",
+  );
   const visualSettings = SharedRoomSettings.sanitizeRoomSettings({
     lightBackgroundColor: "#ABC",
     darkBackgroundLowColor: "invalid",
@@ -3607,6 +3638,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickParallaxMaxOffsetPx: 9999,
     preclickHopGuardClickCount: 999,
     preclickFakeClickSoundFilename: "missing.mp3",
+    preclickFinalClickSoundFilename: "missing.mp3",
     preclickHopSoundFilename: "missing.mp3",
     preclickPopupDelayMs: 9999,
     preclickPopupBackgroundDelaySeconds: 999,
@@ -3672,6 +3704,10 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(visualSettings.preclickHopGuardClickCount, 2);
   assert.equal(
     visualSettings.preclickFakeClickSoundFilename,
+    "СимуляцияОргазма.mov",
+  );
+  assert.equal(
+    visualSettings.preclickFinalClickSoundFilename,
     "СимуляцияОргазма.mov",
   );
   assert.equal(visualSettings.preclickHopSoundFilename, "Смех.mp3");
@@ -3768,6 +3804,7 @@ test("группа дождя содержит общий toggle и blur тём�
   );
   const sceneOnePulseAndSound = SharedRoomSettings.sanitizeRoomSettings({
     preclickFakeClickSoundFilename: "Like that.mp3",
+    preclickFinalClickSoundFilename: "Dungeon master.mp3",
     preclickHopSoundFilename: "СимуляцияОргазма.mov",
     rockPulseShrinkPercent: 3.7,
   });
@@ -3775,6 +3812,10 @@ test("группа дождя содержит общий toggle и blur тём�
   assert.equal(
     sceneOnePulseAndSound.preclickFakeClickSoundFilename,
     "Like that.mp3",
+  );
+  assert.equal(
+    sceneOnePulseAndSound.preclickFinalClickSoundFilename,
+    "Dungeon master.mp3",
   );
   assert.equal(
     sceneOnePulseAndSound.preclickHopSoundFilename,
@@ -4009,6 +4050,7 @@ test("группа дождя содержит общий toggle и blur тём�
     preclickPopupArtworkMode: "shuffle",
     preclickPopupArtworkId: "01.png",
     preclickFakeClickSoundFilename: "СимуляцияОргазма.mov",
+    preclickFinalClickSoundFilename: "СимуляцияОргазма.mov",
     preclickHopSoundFilename: "Смех.mp3",
     rockEchoTrailEnabled: true,
     rockEchoTrailCopies: 16,
@@ -4050,6 +4092,7 @@ test("группа дождя содержит общий toggle и blur тём�
       preclickPopupArtworkMode: "shuffle",
       preclickPopupArtworkId: "01.png",
       preclickFakeClickSoundFilename: "СимуляцияОргазма.mov",
+      preclickFinalClickSoundFilename: "СимуляцияОргазма.mov",
       preclickHopSoundFilename: "Смех.mp3",
       rockEchoTrailEnabled: true,
       rockEchoTrailCopies: 16,
@@ -4241,6 +4284,14 @@ test("таблица вершины компонует top-10, текущего 
   );
   assert.equal(
     SharedRoomSettings.DEFAULT_PRECLICK_FAKE_CLICK_SOUND_FILENAME,
+    "СимуляцияОргазма.mov",
+  );
+  assert.deepEqual(
+    SharedRoomSettings.PRECLICK_FINAL_CLICK_SOUND_FILENAMES,
+    SharedRoomSettings.PRECLICK_HOP_SOUND_FILENAMES,
+  );
+  assert.equal(
+    SharedRoomSettings.DEFAULT_PRECLICK_FINAL_CLICK_SOUND_FILENAME,
     "СимуляцияОргазма.mov",
   );
   const legacyV54 = SharedRoomSettings.migrateRoomSettings({}, 54);

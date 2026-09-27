@@ -12,7 +12,7 @@
   const DEFAULT_SCENE_HEIGHT_SCREENS = 10;
   const SCENE_MOTION_REFERENCE_SCREENS = 100;
   const SCENE_MOTION_COMPENSATION_BOOST = 10;
-  const ROOM_SETTINGS_VERSION = 64;
+  const ROOM_SETTINGS_VERSION = 65;
   const MAX_HEIGHT_GATES = 10;
   const MAX_SCENE_TWO_GLASS_STRIPS = 12;
   const PRECLICK_PARALLAX_RADIUS_PX_PER_VW = 20;
@@ -90,6 +90,10 @@
   const PRECLICK_FAKE_CLICK_SOUND_DISABLED = PRECLICK_HOP_SOUND_DISABLED;
   const PRECLICK_FAKE_CLICK_SOUND_FILENAMES = PRECLICK_HOP_SOUND_FILENAMES;
   const DEFAULT_PRECLICK_FAKE_CLICK_SOUND_FILENAME =
+    PRECLICK_HOP_ORGASM_SOUND_FILENAME;
+  const PRECLICK_FINAL_CLICK_SOUND_DISABLED = PRECLICK_HOP_SOUND_DISABLED;
+  const PRECLICK_FINAL_CLICK_SOUND_FILENAMES = PRECLICK_HOP_SOUND_FILENAMES;
+  const DEFAULT_PRECLICK_FINAL_CLICK_SOUND_FILENAME =
     PRECLICK_HOP_ORGASM_SOUND_FILENAME;
   const PRECLICK_POPUP_ARTWORK_MODES = Object.freeze([
     "random",
@@ -315,6 +319,8 @@
     preclickHopGuardClickCount: 2,
     preclickFakeClickSoundFilename:
       DEFAULT_PRECLICK_FAKE_CLICK_SOUND_FILENAME,
+    preclickFinalClickSoundFilename:
+      DEFAULT_PRECLICK_FINAL_CLICK_SOUND_FILENAME,
     preclickHopSoundFilename: DEFAULT_PRECLICK_HOP_SOUND_FILENAME,
     preclickPopupDelayMs: 200,
     preclickPopupBackgroundDelaySeconds: 1,
@@ -1132,6 +1138,12 @@
         fallbackSource,
         "preclickFakeClickSoundFilename",
         PRECLICK_FAKE_CLICK_SOUND_FILENAMES
+      ),
+      preclickFinalClickSoundFilename: enumSetting(
+        source,
+        fallbackSource,
+        "preclickFinalClickSoundFilename",
+        PRECLICK_FINAL_CLICK_SOUND_FILENAMES
       ),
       preclickHopSoundFilename: enumSetting(
         source,
@@ -2056,6 +2068,10 @@
       current.preclickFakeClickSoundFilename =
         DEFAULT_ROOM_SETTINGS.preclickFakeClickSoundFilename;
     }
+    if (finiteNumber(version, 1) < 65) {
+      current.preclickFinalClickSoundFilename =
+        DEFAULT_ROOM_SETTINGS.preclickFinalClickSoundFilename;
+    }
     return current;
   }
 
@@ -2146,6 +2162,9 @@
     PRECLICK_FAKE_CLICK_SOUND_DISABLED,
     PRECLICK_FAKE_CLICK_SOUND_FILENAMES,
     DEFAULT_PRECLICK_FAKE_CLICK_SOUND_FILENAME,
+    PRECLICK_FINAL_CLICK_SOUND_DISABLED,
+    PRECLICK_FINAL_CLICK_SOUND_FILENAMES,
+    DEFAULT_PRECLICK_FINAL_CLICK_SOUND_FILENAME,
     PRECLICK_POPUP_ARTWORK_MODES,
     DEFAULT_PRECLICK_POPUP_ARTWORK_ID,
     ROCK_LENS_EFFECTS,

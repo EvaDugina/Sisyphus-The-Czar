@@ -508,6 +508,7 @@ export function settingsGroupControls(group) {
 const CATS_AND_MICE_ONLY_SETTING_NAMES = new Set([
   "preclickPopupOnAnySceneClickEnabled",
   "preclickFakeClickSoundFilename",
+  "preclickFinalClickSoundFilename",
   "preclickHopSoundFilename",
   "preclickPopupDelayMs",
   "preclickPopupBackgroundDelaySeconds",
@@ -1289,6 +1290,14 @@ export const SETTINGS_GROUPS = [
         options: PRECLICK_HOP_SOUND_OPTIONS,
         defaultValue: DEFAULT_ROOM_SETTINGS.preclickFakeClickSoundFilename,
         hint: "Отдельный звук зарегистрированного фейкового клика. Вариант «Без звука» не влияет на отскок и popup.",
+      },
+      {
+        name: "preclickFinalClickSoundFilename",
+        label: "Звук последнего настоящего клика",
+        type: "select",
+        options: PRECLICK_HOP_SOUND_OPTIONS,
+        defaultValue: DEFAULT_ROOM_SETTINGS.preclickFinalClickSoundFilename,
+        hint: "Последний звук сцены 1: воспроизводится один раз при настоящем третьем клике, который прикрепляет камень к руке без отскока.",
       },
       {
         name: "preclickHopSoundFilename",

@@ -232,6 +232,7 @@ async function advancePastRequiredPostGuardHop(
     requiredHoverHopPending: false,
     clickAllowed: false,
     lastRadiusDecision: "post-guard-required-hop",
+    animating: false,
   });
   const afterRequiredHop = await hopState(page);
   await enterFromRight(page, radius, 20);
@@ -380,7 +381,7 @@ test("камера независимо следует за камнем вве�
   );
 });
 
-test("камень прыгает накопительно и третий fake-click завершает сцену", async ({
+test("камень прыгает накопительно, а третий настоящий клик завершает сцену", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 2000, height: 1200 });
@@ -697,15 +698,14 @@ test("камень прыгает накопительно и третий fake-
     activeAudioCount: beforePersistentClick.activeAudioCount,
     completed: true,
     guardClicksUsed: 2,
-    hopCount: beforePersistentClick.hopCount + 1,
-    requiredHoverHopPending: true,
+    hopCount: beforePersistentClick.hopCount,
+    requiredHoverHopPending: false,
     clickAllowed: false,
-    lastRadiusDecision: "persistent-fake-click",
-    lastHopRequest: {
-      trigger: "persistent-fake-click",
-      fixedDistanceFactor: 1,
-    },
+    lastRadiusDecision: "final-real-click",
   });
+  expect((await hopState(page)).lastHopRequest).toEqual(
+    beforePersistentClick.lastHopRequest,
+  );
   expect(await page.evaluate(() => window.__laughPlayCount)).toBe(
     beforePersistentClick.audioPlayCount,
   );
@@ -716,7 +716,7 @@ test("камень прыгает накопительно и третий fake-
   expect(await page.evaluate(() => window.__controlAcquireMessages.length)).toBe(0);
   expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
     completed: true,
-    completionReason: "third-fake-click",
+    completionReason: "final-real-click",
   });
 
   await page.getByTestId("restart-session").click();
@@ -866,10 +866,23 @@ test("камень бесшовно переносится по обеим ос�
   }
   const persistentClickPoint = await visibleRockPoint(page);
   const beforePersistentClick = await hopState(page);
-  const beforePersistentFakeClickAudio = await page.evaluate(() =>
-    window.__sisyphusTestApi.getPreclickFakeClickAudioState(),
-  );
-  const beforePersistentCenter = await rockCenter(page);
+  const beforePersistentRect = await page.locator(SOURCE_ROCK).evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+  const persistentGrabRatio = {
+    x:
+      (persistentClickPoint.x - beforePersistentRect.left) /
+      beforePersistentRect.width,
+    y:
+      (persistentClickPoint.y - beforePersistentRect.top) /
+      beforePersistentRect.height,
+  };
   const persistentPopupPromise = page.waitForEvent("popup");
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mousePressed",
@@ -888,22 +901,40 @@ test("камень бесшовно переносится по обеим ос�
   const persistentPopup = await persistentPopupPromise;
   await persistentPopup.close();
   await page.bringToFront();
-  const afterPersistentCenter = await rockCenter(page);
+  const afterPersistentRect = await page.locator(SOURCE_ROCK).evaluate((rock) => {
+    const rect = rock.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
   expect(
-    toroidalDistance(beforePersistentCenter, afterPersistentCenter, viewport),
-  ).toBeGreaterThan(radius);
+    Math.hypot(
+      afterPersistentRect.left +
+        afterPersistentRect.width * persistentGrabRatio.x -
+        persistentClickPoint.x,
+      afterPersistentRect.top +
+        afterPersistentRect.height * persistentGrabRatio.y -
+        persistentClickPoint.y,
+    ),
+  ).toBeLessThan(1);
   await expect.poll(() => hopState(page)).toMatchObject({
     completed: true,
     guardClicksUsed: 2,
-    hopCount: beforePersistentClick.hopCount + 1,
+    hopCount: beforePersistentClick.hopCount,
     audioPlayCount: 3,
     clickAllowed: false,
-    lastHopRequest: { trigger: "persistent-fake-click" },
+    lastRadiusDecision: "final-real-click",
   });
+  expect((await hopState(page)).lastHopRequest).toEqual(
+    beforePersistentClick.lastHopRequest,
+  );
   await cdp.detach();
 });
 
-test("начальный клик запускает игру, а третий fake-click завершает сцену", async ({
+test("начальный клик запускает игру, а третий настоящий клик завершает сцену", async ({
   context,
   page,
 }) => {
@@ -1019,6 +1050,7 @@ test("начальный клик запускает игру, а третий f
   }
 
   const persistentClickPoint = await visibleRockPoint(page);
+  const beforeFinalClick = await hopState(page);
   const persistentPopupPromise = page.waitForEvent("popup");
   await page.mouse.click(persistentClickPoint.x, persistentClickPoint.y);
   const persistentPopup = await persistentPopupPromise;
@@ -1026,14 +1058,16 @@ test("начальный клик запускает игру, а третий f
     completed: true,
     guardClickCount: 2,
     guardClicksUsed: 2,
-    hopCount: 10,
+    hopCount: beforeFinalClick.hopCount,
     clickAllowed: false,
-    lastRadiusDecision: "persistent-fake-click",
-    lastHopRequest: { trigger: "persistent-fake-click" },
+    lastRadiusDecision: "final-real-click",
   });
+  expect((await hopState(page)).lastHopRequest).toEqual(
+    beforeFinalClick.lastHopRequest,
+  );
   expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
     completed: true,
-    completionReason: "third-fake-click",
+    completionReason: "final-real-click",
   });
 
   await Promise.all(
@@ -1041,7 +1075,7 @@ test("начальный клик запускает игру, а третий f
   );
 });
 
-test("третий fake-click завершает сцену, возвращает фокус окнам и сохраняет единый размер", async ({
+test("третий настоящий клик завершает сцену, удерживает камень и возвращает фокус окнам", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1200, height: 800 });
@@ -1063,6 +1097,7 @@ test("третий fake-click завершает сцену, возвращае�
       preclickHopMissProbabilityPercent: 100,
       preclickFakeClickHopDistancePercent: 50,
       preclickFakeClickSoundFilename: "СимуляцияОргазма.mov",
+      preclickFinalClickSoundFilename: "Dungeon master.mp3",
       preclickHopSoundFilename: "Смех.mp3",
       preclickPopupDelayMs: 0,
       preclickPopupBackgroundDelaySeconds: 3,
@@ -1349,7 +1384,27 @@ test("третий fake-click завершает сцену, возвращае�
   const beforePersistentFakeClickAudio = await page.evaluate(() =>
     window.__sisyphusTestApi.getPreclickFakeClickAudioState(),
   );
+  const beforeFinalClickAudio = await page.evaluate(() =>
+    window.__sisyphusTestApi.getPreclickFinalClickAudioState(),
+  );
   const persistentClickPoint = await visibleRockPoint(page);
+  const beforeFinalClickRect = await rock.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+  const finalGrabRatio = {
+    x:
+      (persistentClickPoint.x - beforeFinalClickRect.left) /
+      beforeFinalClickRect.width,
+    y:
+      (persistentClickPoint.y - beforeFinalClickRect.top) /
+      beforeFinalClickRect.height,
+  };
   const persistentPopupPromise = page.waitForEvent("popup");
   await cdp.send("Input.dispatchMouseEvent", {
     type: "mousePressed",
@@ -1390,17 +1445,36 @@ test("третий fake-click завершает сцену, возвращае�
     completed: true,
     guardClickCount: 2,
     guardClicksUsed: 2,
-    hopCount: beforePersistentClick.hopCount + 1,
+    hopCount: beforePersistentClick.hopCount,
     audioPlayCount: beforePersistentClick.audioPlayCount,
     animating: false,
     clickAllowed: false,
-    lastRadiusDecision: "persistent-fake-click",
-    lastHopRequest: {
-      trigger: "persistent-fake-click",
-      endpointSafe: true,
-      completed: true,
-    },
+    requiredHoverHopPending: false,
+    lastRadiusDecision: "final-real-click",
   });
+  expect((await hopState(page)).lastHopRequest).toEqual(
+    beforePersistentClick.lastHopRequest,
+  );
+  const hand = page.locator(
+    "#root > .scene-page > .world > .hand-cursor:not(.is-remote)",
+  );
+  await expect(rock).toHaveClass(/is-dragging/);
+  await expect(hand).toHaveClass(/is-visible/);
+  await expect(hand).toHaveClass(/is-grabbing/);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__sisyphusTestApi.getSceneOneFinalHoldState(),
+      ),
+    )
+    .toMatchObject({
+      active: true,
+      audioTerminated: true,
+      dragging: true,
+      handGrabbing: true,
+      handVisible: true,
+      rockDragging: true,
+    });
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -1408,9 +1482,25 @@ test("третий fake-click завершает сцену, возвращае�
       ),
     )
     .toMatchObject({
-      playCount: beforePersistentFakeClickAudio.playCount + 1,
+      playCount: beforePersistentFakeClickAudio.playCount,
       lastFilename: "Like that.mp3",
     });
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__sisyphusTestApi.getPreclickFinalClickAudioState(),
+      ),
+    )
+    .toMatchObject({
+      playCount: beforeFinalClickAudio.playCount + 1,
+      lastFilename: "Dungeon master.mp3",
+    });
+  const audioCountAfterFinalClick = await page.evaluate(
+    () => window.__playedAudioFilenames.length,
+  );
+  expect(
+    await page.evaluate(() => window.__playedAudioFilenames.at(-1)),
+  ).toBe("Dungeon master.mp3");
   await expect
     .poll(() =>
       page.evaluate(() => window.__sisyphusTestApi.getPreclickPopupState()),
@@ -1460,8 +1550,97 @@ test("третий fake-click завершает сцену, возвращае�
   ).toBe(0);
   expect(await page.evaluate(() => window.__sisyphusTestApi.sceneFlow)).toMatchObject({
     completed: true,
-    completionReason: "third-fake-click",
+    completionReason: "final-real-click",
   });
+  const afterFinalClickRect = await rock.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+    };
+  });
+  expect(
+    Math.hypot(
+      afterFinalClickRect.left +
+        afterFinalClickRect.width * finalGrabRatio.x -
+        persistentClickPoint.x,
+      afterFinalClickRect.top +
+        afterFinalClickRect.height * finalGrabRatio.y -
+        persistentClickPoint.y,
+    ),
+  ).toBeLessThan(1);
+  const beforeFinalHoldMove = await rockCenter(page);
+  const finalHoldTarget = {
+    x:
+      beforeFinalHoldMove.x < page.viewportSize().width / 2
+        ? page.viewportSize().width * 0.75
+        : page.viewportSize().width * 0.25,
+    y:
+      beforeFinalHoldMove.y < page.viewportSize().height / 2
+        ? page.viewportSize().height * 0.75
+        : page.viewportSize().height * 0.25,
+  };
+  await page.mouse.move(finalHoldTarget.x, finalHoldTarget.y);
+  await expect
+    .poll(async () => {
+      const rect = await rock.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return {
+          left: bounds.left,
+          top: bounds.top,
+          width: bounds.width,
+          height: bounds.height,
+        };
+      });
+      return Math.hypot(
+        (finalHoldTarget.x - rect.left) / rect.width - finalGrabRatio.x,
+        (finalHoldTarget.y - rect.top) / rect.height - finalGrabRatio.y,
+      );
+    })
+    .toBeLessThan(0.01);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__sisyphusTestApi.getSceneOneFinalHoldState(),
+      ),
+    )
+    .toMatchObject({
+      active: true,
+      dragging: true,
+      pointer: finalHoldTarget,
+    });
+  await page.evaluate(() => {
+    const rock = document.querySelector("#root > .scene-page > .world > .rock");
+    rock.dispatchEvent(new PointerEvent("pointercancel", { bubbles: true }));
+    rock.dispatchEvent(new PointerEvent("lostpointercapture", { bubbles: true }));
+    window.dispatchEvent(new Event("blur"));
+  });
+  const secondFinalHoldTarget = {
+    x: page.viewportSize().width * 0.55,
+    y: page.viewportSize().height * 0.45,
+  };
+  await page.mouse.move(secondFinalHoldTarget.x, secondFinalHoldTarget.y);
+  await page.mouse.down();
+  await page.mouse.up();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__sisyphusTestApi.getSceneOneFinalHoldState(),
+      ),
+    )
+    .toMatchObject({
+      active: true,
+      audioTerminated: true,
+      dragging: true,
+      handGrabbing: true,
+      pointer: secondFinalHoldTarget,
+    });
+  await page.waitForTimeout(100);
+  expect(await page.evaluate(() => window.__playedAudioFilenames.length)).toBe(
+    audioCountAfterFinalClick,
+  );
   await cdp.detach();
 
   await page.getByTestId("restart-session").click();
@@ -1471,6 +1650,19 @@ test("третий fake-click завершает сцену, возвращае�
     hopCount: 0,
     awaitingInitialClick: true,
   });
+  await expect(rock).not.toHaveClass(/is-dragging/);
+  await expect(hand).not.toHaveClass(/is-grabbing/);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        window.__sisyphusTestApi.getSceneOneFinalHoldState(),
+      ),
+    )
+    .toMatchObject({
+      active: false,
+      audioTerminated: false,
+      dragging: false,
+    });
 });
 
 test("окна по кликам поля работают без переключателя после начального клика", async ({
