@@ -14,7 +14,8 @@ const HARD_TRAIL_LIMIT = 10_000;
 const MAX_TRAIL_POINTS = HARD_TRAIL_LIMIT;
 const MAX_TRAIL_EVENTS = 1000;
 const MAX_TRAIL_BATCH_POINTS = 64;
-const VISUAL_TRAIL_POINT_VERSION = 2;
+const LEGACY_VISUAL_TRAIL_POINT_VERSION = 2;
+const VISUAL_TRAIL_POINT_VERSION = 3;
 const TRAIL_SYNC_INTERVAL_MS = 30_000;
 const MAX_ROCK_POINTER_OFFSET = 4;
 const POINTER_MODES = new Set(["grab", "grabbing"]);
@@ -175,6 +176,8 @@ function sanitizeTrail(input, roomSettings) {
 
   const limit = trailPointLimit(roomSettings);
   const source = input.slice(-limit);
+  const sceneHeightVh =
+    RoomSettings.ROOM_SETTINGS_LIMITS.sceneHeightScreens[1] * 100;
   return source.flatMap((point) => {
     if (!Array.isArray(point) || point.length < 2) {
       return [];
@@ -184,13 +187,25 @@ function sanitizeTrail(input, roomSettings) {
     if (!Number.isFinite(x) || !Number.isFinite(y)) {
       return [];
     }
-    const visual = Number(point[2]) === VISUAL_TRAIL_POINT_VERSION;
-    const cleanX = Physics.clamp(x, 0, Physics.WORLD_WIDTH);
-    const cleanY = Physics.clamp(y, 0, Physics.WORLD_HEIGHT);
+    const version = Number(point[2]);
+    const visual =
+      version === LEGACY_VISUAL_TRAIL_POINT_VERSION ||
+      version === VISUAL_TRAIL_POINT_VERSION;
+    const viewportUnits = version === VISUAL_TRAIL_POINT_VERSION;
+    const cleanX = Physics.clamp(
+      x,
+      0,
+      viewportUnits ? 100 : Physics.WORLD_WIDTH,
+    );
+    const cleanY = Physics.clamp(
+      y,
+      0,
+      viewportUnits ? sceneHeightVh : Physics.WORLD_HEIGHT,
+    );
     return [[
       visual ? roundNetworkNumber(cleanX) : Math.round(cleanX),
       visual ? roundNetworkNumber(cleanY) : Math.round(cleanY),
-      ...(visual ? [VISUAL_TRAIL_POINT_VERSION] : []),
+      ...(visual ? [version] : []),
     ]];
   });
 }
@@ -2319,7 +2334,7 @@ class SessionManager {
     const source = Array.isArray(payload.points)
       ? payload.points.slice(0, MAX_TRAIL_BATCH_POINTS)
       : [];
-    const points = sanitizeTrail(source, { trailMaxPoints: HARD_TRAIL_LIMIT }).filter(
+    const points = sanitizeTrail(source, session.roomSettings).filter(
       (point) => point[2] === VISUAL_TRAIL_POINT_VERSION,
     );
     if (points.length === 0) {
@@ -2359,7 +2374,7 @@ class SessionManager {
       return;
     }
 
-    const clean = sanitizeTrail([point], { trailMaxPoints: HARD_TRAIL_LIMIT })[0];
+    const clean = sanitizeTrail([point], session.roomSettings)[0];
     if (!clean) {
       return;
     }

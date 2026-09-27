@@ -905,6 +905,24 @@ test("roomSettings.update синхронизирует размер руки и 
   );
 });
 
+test("trail сохраняет совместимые v2 и новые vw/vh точки v3", () => {
+  const { manager } = setup();
+  const session = manager.createSession({
+    roomSettings: { sceneHeightScreens: 10 },
+    trail: [
+      [500, 1000, 2],
+      [75.25, 875.5, 3],
+      [120, 12_000, 3],
+    ],
+  });
+
+  assert.deepEqual(session.trail, [
+    [500, 1000, 2],
+    [75.25, 875.5, 3],
+    [100, 10_000, 3],
+  ]);
+});
+
 test("trail writer хранит последние 10000 визуальных точек по FIFO", () => {
   const { manager } = setup();
   const hub = manager.ensureDefaultSession({
@@ -926,9 +944,9 @@ test("trail writer хранит последние 10000 визуальных т
   );
 
   const points = Array.from({ length: 10_005 }, (_, index) => [
-    index % (Physics.WORLD_WIDTH + 1),
-    (index * 2) % (Physics.WORLD_HEIGHT + 1),
-    2,
+    index % 101,
+    (index * 2) % 1001,
+    3,
   ]);
   let sequence = 1;
   for (let offset = 0; offset < points.length; offset += 64) {
@@ -944,13 +962,13 @@ test("trail writer хранит последние 10000 визуальных т
   assert.equal(hub.trail.length, 10_000);
   assert.deepEqual(session.trail[0], points[5]);
   assert.deepEqual(hub.trail[0], points[5]);
-  assert.equal(session.trail.at(-1)[2], 2);
+  assert.equal(session.trail.at(-1)[2], 3);
 
   manager.handleMessage(session, observer.client, {
     v: 1,
     type: "trail.append",
     seq: 1,
-    payload: { points: [[999, 1999, 2]] },
+    payload: { points: [[99, 1999, 3]] },
   });
   assert.equal(session.trail.length, 10_000);
 

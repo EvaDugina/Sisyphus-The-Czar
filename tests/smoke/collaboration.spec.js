@@ -1864,6 +1864,83 @@ test("history и session canvas разделяют 10000 точек и не ри
   expect(checkpointed.historyStrokeBatches).toBeLessThanOrEqual(50);
 });
 
+test("reload сохраняет геометрию vw/vh-траектории", async ({ page }) => {
+  await page.goto("/");
+  const onlineStatus = page.locator(
+    '[data-testid="session-status"][data-state="online"]',
+  );
+  await expect(onlineStatus).toContainText("В сессии");
+  await page.evaluate(() => {
+    window.__sisyphusTestApi.restartExperience();
+    window.__sisyphusTestApi.applyTestSettings({
+      preclickHopGuardClickCount: 0,
+    });
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        phase: motion.phase,
+        suspended: motion.suspended,
+      })),
+    )
+    .toEqual({ phase: "play", suspended: true });
+
+  await page.evaluate(() => {
+    sendShared("control.acquire", {
+      x: SharedPhysics.WORLD_WIDTH / 2,
+      y: SharedPhysics.WORLD_HEIGHT,
+    });
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => collab.trailWriterId === collab.clientId),
+    )
+    .toBe(true);
+
+  const points = [
+    [20, 82, 3],
+    [52.5, 79, 3],
+    [80, 76, 3],
+  ];
+  const beforeReload = await page.evaluate(async (storedPoints) => {
+    window.__sisyphusTestApi.loadSharedTrail(storedPoints);
+    await new Promise((resolve) => {
+      requestAnimationFrame(() => requestAnimationFrame(resolve));
+    });
+    sendShared("trail.append", { points: storedPoints });
+    return trail.historyPoints.slice(-storedPoints.length);
+  }, points);
+
+  await page.waitForTimeout(150);
+  await page.reload();
+  await expect(onlineStatus).toContainText("В сессии");
+
+  await expect
+    .poll(() =>
+      page.evaluate((storedPoints) => {
+        const restored = storedPoints.map((storedPoint) => {
+          const index = trail.historyCanonical.findIndex(
+            (point) =>
+              point.length === storedPoint.length &&
+              point.every((value, pointIndex) => value === storedPoint[pointIndex]),
+          );
+          return {
+            canonical: index >= 0 ? trail.historyCanonical[index] : null,
+            local: index >= 0 ? trail.historyPoints[index] : null,
+          };
+        });
+        return {
+          canonical: restored.map(({ canonical }) => canonical),
+          local: restored.map(({ local }) => local),
+        };
+      }, points),
+    )
+    .toEqual({
+      canonical: points,
+      local: beforeReload,
+    });
+});
+
 test("trail.append пакетируется по 16 точек или 50 мс", async ({ page }) => {
   await page.addInitScript(() => {
     const nativeSend = WebSocket.prototype.send;

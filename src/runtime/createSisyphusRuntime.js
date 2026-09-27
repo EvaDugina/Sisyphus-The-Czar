@@ -320,6 +320,7 @@ export function createSisyphusRuntime(elements = {}) {
     sessionRenderPasses: 0,
     sessionStrokeBatches: 0,
     renderFrameId: null,
+    stableProjectionFrameId: null,
     networkPoints: [],
     networkTimerId: null,
     glowRendered: false,
@@ -5278,9 +5279,18 @@ export function createSisyphusRuntime(elements = {}) {
   }
 
   function trailProjectionOptions() {
+    const sceneHeightScreens = Math.max(
+      1,
+      Number(params.sceneHeightScreens) || 1,
+    );
+    const renderedSceneHeight = Math.max(
+      1,
+      Number(world.offsetHeight) || bounds.worldHeight,
+    );
     return {
       viewportWidth: bounds.worldWidth,
-      sceneHeight: bounds.worldHeight,
+      viewportHeight: renderedSceneHeight / sceneHeightScreens,
+      sceneHeight: renderedSceneHeight,
       worldWidth: SharedPhysics.WORLD_WIDTH,
       worldHeight: SharedPhysics.WORLD_HEIGHT,
     };
@@ -5309,7 +5319,7 @@ export function createSisyphusRuntime(elements = {}) {
     }
 
     // Legacy points are rock top-left positions. Keep them readable while all
-    // newly recorded points use the exact visual anchor (v2).
+    // newly recorded points use the exact visual anchor in vw/vh (v3).
     const localX =
       (point[0] / SharedPhysics.WORLD_WIDTH) * bounds.maxX;
     const localY =
@@ -5361,6 +5371,7 @@ export function createSisyphusRuntime(elements = {}) {
     trail.sessionDirty = true;
     trail.glowDirty = true;
     scheduleTrailRender();
+    scheduleStableTrailReprojection();
   }
 
   function appendSharedTrail(points) {
@@ -5394,6 +5405,23 @@ export function createSisyphusRuntime(elements = {}) {
     trail.sessionDirty = true;
     trail.glowDirty = true;
     scheduleTrailRender();
+  }
+
+  function scheduleStableTrailReprojection() {
+    if (trail.stableProjectionFrameId !== null || disposed) {
+      return;
+    }
+    trail.stableProjectionFrameId = window.requestAnimationFrame(() => {
+      trail.stableProjectionFrameId = window.requestAnimationFrame(() => {
+        trail.stableProjectionFrameId = null;
+        if (disposed) {
+          return;
+        }
+        updateBounds();
+        reprojectTrail();
+        resizeTrailCanvas();
+      });
+    });
   }
 
   function applySharedPhysics(physics) {
@@ -7876,6 +7904,11 @@ export function createSisyphusRuntime(elements = {}) {
       ? [anchor, ...trail.sessionPoints]
       : trail.sessionPoints;
     if (params.trailEnabled && points.length > 0) {
+      const profile = currentTrailProfile();
+      const visibleRuns = sampleVisibleTrailRuns(
+        visibleTrailRuns(points, window.scrollY, window.innerHeight),
+        profile.historyMaxPoints,
+      );
       trailSessionCtx.save();
       trailSessionCtx.setTransform(
         trail.sessionPixelRatio,
@@ -7892,14 +7925,23 @@ export function createSisyphusRuntime(elements = {}) {
       trailSessionCtx.lineWidth = scaledVisualPixel(params.lineWidth);
       trailSessionCtx.strokeStyle = params.lineColor;
       trailSessionCtx.setLineDash(trailDashArray());
-      if (points.length === 1) {
-        drawTrailStartPoint(trailSessionCtx, points[0], params.lineColor);
-      } else {
-        trail.sessionStrokeBatches = strokeTrailBatches(
-          trailSessionCtx,
-          points,
-          256,
-        );
+      visibleRuns.forEach((run) => {
+        if (run.length === 1) {
+          drawTrailStartPoint(trailSessionCtx, run[0], params.lineColor);
+        } else {
+          trail.sessionStrokeBatches += strokeTrailBatches(
+            trailSessionCtx,
+            run,
+            256,
+          );
+        }
+      });
+      const first = points[0];
+      if (
+        first.y >= window.scrollY &&
+        first.y <= window.scrollY + window.innerHeight
+      ) {
+        drawTrailStartPoint(trailSessionCtx, first, params.lineColor);
       }
       trailSessionCtx.restore();
     }
@@ -9048,6 +9090,11 @@ export function createSisyphusRuntime(elements = {}) {
     }
     restartPreclickRockHopFromLastPointer();
   });
+  listen(window.visualViewport, "resize", () => {
+    updateBounds();
+    reprojectTrail();
+    resizeTrailCanvas();
+  });
 
   function initScene() {
     rockEchoTrailController?.clear();
@@ -9430,6 +9477,10 @@ export function createSisyphusRuntime(elements = {}) {
       if (trail.renderFrameId !== null) {
         window.cancelAnimationFrame(trail.renderFrameId);
         trail.renderFrameId = null;
+      }
+      if (trail.stableProjectionFrameId !== null) {
+        window.cancelAnimationFrame(trail.stableProjectionFrameId);
+        trail.stableProjectionFrameId = null;
       }
       settingsController.dispose?.();
       rockEchoTrailController.dispose();

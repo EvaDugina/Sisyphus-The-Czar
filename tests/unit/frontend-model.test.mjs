@@ -79,6 +79,7 @@ import {
 import { trailAnchorPoint } from "../../src/lib/trailAnchor.mjs";
 import {
   canonicalVisualTrailPointToLocal,
+  LEGACY_VISUAL_TRAIL_POINT_VERSION,
   localVisualTrailPointToCanonical,
   normalizeStoredTrailPoint,
   VISUAL_TRAIL_POINT_VERSION,
@@ -261,6 +262,7 @@ test("каждое UI-поле всех сцен входит в файловы�
 test("визуальная точка следа сохраняет позицию после canonical round-trip", () => {
   const geometry = {
     viewportWidth: 1280,
+    viewportHeight: 720,
     sceneHeight: 72_000,
     worldWidth: 1000,
     worldHeight: 2000,
@@ -275,16 +277,60 @@ test("визуальная точка следа сохраняет позици
 });
 
 test("нормализация различает legacy и визуальные точки следа", () => {
-  const geometry = { worldWidth: 1000, worldHeight: 2000 };
+  const geometry = {
+    worldWidth: 1000,
+    worldHeight: 2000,
+  };
 
   assert.deepEqual(normalizeStoredTrailPoint([100.4, 300.6], geometry), [
     100.4,
     300.6,
   ]);
   assert.deepEqual(
-    normalizeStoredTrailPoint([-5, 2500, VISUAL_TRAIL_POINT_VERSION], geometry),
-    [0, 2000, VISUAL_TRAIL_POINT_VERSION],
+    normalizeStoredTrailPoint([-5, 12_500, VISUAL_TRAIL_POINT_VERSION], geometry),
+    [0, 10_000, VISUAL_TRAIL_POINT_VERSION],
   );
+  assert.deepEqual(
+    normalizeStoredTrailPoint(
+      [-5, 2500, LEGACY_VISUAL_TRAIL_POINT_VERSION],
+      geometry,
+    ),
+    [0, 2000, LEGACY_VISUAL_TRAIL_POINT_VERSION],
+  );
+});
+
+test("vw/vh точка следа не растягивается при изменении полной высоты сцены", () => {
+  const sourceGeometry = {
+    viewportWidth: 1280,
+    viewportHeight: 900,
+    sceneHeight: 90_000,
+  };
+  const restoredGeometry = {
+    ...sourceGeometry,
+    sceneHeight: 72_000,
+  };
+  const source = { x: 640, y: 36_000 };
+  const stored = localVisualTrailPointToCanonical(source, sourceGeometry);
+  const restored = canonicalVisualTrailPointToLocal(stored, restoredGeometry);
+
+  assert.deepEqual(stored, [50, 4000, VISUAL_TRAIL_POINT_VERSION]);
+  assert.deepEqual(restored, source);
+});
+
+test("визуальная точка v2 остаётся совместимой", () => {
+  const geometry = {
+    viewportWidth: 1280,
+    viewportHeight: 720,
+    sceneHeight: 72_000,
+    worldWidth: 1000,
+    worldHeight: 2000,
+  };
+  const restored = canonicalVisualTrailPointToLocal(
+    [500, 1000, LEGACY_VISUAL_TRAIL_POINT_VERSION],
+    geometry,
+  );
+
+  assert.deepEqual(restored, { x: 640, y: 36_000 });
 });
 
 test("client ID использует randomUUID в secure context", () => {

@@ -579,9 +579,9 @@ test("визуальная trail-история хранит последние 
   assert.equal(granted.payload.trailWriterId, "integration-trail-writer01");
 
   const points = Array.from({ length: 10_005 }, (_, index) => [
-    index % 1001,
-    (index * 2) % 2001,
-    2,
+    index % 101,
+    (index * 2) % 1001,
+    3,
   ]);
   for (let offset = 0; offset < points.length; offset += 64) {
     writer.send("trail.append", {
@@ -608,7 +608,7 @@ test("визуальная trail-история хранит последние 
 
   assert.equal(history.payload.points.length, 10_000);
   assert.deepEqual(history.payload.points[0], points[5]);
-  assert.equal(history.payload.points.at(-1)[2], 2);
+  assert.equal(history.payload.points.at(-1)[2], 3);
 
   writer.socket.close();
   newcomer.socket.close();
