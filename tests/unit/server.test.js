@@ -54,6 +54,144 @@ test("production CSP разрешает только внешние скрипт
   assert.doesNotMatch(headers["Content-Security-Policy"], /script-src[^;]*unsafe-inline/);
 });
 
+test("production не запускается без обязательного пароля доступа", () => {
+  assert.throws(
+    () =>
+      createService({
+        debug: false,
+        accessPassword: "",
+      }),
+    /ACCESS_PASSWORD is required/,
+  );
+});
+
+test("production пароль закрывает страницы, API и WebSocket", async (context) => {
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: false,
+    accessPassword: "unit-access-password",
+    sessionStore: emptySessionStore(),
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  assert.equal((await fetch(`${baseUrl}/healthz`)).status, 200);
+  const blockedPage = await fetch(`${baseUrl}/scene-2?source=test`, {
+    headers: { Accept: "text/html" },
+    redirect: "manual",
+  });
+  assert.equal(blockedPage.status, 303);
+  assert.equal(
+    blockedPage.headers.get("location"),
+    "/access?returnTo=%2Fscene-2%3Fsource%3Dtest",
+  );
+
+  const blockedApi = await fetch(`${baseUrl}/api/sessions`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+  assert.equal(blockedApi.status, 401);
+  assert.deepEqual(await blockedApi.json(), { error: "access_required" });
+
+  const blockedSocket = new WebSocket(
+    `ws://127.0.0.1:${address.port}/realtime?session=AAAAAAAAAAAAAAAAAAAAAA&client=blocked-client-0001`,
+  );
+  await new Promise((resolve, reject) => {
+    blockedSocket.once("unexpected-response", (_request, response) => {
+      assert.equal(response.statusCode, 401);
+      response.resume();
+      resolve();
+    });
+    blockedSocket.once("open", () => reject(new Error("WebSocket открылся без пароля")));
+    blockedSocket.once("error", reject);
+  });
+
+  const loginPage = await fetch(`${baseUrl}/access?returnTo=%2Fscene-2`);
+  const loginHtml = await loginPage.text();
+  assert.equal(loginPage.status, 200);
+  assert.match(loginHtml, /Закрытый показ/);
+  assert.doesNotMatch(loginHtml, /unit-access-password/);
+
+  const wrongPassword = await fetch(`${baseUrl}/access`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Origin: baseUrl,
+    },
+    body: "password=wrong&returnTo=%2Fscene-2",
+    redirect: "manual",
+  });
+  assert.equal(wrongPassword.status, 401);
+  assert.equal(wrongPassword.headers.get("set-cookie"), null);
+  for (let attempt = 0; attempt < 4; attempt += 1) {
+    const repeatedWrongPassword = await fetch(`${baseUrl}/access`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded",
+        Origin: baseUrl,
+      },
+      body: "password=still-wrong&returnTo=%2Fscene-2",
+      redirect: "manual",
+    });
+    assert.equal(repeatedWrongPassword.status, 401);
+  }
+  const limitedWrongPassword = await fetch(`${baseUrl}/access`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Origin: baseUrl,
+    },
+    body: "password=still-wrong&returnTo=%2Fscene-2",
+    redirect: "manual",
+  });
+  assert.equal(limitedWrongPassword.status, 429);
+
+  const login = await fetch(`${baseUrl}/access`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Origin: baseUrl,
+    },
+    body: "password=unit-access-password&returnTo=%2Fscene-2",
+    redirect: "manual",
+  });
+  const setCookie = login.headers.get("set-cookie");
+  const cookie = setCookie.split(";", 1)[0];
+  assert.equal(login.status, 303);
+  assert.equal(login.headers.get("location"), "/scene-2");
+  assert.match(setCookie, /HttpOnly/i);
+  assert.match(setCookie, /SameSite=Strict/i);
+
+  const authorizedPage = await fetch(`${baseUrl}/scene-2`, {
+    headers: { Cookie: cookie },
+  });
+  assert.equal(authorizedPage.status, 200);
+  const created = await fetch(`${baseUrl}/api/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+    },
+    body: "{}",
+  });
+  assert.equal(created.status, 201);
+  const { sessionId } = await created.json();
+
+  const socket = new WebSocket(
+    `ws://127.0.0.1:${address.port}/realtime?session=${sessionId}&client=auth-client-0000001`,
+    { headers: { Cookie: cookie } },
+  );
+  context.after(() => socket.close());
+  await new Promise((resolve, reject) => {
+    socket.once("open", resolve);
+    socket.once("error", reject);
+  });
+});
+
 test("backend публикует shared-модули клиента", async (context) => {
   const service = createService({
     port: 0,
@@ -130,6 +268,7 @@ test("production startup применяет preset из отдельного sto
     port: 0,
     host: "127.0.0.1",
     debug: false,
+    accessProtectionEnabled: false,
     sessionStore: emptySessionStore(),
     productionPresetStore,
     logger: () => {},

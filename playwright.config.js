@@ -19,6 +19,7 @@ module.exports = defineConfig({
       PORT: "4173",
       HOST: "127.0.0.1",
       DEBUG: "false",
+      ACCESS_PASSWORD: "smoke-access-password",
       ALLOWED_ORIGIN: "http://127.0.0.1:4173",
       SESSION_TTL_SECONDS: "86400",
       EMPTY_SESSION_GRACE_SECONDS: "2",

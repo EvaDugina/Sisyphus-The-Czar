@@ -31,14 +31,14 @@ docker compose -f docker-compose.dev.yml down
 ## Три режима запуска
 
 - **Dev:** `docker compose -f docker-compose.dev.yml up -d --build`. Панель настроек, Vite HMR и test API доступны.
-- **Отладочный production:** `DEBUG=true docker compose up -d --build --force-recreate`. Это production-сборка Vite без HMR и test API, но с полной панелью настроек личной сессии.
-- **Настоящий production:** `DEBUG=false docker compose up -d --build --force-recreate`. Панель и controller настроек не входят в frontend bundle.
+- **Отладочный production:** `DEBUG=true docker compose up -d --build --force-recreate`. Это production-сборка Vite без HMR и test API, но с полной панелью настроек личной сессии; парольный шлюз отключён вместе с остальными debug-послаблениями.
+- **Настоящий production:** `DEBUG=false docker compose up -d --build --force-recreate`. Панель и controller настроек не входят в frontend bundle, а все сцены, API и WebSocket закрыты общим паролем из `ACCESS_PASSWORD`.
 
 Dev и production используют один локальный origin `http://127.0.0.1:18082/scene-1`, поэтому режимы запускаются последовательно. Перед переключением остановите текущий Compose-проект. `DEBUG` одновременно является build argument frontend и runtime-переменной сервера: одной перезагрузки страницы или restart контейнера недостаточно, после смены значения обязательны rebuild и recreate.
 
 ## Личные сессии и общий след
 
-1. Откройте приложение по `/`: сервер создаст браузеру новую single-client-сессию.
+1. В production введите пароль показа; после успешного входа сервер выдаст браузеру защищённую cookie на 24 часа. Затем откройте приложение по `/`: сервер создаст браузеру новую single-client-сессию.
 2. Откройте тот же URL в другом браузере: второй пользователь получит другой session ID и свой камень.
 3. Движение камня и захват изолированы; shared trail агрегируется сервером отдельно.
 
@@ -75,6 +75,7 @@ Production frontend использует `rock-03.png`, PNG-курсоры `curs
 | Переменная | Назначение |
 |---|---|
 | `DEBUG` | `true` для dev-послаблений, `false` для production hardening |
+| `ACCESS_PASSWORD` | обязательный общий пароль показа при `DEBUG=false`; хранится только в `.env` |
 | `ALLOWED_ORIGIN` | публичный HTTPS origin; несколько значений через запятую |
 | `SESSION_TTL_SECONDS` | время жизни комнаты после последней активности, по умолчанию `86400` |
 | `EMPTY_SESSION_GRACE_SECONDS` | задержка удаления пустой совместимой комнаты; persistent trail hub не удаляется, по умолчанию `10` |
@@ -83,7 +84,7 @@ Production frontend использует `rock-03.png`, PNG-курсоры `curs
 | `SETTINGS_TEMPLATE_STORE_PATH` | отслеживаемый каталог debug-шаблонов, по умолчанию `/app/repository-config/settings-templates.json` |
 | `SESSION_PERSIST_INTERVAL_MS` | интервал фонового сохранения, по умолчанию `250` мс |
 
-Секретов приложение не использует. Файл `.env` не коммитится.
+При `DEBUG=false` сервер не запустится с пустым `ACCESS_PASSWORD`. Без входа доступны только страница `/access` и служебный `/healthz`; cookie имеет `HttpOnly`, `SameSite=Strict` и `Secure` на публичном хосте. Файл `.env` с паролем не коммитится.
 
 ## Проверки
 
@@ -103,7 +104,7 @@ docker run --rm --ipc=host -v "$(pwd):/app" -v /app/node_modules -w /app mcr.mic
 
 ```bash
 cp .env.example .env
-# Укажите ALLOWED_ORIGIN и оставьте DEBUG=false
+# Укажите ALLOWED_ORIGIN и ACCESS_PASSWORD, оставьте DEBUG=false
 bash deploy.sh
 ```
 

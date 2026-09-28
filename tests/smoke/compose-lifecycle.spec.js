@@ -1,6 +1,8 @@
 const { test, expect } = require("@playwright/test");
 
 const MODE = process.env.COMPOSE_SMOKE_MODE || "prod";
+const ACCESS_PASSWORD =
+  process.env.COMPOSE_ACCESS_PASSWORD || process.env.ACCESS_PASSWORD || "";
 const CLIENT_ID = "00000000-0000-4000-8000-000000018082";
 const VERSION_ID = "compose-production-preset";
 const VERSION_UPDATED_AT = "2026-07-26T12:00:00.000Z";
@@ -57,6 +59,14 @@ async function setRangeValue(page, name, value) {
 
 test(`compose lifecycle: ${MODE}`, async ({ page }) => {
   await page.goto("/");
+
+  if (MODE === "prod") {
+    expect(ACCESS_PASSWORD, "Передайте COMPOSE_ACCESS_PASSWORD для prod smoke").not.toBe("");
+    await expect(page).toHaveURL(/\/access\?returnTo=/);
+    await page.getByLabel("Пароль").fill(ACCESS_PASSWORD);
+    await page.getByRole("button", { name: "Войти" }).click();
+    await expect(page).toHaveURL(/\/scene-1$/);
+  }
 
   if (MODE === "dev") {
     await expect(page.getByTestId("session-status")).toContainText("В сессии");

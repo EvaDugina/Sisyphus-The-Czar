@@ -3,13 +3,15 @@
 ## Паспорт
 
 - **Стадия:** POC B
-- **Последнее обновление:** 2026-09-27
+- **Последнее обновление:** 2026-09-28
 - **Runtime:** Node.js 24, Express 5, WebSocket `ws`, React 19, Vite 8
 - **Развёртывание:** один Docker-контейнер приложения; nginx/HTTPS находятся на хосте
 
 ## Архитектура
 
 React отвечает за структуру UI, imperative runtime — за refs, animation loop, canvas, аудио и WebSocket. Express раздаёт API/shared modules/production assets. `SessionManager` авторитетно рассчитывает личные камни фиксированным шагом.
+
+При `DEBUG=false` Express до раздачи frontend и API включает единый password gate. `GET/POST /access` проверяет `ACCESS_PASSWORD`, ограничивает попытки по IP и выдаёт случайную серверную `HttpOnly` cookie на 24 часа; тот же токен требуется HTTP middleware и обработчиком WebSocket upgrade. В debug gate полностью отключён.
 
 Поток данных:
 
@@ -175,6 +177,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 ## HTTP
 
 - `GET /healthz` — статус сервиса.
+- `GET /access`, `POST /access` — production-only форма и проверка общего пароля; успешный вход возвращает на исходный локальный путь.
 - `POST /api/sessions` — новая личная single-client-сессия.
 - `GET /scene-1`, `GET /scene-2`, `GET /scene-3` — самостоятельные scene page через общий frontend entrypoint; trailing slash канонизируется `308`.
 - `GET /settings` и `GET /settings/` — устаревший адрес, `308` на `/scene-1`.
@@ -194,6 +197,9 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 
 ## Безопасность и производительность
 
+- Production fail-closed: без непустого `ACCESS_PASSWORD` сервер не запускается. Без cookie доступны только `/access` и `/healthz`; сцены, static assets, API и WebSocket возвращают отказ или перенаправление на вход.
+- Cookie не содержит пароль, имеет `HttpOnly`, `SameSite=Strict`, срок 24 часа и `Secure` на публичном хосте. После рестарта сервера токен меняется, поэтому требуется повторный вход.
+- Сравнение пароля и cookie выполняется через `crypto.timingSafeEqual`; форма ограничена 2 KiB, число неудачных попыток — пять в минуту на IP, в логи не попадает введённое значение.
 - Origin проверяется для HTTP и WebSocket.
 - Числа проходят общие sanitizers; ширина углового сектора ограничивается `0–180°`, а итоговый угол импульса — верхней полуплоскостью `±90°`.
 - Min/max пары препятствия нормализуются после clamp, поэтому нижняя граница никогда не превышает верхнюю даже для старого или вручную изменённого payload.
@@ -218,7 +224,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 - `npm run lint` — syntax checks и ESLint.
 - `npm run build` — production Vite bundle.
 - `npm test` — unit и integration.
-- Production smoke открывает все три прямых URL без debug API, проверяет единственный mounted world, циклические ссылки, restart сцены 1, подвешенный центр и захват сцены 2, а также старт вершины сцены 3 с камнем в руке.
+- Production smoke сначала проверяет редирект всех сцен на password gate, отказ неверного пароля и API без cookie, затем входит через настоящую форму и открывает все три прямых URL без debug API. После входа проверяются единственный mounted world, циклические ссылки, restart сцены 1, подвешенный центр и захват сцены 2, а также старт вершины сцены 3 с камнем в руке.
 - Scene-pages smoke проверяет точные `41 / 105 / 106` контролов и `20 / 84 / 84` общих маркера, диапазон скорости Scene 2, скролл вверх только после захвата и только во время движения руки, каскадную миграцию, восстановление общих значений, desktop resize, narrow viewport и завершение сцен 2/3.
 - UI/Fold smoke проверяет legacy-миграции, редактор и visual controls стеклянных полос, порядок z-index, canonical hitbox, Fold-клон, а также тёмный старт сцены 3, фиксированный viewport, запуск дождя только настоящим scroll вниз и синхронный пик/спад rain opacity и громкости по прогрессу падающего камня.
 - Dev smoke проверяет три canvas, загрузку 10 000 точек, отсутствие revisions/rAF в idle, session-only проход до checkpoint, history batching не более 50 `stroke()`, WebSocket-пакеты 16 точек/50 ms и неизменность v3-геометрии после серверного round-trip с настоящим reload.
@@ -233,6 +239,8 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 Изменения `config/settings-templates.json` и `config/production-preset.json`, полученные через Git, перечитываются при следующем запуске сервера. Выбор флага через inline debug UI обновляет серверный preset для новых сессий. Scene-specific browser snapshot затем применяется только к соответствующей странице; `shared/production-preset.js` задаёт безопасный fallback, если canonical JSON отсутствует или повреждён.
 
 ## Ход разработки
+
+- **2026-09-28:** Добавлен production password gate с обязательным `ACCESS_PASSWORD`, защищённой cookie, rate limit и общей проверкой страниц/API/WebSocket. Dev/debug не затронуты; unit и production smoke покрывают отказ без конфигурации, неверный пароль и успешный вход.
 
 - **2026-09-27:** сцена 1 завершает последовательность третьим настоящим кликом без hop: камень сохраняет точку контакта с управляемой курсором grabbing-рукой до рестарта. Независимый `preclickFinalClickSoundFilename` по умолчанию равен `СимуляцияОргазма.mov`; перед ним останавливаются остальные каналы, а после него аудио сцены блокируется. Room/settings schema поднята до `65`.
 - **2026-09-27:** сцена 2 получила фиксированный скролл вверх `0.1–25 vh/s` с default `1`, активный после захвата и плавно затухающий после остановки руки. Сервер отключает для `turnip` случайное, прыжковое и stationary-освобождение; `СимуляцияОргазма.mov` заблокирован для земли, но доступен в общем выборе звука боковой стены. Room/settings migration `63` добавила новый параметр; параллельная функция Scene 1 подняла объединённую schema до `64`.

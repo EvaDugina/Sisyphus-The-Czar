@@ -2,6 +2,19 @@ const { test, expect } = require("@playwright/test");
 
 const ROCK = "#root > .scene-page > .world > .rock";
 const HAND = "#root > .scene-page > .world > .hand-cursor:not(.is-remote)";
+const ACCESS_PASSWORD = "smoke-access-password";
+
+async function unlockProduction(page, path = "/scene-1") {
+  await page.goto(path);
+  await expect(page).toHaveURL(/\/access\?returnTo=/);
+  await page.getByLabel("Пароль").fill(ACCESS_PASSWORD);
+  await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page).toHaveURL(new RegExp(`${path}$`));
+}
+
+test.beforeEach(async ({ page }) => {
+  await unlockProduction(page);
+});
 
 async function waitForScene(page, path) {
   await page.goto(path);
@@ -44,6 +57,29 @@ async function moveToVisibleRock(page) {
   }
   throw new Error("Не удалось стабилизировать точку настоящего нажатия");
 }
+
+test("production закрывает все сцены паролем", async ({ page, request }) => {
+  await page.context().clearCookies();
+  await page.goto("/scene-3");
+  await expect(page).toHaveURL(/\/access\?returnTo=%2Fscene-3/);
+  await expect(page.getByRole("heading", { name: "Закрытый показ" })).toBeVisible();
+
+  await page.getByLabel("Пароль").fill("wrong-password");
+  await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page.getByRole("alert")).toHaveText("Неверный пароль.");
+  await expect(page).toHaveURL(/\/access/);
+
+  await page.getByLabel("Пароль").fill(ACCESS_PASSWORD);
+  await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page).toHaveURL(/\/scene-3$/);
+  await expect(page.locator(ROCK)).toBeVisible();
+
+  const unauthenticatedApi = await request.post("/api/sessions", {
+    data: {},
+  });
+  expect(unauthenticatedApi.status()).toBe(401);
+  expect(await unauthenticatedApi.json()).toEqual({ error: "access_required" });
+});
 
 test("production предоставляет три независимые scene page", async ({ page }) => {
   const scenes = [
@@ -121,8 +157,8 @@ test("scene 3 сразу показывает вершину, камень в р
   expect(await page.evaluate(() => scrollY)).toBeLessThan(32);
 });
 
-test("production legacy drafts маршруты возвращают 404", async ({ request }) => {
+test("production legacy drafts маршруты возвращают 404", async ({ page }) => {
   for (const path of ["/drafts", "/drafts/", "/drafts/assets/missing.js"]) {
-    expect((await request.get(path)).status()).toBe(404);
+    expect((await page.request.get(path)).status()).toBe(404);
   }
 });

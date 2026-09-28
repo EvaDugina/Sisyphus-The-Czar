@@ -112,6 +112,7 @@ async function startService(context, options = {}) {
     port: 0,
     host: "127.0.0.1",
     debug: options.debug ?? false,
+    accessProtectionEnabled: false,
     sessionStorePath: "",
     productionPresetPath: options.productionPresetPath || "",
     settingsTemplateStorePath: options.settingsTemplateStorePath || "",
@@ -660,6 +661,7 @@ test("общая история следов переживает штатный
     port: 0,
     host: "127.0.0.1",
     debug: false,
+    accessProtectionEnabled: false,
     sessionStorePath,
     logger: () => {},
   });
@@ -679,6 +681,7 @@ test("общая история следов переживает штатный
     port: 0,
     host: "127.0.0.1",
     debug: false,
+    accessProtectionEnabled: false,
     sessionStorePath,
     logger: () => {},
   });

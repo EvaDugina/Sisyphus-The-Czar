@@ -22,6 +22,8 @@ const CONNECTION_TIMEOUT_MS = 45_000;
 const SESSION_ID_PATTERN = /^[A-Za-z0-9_-]{22}$/;
 const CLIENT_ID_PATTERN = /^[A-Za-z0-9_-]{16,64}$/;
 const LEAVE_TOKEN_PATTERN = /^[A-Za-z0-9_-]{22}$/;
+const ACCESS_COOKIE_NAME = "sisyphus_access";
+const ACCESS_COOKIE_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 
 function parseBoolean(value, fallback = false) {
   if (value === undefined || value === null || value === "") {
@@ -110,6 +112,121 @@ function originAllowed(request, allowedOrigins, debug) {
   }
 }
 
+function accessFormOriginAllowed(request, allowedOrigins, debug) {
+  if (originAllowed(request, allowedOrigins, debug)) {
+    return true;
+  }
+  return request.headers["sec-fetch-site"] === "same-origin";
+}
+
+function parseCookieHeader(header) {
+  const cookies = new Map();
+  String(header || "")
+    .split(";")
+    .forEach((part) => {
+      const separator = part.indexOf("=");
+      if (separator <= 0) {
+        return;
+      }
+      const name = part.slice(0, separator).trim();
+      const value = part.slice(separator + 1).trim();
+      if (name) {
+        cookies.set(name, value);
+      }
+    });
+  return cookies;
+}
+
+function timingSafeStringEqual(left, right) {
+  const leftBuffer = crypto
+    .createHash("sha256")
+    .update(String(left || ""), "utf8")
+    .digest();
+  const rightBuffer = crypto
+    .createHash("sha256")
+    .update(String(right || ""), "utf8")
+    .digest();
+  return crypto.timingSafeEqual(leftBuffer, rightBuffer);
+}
+
+function safeReturnTo(value) {
+  const candidate = String(value || "");
+  if (
+    !candidate.startsWith("/") ||
+    candidate.startsWith("//") ||
+    candidate.length > 2048
+  ) {
+    return "/scene-1";
+  }
+  try {
+    const url = new URL(candidate, "http://local.invalid");
+    if (url.origin !== "http://local.invalid" || url.pathname === "/access") {
+      return "/scene-1";
+    }
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return "/scene-1";
+  }
+}
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;");
+}
+
+function accessPage(returnTo, errorMessage = "") {
+  const safeTarget = escapeHtml(safeReturnTo(returnTo));
+  const feedback = errorMessage
+    ? `<p class="error" role="alert">${escapeHtml(errorMessage)}</p>`
+    : "";
+  return `<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Доступ к миниатюре</title>
+    <style>
+      :root { color-scheme: dark; font-family: Inter, system-ui, sans-serif; }
+      * { box-sizing: border-box; }
+      body { min-height: 100vh; margin: 0; display: grid; place-items: center; padding: 24px; background: #10100f; color: #f5f2e9; }
+      main { width: min(100%, 390px); padding: 32px; border: 1px solid #4d493f; border-radius: 18px; background: #1a1917; box-shadow: 0 24px 70px #0008; }
+      h1 { margin: 0 0 10px; font-size: 28px; }
+      p { margin: 0 0 24px; color: #bbb5a8; line-height: 1.5; }
+      label { display: grid; gap: 8px; font-weight: 700; }
+      input { width: 100%; min-height: 48px; border: 1px solid #6a6458; border-radius: 10px; padding: 10px 12px; background: #0e0e0d; color: inherit; font: inherit; }
+      input:focus-visible { outline: 3px solid #d5aa55; outline-offset: 2px; }
+      button { width: 100%; min-height: 48px; margin-top: 18px; border: 0; border-radius: 10px; background: #d5aa55; color: #17130c; font: inherit; font-weight: 800; cursor: pointer; }
+      button:focus-visible { outline: 3px solid #fff; outline-offset: 3px; }
+      .error { margin: 0 0 16px; color: #ff9a8f; font-weight: 700; }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>Закрытый показ</h1>
+      <p>Введите пароль, чтобы открыть сцены.</p>
+      ${feedback}
+      <form method="post" action="/access">
+        <input type="hidden" name="returnTo" value="${safeTarget}" />
+        <label for="access-password">
+          Пароль
+          <input id="access-password" name="password" type="password" autocomplete="current-password" required autofocus maxlength="256" />
+        </label>
+        <button type="submit">Войти</button>
+      </form>
+    </main>
+  </body>
+</html>`;
+}
+
+function isLoopbackHostname(hostname) {
+  return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(
+    String(hostname || "").toLowerCase()
+  );
+}
+
 function securityHeaders(debug) {
   return (request, response, next) => {
     response.setHeader("X-Content-Type-Options", "nosniff");
@@ -184,6 +301,14 @@ function createService(options = {}) {
         .filter(Boolean)
     ),
   };
+  const accessPassword = String(
+    options.accessPassword ?? process.env.ACCESS_PASSWORD ?? ""
+  );
+  config.accessProtectionEnabled =
+    options.accessProtectionEnabled ?? !config.debug;
+  if (config.accessProtectionEnabled && !accessPassword) {
+    throw new Error("ACCESS_PASSWORD is required when DEBUG=false");
+  }
 
   const log = options.logger || createLogger();
   const productionPresetStore =
@@ -244,6 +369,17 @@ function createService(options = {}) {
     60_000
   );
   const connectLimiter = new WindowRateLimiter(30, 60_000);
+  const accessLimiter = new WindowRateLimiter(5, 60_000);
+  const accessToken = crypto.randomBytes(32).toString("base64url");
+  const accessAuthorized = (request) => {
+    if (!config.accessProtectionEnabled) {
+      return true;
+    }
+    const cookieValue = parseCookieHeader(request.headers.cookie).get(
+      ACCESS_COOKIE_NAME
+    );
+    return timingSafeStringEqual(cookieValue, accessToken);
+  };
   const app = express();
   app.disable("x-powered-by");
   app.set("trust proxy", "loopback");
@@ -258,6 +394,77 @@ function createService(options = {}) {
       memoryRssBytes: process.memoryUsage().rss,
     });
   });
+
+  if (config.accessProtectionEnabled) {
+    app.get("/access", (request, response) => {
+      const returnTo = safeReturnTo(request.query.returnTo);
+      response.setHeader("Cache-Control", "no-store");
+      if (accessAuthorized(request)) {
+        response.redirect(303, returnTo);
+        return;
+      }
+      response.status(200).type("html").send(accessPage(returnTo));
+    });
+
+    app.post(
+      "/access",
+      express.urlencoded({ extended: false, limit: "2kb" }),
+      (request, response) => {
+        const returnTo = safeReturnTo(request.body?.returnTo);
+        response.setHeader("Cache-Control", "no-store");
+        if (!accessFormOriginAllowed(
+          request,
+          config.allowedOrigins,
+          config.debug
+        )) {
+          response.status(403).type("html").send(
+            accessPage(returnTo, "Запрос отклонён. Обновите страницу и попробуйте снова.")
+          );
+          return;
+        }
+        const ip = request.ip || requestIp(request);
+        if (!timingSafeStringEqual(request.body?.password, accessPassword)) {
+          if (!accessLimiter.consume(ip)) {
+            response.status(429).type("html").send(
+              accessPage(returnTo, "Слишком много попыток. Повторите через минуту.")
+            );
+            return;
+          }
+          log("access_denied", { ip });
+          response
+            .status(401)
+            .type("html")
+            .send(accessPage(returnTo, "Неверный пароль."));
+          return;
+        }
+        response.cookie(ACCESS_COOKIE_NAME, accessToken, {
+          httpOnly: true,
+          sameSite: "strict",
+          secure: request.secure || !isLoopbackHostname(request.hostname),
+          path: "/",
+          maxAge: ACCESS_COOKIE_MAX_AGE_MS,
+        });
+        log("access_granted", { ip });
+        response.redirect(303, returnTo);
+      }
+    );
+
+    app.use((request, response, next) => {
+      if (accessAuthorized(request)) {
+        next();
+        return;
+      }
+      const acceptsHtml = String(request.headers.accept || "").includes(
+        "text/html"
+      );
+      if ((request.method === "GET" || request.method === "HEAD") && acceptsHtml) {
+        const returnTo = safeReturnTo(request.originalUrl);
+        response.redirect(303, `/access?returnTo=${encodeURIComponent(returnTo)}`);
+        return;
+      }
+      response.status(401).json({ error: "access_required" });
+    });
+  }
 
   app.post("/api/sessions", (request, response) => {
     if (!originAllowed(request, config.allowedOrigins, config.debug)) {
@@ -460,6 +667,11 @@ function createService(options = {}) {
     }
 
     if (url.pathname !== "/realtime") {
+      socket.destroy();
+      return;
+    }
+    if (!accessAuthorized(request)) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n");
       socket.destroy();
       return;
     }
