@@ -384,7 +384,7 @@ test("при загрузке последняя конфигурация зам
     .toEqual({ maxDistance: 46.2, missProbability: 20 });
 });
 
-test("общие параметры мигрируют по предыдущей сцене и сохраняют последнее изменение", async ({
+test("локальные черновики сцен не применяются без сохранённой конфигурации", async ({
   page,
 }) => {
   await page.addInitScript(() => {
@@ -422,11 +422,11 @@ test("общие параметры мигрируют по предыдущей
   });
 
   await waitForDebugScene(page, "/scene-3", "juices");
-  await expect(page.locator('[name="themeMode"]')).toHaveValue("dark");
-  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("21");
-  await expect(page.locator('[name="gravity"]')).toHaveValue("7");
+  await expect(page.locator('[name="themeMode"]')).toHaveValue("auto");
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("9.8");
   await expect(page.locator('[name="rockPulseShrinkPercent"]')).toHaveValue(
-    "3.7",
+    "5",
   );
   await expect(page.locator('[name="rockPulseShrinkPercent"]')).toHaveAttribute(
     "max",
@@ -438,64 +438,59 @@ test("общие параметры мигрируют по предыдущей
     ),
   ).toBe(false);
 
-  await setSettingValue(page, "themeMode", "light");
-  await setSettingValue(page, "gravity", "5.5");
-  await expect
-    .poll(() =>
-      page.evaluate(() => ({
-        gravity: window.__sisyphusTestApi.params.gravity,
-        themeMode: window.__sisyphusTestApi.params.themeMode,
-      })),
-    )
-    .toEqual({ gravity: 5.5, themeMode: "light" });
-
   await waitForDebugScene(page, "/scene-2", "turnip");
-  await expect(page.locator('[name="themeMode"]')).toHaveValue("light");
-  await expect(page.locator('[name="gravity"]')).toHaveValue("5.5");
-  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("21");
+  await expect(page.locator('[name="themeMode"]')).toHaveValue("auto");
+  await expect(page.locator('[name="gravity"]')).toHaveValue("9.8");
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
   expect(
     await page.evaluate(
       () => window.__sisyphusTestApi.params.sceneTwoOverflowYVisible,
     ),
-  ).toBe(true);
-  await setSettingValue(page, "rockPulseShrinkPercent", "4.6");
+  ).toBe(false);
 
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
-  await expect(page.locator('[name="themeMode"]')).toHaveValue("light");
-  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("21");
+  await expect(page.locator('[name="themeMode"]')).toHaveValue("auto");
+  await expect(page.locator('[name="rockMinWidthVw"]')).toHaveValue("8");
   await expect(page.locator('[name="rockPulseShrinkPercent"]')).toHaveValue(
-    "4.6",
+    "5",
   );
   await expect(page.locator('[name="gravity"]')).toHaveCount(0);
 
-  const stored = await page.evaluate(() =>
-    JSON.parse(
+  const stored = await page.evaluate(() => ({
+    sceneOne: JSON.parse(
+      localStorage.getItem("sisyphus-czar-settings-v56:cats-and-mice"),
+    ),
+    sceneTwo: JSON.parse(
+      localStorage.getItem("sisyphus-czar-settings-v56:turnip"),
+    ),
+    sceneThree: JSON.parse(
+      localStorage.getItem("sisyphus-czar-settings-v56:juices"),
+    ),
+    shared: JSON.parse(
       localStorage.getItem("sisyphus-czar-shared-scene-settings-v1"),
     ),
-  );
-  expect(stored.version).toBe(1);
-  expect(stored.settings).toMatchObject({
-    gravity: 5.5,
-    rockMinWidthVw: 21,
-    rockPulseShrinkPercent: 4.6,
-    themeMode: "light",
+  }));
+  expect(stored).toMatchObject({
+    sceneOne: { rockMinWidthVw: 8, themeMode: "auto" },
+    sceneTwo: { gravity: 9.8, themeMode: "auto" },
+    sceneThree: { gravity: 9.8, themeMode: "auto" },
+    shared: {
+      settings: {
+        gravity: 9.8,
+        rockMinWidthVw: 8,
+        themeMode: "auto",
+      },
+    },
   });
 });
 
-test("scene 1 запускает сохранённый дробный пульс без изменения UI", async ({
+test("scene 1 запускает дробный пульс из текущих настроек", async ({
   page,
 }) => {
-  await page.addInitScript(() => {
-    localStorage.setItem(
-      "sisyphus-czar-settings-v56:cats-and-mice",
-      JSON.stringify({
-        rockPulseBpm: 240,
-        rockPulseEnabled: true,
-        rockPulseShrinkPercent: 3.7,
-      }),
-    );
-  });
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
+  await setSettingValue(page, "rockPulseEnabled", true);
+  await setSettingValue(page, "rockPulseBpm", 240);
+  await setSettingValue(page, "rockPulseShrinkPercent", 3.7);
 
   const pulseShrink = page.locator('[name="rockPulseShrinkPercent"]');
   await expect(pulseShrink).toHaveAttribute("min", "0");
@@ -863,33 +858,33 @@ test("последняя конфигурация сцены 1 заменяет 
   });
 });
 
-test("общий визуальный параметр хранит последнее значение между сценами", async ({ page }) => {
+test("локальные изменения UI не становятся стартовой конфигурацией после reload", async ({ page }) => {
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
   const sceneOneValue = 30;
   await setSettingValue(page, "handWidthVw", sceneOneValue);
+  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("30");
   await page.reload();
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
-  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("30");
+  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("14.375");
 
   await waitForDebugScene(page, "/scene-2", "turnip");
-  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("30");
+  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("14.375");
   const sceneTwoValue = 20;
   await setSettingValue(page, "handWidthVw", sceneTwoValue);
+  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("20");
   await page.reload();
   await waitForDebugScene(page, "/scene-2", "turnip");
-  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("20");
+  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("14.375");
 
   await waitForDebugScene(page, "/scene-1", "cats-and-mice");
-  await expect(page.locator('[name="handWidthVw"]')).toHaveValue(
-    String(sceneTwoValue),
-  );
+  await expect(page.locator('[name="handWidthVw"]')).toHaveValue("14.375");
   expect(
     await page.evaluate(() =>
       JSON.parse(
         localStorage.getItem("sisyphus-czar-shared-scene-settings-v1") || "{}",
       ).settings?.handWidthVw,
     ),
-  ).toBe(sceneTwoValue);
+  ).toBe(14.375);
 });
 
 test("новое имя создаёт версию без перезаписи и namespace не протекает", async ({
@@ -1235,11 +1230,22 @@ test("scene 2 пульсирует до захвата и скроллится �
 
 test("scene 2 магнитит камень в отпечаток и доскролливает камеру наверх", async ({ page }) => {
   await waitForDebugScene(page, "/scene-2", "turnip");
+  await setSettingValue(page, "sceneTwoOverflowYVisible", true);
+  await setSettingValue(page, "sceneHeightScreens", 4);
+  await expect
+    .poll(() =>
+      page.evaluate(() => ({
+        overflowY: document.documentElement.style.overflowY,
+        scrollable: document.documentElement.scrollHeight > innerHeight,
+      })),
+    )
+    .toEqual({ overflowY: "auto", scrollable: true });
   const completion = await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
     const imprint = api.activeLocalImprint();
     const offsetX = Math.min(20, imprint.toleranceX / 2);
     const offsetY = Math.min(20, imprint.toleranceY / 2);
+    api.completePreclickRockGuidance();
     api.params.cameraFollowUpEnabled = false;
     api.setPosition(imprint.x + offsetX, imprint.y + offsetY);
     scrollTo(0, document.documentElement.scrollHeight);
