@@ -7,6 +7,11 @@ const smokeRunId = `${process.pid}-${Date.now()}`;
 const smokePath = (name) =>
   path.join(os.tmpdir(), `sisyphus-prod-debug-${name}-${smokeRunId}.json`);
 const productionPresetPath = smokePath("preset");
+const basePath = String(process.env.PROD_DEBUG_BASE_PATH || "")
+  .trim()
+  .replace(/^\/+|\/+$/g, "");
+const normalizedBasePath = basePath ? `/${basePath}` : "";
+const accessPassword = process.env.PROD_DEBUG_ACCESS_PASSWORD || "";
 
 fs.copyFileSync(
   path.join(__dirname, "config", "production-preset.json"),
@@ -34,6 +39,9 @@ module.exports = defineConfig({
       HOST: "127.0.0.1",
       DEBUG: "true",
       VITE_DEBUG_UI: "true",
+      VITE_BASE_PATH: normalizedBasePath,
+      BASE_PATH: normalizedBasePath,
+      ACCESS_PASSWORD: accessPassword,
       ALLOWED_ORIGIN: "http://127.0.0.1:4174",
       SESSION_TTL_SECONDS: "86400",
       EMPTY_SESSION_GRACE_SECONDS: "2",

@@ -11,7 +11,7 @@
 
 React отвечает за структуру UI, imperative runtime — за refs, animation loop, canvas, аудио и WebSocket. Express раздаёт API/shared modules/production assets. `SessionManager` авторитетно рассчитывает личные камни фиксированным шагом.
 
-При `DEBUG=false` Express до раздачи frontend и API включает единый password gate. `GET/POST /access` проверяет `ACCESS_PASSWORD`, ограничивает попытки по IP и выдаёт случайную серверную `HttpOnly` cookie на 24 часа; тот же токен требуется HTTP middleware и обработчиком WebSocket upgrade. В debug gate полностью отключён.
+При `DEBUG=false` Express до раздачи frontend и API включает единый password gate. При `DEBUG=true` непустой `ACCESS_PASSWORD` также включает gate, оставляя доступным production UI параметров только после входа. `GET/POST /access` проверяет пароль, ограничивает попытки по IP и выдаёт случайную серверную `HttpOnly` cookie на 24 часа; тот же токен требуется HTTP middleware и обработчику WebSocket upgrade.
 
 Поток данных:
 
@@ -197,7 +197,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 
 ## Безопасность и производительность
 
-- Production fail-closed: без непустого `ACCESS_PASSWORD` сервер не запускается. Без cookie доступны только `/access` и `/healthz`; сцены, static assets, API и WebSocket возвращают отказ или перенаправление на вход.
+- Production fail-closed: при `DEBUG=false` без непустого `ACCESS_PASSWORD` сервер не запускается; при `DEBUG=true` непустой пароль включает ту же защиту. `BASE_PATH` нормализуется один раз и применяется к форме входа, сценам, static assets, API, WebSocket и cookie path; `/healthz` остаётся доступен без префикса для Docker healthcheck.
 - Cookie не содержит пароль, имеет `HttpOnly`, `SameSite=Strict`, срок 24 часа и `Secure` на публичном хосте. После рестарта сервера токен меняется, поэтому требуется повторный вход.
 - Сравнение пароля и cookie выполняется через `crypto.timingSafeEqual`; форма ограничена 2 KiB, число неудачных попыток — пять в минуту на IP, в логи не попадает введённое значение.
 - Origin проверяется для HTTP и WebSocket.
@@ -240,7 +240,7 @@ heightVh = max(0, (startCenterY - currentCenterY) / viewportHeight · 100)
 
 ## Ход разработки
 
-- **2026-09-28:** Добавлен production password gate с обязательным `ACCESS_PASSWORD`, защищённой cookie, rate limit и общей проверкой страниц/API/WebSocket. Dev/debug не затронуты; unit и production smoke покрывают отказ без конфигурации, неверный пароль и успешный вход.
+- **2026-09-28:** Добавлен production password gate с обязательным `ACCESS_PASSWORD`, защищённой cookie, rate limit и общей проверкой страниц/API/WebSocket. Следующее изменение разрешило включать тот же gate при `DEBUG=true` и добавило единый `BASE_PATH` для публикации на `/daemon`; unit-тест покрывает debug UI, пароль, префикс и API.
 
 - **2026-09-27:** сцена 1 завершает последовательность третьим настоящим кликом без hop: камень сохраняет точку контакта с управляемой курсором grabbing-рукой до рестарта. Независимый `preclickFinalClickSoundFilename` по умолчанию равен `СимуляцияОргазма.mov`; перед ним останавливаются остальные каналы, а после него аудио сцены блокируется. Room/settings schema поднята до `65`.
 - **2026-09-27:** сцена 2 получила фиксированный скролл вверх `0.1–25 vh/s` с default `1`, активный после захвата и плавно затухающий после остановки руки. Сервер отключает для `turnip` случайное, прыжковое и stationary-освобождение; `СимуляцияОргазма.mov` заблокирован для земли, но доступен в общем выборе звука боковой стены. Room/settings migration `63` добавила новый параметр; параллельная функция Scene 1 подняла объединённую schema до `64`.

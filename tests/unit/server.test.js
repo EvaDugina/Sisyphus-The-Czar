@@ -192,6 +192,77 @@ test("production пароль закрывает страницы, API и WebSoc
   });
 });
 
+test("debug UI остаётся закрытым паролем под заданным base path", async (context) => {
+  const service = createService({
+    port: 0,
+    host: "127.0.0.1",
+    debug: true,
+    basePath: "/daemon/",
+    accessPassword: "debug-access-password",
+    sessionStore: emptySessionStore(),
+    logger: () => {},
+  });
+  const address = await service.start();
+  context.after(async () => service.close());
+  const baseUrl = `http://127.0.0.1:${address.port}`;
+
+  assert.equal((await fetch(`${baseUrl}/healthz`)).status, 200);
+  assert.equal((await fetch(`${baseUrl}/scene-1`)).status, 404);
+
+  const baseRedirect = await fetch(`${baseUrl}/daemon`, { redirect: "manual" });
+  assert.equal(baseRedirect.status, 308);
+  assert.equal(baseRedirect.headers.get("location"), "/daemon/");
+
+  const blocked = await fetch(`${baseUrl}/daemon/scene-3?source=test`, {
+    headers: { Accept: "text/html" },
+    redirect: "manual",
+  });
+  assert.equal(blocked.status, 303);
+  assert.equal(
+    blocked.headers.get("location"),
+    "/daemon/access?returnTo=%2Fdaemon%2Fscene-3%3Fsource%3Dtest",
+  );
+
+  const accessPageResponse = await fetch(
+    `${baseUrl}${blocked.headers.get("location")}`,
+    {
+    headers: { Host: `127.0.0.1:${address.port}` },
+    },
+  );
+  const accessHtml = await accessPageResponse.text();
+  assert.equal(accessPageResponse.status, 200);
+  assert.match(accessHtml, /action="\/daemon\/access"/);
+
+  const login = await fetch(`${baseUrl}/daemon/access`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Origin: baseUrl,
+    },
+    body: "password=debug-access-password&returnTo=%2Fdaemon%2Fscene-3",
+    redirect: "manual",
+  });
+  const setCookie = login.headers.get("set-cookie");
+  const cookie = setCookie.split(";", 1)[0];
+  assert.equal(login.status, 303);
+  assert.equal(login.headers.get("location"), "/daemon/scene-3");
+  assert.match(setCookie, /Path=\/daemon/i);
+
+  const authorized = await fetch(`${baseUrl}/daemon/scene-3`, {
+    headers: { Cookie: cookie },
+  });
+  assert.equal(authorized.status, 200);
+  const created = await fetch(`${baseUrl}/daemon/api/sessions`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Cookie: cookie,
+    },
+    body: "{}",
+  });
+  assert.equal(created.status, 201);
+});
+
 test("backend публикует shared-модули клиента", async (context) => {
   const service = createService({
     port: 0,

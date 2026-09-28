@@ -5,11 +5,13 @@ services:
       target: production
       args:
         DEBUG: "${DEBUG:-false}"
+        BASE_PATH: "${BASE_PATH:-}"
     container_name: sisyphus-the-czar
     restart: unless-stopped
     environment:
       PORT: "8080"
       DEBUG: "${DEBUG:-false}"
+      BASE_PATH: "${BASE_PATH:-}"
       ACCESS_PASSWORD: "${ACCESS_PASSWORD:-}"
       ALLOWED_ORIGIN: "${ALLOWED_ORIGIN:-}"
       SESSION_TTL_SECONDS: "${SESSION_TTL_SECONDS:-86400}"

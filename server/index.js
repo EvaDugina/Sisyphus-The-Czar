@@ -32,6 +32,18 @@ function parseBoolean(value, fallback = false) {
   return ["1", "true", "yes", "on"].includes(String(value).toLowerCase());
 }
 
+function normalizeBasePath(value) {
+  const normalized = String(value || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
+  return normalized ? `/${normalized}` : "";
+}
+
+function withBasePath(basePath, pathname) {
+  const normalizedPath = `/${String(pathname || "").replace(/^\/+/, "")}`;
+  return `${basePath}${normalizedPath}`;
+}
+
 function createLogger(output = console.log) {
   return (event, details = {}) => {
     output(
@@ -149,23 +161,33 @@ function timingSafeStringEqual(left, right) {
   return crypto.timingSafeEqual(leftBuffer, rightBuffer);
 }
 
-function safeReturnTo(value) {
+function safeReturnTo(value, basePath = "") {
+  const fallback = withBasePath(basePath, "/scene-1");
   const candidate = String(value || "");
   if (
     !candidate.startsWith("/") ||
     candidate.startsWith("//") ||
     candidate.length > 2048
   ) {
-    return "/scene-1";
+    return fallback;
   }
   try {
     const url = new URL(candidate, "http://local.invalid");
-    if (url.origin !== "http://local.invalid" || url.pathname === "/access") {
-      return "/scene-1";
+    const accessPath = withBasePath(basePath, "/access");
+    const outsideBasePath =
+      basePath &&
+      url.pathname !== basePath &&
+      !url.pathname.startsWith(`${basePath}/`);
+    if (
+      url.origin !== "http://local.invalid" ||
+      url.pathname === accessPath ||
+      outsideBasePath
+    ) {
+      return fallback;
     }
     return `${url.pathname}${url.search}${url.hash}`;
   } catch {
-    return "/scene-1";
+    return fallback;
   }
 }
 
@@ -177,8 +199,9 @@ function escapeHtml(value) {
     .replaceAll(">", "&gt;");
 }
 
-function accessPage(returnTo, errorMessage = "") {
-  const safeTarget = escapeHtml(safeReturnTo(returnTo));
+function accessPage(returnTo, errorMessage = "", basePath = "") {
+  const safeTarget = escapeHtml(safeReturnTo(returnTo, basePath));
+  const accessPath = escapeHtml(withBasePath(basePath, "/access"));
   const feedback = errorMessage
     ? `<p class="error" role="alert">${escapeHtml(errorMessage)}</p>`
     : "";
@@ -208,7 +231,7 @@ function accessPage(returnTo, errorMessage = "") {
       <h1>Закрытый показ</h1>
       <p>Введите пароль, чтобы открыть сцены.</p>
       ${feedback}
-      <form method="post" action="/access">
+      <form method="post" action="${accessPath}">
         <input type="hidden" name="returnTo" value="${safeTarget}" />
         <label for="access-password">
           Пароль
@@ -300,14 +323,15 @@ function createService(options = {}) {
         .map((value) => value.trim())
         .filter(Boolean)
     ),
+    basePath: normalizeBasePath(options.basePath ?? process.env.BASE_PATH ?? ""),
   };
   const accessPassword = String(
     options.accessPassword ?? process.env.ACCESS_PASSWORD ?? ""
   );
   config.accessProtectionEnabled =
-    options.accessProtectionEnabled ?? !config.debug;
+    options.accessProtectionEnabled ?? (!config.debug || Boolean(accessPassword));
   if (config.accessProtectionEnabled && !accessPassword) {
-    throw new Error("ACCESS_PASSWORD is required when DEBUG=false");
+    throw new Error("ACCESS_PASSWORD is required when access protection is enabled");
   }
 
   const log = options.logger || createLogger();
@@ -386,31 +410,50 @@ function createService(options = {}) {
   app.use(securityHeaders(config.debug));
   app.use(express.json({ limit: "16kb", strict: true }));
 
-  app.get("/healthz", (_request, response) => {
+  const healthHandler = (_request, response) => {
     response.json({
       status: "ok",
       sessions: manager.sessions.size,
       sessionPersistence: sessionStore.enabled,
       memoryRssBytes: process.memoryUsage().rss,
     });
-  });
+  };
+  app.get("/healthz", healthHandler);
+
+  if (config.basePath) {
+    app.use((request, response, next) => {
+      if (request.path === config.basePath) {
+        const queryIndex = request.originalUrl.indexOf("?");
+        const query = queryIndex >= 0 ? request.originalUrl.slice(queryIndex) : "";
+        response.redirect(308, `${config.basePath}/${query}`);
+        return;
+      }
+      if (!request.path.startsWith(`${config.basePath}/`)) {
+        response.status(404).type("text/plain").send("Not found");
+        return;
+      }
+      request.url = request.url.slice(config.basePath.length) || "/";
+      next();
+    });
+    app.get("/healthz", healthHandler);
+  }
 
   if (config.accessProtectionEnabled) {
     app.get("/access", (request, response) => {
-      const returnTo = safeReturnTo(request.query.returnTo);
+      const returnTo = safeReturnTo(request.query.returnTo, config.basePath);
       response.setHeader("Cache-Control", "no-store");
       if (accessAuthorized(request)) {
         response.redirect(303, returnTo);
         return;
       }
-      response.status(200).type("html").send(accessPage(returnTo));
+      response.status(200).type("html").send(accessPage(returnTo, "", config.basePath));
     });
 
     app.post(
       "/access",
       express.urlencoded({ extended: false, limit: "2kb" }),
       (request, response) => {
-        const returnTo = safeReturnTo(request.body?.returnTo);
+        const returnTo = safeReturnTo(request.body?.returnTo, config.basePath);
         response.setHeader("Cache-Control", "no-store");
         if (!accessFormOriginAllowed(
           request,
@@ -418,7 +461,11 @@ function createService(options = {}) {
           config.debug
         )) {
           response.status(403).type("html").send(
-            accessPage(returnTo, "Запрос отклонён. Обновите страницу и попробуйте снова.")
+            accessPage(
+              returnTo,
+              "Запрос отклонён. Обновите страницу и попробуйте снова.",
+              config.basePath
+            )
           );
           return;
         }
@@ -426,7 +473,11 @@ function createService(options = {}) {
         if (!timingSafeStringEqual(request.body?.password, accessPassword)) {
           if (!accessLimiter.consume(ip)) {
             response.status(429).type("html").send(
-              accessPage(returnTo, "Слишком много попыток. Повторите через минуту.")
+              accessPage(
+                returnTo,
+                "Слишком много попыток. Повторите через минуту.",
+                config.basePath
+              )
             );
             return;
           }
@@ -434,14 +485,14 @@ function createService(options = {}) {
           response
             .status(401)
             .type("html")
-            .send(accessPage(returnTo, "Неверный пароль."));
+            .send(accessPage(returnTo, "Неверный пароль.", config.basePath));
           return;
         }
         response.cookie(ACCESS_COOKIE_NAME, accessToken, {
           httpOnly: true,
           sameSite: "strict",
           secure: request.secure || !isLoopbackHostname(request.hostname),
-          path: "/",
+          path: config.basePath || "/",
           maxAge: ACCESS_COOKIE_MAX_AGE_MS,
         });
         log("access_granted", { ip });
@@ -458,8 +509,11 @@ function createService(options = {}) {
         "text/html"
       );
       if ((request.method === "GET" || request.method === "HEAD") && acceptsHtml) {
-        const returnTo = safeReturnTo(request.originalUrl);
-        response.redirect(303, `/access?returnTo=${encodeURIComponent(returnTo)}`);
+        const returnTo = safeReturnTo(request.originalUrl, config.basePath);
+        response.redirect(
+          303,
+          `${withBasePath(config.basePath, "/access")}?returnTo=${encodeURIComponent(returnTo)}`
+        );
         return;
       }
       response.status(401).json({ error: "access_required" });
@@ -625,13 +679,16 @@ function createService(options = {}) {
   app.get(/^\/scene-[123]\/$/, (request, response) => {
     const queryIndex = request.originalUrl.indexOf("?");
     const query = queryIndex >= 0 ? request.originalUrl.slice(queryIndex) : "";
-    response.redirect(308, `${request.path.replace(/\/$/, "")}${query}`);
+    response.redirect(
+      308,
+      `${withBasePath(config.basePath, request.path.replace(/\/$/, ""))}${query}`
+    );
   });
   app.get(["/scene-1", "/scene-2", "/scene-3"], sendIndex);
   app.get(["/settings", "/settings/"], (request, response) => {
     const queryIndex = request.originalUrl.indexOf("?");
     const query = queryIndex >= 0 ? request.originalUrl.slice(queryIndex) : "";
-    response.redirect(308, `/scene-1${query}`);
+    response.redirect(308, `${withBasePath(config.basePath, "/scene-1")}${query}`);
   });
 
   app.use((error, _request, response, next) => {
@@ -666,7 +723,7 @@ function createService(options = {}) {
       return;
     }
 
-    if (url.pathname !== "/realtime") {
+    if (url.pathname !== withBasePath(config.basePath, "/realtime")) {
       socket.destroy();
       return;
     }

@@ -3,6 +3,25 @@ const { test, expect } = require("@playwright/test");
 const SETTINGS_STORAGE_KEY = "sisyphus-czar-settings-v56:cats-and-mice";
 const VERSIONS_STORAGE_KEY =
   "sisyphus-czar-settings-versions-v1:cats-and-mice";
+const ACCESS_PASSWORD = process.env.PROD_DEBUG_ACCESS_PASSWORD || "";
+const BASE_PATH = String(process.env.PROD_DEBUG_BASE_PATH || "")
+  .trim()
+  .replace(/^\/+|\/+$/g, "");
+const APP_BASE_PATH = BASE_PATH ? `/${BASE_PATH}` : "";
+const appPath = (pathname = "/") =>
+  `${APP_BASE_PATH}/${String(pathname || "").replace(/^\/+/, "")}`;
+
+async function unlockIfNeeded(page) {
+  if (!ACCESS_PASSWORD) {
+    await page.goto(appPath("/"));
+    return;
+  }
+  await page.goto(appPath("/"));
+  await expect(page).toHaveURL(new RegExp(`${APP_BASE_PATH}/access\\?returnTo=`));
+  await page.getByLabel("Пароль").fill(ACCESS_PASSWORD);
+  await page.getByRole("button", { name: "Войти" }).click();
+  await expect(page).toHaveURL(new RegExp(`${APP_BASE_PATH}/scene-1$`));
+}
 
 async function openSettingsPanel(page) {
   const toggle = page.locator(".settings-toggle");
@@ -55,7 +74,7 @@ test("production DEBUG мгновенно применяет последний 
       );
     };
   });
-  await page.goto("/");
+  await unlockIfNeeded(page);
   await expect(
     page.locator('[data-testid="session-status"][data-state="online"]'),
   ).toContainText("В сессии");
@@ -86,6 +105,12 @@ test("production DEBUG мгновенно применяет последний 
   await expect(page.locator('[name="rockPulseShrinkPercent"]')).toHaveValue(
     "3.5",
   );
+
+  await page.locator(".settings-version-toggle").click();
+  const savedVersionDelete = page.locator(".settings-version-delete");
+  await expect(savedVersionDelete).toHaveCount(1);
+  await savedVersionDelete.click();
+  await expect(savedVersionDelete).toHaveCount(0);
 });
 
 test("stale realtime session creates a clean replacement session", async ({
@@ -101,7 +126,7 @@ test("stale realtime session creates a clean replacement session", async ({
       }
     };
   });
-  await page.goto("/");
+  await unlockIfNeeded(page);
   await expect(
     page.locator('[data-testid="session-status"][data-state="online"]'),
   ).toHaveAttribute(
@@ -198,7 +223,7 @@ test("production DEBUG включает UI, draft и изолированные 
     },
   );
 
-  await page.goto("/");
+  await unlockIfNeeded(page);
   await expect(page.locator("body")).toHaveAttribute(
     "data-client-role",
     "master",
@@ -268,9 +293,11 @@ test("production DEBUG включает UI, draft и изолированные 
   expect(beforeUnloadConfirmed).toBe(true);
   await expect(page.locator('[name="rockPulseEnabled"]')).toBeChecked();
   await expect(page.locator('[name="rockPulseShrinkPercent"]')).toHaveValue(
-    "1",
+    "2.5",
   );
-  await expect(page.locator("#settings-version-current")).toHaveText("Черновик");
+  await expect(page.locator("#settings-version-current")).toContainText(
+    "Серверная версия",
+  );
 
   await page.locator(".settings-version-toggle").click();
   const productionButton = page.locator(
@@ -300,7 +327,7 @@ test("production DEBUG включает UI, draft и изолированные 
   const secondContext = await browser.newContext();
   const second = await secondContext.newPage();
   try {
-    await second.goto("/");
+    await unlockIfNeeded(second);
     await expect(second.locator("body")).toHaveAttribute(
       "data-client-role",
       "master",
@@ -330,4 +357,42 @@ test("production DEBUG включает UI, draft и изолированные 
   } finally {
     await secondContext.close();
   }
+});
+
+test("production DEBUG защищает паролем все сцены и сохраняет base path", async ({
+  browser,
+}) => {
+  test.skip(!ACCESS_PASSWORD, "Проверка требует PROD_DEBUG_ACCESS_PASSWORD");
+  const context = await browser.newContext();
+  const page = await context.newPage();
+  const socketUrls = [];
+  page.on("websocket", (socket) => socketUrls.push(socket.url()));
+
+  await page.goto(appPath("/scene-3"));
+  await expect(page).toHaveURL(
+    new RegExp(`${APP_BASE_PATH}/access\\?returnTo=${encodeURIComponent(`${APP_BASE_PATH}/scene-3`)}`),
+  );
+  await expect(page.getByRole("heading", { name: "Закрытый показ" })).toBeVisible();
+  await page.getByLabel("Пароль").fill(ACCESS_PASSWORD);
+  await page.getByRole("button", { name: "Войти" }).click();
+
+  const scenes = [
+    ["/scene-1", "/scene-2"],
+    ["/scene-2", "/scene-3"],
+    ["/scene-3", "/scene-1"],
+  ];
+  for (const [scenePath, nextPath] of scenes) {
+    await page.goto(appPath(scenePath));
+    await expect(page).toHaveURL(new RegExp(`${appPath(scenePath)}$`));
+    await expect(page.locator(".settings-toggle")).toBeVisible();
+    await expect(
+      page.locator('[data-testid="session-status"][data-state="online"]'),
+    ).toContainText("В сессии");
+    await expect(page.getByTestId("next-scene-link")).toHaveAttribute(
+      "href",
+      appPath(nextPath),
+    );
+  }
+  expect(socketUrls.some((url) => new URL(url).pathname === appPath("/realtime"))).toBe(true);
+  await context.close();
 });

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { appPath } from "../config/appBasePath.mjs";
 import { FoldLayer } from "./FoldLayer";
 import { Scene } from "./Scene";
 import { SettingsPanel } from "./SettingsPanel";
@@ -18,7 +19,7 @@ export function ScenePage({ sceneId, sceneLabel, nextSceneHref }) {
   return (
     <div className="scene-page" data-scene-page={sceneId}>
       <Toolbar
-        nextSceneHref={nextSceneHref}
+        nextSceneHref={appPath(nextSceneHref)}
         sessionPanelRef={realtime.sessionPanelRef}
         sessionRestartButtonRef={realtime.sessionRestartButtonRef}
         sessionStatusRef={realtime.sessionStatusRef}

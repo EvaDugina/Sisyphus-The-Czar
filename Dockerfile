@@ -23,7 +23,9 @@ FROM node:24.18.0-alpine3.23 AS frontend-build
 WORKDIR /app
 ENV NODE_ENV=production
 ARG DEBUG=false
+ARG BASE_PATH=
 ENV VITE_DEBUG_UI=${DEBUG}
+ENV VITE_BASE_PATH=${BASE_PATH}
 
 COPY package.json package-lock.json ./
 RUN npm ci --include=dev

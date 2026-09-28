@@ -91,10 +91,13 @@ export default defineConfig(({ command }) => {
   const isProductionBuild = command === "build";
   const debugUiEnabled =
     !isProductionBuild || process.env.VITE_DEBUG_UI === "true";
+  const basePath = String(process.env.VITE_BASE_PATH || "")
+    .trim()
+    .replace(/^\/+|\/+$/g, "");
 
   return {
     appType: "mpa",
-    base: "./",
+    base: basePath ? `/${basePath}/` : "./",
     plugins: [react(), serveScenePages(), reloadSharedPhysics()],
     resolve: {
       alias: isProductionBuild && !debugUiEnabled

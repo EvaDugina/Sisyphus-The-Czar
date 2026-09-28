@@ -31,10 +31,10 @@ docker compose -f docker-compose.dev.yml down
 ## Три режима запуска
 
 - **Dev:** `docker compose -f docker-compose.dev.yml up -d --build`. Панель настроек, Vite HMR и test API доступны.
-- **Отладочный production:** `DEBUG=true docker compose up -d --build --force-recreate`. Это production-сборка Vite без HMR и test API, но с полной панелью настроек личной сессии; парольный шлюз отключён вместе с остальными debug-послаблениями.
+- **Настраиваемый production:** `DEBUG=true ACCESS_PASSWORD=<пароль> BASE_PATH=/daemon docker compose up -d --build --force-recreate`. Это production-сборка Vite без HMR и test API, но с полной панелью настроек личной сессии; непустой `ACCESS_PASSWORD` оставляет страницы, API и WebSocket за общим парольным шлюзом.
 - **Настоящий production:** `DEBUG=false docker compose up -d --build --force-recreate`. Панель и controller настроек не входят в frontend bundle, а все сцены, API и WebSocket закрыты общим паролем из `ACCESS_PASSWORD`.
 
-Dev и production используют один локальный origin `http://127.0.0.1:18082/scene-1`, поэтому режимы запускаются последовательно. Перед переключением остановите текущий Compose-проект. `DEBUG` одновременно является build argument frontend и runtime-переменной сервера: одной перезагрузки страницы или restart контейнера недостаточно, после смены значения обязательны rebuild и recreate.
+Dev и production используют один локальный порт `18082`, поэтому режимы запускаются последовательно. Без `BASE_PATH` первая сцена находится на `/scene-1`; с `BASE_PATH=/daemon` — на `/daemon/scene-1`, а API, WebSocket, assets и форма входа получают тот же префикс. Перед переключением остановите текущий Compose-проект. `DEBUG` и `BASE_PATH` одновременно передаются frontend build и серверу: после их смены обязательны rebuild и recreate.
 
 ## Личные сессии и общий след
 
@@ -74,8 +74,9 @@ Production frontend использует `rock-03.png`, PNG-курсоры `curs
 
 | Переменная | Назначение |
 |---|---|
-| `DEBUG` | `true` для dev-послаблений, `false` для production hardening |
-| `ACCESS_PASSWORD` | обязательный общий пароль показа при `DEBUG=false`; хранится только в `.env` |
+| `DEBUG` | `true` включает production UI параметров, `false` собирает slim production |
+| `BASE_PATH` | необязательный общий URL-префикс frontend, API и WebSocket, например `/daemon` |
+| `ACCESS_PASSWORD` | обязательный общий пароль при `DEBUG=false`; при `DEBUG=true` непустое значение также включает шлюз; хранится только в `.env` |
 | `ALLOWED_ORIGIN` | публичный HTTPS origin; несколько значений через запятую |
 | `SESSION_TTL_SECONDS` | время жизни комнаты после последней активности, по умолчанию `86400` |
 | `EMPTY_SESSION_GRACE_SECONDS` | задержка удаления пустой совместимой комнаты; persistent trail hub не удаляется, по умолчанию `10` |
@@ -84,7 +85,7 @@ Production frontend использует `rock-03.png`, PNG-курсоры `curs
 | `SETTINGS_TEMPLATE_STORE_PATH` | отслеживаемый каталог debug-шаблонов, по умолчанию `/app/repository-config/settings-templates.json` |
 | `SESSION_PERSIST_INTERVAL_MS` | интервал фонового сохранения, по умолчанию `250` мс |
 
-При `DEBUG=false` сервер не запустится с пустым `ACCESS_PASSWORD`. Без входа доступны только страница `/access` и служебный `/healthz`; cookie имеет `HttpOnly`, `SameSite=Strict` и `Secure` на публичном хосте. Файл `.env` с паролем не коммитится.
+При `DEBUG=false` сервер не запустится с пустым `ACCESS_PASSWORD`. При `DEBUG=true` парольный шлюз включается, если `ACCESS_PASSWORD` непустой. С `BASE_PATH=/daemon` без входа доступны только `/daemon/access` и служебный `/healthz`; cookie ограничена `/daemon`, имеет `HttpOnly`, `SameSite=Strict` и `Secure` на публичном хосте. Файл `.env` с паролем не коммитится.
 
 ## Проверки
 

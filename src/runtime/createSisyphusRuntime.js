@@ -7,6 +7,7 @@ import groundImpactAudioUrl from "../../assets/audio/СимуляцияОрга�
 import preclickHopAudioUrl from "../../assets/audio/Смех.mp3?url";
 import rainAudioUrl from "../../assets/audio/Дождь.mp3?url";
 import rainVendorUrl from "../../assets/raindrop-fx/index.js?url";
+import { appPath } from "../config/appBasePath.mjs";
 import { GOGH_ARTWORKS } from "../config/goghArtworks.mjs";
 import { rockImageUrl } from "../config/rockImages.mjs";
 import { sceneStorageNamespace } from "../config/sceneRoutes.mjs";
@@ -4947,7 +4948,7 @@ export function createSisyphusRuntime(elements = {}) {
 
   function appUrl(relativePath) {
     const normalizedPath = String(relativePath || "").replace(/^\/+/, "");
-    return new URL(`/${normalizedPath}`, window.location.origin);
+    return new URL(appPath(`/${normalizedPath}`), window.location.origin);
   }
 
   function updateSettingsLink() {
