@@ -7,7 +7,6 @@ const STICKY_ROCK_SETTINGS = Object.freeze({
   rockJumpEnabled: false,
   sceneTwoBarrierEnabled: false,
   stationaryAutoSlipEnabled: false,
-  wallImpactSoundFilename: "none",
 });
 
 function useSceneTwoRuntimeGuards(stickyRef) {

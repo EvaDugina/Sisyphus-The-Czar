@@ -1922,7 +1922,7 @@ test("рейтинг скрывает нулевой результат, а до
     .toMatchObject({ completed: true, started: false, visible: false, volume: 0 });
 });
 
-test("scene 2 блокирует звук симуляции оргазма и поддерживает другие эффекты", async ({ page }) => {
+test("scene 2 проигрывает выбранные звуки стены и поддерживает отключение", async ({ page }) => {
   test.setTimeout(60_000);
   await page.goto("/scene-2");
   await waitForFoldReady(page);
@@ -1931,6 +1931,11 @@ test("scene 2 блокирует звук симуляции оргазма и �
     api.completePreclickRockGuidance();
     api.setPosition(api.bounds.maxX / 2, api.bounds.maxY / 2);
   });
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.params.wallImpactSoundFilename,
+    ))
+    .toBe("СимуляцияОргазма.mov");
   const before = await page.evaluate(() =>
     window.__sisyphusTestApi.getWallImpactAudioState().playCount,
   );
@@ -1956,12 +1961,14 @@ test("scene 2 блокирует звук симуляции оргазма и �
     const api = window.__sisyphusTestApi;
     api.setPosition(0, api.bounds.maxY / 2);
   });
-  await page.waitForTimeout(150);
-  expect(
-    await page.evaluate(() =>
-      window.__sisyphusTestApi.getWallImpactAudioState().playCount,
-    ),
-  ).toBe(before);
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.getWallImpactAudioState(),
+    ))
+    .toMatchObject({
+      lastFilename: "СимуляцияОргазма.mov",
+      playCount: before + 1,
+    });
   await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
     api.setPosition(0, api.bounds.maxY / 2);
@@ -1970,11 +1977,18 @@ test("scene 2 блокирует звук симуляции оргазма и �
     await page.evaluate(() =>
       window.__sisyphusTestApi.getWallImpactAudioState().playCount,
     ),
-  ).toBe(before);
+  ).toBe(before + 1);
 
+  await page
+    .locator('[name="wallImpactSoundFilename"]')
+    .selectOption("Camen.mp3", { force: true });
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.params.wallImpactSoundFilename,
+    ))
+    .toBe("Camen.mp3");
   await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
-    api.params.wallImpactSoundFilename = "Camen.mp3";
     api.setPosition(api.bounds.maxX / 2, api.bounds.maxY / 2);
     api.setPosition(api.bounds.maxX, api.bounds.maxY / 2);
   });
@@ -1984,12 +1998,19 @@ test("scene 2 блокирует звук симуляции оргазма и �
     ))
     .toMatchObject({
       lastFilename: "Camen.mp3",
-      playCount: before + 1,
+      playCount: before + 2,
     });
 
+  await page
+    .locator('[name="wallImpactSoundFilename"]')
+    .selectOption("none", { force: true });
+  await expect
+    .poll(() => page.evaluate(() =>
+      window.__sisyphusTestApi.params.wallImpactSoundFilename,
+    ))
+    .toBe("none");
   await page.evaluate(() => {
     const api = window.__sisyphusTestApi;
-    api.params.wallImpactSoundFilename = "none";
     api.setPosition(api.bounds.maxX / 2, api.bounds.maxY / 2);
     api.setPosition(0, api.bounds.maxY / 2);
   });
@@ -1998,7 +2019,7 @@ test("scene 2 блокирует звук симуляции оргазма и �
     await page.evaluate(() =>
       window.__sisyphusTestApi.getWallImpactAudioState().playCount,
     ),
-  ).toBe(before + 1);
+  ).toBe(before + 2);
 });
 
 test("glow-профили и зависимости select работают на странице настроек", async ({

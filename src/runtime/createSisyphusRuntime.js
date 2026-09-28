@@ -1903,11 +1903,7 @@ export function createSisyphusRuntime(elements = {}) {
       return;
     }
     const requested = String(requestedFilename || "");
-    if (
-      requested === SharedRoomSettings.WALL_IMPACT_SOUND_DISABLED ||
-      (isSceneTwo &&
-        requested === SharedRoomSettings.PRECLICK_HOP_ORGASM_SOUND_FILENAME)
-    ) {
+    if (requested === SharedRoomSettings.WALL_IMPACT_SOUND_DISABLED) {
       return;
     }
     if (typeof Audio !== "function") {
